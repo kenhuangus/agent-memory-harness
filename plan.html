@@ -149,7 +149,8 @@
     <div class="section-head">
       <div class="eyebrow">Timeline at a glance</div>
       <h2>Sprint map</h2>
-      <p>Week 1 = days 1–5 (build in isolation against contracts). Week 2 = days 6–10 (wire together, baseline, ship).</p>
+      <p>Week 1 = days 1–5 (build against frozen contracts; cheap no-memory baselines start ~D4). Week 2 = days 6–10
+        (wire together, run the Haiku+harness treatment on sharded keys, ship).</p>
     </div>
     <div class="gantt-wrap">
       <div class="gantt">
@@ -161,9 +162,9 @@
         <div class="bar" style="grid-column:2/7;grid-row:2;background:var(--accent)">Abstraction + persistence</div>
         <div class="bar" style="grid-column:7/12;grid-row:2;background:#8b9dffcc">Orchestrator · OpenCode e2e</div>
 
-        <div class="row-lbl" style="grid-column:1;grid-row:3">Ken · Benchmark</div>
-        <div class="bar" style="grid-column:2/7;grid-row:3;background:var(--accent-2)">Datasets + metric defs</div>
-        <div class="bar" style="grid-column:7/12;grid-row:3;background:#2dd4bfcc">Baselines + dashboard</div>
+        <div class="row-lbl" style="grid-column:1;grid-row:3">Ken · Eval infra</div>
+        <div class="bar" style="grid-column:2/7;grid-row:3;background:var(--accent-2)">Datasets · run harness · metrics</div>
+        <div class="bar" style="grid-column:7/12;grid-row:3;background:#2dd4bfcc">LongMemEval shard + dashboard</div>
 
         <div class="row-lbl" style="grid-column:1;grid-row:4">Brent · Store + Retrieve</div>
         <div class="bar" style="grid-column:2/7;grid-row:4;background:var(--accent-3)">3 backends + indexes</div>
@@ -173,8 +174,9 @@
         <div class="bar" style="grid-column:2/7;grid-row:5;background:var(--accent-4)">Dedup + conflict rules</div>
         <div class="bar" style="grid-column:7/12;grid-row:5;background:#f472b6cc">Async worker + governance</div>
 
-        <div class="row-lbl" style="grid-column:1;grid-row:6">All · Integration</div>
-        <div class="bar" style="grid-column:11/12;grid-row:6;background:var(--grad);color:#06121f">E2E</div>
+        <div class="row-lbl" style="grid-column:1;grid-row:6">All · Eval (own keys)</div>
+        <div class="bar" style="grid-column:5/8;grid-row:6;background:#2dd4bf99;color:#06121f">No-mem baselines</div>
+        <div class="bar" style="grid-column:9/12;grid-row:6;background:var(--grad);color:#06121f">Haiku+mem · E2E</div>
       </div>
     </div>
     <div class="legend">
@@ -182,7 +184,7 @@
       <span><i style="background:var(--accent-2)"></i> Ken · P2</span>
       <span><i style="background:var(--accent-3)"></i> Brent · P3</span>
       <span><i style="background:var(--accent-4)"></i> Scott · P4</span>
-      <span><i style="background:var(--grad)"></i> Joint integration (D10)</span>
+      <span><i style="background:var(--grad)"></i> Eval: baselines wk1 · treatment wk2 (sharded keys)</span>
     </div>
   </div>
 </section>
@@ -210,25 +212,26 @@
         <strong style="color:var(--text)">Week 2</strong>
         <ul>
           <li>Build the retrieval orchestrator (rank → dedup → return).</li>
-          <li>Wire in Person 3's router; run an end-to-end task.</li>
+          <li>Wire in Brent's router; run an end-to-end task.</li>
+          <li>Captain the <strong>SWE-Bench-CL</strong> runs on his own API key.</li>
         </ul>
       </div>
 
       <!-- P2 -->
       <div class="card bl2 fade-up">
         <div class="kicker a2">Ken · Person 2</div>
-        <h3><span class="ic bg2 a2">📊</span> Benchmarking &amp; Evaluation</h3>
-        <p class="note" style="margin-bottom:14px;">Owns experimental design, metrics, and reproducibility.</p>
+        <h3><span class="ic bg2 a2">📊</span> Evaluation Infrastructure &amp; Coordination</h3>
+        <p class="note" style="margin-bottom:14px;">Owns the shared runner, metrics and the cost+results dashboard — and captains one benchmark like everyone else.</p>
         <strong style="color:var(--text)">Week 1</strong>
         <ul>
-          <li>Download &amp; parse MemoryAgentBench, LongMemEval, SWE-ContextBench, SWE-Bench-CL.</li>
-          <li>Build data loaders + trajectory logging (what was written/retrieved/used).</li>
-          <li>Define the four metrics mathematically.</li>
+          <li>Download &amp; parse all four datasets; loaders + trajectory logging (with Scott).</li>
+          <li>Define the four metrics; build the shared run harness: <code>run(benchmark, model, memory) → metrics</code>.</li>
+          <li>Stand up the cost/budget tracker and per-key config.</li>
         </ul>
         <strong style="color:var(--text)">Week 2</strong>
         <ul>
-          <li>Run baselines: Haiku no-memory, Opus 4.8 no-memory.</li>
-          <li>Statistical testing framework + results dashboard; document the protocol.</li>
+          <li>Captain the <strong>LongMemEval</strong> runs on his own API key.</li>
+          <li>Aggregate every captain's results; stats + results &amp; cost dashboard; document the protocol.</li>
         </ul>
       </div>
 
@@ -245,8 +248,9 @@
         </ul>
         <strong style="color:var(--text)">Week 2</strong>
         <ul>
-          <li>Adapters for all three backends behind Person 1's interface.</li>
+          <li>Adapters for all three backends behind Keith's interface.</li>
           <li>Implement the router; performance-test each backend.</li>
+          <li>Captain the <strong>SWE-ContextBench</strong> runs on his own API key.</li>
         </ul>
       </div>
 
@@ -260,11 +264,13 @@
           <li>Deduplication logic (exact / semantic / near-duplicate).</li>
           <li>Conflict detection + reconciliation rules (recency, confidence, source).</li>
           <li>Session-filter &amp; blacklist semantics.</li>
+          <li>Co-build trajectory logging with Ken — the dreaming worker consumes it.</li>
         </ul>
         <strong style="color:var(--text)">Week 2</strong>
         <ul>
           <li>Async offline scheduler; must-know / must-do extraction.</li>
-          <li>Retention &amp; pruning; observability logs; integration with P1 &amp; P3.</li>
+          <li>Retention &amp; pruning; observability logs; integration with Keith &amp; Brent.</li>
+          <li>Captain the <strong>MemoryAgentBench</strong> runs on his own API key.</li>
         </ul>
       </div>
     </div>
@@ -299,12 +305,61 @@
           <tr><td>Backend performance testing</td><td><span class="pill p3">P3</span></td><td>P2</td></tr>
           <tr><td>Dreaming worker (dedup · conflict · governance · retention)</td><td><span class="pill p4">P4</span></td><td>P1, P3</td></tr>
           <tr><td>Memory semantics ("what is good memory")</td><td><span class="pill p4">P4</span></td><td>P2</td></tr>
-          <tr><td>Datasets, loaders &amp; trajectory logging</td><td><span class="pill p2">P2</span></td><td class="dash">—</td></tr>
-          <tr><td>Metric definitions &amp; evaluation protocol</td><td><span class="pill p2">P2</span></td><td>P4</td></tr>
-          <tr><td>Baselines + results dashboard</td><td><span class="pill p2">P2</span></td><td class="dash">—</td></tr>
+          <tr><td>Datasets, loaders &amp; trajectory logging</td><td><span class="pill p2">P2</span></td><td>P4</td></tr>
+          <tr><td>Metric defs, shared run harness &amp; cost gates</td><td><span class="pill p2">P2</span></td><td>P4</td></tr>
+          <tr><td>Results + cost dashboard, stats, aggregation</td><td><span class="pill p2">P2</span></td><td class="dash">—</td></tr>
+          <tr><td>Run SWE-Bench-CL eval (own key)</td><td><span class="pill p1">P1</span></td><td class="dash">—</td></tr>
+          <tr><td>Run LongMemEval eval (own key)</td><td><span class="pill p2">P2</span></td><td class="dash">—</td></tr>
+          <tr><td>Run SWE-ContextBench eval (own key)</td><td><span class="pill p3">P3</span></td><td class="dash">—</td></tr>
+          <tr><td>Run MemoryAgentBench eval (own key)</td><td><span class="pill p4">P4</span></td><td class="dash">—</td></tr>
           <tr><td>Final end-to-end integration</td><td><span class="pill">All</span></td><td class="dash">—</td></tr>
         </tbody>
       </table>
+    </div>
+  </div>
+</section>
+
+<!-- EVAL: DIVIDE & CONQUER -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Running the evals</div>
+      <h2>Divide &amp; conquer the benchmark runs</h2>
+      <p class="lead">Four benchmarks × four model configs is too much API cost and wall-clock for one person on one
+        key. So each teammate captains the benchmark that stresses their own component and runs it on their own API
+        budget — runs go wide in parallel instead of deep on a single key.</p>
+    </div>
+
+    <div class="table-wrap fade-up">
+      <table>
+        <thead><tr><th>Benchmark</th><th>Captain</th><th>Why them</th><th>Configs</th></tr></thead>
+        <tbody>
+          <tr><td><strong>SWE-Bench-CL</strong></td><td><span class="pill p1">Keith</span></td><td>Drives the coding agent end-to-end — his OpenCode wheelhouse.</td><td>4</td></tr>
+          <tr><td><strong>LongMemEval</strong></td><td><span class="pill p2">Ken</span></td><td>Eval lead; recency / temporal reasoning.</td><td>4</td></tr>
+          <tr><td><strong>SWE-ContextBench</strong></td><td><span class="pill p3">Brent</span></td><td>Context reuse exercises his retrieval + router.</td><td>4</td></tr>
+          <tr><td><strong>MemoryAgentBench</strong></td><td><span class="pill p4">Scott</span></td><td>Tests conflict resolution — his dreaming component.</td><td>4</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note" style="margin-top:10px">Captains run the benchmark that exercises their own component, so the person
+      best able to debug a bad number is the one watching it. Ken owns the shared runner everyone plugs into and
+      aggregates all results.</p>
+
+    <div class="spacer"></div>
+    <h3>Cost &amp; throughput controls</h3>
+    <div class="grid grid-3">
+      <div class="card bl2 fade-up"><h3>🔑 Sharded keys</h3><p>Each captain runs on a separate API key/account — roughly 4× the aggregate rate limit, isolated per-benchmark budgets, no single-key throttle.</p></div>
+      <div class="card bl3 fade-up"><h3>💸 Cheapest-first + early-exit</h3><p>Order configs Haiku+mem → Haiku → Sonnet → Opus. Opus (priciest) runs last, only to confirm a signal — skip it if the cheaper tier already settles the question.</p></div>
+      <div class="card bl4 fade-up"><h3>🎯 Dev slice → full</h3><p>Iterate on a fixed ~10–15% stratified subset, then one full run per config. Use LongMemEval_S (~115k) to iterate; reserve _M (~1.5M) for a single final confirmation.</p></div>
+      <div class="card bl1 fade-up"><h3>♻️ Cache + resume</h3><p>Content-hash every (task, model, config) call and checkpoint per task, so a crash or re-run never re-pays — critical on long SWE-bench trajectories.</p></div>
+      <div class="card bl3 fade-up"><h3>🚧 Hard budget gates</h3><p>Per-benchmark $ and token ceiling in the runner; abort and log partial results on overrun — no silent cost blow-ups.</p></div>
+      <div class="card bl2 fade-up"><h3>🕒 Baselines in week 1</h3><p>No-memory baselines need only the model + dataset, not the harness — start them ~D4 to flatten the week-2 spike and surface API/dataset issues early.</p></div>
+    </div>
+    <div class="callout fade-up" style="margin-top:20px">
+      <span class="ic">⚖️</span>
+      <div><p style="margin:0"><strong>The matrix, made affordable.</strong> Treatment (Haiku + harness) and the Opus 4.8
+        target are the must-run cells; Haiku no-memory is cheap and stays. The Sonnet reference is optional if budget
+        is tight — keeping the hypothesis test intact while cutting the long tail of spend.</p></div>
     </div>
   </div>
 </section>
@@ -318,13 +373,14 @@
         <div class="callout warn fade-up" style="margin-bottom:18px">
           <span class="ic">⚠️</span>
           <div><p style="margin:0">The hardest risk is semantic, not structural: <strong>what counts as "good memory."</strong>
-            Person 2 and Person 4 must align on memory semantics in week 1, or the harness will store everything and retrieve nothing useful.</p></div>
+            Ken and Scott must align on memory semantics in week 1, or the harness will store everything and retrieve nothing useful.</p></div>
         </div>
         <ul>
-          <li><strong>P1 → P3:</strong> the storage interface must be frozen by end of D3 so adapters can be built against it.</li>
-          <li><strong>P3 → P1:</strong> the router lands before the orchestrator can route in week 2.</li>
-          <li><strong>P2 → all:</strong> datasets + logging ready by D5 so baselines can start D6.</li>
-          <li><strong>P1 + P3 → P4:</strong> the dreaming worker integrates once real storage exists (D8+).</li>
+          <li><strong>Keith + Brent (D1–D3):</strong> co-author and freeze the storage interface + memory-item schema, so persistence and the adapters build against one contract.</li>
+          <li><strong>Brent → Keith:</strong> the router lands before the orchestrator can route in week 2.</li>
+          <li><strong>Ken → all (by D5):</strong> datasets, trajectory logging and the shared run harness ready, so no-memory baselines can start ~D4–D6.</li>
+          <li><strong>Keith + Brent → Scott:</strong> the dreaming worker integrates once real storage exists (D8+).</li>
+          <li><strong>Sharded keys:</strong> each captain runs on a separate API budget — baselines week 1, the Haiku+harness treatment week 2.</li>
         </ul>
       </div>
       <div>
@@ -333,11 +389,11 @@
           <div class="tl-row"><div class="tl-when">D3<span>contract freeze</span></div>
             <div class="tl-card"><div class="card"><ul><li>Storage interface + memory-item schema locked.</li><li>Metric definitions agreed.</li></ul></div></div></div>
           <div class="tl-row"><div class="tl-when">D5<span>end of week 1</span></div>
-            <div class="tl-card"><div class="card"><ul><li>Three backends write &amp; read in isolation.</li><li>Datasets parsed; persistence writing live.</li></ul></div></div></div>
+            <div class="tl-card"><div class="card"><ul><li>Three backends read/write; run harness + loaders ready.</li><li>No-memory baselines started on sharded keys.</li></ul></div></div></div>
           <div class="tl-row"><div class="tl-when">D8<span>integration start</span></div>
             <div class="tl-card"><div class="card"><ul><li>Router + orchestrator connected.</li><li>Dreaming worker running against real stores.</li></ul></div></div></div>
           <div class="tl-row"><div class="tl-when">D10<span>ship</span></div>
-            <div class="tl-card"><div class="card"><ul><li>Full E2E: Haiku + harness on ≥1 benchmark.</li><li>Four metrics captured vs. baselines.</li></ul></div></div></div>
+            <div class="tl-card"><div class="card"><ul><li>All four benchmark shards complete (Haiku + harness).</li><li>Four metrics aggregated vs. baselines.</li></ul></div></div></div>
         </div>
       </div>
     </div>

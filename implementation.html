@@ -190,24 +190,31 @@ relevancy(i,q) = cos(emb_i, emb_q)</pre>
 <section class="section">
   <div class="wrap">
     <div class="section-head">
-      <div class="eyebrow">Ken · Person 2 owns this</div>
+      <div class="eyebrow">Ken builds the harness · captains run the shards</div>
       <h2>Evaluation protocol</h2>
-      <p>One controlled grid per benchmark. The cell that matters: does <em>Haiku + harness</em> clear
-        <em>Opus 4.8 baseline</em>?</p>
+      <p>One controlled grid per benchmark, run cheapest-first. The cell that matters: does <em>Haiku + harness</em>
+        clear the <em>Opus 4.8 baseline</em>?</p>
     </div>
     <div class="table-wrap fade-up">
       <table>
-        <thead><tr><th>Run</th><th>Model</th><th>Memory</th><th>Role</th></tr></thead>
+        <thead><tr><th>Run</th><th>Model</th><th>Memory</th><th>Role</th><th>Order / cost</th></tr></thead>
         <tbody>
-          <tr><td><strong>Treatment</strong></td><td>Haiku</td><td class="check">on</td><td>The hypothesis under test</td></tr>
-          <tr><td>Lower bound</td><td>Haiku</td><td class="dash">off</td><td>How far memory lifts the small model</td></tr>
-          <tr><td>Target</td><td>Opus 4.8</td><td class="dash">off</td><td>The bar to beat</td></tr>
-          <tr><td>Reference</td><td>Sonnet</td><td class="dash">off</td><td>Middle-tier sanity check</td></tr>
+          <tr><td><strong>Treatment</strong></td><td>Haiku</td><td class="check">on</td><td>The hypothesis under test</td><td>1st · must-run</td></tr>
+          <tr><td>Lower bound</td><td>Haiku</td><td class="dash">off</td><td>How far memory lifts the small model</td><td>2nd · cheap</td></tr>
+          <tr><td>Reference</td><td>Sonnet</td><td class="dash">off</td><td>Middle-tier sanity check</td><td>3rd · optional</td></tr>
+          <tr><td>Target</td><td>Opus 4.8</td><td class="dash">off</td><td>The bar to beat</td><td>4th · confirm only</td></tr>
         </tbody>
       </table>
     </div>
     <p class="note" style="margin-top:14px">Hold prompts, tools and task order fixed across runs; log every trajectory
       (written / retrieved / used) for reproducibility, and report deltas with a significance test.</p>
+    <div class="callout fade-up" style="margin-top:16px">
+      <span class="ic">🔀</span>
+      <div><p style="margin:0">Runs are <strong>sharded by benchmark captain</strong>, each on a separate API key —
+        Keith (SWE-Bench-CL), Ken (LongMemEval), Brent (SWE-ContextBench), Scott (MemoryAgentBench). Iterate on a
+        ~10–15% stratified dev slice, cache + checkpoint every call, and enforce a per-benchmark budget gate. Full
+        cost strategy on the <a href="plan.html">plan</a>.</p></div>
+    </div>
   </div>
 </section>
 

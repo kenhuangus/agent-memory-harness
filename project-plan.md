@@ -121,17 +121,48 @@ Four parallel workstreams, locked behind a shared storage interface that is **fr
 | Backend performance testing | **P3** | P2 |
 | Dreaming worker (dedup, conflict, governance, retention) | **P4** | P1, P3 |
 | Memory semantics ("what is good memory") | **P4** | P2 |
-| Datasets, loaders & trajectory logging | **P2** | — |
-| Metric definitions & evaluation protocol | **P2** | P4 |
-| Baselines + results dashboard | **P2** | — |
+| Datasets, loaders & trajectory logging | **P2** | P4 |
+| Metric defs, shared run harness & cost gates | **P2** | P4 |
+| Results + cost dashboard, stats, aggregation | **P2** | — |
+| Run SWE-Bench-CL eval (own key) | **P1** | — |
+| Run LongMemEval eval (own key) | **P2** | — |
+| Run SWE-ContextBench eval (own key) | **P3** | — |
+| Run MemoryAgentBench eval (own key) | **P4** | — |
 | Final end-to-end integration | **All** | — |
 
 **Roles in one line each**
 
 - **P1 · Keith — Harness Architecture & OpenCode Integration.** Owns the critical path: the contracts everyone builds against.
-- **P2 · Ken — Benchmarking & Evaluation.** Owns experimental design, metrics, and reproducibility.
+- **P2 · Ken — Evaluation Infrastructure & Coordination.** Owns the shared runner, metrics and the cost+results dashboard — and captains one benchmark.
 - **P3 · Brent — Storage Implementation & Router.** Turns the abstraction into three fast backends + the dispatch layer.
 - **P4 · Scott — Dreaming Component & Memory Governance.** Owns the offline engine that keeps memory clean and trustworthy.
+
+### Dividing the eval runs (API cost & time)
+
+Four benchmarks × four model configs is too much API cost and wall-clock for one person on one key. Each teammate
+**captains** the benchmark that stresses their own component and runs it on their **own API budget** — runs go wide in
+parallel instead of deep on a single key.
+
+| Benchmark | Captain | Why them |
+|---|---|---|
+| **SWE-Bench-CL** | **Keith (P1)** | Drives the coding agent end-to-end — his OpenCode wheelhouse. |
+| **LongMemEval** | **Ken (P2)** | Eval lead; recency / temporal reasoning. |
+| **SWE-ContextBench** | **Brent (P3)** | Context reuse exercises his retrieval + router. |
+| **MemoryAgentBench** | **Scott (P4)** | Tests conflict resolution — his dreaming component. |
+
+Ken owns the shared runner everyone plugs into — `run(benchmark, model, memory) → metrics` — and aggregates all results.
+
+**Cost & throughput controls**
+
+- **Sharded keys.** Each captain on a separate API key/account — ~4× aggregate rate limit, isolated budgets, no single-key throttle.
+- **Cheapest-first + early-exit.** Order configs Haiku+mem → Haiku → Sonnet → Opus. Opus runs last, only to confirm; skip it if the cheaper tier already settles the question.
+- **Dev slice → full.** Iterate on a fixed ~10–15% stratified subset, then one full run per config. Use LongMemEval_S (~115k) to iterate; reserve _M (~1.5M) for a single final confirmation.
+- **Cache + resume.** Content-hash every (task, model, config) call and checkpoint per task — a crash or re-run never re-pays.
+- **Hard budget gates.** Per-benchmark $ and token ceiling in the runner; abort and log partial results on overrun.
+- **Baselines in week 1.** No-memory baselines need only model + dataset (no harness) — start ~D4 to flatten the week-2 spike.
+
+> **The matrix, made affordable.** Treatment (Haiku + harness) and the Opus 4.8 target are the must-run cells; Haiku
+> no-memory is cheap and stays. The Sonnet reference is optional if budget is tight.
 
 ---
 
@@ -140,24 +171,26 @@ Four parallel workstreams, locked behind a shared storage interface that is **fr
 ### Person 1 · Keith — Harness Architecture & OpenCode Integration
 - **Week 1:** Design the three-module abstraction & storage interface (swappable backends). Build the
   persistence layer: write logic, versioning, metadata tagging. Instrument OpenCode to write memory on each step.
-- **Week 2:** Build the retrieval orchestrator (rank → dedup → return). Wire in P3's router; run an end-to-end task.
+- **Week 2:** Build the retrieval orchestrator (rank → dedup → return). Wire in Brent's router; run an end-to-end task.
+  **Captain the SWE-Bench-CL runs** on his own API key.
 
-### Person 2 · Ken — Benchmarking & Evaluation
-- **Week 1:** Download & parse MemoryAgentBench, LongMemEval, SWE-ContextBench, SWE-Bench-CL. Build data
-  loaders + trajectory logging. Define the four metrics mathematically.
-- **Week 2:** Run baselines (Haiku no-memory, Opus 4.8 no-memory). Build the statistical-testing framework and
-  results dashboard; document the protocol.
+### Person 2 · Ken — Evaluation Infrastructure & Coordination
+- **Week 1:** Download & parse all four datasets; build loaders + trajectory logging (with Scott). Define the four
+  metrics; build the shared run harness `run(benchmark, model, memory) → metrics` and the cost/budget tracker.
+- **Week 2:** **Captain the LongMemEval runs** on his own API key. Aggregate every captain's results; statistical-testing
+  framework + results & cost dashboard; document the protocol.
 
 ### Person 3 · Brent — Storage Implementation & Router
 - **Week 1:** SQLite + vector pipeline (embedding model, HNSW/FAISS index). Markdown store with YAML frontmatter +
   inverted index. Graph store schema (Neo4j) with typed traversal index.
-- **Week 2:** Adapters for all three backends behind P1's interface. Implement the router; performance-test each backend.
+- **Week 2:** Adapters for all three backends behind Keith's interface. Implement the router; performance-test each backend.
+  **Captain the SWE-ContextBench runs** on his own API key.
 
 ### Person 4 · Scott — Dreaming Component & Memory Governance
 - **Week 1:** Deduplication logic (exact / semantic / near-dup). Conflict detection + reconciliation rules
-  (recency, confidence, source). Session-filter & blacklist semantics.
+  (recency, confidence, source). Session-filter & blacklist semantics. Co-build trajectory logging with Ken.
 - **Week 2:** Async offline scheduler; must-know / must-do extraction. Retention & pruning; observability logs;
-  integration with P1 & P3.
+  integration with Keith & Brent. **Captain the MemoryAgentBench runs** on his own API key.
 
 ### Integration — all four, Day 10
 Full end-to-end run: Haiku + harness on ≥ 1 benchmark, capturing all four metrics against baselines.
@@ -169,20 +202,21 @@ Full end-to-end run: Haiku + harness on ≥ 1 benchmark, capturing all four metr
 | Day | Milestone |
 |---|---|
 | **D3** | **Contract freeze** — storage interface + memory-item schema locked; metric definitions agreed. |
-| **D5** | **End of week 1** — three backends write & read in isolation; datasets parsed; persistence writing live. |
+| **D5** | **End of week 1** — three backends read/write; shared run harness + loaders ready; no-memory baselines started on sharded keys. |
 | **D8** | **Integration start** — router + orchestrator connected; dreaming worker running against real stores. |
-| **D10** | **Ship** — full E2E; four metrics captured vs. baselines. |
+| **D10** | **Ship** — all four benchmark shards complete (Haiku + harness); four metrics aggregated vs. baselines. |
 
 ---
 
 ## 8. Dependencies & key risk
 
-- **P1 → P3:** the storage interface must be frozen by end of D3 so adapters can build against it.
-- **P3 → P1:** the router lands before the orchestrator can route in week 2.
-- **P2 → all:** datasets + logging ready by D5 so baselines can start D6.
-- **P1 + P3 → P4:** the dreaming worker integrates once real storage exists (D8+).
+- **Keith + Brent (D1–D3):** co-author and freeze the storage interface + memory-item schema, so persistence and the adapters build against one contract.
+- **Brent → Keith:** the router lands before the orchestrator can route in week 2.
+- **Ken → all (by D5):** datasets, trajectory logging and the shared run harness ready, so no-memory baselines can start ~D4–D6.
+- **Keith + Brent → Scott:** the dreaming worker integrates once real storage exists (D8+).
+- **Sharded keys:** each captain runs on a separate API budget — baselines week 1, the Haiku+harness treatment week 2.
 
-> **Top risk is semantic, not structural:** defining *what counts as "good memory."* P2 and P4 must align
+> **Top risk is semantic, not structural:** defining *what counts as "good memory."* Ken and Scott must align
 > on memory semantics in week 1, or the harness will store everything and retrieve nothing useful.
 
 ---
