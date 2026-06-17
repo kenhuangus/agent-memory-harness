@@ -12,6 +12,9 @@
   html, body { background: #fff; }
   body { font: 10.8pt/1.55 "Helvetica Neue", Helvetica, Arial, sans-serif; color: #1b1f24; margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .cover { border-bottom: 3px solid #4f46e5; padding-bottom: 16px; margin-bottom: 26px; }
+  .brandrow { display: flex; align-items: center; gap: 18px; }
+  .brandrow .logo { width: 60px; height: 60px; border-radius: 14px; flex: none; box-shadow: 0 6px 16px -6px rgba(34,211,238,.5); }
+  .brandrow h1 { margin: 2px 0 0; }
   .cover .kick { font-size: 8.5pt; letter-spacing: .18em; text-transform: uppercase; color: #4f46e5; font-weight: 700; }
   h1 { font-size: 23pt; margin: 8px 0 4px; letter-spacing: -.01em; color: #0f1115; }
   .cover .sub { font-size: 12pt; color: #3a4250; margin: 0 0 8px; font-weight: 600; }
@@ -41,8 +44,25 @@
 <body>
 
   <div class="cover">
-    <div class="kick">Project Plan</div>
-    <h1>Cookbook Memory</h1>
+    <div class="brandrow">
+      <svg class="logo" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-label="Cookbook Memory logo">
+        <defs><linearGradient id="plg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6366f1"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs>
+        <rect x="0" y="0" width="64" height="64" rx="14" fill="url(#plg)"/>
+        <path d="M31 22 C 23 18 14 19 10 21 L 10 45 C 14 43 23 44 31 47 Z" fill="#ffffff"/>
+        <path d="M33 22 C 41 18 50 19 54 21 L 54 45 C 50 43 41 44 33 47 Z" fill="#e6ecff"/>
+        <path d="M32 21 L 32 47" stroke="#4f46e5" stroke-width="2" opacity="0.35" stroke-linecap="round"/>
+        <g stroke="#c3cffb" stroke-width="1.5" stroke-linecap="round">
+          <line x1="14" y1="27" x2="27" y2="28.4"/><line x1="14" y1="31" x2="27" y2="32.4"/><line x1="14" y1="35" x2="25" y2="36.2"/>
+          <line x1="37" y1="28.4" x2="50" y2="27"/><line x1="37" y1="32.4" x2="50" y2="31"/><line x1="39" y1="36.2" x2="50" y2="35"/>
+        </g>
+        <path d="M29.5 14 L 38.5 14 L 38.5 31 L 34 27 L 29.5 31 Z" fill="#f472b6"/>
+        <path d="M49 10 L 50.5 12.8 L 53.3 14 L 50.5 15.2 L 49 18 L 47.5 15.2 L 44.7 14 L 47.5 12.8 Z" fill="#fde68a"/>
+      </svg>
+      <div>
+        <div class="kick">Project Plan</div>
+        <h1>Cookbook Memory</h1>
+      </div>
+    </div>
     <p class="sub">AI Agent Memory Harness — persistent memory for long-running coding agents</p>
     <p class="meta">Codename <strong>Cookbook Memory</strong> &nbsp;·&nbsp; Team of 4 (Keith · Ken · Brent · Scott B.) &nbsp;·&nbsp; Two-week sprint &nbsp;·&nbsp; Five public benchmarks</p>
     <p class="repo">Repository: github.com/kenhuangus/agent-memory-harness &nbsp;·&nbsp; Live: kenhuangus.github.io/agent-memory-harness</p>
