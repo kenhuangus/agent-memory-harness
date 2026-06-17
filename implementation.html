@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Implementation · AI Agent Memory Harness</title>
-<meta name="description" content="Implementation reference: the memory-item schema, storage interface, per-backend schemas, router contract, the zooming worker, the ranking formula, and the evaluation protocol.">
+<meta name="description" content="Implementation reference: the memory-item schema, storage interface, per-backend schemas, router contract, the dreaming worker, the ranking formula, and the evaluation protocol.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -34,7 +34,7 @@
     <div class="crumb"><a href="index.html">Overview</a> / Implementation</div>
     <h1>Implementation reference</h1>
     <p class="lead">Contracts the four workstreams build against — the memory-item schema, the storage interface,
-      per-backend schemas, the router and zooming contracts, and the evaluation protocol. Pseudocode is illustrative,
+      per-backend schemas, the router and dreaming contracts, and the evaluation protocol. Pseudocode is illustrative,
       not prescriptive.</p>
   </div>
 </section>
@@ -46,7 +46,7 @@
       <div class="eyebrow">The unit of memory</div>
       <h2>Memory-item schema</h2>
       <p>Every memory — wherever it is stored — shares one shape. This is what the persistence layer writes and the
-        zooming component reconciles.</p>
+        dreaming component reconciles.</p>
     </div>
 <pre><span class="c"># A memory item, shown as Markdown YAML frontmatter</span>
 id: mem_8f2a1c
@@ -66,7 +66,7 @@ supersedes: null          <span class="c"># id of the item this replaces, if any
 <section class="section">
   <div class="wrap">
     <div class="section-head">
-      <div class="eyebrow">Person 1 owns this</div>
+      <div class="eyebrow">Keith · Person 1 owns this</div>
       <h2>Storage interface</h2>
       <p>The single abstraction every backend implements. Freezing this on day 3 is what lets the four streams build
         in parallel.</p>
@@ -76,11 +76,11 @@ supersedes: null          <span class="c"># id of the item this replaces, if any
     <span class="k">def</span> get(self, id: str) -&gt; MemoryItem | None: ...
     <span class="k">def</span> search(self, query: Query, k: int = 8) -&gt; list[Hit]: ...
     <span class="k">def</span> delete(self, id: str) -&gt; None: ...
-    <span class="k">def</span> all(self) -&gt; Iterable[MemoryItem]: ...           <span class="c"># for the offline zooming sweep</span></pre>
+    <span class="k">def</span> all(self) -&gt; Iterable[MemoryItem]: ...           <span class="c"># for the offline dreaming sweep</span></pre>
     <div class="callout fade-up">
       <span class="ic">🧩</span>
       <div><p style="margin:0">Backends are swappable: <code>MarkdownStore</code>, <code>SqliteVectorStore</code> and
-        <code>GraphStore</code> each satisfy this interface, so the orchestrator and zooming worker never depend on a
+        <code>GraphStore</code> each satisfy this interface, so the orchestrator and dreaming worker never depend on a
         concrete store.</p></div>
     </div>
   </div>
@@ -90,7 +90,7 @@ supersedes: null          <span class="c"># id of the item this replaces, if any
 <section class="section">
   <div class="wrap">
     <div class="section-head">
-      <div class="eyebrow">Person 3 owns this</div>
+      <div class="eyebrow">Brent · Person 3 owns this</div>
       <h2>Per-backend schema &amp; index</h2>
     </div>
     <div class="grid grid-2">
@@ -129,7 +129,7 @@ inverted_index.json   <span class="c"># keyword → [file paths]</span></pre>
   <div class="wrap">
     <div class="grid grid-2" style="align-items:start">
       <div>
-        <div class="eyebrow">Person 3</div>
+        <div class="eyebrow">Brent · Person 3</div>
         <h2>Router contract</h2>
 <pre><span class="k">def</span> route(query: Query) -&gt; Backend:
     <span class="k">if</span> query.kind == <span class="s">"relationship"</span>:
@@ -141,9 +141,9 @@ inverted_index.json   <span class="c"># keyword → [file paths]</span></pre>
           metadata. Same signature, no caller changes.</p>
       </div>
       <div>
-        <div class="eyebrow">Person 4</div>
-        <h2>Zooming worker</h2>
-<pre><span class="k">def</span> zoom(store: MemoryStore) -&gt; Governance:
+        <div class="eyebrow">Scott · Person 4</div>
+        <h2>Dreaming worker</h2>
+<pre><span class="k">def</span> dream(store: MemoryStore) -&gt; Governance:
     items = list(store.all())
     merge_duplicates(items)      <span class="c"># exact·semantic·near</span>
     resolve_conflicts(items)     <span class="c"># recency·conf·source</span>
@@ -161,7 +161,7 @@ inverted_index.json   <span class="c"># keyword → [file paths]</span></pre>
 <section class="section">
   <div class="wrap">
     <div class="section-head">
-      <div class="eyebrow">Person 1 + Person 2</div>
+      <div class="eyebrow">Keith + Ken · Person 1 + Person 2</div>
       <h2>Ranking &amp; metric definitions</h2>
     </div>
     <div class="grid grid-2" style="align-items:start">
@@ -190,7 +190,7 @@ relevancy(i,q) = cos(emb_i, emb_q)</pre>
 <section class="section">
   <div class="wrap">
     <div class="section-head">
-      <div class="eyebrow">Person 2 owns this</div>
+      <div class="eyebrow">Ken · Person 2 owns this</div>
       <h2>Evaluation protocol</h2>
       <p>One controlled grid per benchmark. The cell that matters: does <em>Haiku + harness</em> clear
         <em>Opus 4.8 baseline</em>?</p>
@@ -229,7 +229,7 @@ relevancy(i,q) = cos(emb_i, emb_q)</pre>
 │   │   ├── markdown_store.py
 │   │   ├── sqlite_store.py
 │   │   └── graph_store.py  <span class="c"># P3 — backends</span>
-│   └── zooming.py          <span class="c"># P4 — async curation</span>
+│   └── dreaming.py          <span class="c"># P4 — async curation</span>
 ├── eval/
 │   ├── datasets/           <span class="c"># P2 — the 4 benchmarks</span>
 │   ├── metrics.py

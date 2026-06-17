@@ -85,7 +85,7 @@
       <div class="metric bl1 fade-up"><div class="top"><span class="ic bg1 a1">💾</span><h4>Persistence</h4></div><p>Decides what/when/where to save; tags every item.</p></div>
       <div class="metric bl3 fade-up"><div class="top"><span class="ic bg3 a3">🧭</span><h4>Router</h4></div><p>Routes each query to the single best backend.</p></div>
       <div class="metric bl2 fade-up"><div class="top"><span class="ic bg2 a2">🔎</span><h4>Orchestrator</h4></div><p>Ranks by recency × relevancy, dedups, returns.</p></div>
-      <div class="metric bl4 fade-up"><div class="top"><span class="ic bg4 a4">🌙</span><h4>Zooming</h4></div><p>Offline dedup, conflict resolution, governance.</p></div>
+      <div class="metric bl4 fade-up"><div class="top"><span class="ic bg4 a4">🌙</span><h4>Dreaming</h4></div><p>While agents sleep: dedup, conflict resolution, governance.</p></div>
     </div>
     <div class="spacer"></div>
     <div class="grid grid-2">
@@ -123,7 +123,7 @@
           <li>The memory harness: all four modules, end to end.</li>
           <li>Three storage adapters behind one interface, each indexed.</li>
           <li>The intelligent router (rule-based; learned-classifier hook).</li>
-          <li>The async zooming component: dedup, conflict resolution, governance, retention.</li>
+          <li>The async dreaming component: dedup, conflict resolution, governance, retention.</li>
           <li>OpenCode integration for write/read on each agent step.</li>
           <li>Eval harness on four benchmarks; baselines for Haiku, Opus 4.8, Sonnet.</li>
           <li>Metric definitions, a reproducible protocol, and a results dashboard.</li>
@@ -157,19 +157,19 @@
         <div class="hd">D1</div><div class="hd">D2</div><div class="hd">D3</div><div class="hd">D4</div><div class="hd">D5</div>
         <div class="hd">D6</div><div class="hd">D7</div><div class="hd">D8</div><div class="hd">D9</div><div class="hd">D10</div>
 
-        <div class="row-lbl" style="grid-column:1;grid-row:2">P1 · Architecture</div>
+        <div class="row-lbl" style="grid-column:1;grid-row:2">Keith · Harness</div>
         <div class="bar" style="grid-column:2/7;grid-row:2;background:var(--accent)">Abstraction + persistence</div>
         <div class="bar" style="grid-column:7/12;grid-row:2;background:#8b9dffcc">Orchestrator · OpenCode e2e</div>
 
-        <div class="row-lbl" style="grid-column:1;grid-row:3">P2 · Eval</div>
+        <div class="row-lbl" style="grid-column:1;grid-row:3">Ken · Benchmark</div>
         <div class="bar" style="grid-column:2/7;grid-row:3;background:var(--accent-2)">Datasets + metric defs</div>
         <div class="bar" style="grid-column:7/12;grid-row:3;background:#2dd4bfcc">Baselines + dashboard</div>
 
-        <div class="row-lbl" style="grid-column:1;grid-row:4">P3 · Storage + Router</div>
+        <div class="row-lbl" style="grid-column:1;grid-row:4">Brent · Store + Retrieve</div>
         <div class="bar" style="grid-column:2/7;grid-row:4;background:var(--accent-3)">3 backends + indexes</div>
         <div class="bar" style="grid-column:7/12;grid-row:4;background:#fbbf24cc">Adapters + router</div>
 
-        <div class="row-lbl" style="grid-column:1;grid-row:5">P4 · Zooming</div>
+        <div class="row-lbl" style="grid-column:1;grid-row:5">Scott · Dreaming</div>
         <div class="bar" style="grid-column:2/7;grid-row:5;background:var(--accent-4)">Dedup + conflict rules</div>
         <div class="bar" style="grid-column:7/12;grid-row:5;background:#f472b6cc">Async worker + governance</div>
 
@@ -178,10 +178,10 @@
       </div>
     </div>
     <div class="legend">
-      <span><i style="background:var(--accent)"></i> Person 1</span>
-      <span><i style="background:var(--accent-2)"></i> Person 2</span>
-      <span><i style="background:var(--accent-3)"></i> Person 3</span>
-      <span><i style="background:var(--accent-4)"></i> Person 4</span>
+      <span><i style="background:var(--accent)"></i> Keith · P1</span>
+      <span><i style="background:var(--accent-2)"></i> Ken · P2</span>
+      <span><i style="background:var(--accent-3)"></i> Brent · P3</span>
+      <span><i style="background:var(--accent-4)"></i> Scott · P4</span>
       <span><i style="background:var(--grad)"></i> Joint integration (D10)</span>
     </div>
   </div>
@@ -198,7 +198,7 @@
     <div class="grid grid-2">
       <!-- P1 -->
       <div class="card bl1 fade-up">
-        <div class="kicker a1">Person 1</div>
+        <div class="kicker a1">Keith · Person 1</div>
         <h3><span class="ic bg1 a1">🏗️</span> Harness Architecture &amp; OpenCode Integration</h3>
         <p class="note" style="margin-bottom:14px;">Owns the critical path: the module contracts everyone else builds against.</p>
         <strong style="color:var(--text)">Week 1</strong>
@@ -216,7 +216,7 @@
 
       <!-- P2 -->
       <div class="card bl2 fade-up">
-        <div class="kicker a2">Person 2</div>
+        <div class="kicker a2">Ken · Person 2</div>
         <h3><span class="ic bg2 a2">📊</span> Benchmarking &amp; Evaluation</h3>
         <p class="note" style="margin-bottom:14px;">Owns experimental design, metrics, and reproducibility.</p>
         <strong style="color:var(--text)">Week 1</strong>
@@ -234,7 +234,7 @@
 
       <!-- P3 -->
       <div class="card bl3 fade-up">
-        <div class="kicker a3">Person 3</div>
+        <div class="kicker a3">Brent · Person 3</div>
         <h3><span class="ic bg3 a3">🗄️</span> Storage Implementation &amp; Router</h3>
         <p class="note" style="margin-bottom:14px;">Turns the abstraction into three real, fast backends + the dispatch layer.</p>
         <strong style="color:var(--text)">Week 1</strong>
@@ -252,8 +252,8 @@
 
       <!-- P4 -->
       <div class="card bl4 fade-up">
-        <div class="kicker a4">Person 4</div>
-        <h3><span class="ic bg4 a4">🌙</span> Zooming Component &amp; Memory Governance</h3>
+        <div class="kicker a4">Scott · Person 4</div>
+        <h3><span class="ic bg4 a4">🌙</span> Dreaming Component &amp; Memory Governance</h3>
         <p class="note" style="margin-bottom:14px;">Owns the offline engine that keeps memory clean and trustworthy.</p>
         <strong style="color:var(--text)">Week 1</strong>
         <ul>
@@ -280,6 +280,12 @@
       <p>Every deliverable has one accountable owner. The interface is frozen on Day 3 so the four streams never block
         on each other.</p>
     </div>
+    <p style="margin:-22px 0 20px">
+      <span class="pill p1">P1</span> Keith &nbsp;·&nbsp;
+      <span class="pill p2">P2</span> Ken &nbsp;·&nbsp;
+      <span class="pill p3">P3</span> Brent &nbsp;·&nbsp;
+      <span class="pill p4">P4</span> Scott
+    </p>
     <div class="table-wrap fade-up">
       <table>
         <thead><tr><th>Area / deliverable</th><th>Owner</th><th>Supporting</th></tr></thead>
@@ -291,7 +297,7 @@
           <tr><td>Three storage backends + per-backend indexes</td><td><span class="pill p3">P3</span></td><td>P1</td></tr>
           <tr><td>Intelligent router (rules → learned)</td><td><span class="pill p3">P3</span></td><td>P1</td></tr>
           <tr><td>Backend performance testing</td><td><span class="pill p3">P3</span></td><td>P2</td></tr>
-          <tr><td>Zooming worker (dedup · conflict · governance · retention)</td><td><span class="pill p4">P4</span></td><td>P1, P3</td></tr>
+          <tr><td>Dreaming worker (dedup · conflict · governance · retention)</td><td><span class="pill p4">P4</span></td><td>P1, P3</td></tr>
           <tr><td>Memory semantics ("what is good memory")</td><td><span class="pill p4">P4</span></td><td>P2</td></tr>
           <tr><td>Datasets, loaders &amp; trajectory logging</td><td><span class="pill p2">P2</span></td><td class="dash">—</td></tr>
           <tr><td>Metric definitions &amp; evaluation protocol</td><td><span class="pill p2">P2</span></td><td>P4</td></tr>
@@ -318,7 +324,7 @@
           <li><strong>P1 → P3:</strong> the storage interface must be frozen by end of D3 so adapters can be built against it.</li>
           <li><strong>P3 → P1:</strong> the router lands before the orchestrator can route in week 2.</li>
           <li><strong>P2 → all:</strong> datasets + logging ready by D5 so baselines can start D6.</li>
-          <li><strong>P1 + P3 → P4:</strong> the zooming worker integrates once real storage exists (D8+).</li>
+          <li><strong>P1 + P3 → P4:</strong> the dreaming worker integrates once real storage exists (D8+).</li>
         </ul>
       </div>
       <div>
@@ -329,7 +335,7 @@
           <div class="tl-row"><div class="tl-when">D5<span>end of week 1</span></div>
             <div class="tl-card"><div class="card"><ul><li>Three backends write &amp; read in isolation.</li><li>Datasets parsed; persistence writing live.</li></ul></div></div></div>
           <div class="tl-row"><div class="tl-when">D8<span>integration start</span></div>
-            <div class="tl-card"><div class="card"><ul><li>Router + orchestrator connected.</li><li>Zooming worker running against real stores.</li></ul></div></div></div>
+            <div class="tl-card"><div class="card"><ul><li>Router + orchestrator connected.</li><li>Dreaming worker running against real stores.</li></ul></div></div></div>
           <div class="tl-row"><div class="tl-when">D10<span>ship</span></div>
             <div class="tl-card"><div class="card"><ul><li>Full E2E: Haiku + harness on ≥1 benchmark.</li><li>Four metrics captured vs. baselines.</li></ul></div></div></div>
         </div>

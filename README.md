@@ -14,7 +14,7 @@ that documents the plan, architecture, benchmarks, implementation contracts, and
 | Plan | `plan.html` | Problem, technical approach, scope, ownership, Gantt + milestones — with a **[PDF download](project-plan.pdf)** |
 | Architecture | `architecture.html` | The diagram, data flows, the router, indexing |
 | Benchmarks | `benchmarks.html` | The 4 public benchmarks + metric mapping, with links |
-| Implementation | `implementation.html` | Schemas, storage interface, router/zooming contracts, eval protocol |
+| Implementation | `implementation.html` | Schemas, storage interface, router/dreaming contracts, eval protocol |
 | Results | `results.html` | Empty scoreboard template to fill in after the runs |
 
 ```

@@ -21,7 +21,7 @@
   --accent:    #8b9dff;  /* indigo — Persistence / Accuracy */
   --accent-2:  #2dd4bf;  /* teal   — Retrieval / Recency   */
   --accent-3:  #fbbf24;  /* amber  — Router / Efficiency   */
-  --accent-4:  #f472b6;  /* pink   — Zooming / Relevancy   */
+  --accent-4:  #f472b6;  /* pink   — Dreaming / Relevancy   */
 
   --grad: linear-gradient(120deg, #6366f1 0%, #22d3ee 100%);
   --grad-soft: linear-gradient(120deg, rgba(99,102,241,.16), rgba(34,211,238,.16));
