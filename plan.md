@@ -20,7 +20,7 @@ Work in branches prefixed by your area; the directories you own gate the PR.
 | Developer | Owns (paths) | Branch prefixes |
 |---|---|---|
 | **Ken** | `eval/memeval/loaders/`, `metrics.py`, `cost.py`, `trajectory.py`, `agent.py`, `tracing.py`, `results.py`, `eval/tests/`, the site (`*.html`, `assets/`) | `eval/*` · `loaders/*` · `metrics/*` · `eval-infra/*` · `site/*` |
-| **Keith** | `eval/memeval/harness.py`, `models.py`, `cli.py` | `harness/*` · `opencode/*` |
+| **Keith** | `eval/memeval/harness.py`, `models.py`, `cli.py`, `opencode/` (memory framework) | `harness/*` · `opencode/*` |
 | **Brent** | `eval/memeval/stores/`, `router.py` *(scaffolded — stubs to implement)* | `stores/*` · `router/*` |
 | **Scott B.** | `eval/memeval/dreaming/` *(scaffolded — stubs to implement)* | `dreaming/*` |
 | **All four** | `schema.py`, `protocols.py` (frozen) + the contract docs | `[CONTRACT] …` (all owners approve) |
@@ -38,8 +38,11 @@ The chain that sets the critical path (see the visual on the
 [plan page](https://kenhuangus.github.io/agent-memory-harness/plan.html#dependencies)):
 
 - **Keith + Brent (D1–D3)** co-author & **freeze** the storage interface + schema → unblocks everyone.
-- **Brent → Keith:** the router lands before the orchestrator can route (week 2).
-- **Ken → all (by D5):** datasets + trajectory logging + the shared run harness, so baselines can start ~D4–D6.
+- **Brent + Scott B. → Keith:** the OpenCode memory framework (`opencode/`) wraps the
+  agent loop around Brent's stores/router (store + retrieve) and Scott's dreaming, so
+  both must land before Keith's framework integrates end-to-end (week 2).
+- **Ken → all (by D5):** datasets + trajectory logging + the shared run harness (incl.
+  the `AgentAdapter` seam in `agent.py` that OpenCode plugs into), so baselines can start ~D4–D6.
 - **Brent + Keith → Scott B.:** the dreaming worker integrates once real storage exists (D8+).
 - **Sharded keys:** each captain runs on a separate API budget — baselines week 1, treatment week 2.
 

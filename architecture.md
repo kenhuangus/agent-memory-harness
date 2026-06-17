@@ -16,6 +16,12 @@ site: [`assets/img/architecture.svg`](assets/img/architecture.svg).
 3. **Retrieval orchestrator (read)** — rank by `recency × relevancy`, dedup, return.
 4. **Dreaming component (async)** — dedup, conflict resolution, governance, retention.
 
+The **OpenCode memory framework** (`eval/memeval/opencode/`, Keith) is the agent
+that consumes all four: it wraps OpenCode's loop as an `AgentAdapter` and exposes
+a single `MemoryFramework` (itself a `MemoryStore`) that **routes reads/writes to
+Brent's backends and runs Scott's dreaming**. The eval-side seam it plugs into —
+`AgentAdapter` + `run_agent` — lives in `eval/memeval/agent.py` (Ken).
+
 ## 2. Module boundaries & directory ownership
 The single most important section — one owner per path (mirrored in
 [`.github/CODEOWNERS`](.github/CODEOWNERS)).
@@ -23,11 +29,11 @@ The single most important section — one owner per path (mirrored in
 | Path | Owner |
 |---|---|
 | `eval/memeval/schema.py`, `protocols.py` | **all four (frozen)** |
-| `eval/memeval/harness.py`, `models.py`, `cli.py` | **Keith** |
-| `eval/memeval/loaders/`, `metrics.py`, `cost.py`, `trajectory.py`, `tests/` | **Ken** |
-| `eval/memeval/stores/`, `router.py` *(to be created)* | **Brent** |
-| `eval/memeval/dreaming/` *(to be created)* | **Scott B.** |
-| `*.html`, `assets/`, `project-plan.md` | **Keith** (shared, light review) |
+| `eval/memeval/harness.py`, `models.py`, `cli.py`, `opencode/` | **Keith** |
+| `eval/memeval/loaders/`, `metrics.py`, `cost.py`, `trajectory.py`, `agent.py`, `tracing.py`, `results.py`, `tests/` | **Ken** |
+| `eval/memeval/stores/`, `router.py` | **Brent** |
+| `eval/memeval/dreaming/` | **Scott B.** |
+| `*.html`, `assets/`, `project-plan.md` | **Ken** (site) |
 
 ## 3. Frozen public interfaces (the contract)
 Defined in `eval/memeval/protocols.py` and `schema.py`:
@@ -49,6 +55,13 @@ Defined in `eval/memeval/protocols.py` and `schema.py`:
 One entry point — `harness.run()` — drives all **five** benchmarks. `InMemoryStore`
 and `EchoModel` are the reference stubs that let every other module be built and
 tested independently.
+
+For the real coding agent, the multi-step sibling
+`agent.run_agent(benchmark, agent, memory, store=…)` drives an `AgentAdapter`
+loop. Keith's `OpenCodeAgent` is that adapter, and the `store=` it receives is his
+`MemoryFramework` — backed by **Brent's** `stores/` + `router.py` and consolidated
+by **Scott's** `dreaming/`. So Keith's framework *depends on* Brent's and Scott's
+components landing first (see the dependency graph in [`plan.md`](plan.md)).
 
 ## 5. The freeze
 `schema.py` + `protocols.py` are **frozen as of Day 3**, standard-library only.

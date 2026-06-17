@@ -18,10 +18,11 @@
 /eval/memeval/schema.py         @kenhuangus @kmazanec @bgibson1618 @NerdAlert58
 /eval/memeval/protocols.py      @kenhuangus @kmazanec @bgibson1618 @NerdAlert58
 
-# ── Keith — harness architecture + OpenCode integration ──
+# ── Keith — harness architecture + the OpenCode memory framework ──
 /eval/memeval/harness.py        @kmazanec
 /eval/memeval/models.py         @kmazanec
 /eval/memeval/cli.py            @kmazanec
+/eval/memeval/opencode/         @kmazanec
 
 # ── Ken — evaluation infrastructure (the eval/ package) ──
 /eval/memeval/loaders/          @kenhuangus
