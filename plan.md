@@ -9,8 +9,8 @@
 ## Team
 | | Owner | Area |
 |---|---|---|
-| **P1** | **Keith** | Harness architecture + OpenCode integration + the static site |
-| **P2** | **Ken** | Evaluation infrastructure (`eval/` package) |
+| **P1** | **Keith** | Harness architecture + OpenCode integration |
+| **P2** | **Ken** | Evaluation infrastructure (`eval/` package) + the static site |
 | **P3** | **Brent** | Storage backends + retrieval router |
 | **P4** | **Scott B.** | Async "dreaming": dedup, conflict resolution, governance |
 
@@ -19,8 +19,8 @@ Work in branches prefixed by your area; the directories you own gate the PR.
 
 | Developer | Owns (paths) | Branch prefixes |
 |---|---|---|
-| **Ken** | `eval/memeval/loaders/`, `metrics.py`, `cost.py`, `trajectory.py`, `agent.py`, `tracing.py`, `results.py`, `eval/tests/` | `eval/*` · `loaders/*` · `metrics/*` · `eval-infra/*` |
-| **Keith** | `eval/memeval/harness.py`, `models.py`, `cli.py`, the site (`*.html`, `assets/`) | `harness/*` · `opencode/*` · `site/*` |
+| **Ken** | `eval/memeval/loaders/`, `metrics.py`, `cost.py`, `trajectory.py`, `agent.py`, `tracing.py`, `results.py`, `eval/tests/`, the site (`*.html`, `assets/`) | `eval/*` · `loaders/*` · `metrics/*` · `eval-infra/*` · `site/*` |
+| **Keith** | `eval/memeval/harness.py`, `models.py`, `cli.py` | `harness/*` · `opencode/*` |
 | **Brent** | `eval/memeval/stores/`, `router.py` *(scaffolded — stubs to implement)* | `stores/*` · `router/*` |
 | **Scott B.** | `eval/memeval/dreaming/` *(scaffolded — stubs to implement)* | `dreaming/*` |
 | **All four** | `schema.py`, `protocols.py` (frozen) + the contract docs | `[CONTRACT] …` (all owners approve) |

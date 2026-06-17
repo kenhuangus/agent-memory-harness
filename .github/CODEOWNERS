@@ -18,7 +18,7 @@
 /eval/memeval/schema.py         @kenhuangus @kmazanec @bgibson1618 @NerdAlert58
 /eval/memeval/protocols.py      @kenhuangus @kmazanec @bgibson1618 @NerdAlert58
 
-# ── Keith — harness architecture + OpenCode integration + the static site ──
+# ── Keith — harness architecture + OpenCode integration ──
 /eval/memeval/harness.py        @kmazanec
 /eval/memeval/models.py         @kmazanec
 /eval/memeval/cli.py            @kmazanec
@@ -42,9 +42,9 @@
 # ── Scott B. — async "dreaming": dedup, conflict resolution, governance ──
 /eval/memeval/dreaming/         @NerdAlert58
 
-# ── Keith — the static site (HTML pages + assets) ──
-/*.html                         @kmazanec
-/assets/                        @kmazanec
+# ── Ken — the static site (HTML pages + assets) ──
+/*.html                         @kenhuangus
+/assets/                        @kenhuangus
 
 # ── Shared: the contract docs (collective sign-off to change) ──
 /project-plan.md                @kenhuangus
