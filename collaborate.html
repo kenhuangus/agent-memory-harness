@@ -107,12 +107,12 @@
           </tr>
           <tr>
             <td><span class="pill p3">Brent</span></td>
-            <td><code>eval/memeval/stores/</code>, <code>router.py</code> <span class="note">(created on first commit)</span></td>
+            <td><code>eval/memeval/stores/</code>, <code>router.py</code> <span class="note">(scaffolded — stubs to implement)</span></td>
             <td><code>stores/*</code> · <code>router/*</code></td>
           </tr>
           <tr>
             <td><span class="pill p4">Scott B.</span></td>
-            <td><code>eval/memeval/dreaming/</code> <span class="note">(created on first commit)</span></td>
+            <td><code>eval/memeval/dreaming/</code> <span class="note">(scaffolded — stubs to implement)</span></td>
             <td><code>dreaming/*</code></td>
           </tr>
           <tr>
@@ -188,8 +188,11 @@ git add ../results.json &amp;&amp; git commit -m "results: longmemeval haiku+mem
       <li>Inputs: benchmark · model · memory on/off · dataset (blank = fixture) · dev-slice / limit · budget_usd · open-PR.</li>
       <li>It uploads the trajectory + <code>results.json</code> as <strong>artifacts</strong> and (by default) opens a
         <strong>PR</strong> adding the run to the <a href="results.html">Results</a> page — review &amp; merge to publish.</li>
-      <li>Paid models read the <code>ANTHROPIC_API_KEY</code> repo secret (Settings → Secrets); echo runs need nothing.
-        Always set <code>budget_usd</code> for a paid run.</li>
+      <li>Paid models use <strong>your own key</strong>: the workflow auto-selects the repo secret
+        <code>ANTHROPIC_API_KEY_&lt;YOUR_HANDLE&gt;</code> (e.g. <code>ANTHROPIC_API_KEY_KMAZANEC</code>) by who launched
+        it, falling back to a shared <code>ANTHROPIC_API_KEY</code>. An admin adds repo secrets (Settings → Secrets
+        and variables → Actions), or run it in <strong>your own fork</strong> where you control your secret. echo runs
+        need no key. Always set <code>budget_usd</code> for a paid run.</li>
     </ul>
   </div>
 </section>

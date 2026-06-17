@@ -88,10 +88,27 @@ jobs:
 
       - name: Run benchmark and log to results.json
         working-directory: eval
+        # Each collaborator runs with THEIR OWN key: the workflow picks the repo
+        # secret ANTHROPIC_API_KEY_<LAUNCHER-HANDLE> (e.g. ANTHROPIC_API_KEY_KMAZANEC),
+        # falling back to a shared ANTHROPIC_API_KEY. Keys are never printed. Add yours
+        # at Settings -> Secrets and variables -> Actions (an admin adds repo secrets),
+        # or run this workflow in your own fork where you control secrets. echo = no key.
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SECRET_DEFAULT: ${{ secrets.ANTHROPIC_API_KEY }}
+          SECRET_KENHUANGUS: ${{ secrets.ANTHROPIC_API_KEY_KENHUANGUS }}
+          SECRET_KMAZANEC: ${{ secrets.ANTHROPIC_API_KEY_KMAZANEC }}
+          SECRET_BGIBSON1618: ${{ secrets.ANTHROPIC_API_KEY_BGIBSON1618 }}
+          SECRET_NERDALERT58: ${{ secrets.ANTHROPIC_API_KEY_NERDALERT58 }}
         run: |
-          set -euo pipefail
+          set -eo pipefail
+          HANDLE_UP="$(printf '%s' '${{ github.actor }}' | tr '[:lower:]' '[:upper:]' | tr -cd 'A-Z0-9')"
+          VAR="SECRET_${HANDLE_UP}"; KEY="${!VAR}"
+          [ -z "$KEY" ] && KEY="${SECRET_DEFAULT}"
+          if [ "${{ inputs.model }}" != "echo" ] && [ -z "$KEY" ]; then
+            echo "::error::No LLM key for @${{ github.actor }}. Add repo secret ANTHROPIC_API_KEY_${HANDLE_UP}, or run with model=echo (free/offline)."
+            exit 1
+          fi
+          export ANTHROPIC_API_KEY="$KEY"
           MEM="--no-memory"; [ "${{ inputs.memory }}" = "true" ] && MEM="--memory"
           ARGS=""
           [ -n "${{ inputs.dev_slice }}" ] && ARGS="$ARGS --dev-slice ${{ inputs.dev_slice }}"
