@@ -153,7 +153,29 @@ def _cli(argv: Optional[list[str]] = None) -> int:
     s = sub.add_parser("show", help="Print a compact summary of the ledger.")
     s.add_argument("--path", default=DEFAULT_PATH)
 
+    sm = sub.add_parser("summary", help="Print the hypothesis scoreboard (Haiku+mem vs Opus no-mem).")
+    sm.add_argument("--path", default=DEFAULT_PATH)
+    sm.add_argument("--efficiency-budget", type=float, default=None,
+                    help="Memory-overhead ceiling (default 0.10 = 10%).")
+    sm.add_argument("--min-wins", type=int, default=None,
+                    help="Benchmarks that must win for the criterion (default 2).")
+    sm.add_argument("--json", action="store_true", help="Emit the summary as JSON.")
+
     args = p.parse_args(argv)
+
+    if args.cmd == "summary":
+        from . import aggregate
+        kw: dict[str, Any] = {}
+        if args.efficiency_budget is not None:
+            kw["efficiency_budget"] = args.efficiency_budget
+        if args.min_wins is not None:
+            kw["min_wins"] = args.min_wins
+        summary = aggregate.summarize(load_results(args.path), **kw)
+        if args.json:
+            print(json.dumps(summary, indent=2))
+        else:
+            print(aggregate.format_summary(summary))
+        return 0 if summary["criterion_met"] else 2
 
     if args.cmd == "show":
         data = load_results(args.path)

@@ -57,6 +57,13 @@
   </div>
 </section>
 
+<!-- HYPOTHESIS SCOREBOARD (computed from results.json) -->
+<section class="section">
+  <div class="wrap">
+    <div id="scoreboard-app" hidden></div>
+  </div>
+</section>
+
 <!-- LIVE RESULTS (rendered from results.json) -->
 <section class="section">
   <div class="wrap">
@@ -107,6 +114,68 @@
   function esc(s){ var d=document.createElement("div"); d.textContent=(s==null?"":String(s)); return d.innerHTML; }
   function num(v){ return (v==null||isNaN(v))?"—":Number(v).toFixed(3); }
   function usd(v){ return "$"+Number(v||0).toFixed(4); }
+  function pct(v){ return (v==null||isNaN(v))?"—":Math.round(Number(v)*100)+"%"; }
+
+  // Hypothesis scoreboard — mirrors eval/memeval/aggregate.py.
+  var EFF_BUDGET = 0.10, MIN_WINS = 2;
+  function mid(r){ return String(r.model||"").toLowerCase(); }
+  function isHaiku(r){ return mid(r).indexOf("haiku")>=0; }
+  function isOpus(r){ return mid(r).indexOf("opus")>=0; }
+  function latest(rows, pred){
+    var ms = rows.filter(pred);
+    if(!ms.length) return null;
+    return ms.reduce(function(a,b){ return String(b.timestamp||"")>=String(a.timestamp||"")?b:a; });
+  }
+  function acc(r){ return r&&r.metrics&&r.metrics.accuracy!=null ? Number(r.metrics.accuracy) : null; }
+  function eff(r){ return r&&r.metrics&&r.metrics.efficiency!=null ? Number(r.metrics.efficiency) : null; }
+
+  function computeScoreboard(runs){
+    var byB={}; runs.forEach(function(r){ (byB[r.benchmark]=byB[r.benchmark]||[]).push(r); });
+    var rows=[], wins=0;
+    BENCH.forEach(function(b){
+      var rs=byB[b[0]]; if(!rs||!rs.length) return;
+      var t=latest(rs,function(r){return isHaiku(r)&&r.memory;});
+      var base=latest(rs,function(r){return isOpus(r)&&!r.memory;});
+      var at=acc(t), ab=acc(base), et=eff(t);
+      var comparable=at!=null&&ab!=null;
+      var accWin=comparable&&at>=ab&&at>0;
+      var effOk=et!=null&&et<=EFF_BUDGET;
+      var win=accWin&&effOk; if(win) wins++;
+      var status=!comparable?"incomplete":win?"win":accWin&&!effOk?"over_budget":"loss";
+      rows.push({label:b[1],at:at,ab:ab,delta:comparable?at-ab:null,eff:et,status:status});
+    });
+    return {rows:rows, wins:wins, met:wins>=MIN_WINS, n:rows.length};
+  }
+
+  function renderScoreboard(runs){
+    var el=document.getElementById("scoreboard-app");
+    var sb=computeScoreboard(runs);
+    if(!sb.n) return;
+    var badge={win:'<span class="check">win</span>', over_budget:'<span class="pill" style="font-size:.66rem">over budget</span>',
+               loss:'<span class="dash">—</span>', incomplete:'<span class="note">n/a</span>'};
+    var met=sb.met;
+    var html='<h2 style="margin-bottom:6px">Hypothesis scoreboard</h2>'
+      +'<p class="note" style="margin-top:0">Haiku + memory vs the <strong>Opus 4.8 no-memory</strong> baseline, per benchmark. '
+      +'A <em>win</em> needs accuracy ≥ baseline (non-zero) <strong>and</strong> memory overhead ≤ '+pct(EFF_BUDGET)+'.</p>'
+      +'<div class="callout '+(met?'':'warn')+' fade-up" style="margin-bottom:14px"><span class="ic">'+(met?'✅':'📊')+'</span><div>'
+      +'<p style="margin:0"><strong>'+sb.wins+' / '+sb.n+'</strong> benchmarks won (need '+MIN_WINS+'). '
+      +'<strong>Success criterion '+(met?'MET':'not yet met')+'.</strong></p></div></div>';
+    html+='<div class="table-wrap fade-up"><table>'
+      +'<thead><tr><th>Benchmark</th><th>Haiku + mem</th><th>Opus 4.8 (no mem)</th><th>Δ accuracy</th><th>Overhead</th><th>Verdict</th></tr></thead><tbody>';
+    sb.rows.forEach(function(r){
+      var d=r.delta==null?"—":(r.delta>=0?"+":"")+r.delta.toFixed(2);
+      var overBad=r.eff!=null&&r.eff>EFF_BUDGET;
+      html+='<tr><td><strong>'+esc(r.label)+'</strong></td>'
+        +'<td>'+(r.at==null?"—":r.at.toFixed(2))+'</td>'
+        +'<td>'+(r.ab==null?"—":r.ab.toFixed(2))+'</td>'
+        +'<td>'+d+'</td>'
+        +'<td'+(overBad?' style="color:var(--warn,#d97706)"':'')+'>'+pct(r.eff)+'</td>'
+        +'<td>'+(badge[r.status]||r.status)+'</td></tr>';
+    });
+    html+='</tbody></table></div>';
+    el.innerHTML=html; el.hidden=false;
+    el.querySelectorAll(".fade-up").forEach(function(n){ n.classList.add("in"); });
+  }
 
   function render(data){
     var app = document.getElementById("results-app");
@@ -165,7 +234,11 @@
 
   fetch("results.json", {cache:"no-store"})
     .then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); })
-    .then(render)
+    .then(function(data){
+      var runs=(data&&data.runs)||[];
+      if(runs.length){ renderScoreboard(runs); }
+      render(data);
+    })
     .catch(function(){ /* leave the empty-state / how-to block visible (e.g. file:// or no ledger) */ });
 })();
 </script>

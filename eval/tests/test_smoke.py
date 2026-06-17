@@ -89,6 +89,7 @@ from memeval.agent import (  # noqa: E402
     run_agent,
 )
 from memeval.harness import InMemoryStore  # noqa: E402
+from memeval import aggregate as AGG  # noqa: E402
 
 # Use unittest.SkipTest so pytest treats it as a skip AND the __main__ runner
 # can distinguish skip from failure.
@@ -533,6 +534,95 @@ def test_trajectory_fixture_loads() -> None:
     m = M.compute_metrics(read, tasks)
     assert isinstance(m, Metrics)
     assert _approx(m.recency, 1.0)  # s3 is gold, freshest, ranked #1
+
+
+# --------------------------------------------------------------------------- #
+# Aggregate -- the hypothesis scoreboard (Haiku+mem vs Opus no-mem)
+# --------------------------------------------------------------------------- #
+def _run_row(benchmark: str, model: str, memory: bool, *, accuracy: float,
+             efficiency: float = 0.05, timestamp: str = "2026-06-17T00:00:00+00:00") -> dict:
+    """Minimal ledger row for aggregate tests."""
+    return {
+        "benchmark": benchmark, "model": model, "memory": memory,
+        "label": f"{model}{'+mem' if memory else ''}", "timestamp": timestamp,
+        "metrics": {"accuracy": accuracy, "efficiency": efficiency,
+                    "relevancy": 0.0, "recency": 0.0},
+        "n_tasks": 2, "cost_usd": 0.001, "partial": False,
+    }
+
+
+def test_aggregate_win_when_haiku_mem_beats_opus_within_budget() -> None:
+    data = {"runs": [
+        _run_row("longmemeval", "claude-haiku-4-5", True, accuracy=0.8, efficiency=0.05),
+        _run_row("longmemeval", "claude-opus-4-8", False, accuracy=0.5),
+        _run_row("memoryagentbench", "claude-haiku-4-5", True, accuracy=0.9, efficiency=0.08),
+        _run_row("memoryagentbench", "claude-opus-4-8", False, accuracy=0.6),
+    ]}
+    s = AGG.summarize(data)
+    assert s["wins"] == 2
+    assert s["criterion_met"] is True
+    statuses = {b["benchmark"]: b["status"] for b in s["benchmarks"]}
+    assert statuses["longmemeval"] == "win"
+    assert statuses["memoryagentbench"] == "win"
+
+
+def test_aggregate_over_budget_is_not_a_win() -> None:
+    # Accuracy clears the bar, but memory overhead exceeds the 10% budget.
+    data = {"runs": [
+        _run_row("longmemeval", "claude-haiku-4-5", True, accuracy=1.0, efficiency=0.30),
+        _run_row("longmemeval", "claude-opus-4-8", False, accuracy=0.0),
+    ]}
+    s = AGG.summarize(data)
+    assert s["wins"] == 0
+    assert s["criterion_met"] is False
+    assert s["benchmarks"][0]["status"] == "over_budget"
+    assert s["benchmarks"][0]["acc_win"] is True
+    assert s["benchmarks"][0]["eff_ok"] is False
+
+
+def test_aggregate_zero_vs_zero_is_not_a_win() -> None:
+    data = {"runs": [
+        _run_row("contextbench", "claude-haiku-4-5", True, accuracy=0.0, efficiency=0.04),
+        _run_row("contextbench", "claude-opus-4-8", False, accuracy=0.0),
+    ]}
+    s = AGG.summarize(data)
+    assert s["benchmarks"][0]["status"] == "loss"
+    assert s["wins"] == 0
+
+
+def test_aggregate_incomplete_when_baseline_missing() -> None:
+    data = {"runs": [
+        _run_row("longmemeval", "claude-haiku-4-5", True, accuracy=0.9, efficiency=0.05),
+    ]}
+    s = AGG.summarize(data)
+    b = s["benchmarks"][0]
+    assert b["comparable"] is False
+    assert b["status"] == "incomplete"
+    assert b["win"] is False
+
+
+def test_aggregate_latest_row_wins_per_role() -> None:
+    data = {"runs": [
+        _run_row("longmemeval", "claude-haiku-4-5", True, accuracy=0.1,
+                 efficiency=0.05, timestamp="2026-06-01T00:00:00+00:00"),
+        _run_row("longmemeval", "claude-haiku-4-5", True, accuracy=0.9,
+                 efficiency=0.05, timestamp="2026-06-17T00:00:00+00:00"),
+        _run_row("longmemeval", "claude-opus-4-8", False, accuracy=0.5),
+    ]}
+    s = AGG.summarize(data)
+    # The newer treatment row (0.9) is the one compared, not the stale 0.1.
+    assert s["benchmarks"][0]["accuracy_treatment"] == 0.9
+    assert s["benchmarks"][0]["status"] == "win"
+
+
+def test_aggregate_format_summary_is_ascii() -> None:
+    s = AGG.summarize({"runs": [
+        _run_row("longmemeval", "claude-haiku-4-5", True, accuracy=0.8),
+        _run_row("longmemeval", "claude-opus-4-8", False, accuracy=0.5),
+    ]})
+    text = AGG.format_summary(s)
+    text.encode("ascii")  # must not raise — CLI output stays Windows-console safe
+    assert "success criterion" in text
 
 
 # --------------------------------------------------------------------------- #
