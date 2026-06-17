@@ -33,8 +33,113 @@
   <div class="wrap">
     <div class="crumb"><a href="index.html">Overview</a> / Plan</div>
     <h1>Two-week plan, four people</h1>
-    <p class="lead">Ten working days, four parallel workstreams locked behind a shared storage interface, converging
-      on a single end-to-end run on the final afternoon.</p>
+    <p class="lead">The problem, the technical approach, the scope, who owns what, and a ten-day timeline — four
+      parallel workstreams locked behind a shared interface, converging on a single end-to-end run.</p>
+    <div class="btn-row">
+      <a class="btn btn-primary" href="project-plan.pdf" download>⬇ Download plan (PDF)</a>
+      <a class="btn btn-ghost" href="project-plan.md">View as Markdown</a>
+    </div>
+  </div>
+</section>
+
+<!-- THE PROBLEM -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Why this exists</div>
+      <h2>The problem</h2>
+      <p class="lead">Long-running coding agents are stateless across sessions. They forget what they learned, so every
+        session restarts cold — and that caps how well a smaller, cheaper model can ever do.</p>
+    </div>
+    <div class="grid grid-2">
+      <div class="card fade-up">
+        <h3>Memory is thrown away</h3>
+        <p>Past fixes, codebase conventions, dead-ends and environment gotchas vanish at the end of a session. The same
+          mistakes get repeated and the same context re-derived at cost.</p>
+      </div>
+      <div class="card fade-up">
+        <h3>Small models pay the most</h3>
+        <p>A frontier model wins partly by holding more in its head at once. Without persistent memory, the only
+          reliable way to get good long-horizon performance is to pay for the largest model.</p>
+      </div>
+    </div>
+    <div class="callout fade-up" style="margin-top:20px">
+      <span class="ic">💡</span>
+      <div><p style="margin:0">There is no standard, model-agnostic layer that decides <strong>what</strong> to remember,
+        <strong>where</strong> to store it, <strong>how</strong> to retrieve it fast, and <strong>how</strong> to keep it
+        consistent over time. Build that, and a cheaper model can borrow a bigger one's long-horizon advantage.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- TECHNICAL APPROACH -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">How we'll build it</div>
+      <h2>Technical approach</h2>
+      <p class="lead">A pluggable four-module memory harness over three indexed storage backends, wired into OpenCode
+        and measured on existing public benchmarks — no home-grown evals.</p>
+    </div>
+    <div class="metric-row">
+      <div class="metric bl1 fade-up"><div class="top"><span class="ic bg1 a1">💾</span><h4>Persistence</h4></div><p>Decides what/when/where to save; tags every item.</p></div>
+      <div class="metric bl3 fade-up"><div class="top"><span class="ic bg3 a3">🧭</span><h4>Router</h4></div><p>Routes each query to the single best backend.</p></div>
+      <div class="metric bl2 fade-up"><div class="top"><span class="ic bg2 a2">🔎</span><h4>Orchestrator</h4></div><p>Ranks by recency × relevancy, dedups, returns.</p></div>
+      <div class="metric bl4 fade-up"><div class="top"><span class="ic bg4 a4">🌙</span><h4>Zooming</h4></div><p>Offline dedup, conflict resolution, governance.</p></div>
+    </div>
+    <div class="spacer"></div>
+    <div class="grid grid-2">
+      <div class="card fade-up">
+        <h3>Three storage backends, each indexed</h3>
+        <ul>
+          <li><strong>Markdown + YAML</strong> — literal recall · inverted keyword index.</li>
+          <li><strong>SQLite + vectors</strong> — semantic search · HNSW / FAISS ANN.</li>
+          <li><strong>Graph store</strong> — relationships &amp; conflicts · typed traversal.</li>
+        </ul>
+      </div>
+      <div class="card fade-up">
+        <h3>Validated, not invented</h3>
+        <p>Integrated into the open-source OpenCode agent. A controlled grid per benchmark runs Haiku + harness against
+          Haiku, Opus 4.8 and Sonnet baselines — prompts and task order held fixed, every trajectory logged.</p>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <p class="center"><a class="btn btn-ghost" href="architecture.html">Full architecture &amp; data flow →</a></p>
+  </div>
+</section>
+
+<!-- SCOPE -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Boundaries</div>
+      <h2>Scope</h2>
+      <p>What the two-week sprint commits to — and, just as importantly, what it does not.</p>
+    </div>
+    <div class="grid grid-2">
+      <div class="card bl2 fade-up">
+        <h3 class="a2">In scope</h3>
+        <ul>
+          <li>The memory harness: all four modules, end to end.</li>
+          <li>Three storage adapters behind one interface, each indexed.</li>
+          <li>The intelligent router (rule-based; learned-classifier hook).</li>
+          <li>The async zooming component: dedup, conflict resolution, governance, retention.</li>
+          <li>OpenCode integration for write/read on each agent step.</li>
+          <li>Eval harness on four benchmarks; baselines for Haiku, Opus 4.8, Sonnet.</li>
+          <li>Metric definitions, a reproducible protocol, and a results dashboard.</li>
+        </ul>
+      </div>
+      <div class="card bl3 fade-up">
+        <h3 class="a3">Out of scope (non-goals)</h3>
+        <ul>
+          <li>Building our own benchmark or dataset — we use public ones.</li>
+          <li>Training or fine-tuning any model.</li>
+          <li>Production hardening: multi-tenant infra, auth, SLAs, polished UI.</li>
+          <li>Distributed / scaled deployment — single-node is enough for the sprint.</li>
+          <li>Validating non-coding agents — design aims to generalize, not tested now.</li>
+        </ul>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -162,6 +267,38 @@
           <li>Retention &amp; pruning; observability logs; integration with P1 &amp; P3.</li>
         </ul>
       </div>
+    </div>
+  </div>
+</section>
+
+<!-- OWNERSHIP MATRIX -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">RACI, lightweight</div>
+      <h2>Who owns what</h2>
+      <p>Every deliverable has one accountable owner. The interface is frozen on Day 3 so the four streams never block
+        on each other.</p>
+    </div>
+    <div class="table-wrap fade-up">
+      <table>
+        <thead><tr><th>Area / deliverable</th><th>Owner</th><th>Supporting</th></tr></thead>
+        <tbody>
+          <tr><td>Storage interface &amp; memory-item schema</td><td><span class="pill p1">P1</span></td><td>P3</td></tr>
+          <tr><td>Persistence layer (write path, tagging, versioning)</td><td><span class="pill p1">P1</span></td><td class="dash">—</td></tr>
+          <tr><td>Retrieval orchestrator (rank · dedup · return)</td><td><span class="pill p1">P1</span></td><td>P3</td></tr>
+          <tr><td>OpenCode integration (write/read each step)</td><td><span class="pill p1">P1</span></td><td class="dash">—</td></tr>
+          <tr><td>Three storage backends + per-backend indexes</td><td><span class="pill p3">P3</span></td><td>P1</td></tr>
+          <tr><td>Intelligent router (rules → learned)</td><td><span class="pill p3">P3</span></td><td>P1</td></tr>
+          <tr><td>Backend performance testing</td><td><span class="pill p3">P3</span></td><td>P2</td></tr>
+          <tr><td>Zooming worker (dedup · conflict · governance · retention)</td><td><span class="pill p4">P4</span></td><td>P1, P3</td></tr>
+          <tr><td>Memory semantics ("what is good memory")</td><td><span class="pill p4">P4</span></td><td>P2</td></tr>
+          <tr><td>Datasets, loaders &amp; trajectory logging</td><td><span class="pill p2">P2</span></td><td class="dash">—</td></tr>
+          <tr><td>Metric definitions &amp; evaluation protocol</td><td><span class="pill p2">P2</span></td><td>P4</td></tr>
+          <tr><td>Baselines + results dashboard</td><td><span class="pill p2">P2</span></td><td class="dash">—</td></tr>
+          <tr><td>Final end-to-end integration</td><td><span class="pill">All</span></td><td class="dash">—</td></tr>
+        </tbody>
+      </table>
     </div>
   </div>
 </section>

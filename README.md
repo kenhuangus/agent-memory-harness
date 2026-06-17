@@ -11,7 +11,7 @@ that documents the plan, architecture, benchmarks, implementation contracts, and
 | Page | File | Contents |
 |------|------|----------|
 | Overview | `index.html` | Hypothesis, the four modules, the four metrics |
-| Plan | `plan.html` | Two-week, four-person sprint with a Gantt + milestones |
+| Plan | `plan.html` | Problem, technical approach, scope, ownership, Gantt + milestones — with a **[PDF download](project-plan.pdf)** |
 | Architecture | `architecture.html` | The diagram, data flows, the router, indexing |
 | Benchmarks | `benchmarks.html` | The 4 public benchmarks + metric mapping, with links |
 | Implementation | `implementation.html` | Schemas, storage interface, router/zooming contracts, eval protocol |
@@ -20,6 +20,8 @@ that documents the plan, architecture, benchmarks, implementation contracts, and
 ```
 .
 ├── index.html  plan.html  architecture.html  benchmarks.html  implementation.html  results.html
+├── project-plan.md          # full plan (problem · approach · scope · ownership · timeline)
+├── project-plan.pdf         # downloadable PDF of the plan
 ├── assets/
 │   ├── css/style.css        # theme + all components
 │   ├── js/main.js           # nav toggle, active link, reveal-on-scroll
