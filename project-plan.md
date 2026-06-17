@@ -5,6 +5,8 @@
 **A persistent memory harness for long-running coding agents.**
 Team of 4 · Two-week sprint · Model-agnostic · Validated on public benchmarks
 
+**Repository:** <https://github.com/kenhuangus/agent-memory-harness> · **Live site:** <https://kenhuangus.github.io/agent-memory-harness/>
+
 ---
 
 ## 1. The problem

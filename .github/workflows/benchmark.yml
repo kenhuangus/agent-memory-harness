@@ -1,0 +1,135 @@
+name: Benchmark run
+
+# Any collaborator with write access can launch a run from the Actions tab
+# (Actions -> "Benchmark run" -> Run workflow). Defaults are FREE and OFFLINE
+# (the deterministic EchoModel on the bundled fixture), so it costs nothing and
+# needs no secrets. Pick a real model + dataset for a paid run (see inputs).
+#
+# Output:
+#   * the per-task trajectory JSONL + results.json are uploaded as artifacts (always);
+#   * if "open_pr" is on, a PR is opened that adds the run to results.json so it
+#     renders on the Results page (main is protected, so it lands via PR review).
+
+on:
+  workflow_dispatch:
+    inputs:
+      benchmark:
+        description: Benchmark
+        type: choice
+        default: longmemeval
+        options:
+          - memoryagentbench
+          - longmemeval
+          - swe_contextbench
+          - swe_bench_cl
+          - contextbench
+      model:
+        description: "Model (echo = free/offline; or claude-haiku-4-5 / claude-sonnet-4-6 / claude-opus-4-8)"
+        type: string
+        default: echo
+      memory:
+        description: Use the memory harness
+        type: boolean
+        default: true
+      dataset:
+        description: "Local path or HF id (blank = bundled fixture for the benchmark)"
+        type: string
+        default: ""
+      dev_slice:
+        description: "Stratified dev-slice fraction, e.g. 0.1 (blank = full)"
+        type: string
+        default: ""
+      limit:
+        description: "Max tasks (blank = no cap)"
+        type: string
+        default: ""
+      budget_usd:
+        description: "Hard $ cap for paid models (blank = none; strongly advised for non-echo)"
+        type: string
+        default: ""
+      open_pr:
+        description: "Open a PR adding the result to results.json (shows on the site)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: benchmark-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install eval (+ extras only when needed)
+        working-directory: eval
+        run: |
+          pip install -e .
+          if [ "${{ inputs.model }}" != "echo" ]; then pip install -e ".[anthropic]"; fi
+          DS="${{ inputs.dataset }}"
+          if [ -n "$DS" ] && [ ! -f "$DS" ]; then pip install -e ".[hf]"; fi
+
+      - name: Resolve dataset (default to the bundled fixture)
+        id: ds
+        working-directory: eval
+        run: |
+          DS="${{ inputs.dataset }}"
+          [ -z "$DS" ] && DS="tests/fixtures/${{ inputs.benchmark }}.json"
+          echo "path=$DS" >> "$GITHUB_OUTPUT"
+
+      - name: Run benchmark and log to results.json
+        working-directory: eval
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -euo pipefail
+          MEM="--no-memory"; [ "${{ inputs.memory }}" = "true" ] && MEM="--memory"
+          ARGS=""
+          [ -n "${{ inputs.dev_slice }}" ] && ARGS="$ARGS --dev-slice ${{ inputs.dev_slice }}"
+          [ -n "${{ inputs.limit }}" ]     && ARGS="$ARGS --limit ${{ inputs.limit }}"
+          [ -n "${{ inputs.budget_usd }}" ] && ARGS="$ARGS --budget-usd ${{ inputs.budget_usd }}"
+          mkdir -p ../runs
+          python -m memeval.results run \
+            --benchmark "${{ inputs.benchmark }}" \
+            --model "${{ inputs.model }}" $MEM \
+            --path "${{ steps.ds.outputs.path }}" \
+            $ARGS \
+            --results ../results.json \
+            --run-id "gha-${{ github.run_id }}" \
+            --notes "Actions run by @${{ github.actor }}" \
+            --out "../runs/${{ inputs.benchmark }}-${{ github.run_id }}.jsonl"
+
+      - name: Upload artifacts (trajectory + results)
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-${{ inputs.benchmark }}-${{ github.run_id }}
+          path: |
+            runs/*.jsonl
+            results.json
+
+      - name: Open PR adding the result to the Results page
+        if: ${{ inputs.open_pr }}
+        continue-on-error: true   # artifacts are the guaranteed delivery; PR is best-effort
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          BR="results/${{ inputs.benchmark }}-${{ github.run_id }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BR"
+          git add results.json
+          git commit -m "results: ${{ inputs.benchmark }} / ${{ inputs.model }} (memory=${{ inputs.memory }}) — Actions by @${{ github.actor }}"
+          git push -u origin "$BR"
+          gh pr create --base main --head "$BR" \
+            --title "results: ${{ inputs.benchmark }} / ${{ inputs.model }} (by @${{ github.actor }})" \
+            --body "Automated benchmark run launched from the Actions tab by @${{ github.actor }}. Adds the row to \`results.json\` so it renders on the Results page. Review + merge to publish."

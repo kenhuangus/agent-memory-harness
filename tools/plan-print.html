@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<!-- Print source for ../project-plan.pdf. Regenerate the PDF with:
+       agent-browser open "file:///<abs>/tools/plan-print.html" && agent-browser pdf "<abs>/project-plan.pdf"
+     Keep in sync with project-plan.md when the plan changes. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cookbook Memory — Project Plan</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 16mm; }
+  * { box-sizing: border-box; }
+  html, body { background: #fff; }
+  body { font: 10.8pt/1.55 "Helvetica Neue", Helvetica, Arial, sans-serif; color: #1b1f24; margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .cover { border-bottom: 3px solid #4f46e5; padding-bottom: 16px; margin-bottom: 26px; }
+  .cover .kick { font-size: 8.5pt; letter-spacing: .18em; text-transform: uppercase; color: #4f46e5; font-weight: 700; }
+  h1 { font-size: 23pt; margin: 8px 0 4px; letter-spacing: -.01em; color: #0f1115; }
+  .cover .sub { font-size: 12pt; color: #3a4250; margin: 0 0 8px; font-weight: 600; }
+  .cover .meta { font-size: 9.5pt; color: #6b7280; margin: 0 0 3px; }
+  .cover .repo { font-size: 9.5pt; color: #4f46e5; margin: 4px 0 0; font-weight: 600; }
+  h2 { font-size: 14pt; margin: 26px 0 8px; padding-bottom: 5px; color: #1b2433; border-bottom: 1px solid #e4e7ec; page-break-after: avoid; }
+  h2 .num { color: #4f46e5; font-weight: 800; margin-right: 8px; }
+  h3 { font-size: 11pt; margin: 16px 0 4px; color: #111827; page-break-after: avoid; }
+  p { margin: 0 0 9px; }
+  ul { margin: 0 0 10px; padding-left: 20px; }
+  li { margin-bottom: 3px; }
+  strong { color: #0f1115; }
+  code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 9.2pt; background: #f3f4f6; padding: 1px 5px; border-radius: 4px; color: #1f2937; }
+  table { width: 100%; border-collapse: collapse; margin: 6px 0 14px; font-size: 9.6pt; page-break-inside: avoid; }
+  th, td { border: 1px solid #e1e4ea; padding: 6px 9px; text-align: left; vertical-align: top; }
+  thead th { background: #f5f6f8; color: #111827; font-weight: 700; font-size: 8.8pt; text-transform: uppercase; letter-spacing: .03em; }
+  tbody tr:nth-child(even) td { background: #fafbfc; }
+  blockquote { margin: 10px 0; padding: 10px 14px; background: #eef2ff; border-left: 4px solid #4f46e5; border-radius: 0 6px 6px 0; color: #2a2f3a; page-break-inside: avoid; }
+  blockquote p { margin: 0; }
+  figure { margin: 6px 0 14px; page-break-inside: avoid; }
+  figure svg { width: 100%; height: auto; border-radius: 8px; }
+  figcaption { font-size: 8.6pt; color: #6b7280; margin-top: 5px; }
+  .pb { page-break-before: always; }
+  footer { margin-top: 26px; padding-top: 10px; border-top: 1px solid #e4e7ec; font-size: 8.5pt; color: #9097a3; }
+</style>
+</head>
+<body>
+
+  <div class="cover">
+    <div class="kick">Project Plan</div>
+    <h1>Cookbook Memory</h1>
+    <p class="sub">AI Agent Memory Harness — persistent memory for long-running coding agents</p>
+    <p class="meta">Codename <strong>Cookbook Memory</strong> &nbsp;·&nbsp; Team of 4 (Keith · Ken · Brent · Scott B.) &nbsp;·&nbsp; Two-week sprint &nbsp;·&nbsp; Five public benchmarks</p>
+    <p class="repo">Repository: github.com/kenhuangus/agent-memory-harness &nbsp;·&nbsp; Live: kenhuangus.github.io/agent-memory-harness</p>
+  </div>
+
+  <h2><span class="num">1</span>The problem</h2>
+  <p>There is <strong>no standard, model-agnostic layer</strong> that decides <strong>what to remember</strong>,
+    <strong>where to store it</strong>, <strong>how to retrieve it fast</strong>, and <strong>how to keep it consistent
+    over time</strong> for long-running agents.</p>
+  <table>
+    <thead><tr><th>Decision</th><th>What it means</th></tr></thead>
+    <tbody>
+      <tr><td><strong>What</strong></td><td>signal vs. noise</td></tr>
+      <tr><td><strong>Where</strong></td><td>the right store</td></tr>
+      <tr><td><strong>Fast</strong></td><td>no context flood</td></tr>
+      <tr><td><strong>Consistent</strong></td><td>dedup, no conflicts</td></tr>
+    </tbody>
+  </table>
+
+  <h2><span class="num">2</span>Hypothesis &amp; success criteria</h2>
+  <blockquote><p><strong>Hypothesis.</strong> With the memory harness, <strong>Haiku can close the gap to Opus 4.8</strong>
+    (which runs without memory) on established memory benchmarks.</p></blockquote>
+  <p><strong>Success criterion.</strong> On <strong>at least two of the five</strong> benchmarks, <em>Haiku + harness</em>
+    beats the <em>Opus 4.8 no-memory</em> baseline across the four metrics, <strong>without</strong> blowing the
+    efficiency budget (memory adds <strong>&lt; ~10%</strong> context-token overhead).</p>
+  <table>
+    <thead><tr><th>Metric</th><th>Definition</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Recency</strong></td><td>Is the freshest relevant memory ranked first?</td></tr>
+      <tr><td><strong>Efficiency</strong></td><td>Tokens per retrieval; target under ~10% overhead.</td></tr>
+      <tr><td><strong>Relevancy</strong></td><td>Retrieved items actually relate to the query.</td></tr>
+      <tr><td><strong>Accuracy</strong></td><td>Task correctness, memory on vs. off.</td></tr>
+    </tbody>
+  </table>
+
+  <h2><span class="num">3</span>Technical approach</h2>
+  <p>A <strong>pluggable memory harness</strong>: four modules over three indexed storage backends, wired into the
+    open-source <strong>OpenCode</strong> agent and measured on public benchmarks.</p>
+  <h3>Four modules</h3>
+  <ul>
+    <li><strong>Persistence layer (write).</strong> Decides what/when/where to save; tags each item (timestamp, relevancy, session); versioning + dedup hints.</li>
+    <li><strong>Intelligent router (dispatch).</strong> Classifies each query and hits the <em>single best</em> backend. Rule-based, then learned.</li>
+    <li><strong>Retrieval orchestrator (read).</strong> Unified API: route, rank by <code>recency × relevancy</code>, de-dup, return a tight context.</li>
+    <li><strong>Dreaming component (async).</strong> Runs <strong>while other agents sleep</strong>: de-dup, resolve contradictions, session governance (must-know / must-do / blacklist), retention + pruning.</li>
+  </ul>
+  <h3>Three storage backends (each indexed)</h3>
+  <table>
+    <thead><tr><th>Backend</th><th>Best for</th><th>Index</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Markdown + YAML</strong></td><td>Literal recall</td><td>Inverted keyword map</td></tr>
+      <tr><td><strong>SQLite + vectors</strong></td><td>Semantic search</td><td>Dense ANN (HNSW / FAISS)</td></tr>
+      <tr><td><strong>Graph store</strong></td><td>Relationships &amp; conflicts</td><td>Typed traversal</td></tr>
+    </tbody>
+  </table>
+  <h3>Evaluation</h3>
+  <p>Public benchmarks only — no home-grown evals. Per benchmark, a controlled grid runs Haiku + harness vs. Haiku,
+    Opus 4.8 and Sonnet — prompts and task order fixed, every trajectory logged.</p>
+
+  <h2><span class="num">4</span>Scope</h2>
+  <h3>In scope</h3>
+  <ul>
+    <li>The memory harness: all four modules, end to end.</li>
+    <li>Three indexed storage adapters behind one interface.</li>
+    <li>The intelligent router (rule-based; learned-classifier hook).</li>
+    <li>The async dreaming component: dedup, conflict resolution, governance, retention.</li>
+    <li>OpenCode integration for memory write/read on each step.</li>
+    <li>Eval harness over five benchmarks; baselines for Haiku, Opus 4.8, Sonnet.</li>
+    <li>Metric definitions, a reproducible protocol, results dashboard.</li>
+  </ul>
+  <h3>Out of scope (non-goals)</h3>
+  <ul>
+    <li>Building our own benchmark or dataset — we use public ones.</li>
+    <li>Training or fine-tuning any model.</li>
+    <li>Production hardening: multi-tenant infra, auth, SLAs, polished UI.</li>
+    <li>Distributed / scaled deployment — single-node is enough for the sprint.</li>
+    <li>Validating non-coding agents — design generalizes, but not tested now.</li>
+  </ul>
+
+  <h2 class="pb"><span class="num">5</span>Team &amp; ownership — who owns what</h2>
+  <p>Four parallel workstreams, locked behind a shared storage interface <strong>frozen on Day 3</strong>.</p>
+  <p><strong>The team:</strong> <strong>P1 Keith</strong> (harness, OpenCode) &nbsp;·&nbsp; <strong>P2 Ken</strong> (benchmark)
+    &nbsp;·&nbsp; <strong>P3 Brent</strong> (store, retrieve) &nbsp;·&nbsp; <strong>P4 Scott B.</strong> (dreaming).</p>
+  <table>
+    <thead><tr><th>Area / deliverable</th><th>Owner</th><th>Supporting</th></tr></thead>
+    <tbody>
+      <tr><td>Storage interface &amp; memory-item schema</td><td><strong>P1 · Keith</strong></td><td>P3</td></tr>
+      <tr><td>Persistence layer (write path, tagging, versioning)</td><td><strong>P1 · Keith</strong></td><td>—</td></tr>
+      <tr><td>Retrieval orchestrator (rank · dedup · return)</td><td><strong>P1 · Keith</strong></td><td>P3</td></tr>
+      <tr><td>OpenCode integration (write/read on each step)</td><td><strong>P1 · Keith</strong></td><td>—</td></tr>
+      <tr><td>Three storage backends + per-backend indexes</td><td><strong>P3 · Brent</strong></td><td>P1</td></tr>
+      <tr><td>Intelligent router (rules → learned)</td><td><strong>P3 · Brent</strong></td><td>P1</td></tr>
+      <tr><td>Backend performance testing</td><td><strong>P3 · Brent</strong></td><td>P2</td></tr>
+      <tr><td>Dreaming worker (dedup, conflict, governance, retention)</td><td><strong>P4 · Scott B.</strong></td><td>P1, P3</td></tr>
+      <tr><td>Memory semantics ("what is good memory")</td><td><strong>P4 · Scott B.</strong></td><td>P2</td></tr>
+      <tr><td>Datasets, loaders &amp; trajectory logging</td><td><strong>P2 · Ken</strong></td><td>P4</td></tr>
+      <tr><td>Metric defs, shared run harness &amp; cost gates</td><td><strong>P2 · Ken</strong></td><td>P4</td></tr>
+      <tr><td>Results + cost dashboard, stats, aggregation</td><td><strong>P2 · Ken</strong></td><td>—</td></tr>
+      <tr><td>Run SWE-Bench-CL eval (own key)</td><td><strong>P1 · Keith</strong></td><td>—</td></tr>
+      <tr><td>Run LongMemEval eval (own key)</td><td><strong>P2 · Ken</strong></td><td>—</td></tr>
+      <tr><td>Run SWE-ContextBench eval (own key)</td><td><strong>P3 · Brent</strong></td><td>—</td></tr>
+      <tr><td>Run MemoryAgentBench eval (own key)</td><td><strong>P4 · Scott B.</strong></td><td>—</td></tr>
+      <tr><td>Run ContextBench eval (own key)</td><td><strong>P3 · Brent</strong></td><td>—</td></tr>
+      <tr><td>Final end-to-end integration</td><td><strong>All</strong></td><td>—</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li><strong>P1 · Keith — Harness Architecture &amp; OpenCode Integration.</strong> Critical path — the contracts everyone builds against.</li>
+    <li><strong>P2 · Ken — Evaluation Infrastructure &amp; Coordination.</strong> Shared runner, metrics, dashboard — and captains one benchmark.</li>
+    <li><strong>P3 · Brent — Storage Implementation &amp; Router.</strong> Three fast backends + the dispatch layer; captains the two retrieval benchmarks.</li>
+    <li><strong>P4 · Scott B. — Dreaming Component &amp; Memory Governance.</strong> The offline engine that keeps memory clean.</li>
+  </ul>
+
+  <h3>Dividing the eval runs (API cost &amp; time)</h3>
+  <p>~20 runs (5 benchmarks × 4 configs) is too much cost and time for one person on one key. Each teammate
+    <strong>captains</strong> the benchmark(s) that stress their own component, on their <strong>own API budget</strong>.
+    Any collaborator can also launch a run from the <strong>GitHub Actions</strong> tab (free offline by default).</p>
+  <table>
+    <thead><tr><th>Benchmark</th><th>Captain</th><th>Why them</th></tr></thead>
+    <tbody>
+      <tr><td><strong>SWE-Bench-CL</strong></td><td><strong>Keith (P1)</strong></td><td>Drives the coding agent end-to-end — his OpenCode wheelhouse.</td></tr>
+      <tr><td><strong>LongMemEval</strong></td><td><strong>Ken (P2)</strong></td><td>Eval lead; recency / temporal reasoning.</td></tr>
+      <tr><td><strong>SWE-ContextBench</strong></td><td><strong>Brent (P3)</strong></td><td>Cross-task context reuse exercises his retrieval + router.</td></tr>
+      <tr><td><strong>MemoryAgentBench</strong></td><td><strong>Scott B. (P4)</strong></td><td>Tests conflict resolution — his dreaming component.</td></tr>
+      <tr><td><strong>ContextBench</strong></td><td><strong>Brent (P3)</strong></td><td>Retrieval-quality (gold contexts) — the retrieval/router he owns.</td></tr>
+    </tbody>
+  </table>
+  <p>Ken owns the shared runner — <code>run(benchmark, model, memory) → metrics</code> — and aggregates all results.
+    Controls: sharded keys (one per captain); cheapest-first + early-exit (Opus last, confirm-only); dev-slice → full;
+    cache + resume; hard per-benchmark budget gates; no-memory baselines in week 1.</p>
+
+  <h2 class="pb"><span class="num">6</span>Two-week timeline</h2>
+  <h3>Person 1 · Keith — Harness Architecture &amp; OpenCode Integration</h3>
+  <ul>
+    <li><strong>Week 1:</strong> Three-module abstraction &amp; storage interface. Persistence layer (write, versioning, tagging). Instrument OpenCode to write memory each step.</li>
+    <li><strong>Week 2:</strong> Retrieval orchestrator (rank → dedup → return); wire in Brent's router; end-to-end task. <strong>Captain the SWE-Bench-CL runs.</strong></li>
+  </ul>
+  <h3>Person 2 · Ken — Evaluation Infrastructure &amp; Coordination</h3>
+  <ul>
+    <li><strong>Week 1:</strong> Parse all five datasets; loaders + trajectory logging (with Scott B.). Define the metrics; build the shared run harness + cost tracker.</li>
+    <li><strong>Week 2:</strong> <strong>Captain the LongMemEval runs.</strong> Aggregate every captain's results; stats + results &amp; cost dashboard; document the protocol.</li>
+  </ul>
+  <h3>Person 3 · Brent — Storage Implementation &amp; Router</h3>
+  <ul>
+    <li><strong>Week 1:</strong> SQLite + vector pipeline (HNSW/FAISS). Markdown store + inverted index. Graph store (Neo4j) + traversal index.</li>
+    <li><strong>Week 2:</strong> Adapters behind Keith's interface; implement the router; performance-test each backend. <strong>Captain the SWE-ContextBench &amp; ContextBench runs.</strong></li>
+  </ul>
+  <h3>Person 4 · Scott B. — Dreaming Component &amp; Memory Governance</h3>
+  <ul>
+    <li><strong>Week 1:</strong> Dedup (exact / semantic / near-dup). Conflict detection + reconciliation. Session-filter &amp; blacklist. Co-build trajectory logging with Ken.</li>
+    <li><strong>Week 2:</strong> Async scheduler that runs while agents sleep; must-know / must-do extraction; retention &amp; pruning; observability; integration with Keith &amp; Brent. <strong>Captain the MemoryAgentBench runs.</strong></li>
+  </ul>
+
+  <h2 class="pb"><span class="num">7</span>Dependency map &amp; critical path</h2>
+  <p>The Day-3 interface freeze unblocks every stream; the bold chain is the critical path to ship.</p>
+  <figure>
+    <svg viewBox="0 0 1200 410" xmlns="http://www.w3.org/2000/svg" font-family="Helvetica, Arial, sans-serif" role="img" aria-label="Dependency map">
+      <defs>
+        <linearGradient id="dgp" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6366f1"/><stop offset="1" stop-color="#22d3ee"/></linearGradient>
+        <marker id="dah-c" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#0ea5a0"/></marker>
+        <marker id="dah-m" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#94a3b8"/></marker>
+      </defs>
+      <rect x="0" y="0" width="1200" height="410" rx="14" fill="#f7f8fa" stroke="#e1e4ea"/>
+      <g fill="#6b7280" font-size="11" font-weight="600" text-anchor="middle">
+        <text x="104" y="22">D1–D3</text><text x="335" y="22">D3–D5</text><text x="545" y="22">D5–D6</text>
+        <text x="762" y="22">D6–D8</text><text x="977" y="22">D8</text><text x="1125" y="22">D10</text>
+      </g>
+      <path d="M184,196 C 215,110 222,80 250,76" fill="none" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#dah-m)"/>
+      <path d="M420,292 C 520,348 600,348 672,328" fill="none" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#dah-m)"/>
+      <path d="M852,327 C 884,327 890,250 905,244" fill="none" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#dah-m)"/>
+      <path d="M420,72 L884,72 L902,198" fill="none" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#dah-m)"/>
+      <path d="M184,216 C 216,255 226,277 250,277" fill="none" stroke="#0ea5a0" stroke-width="2.6" marker-end="url(#dah-c)"/>
+      <path d="M420,277 L470,277" fill="none" stroke="#0ea5a0" stroke-width="2.6" marker-end="url(#dah-c)"/>
+      <path d="M620,272 C 650,272 650,147 672,147" fill="none" stroke="#0ea5a0" stroke-width="2.6" marker-end="url(#dah-c)"/>
+      <path d="M852,150 C 882,150 888,224 905,226" fill="none" stroke="#0ea5a0" stroke-width="2.6" marker-end="url(#dah-c)"/>
+      <path d="M1050,229 L1065,229" fill="none" stroke="#0ea5a0" stroke-width="2.6" marker-end="url(#dah-c)"/>
+      <g>
+        <rect x="24" y="175" width="160" height="66" rx="12" fill="#fff" stroke="url(#dgp)" stroke-width="1.8"/>
+        <text x="104" y="203" text-anchor="middle" fill="#111827" font-size="12.5" font-weight="700">Interface + schema</text>
+        <text x="104" y="221" text-anchor="middle" fill="#4f46e5" font-size="11.5" font-weight="700">FREEZE · D3</text>
+        <text x="104" y="236" text-anchor="middle" fill="#6b7280" font-size="10.5">Keith + Brent</text>
+      </g>
+      <g><rect x="250" y="48" width="170" height="54" rx="11" fill="#fff" stroke="#e1e4ea"/><rect x="250" y="48" width="4" height="54" rx="2" fill="#0d9488"/>
+        <text x="338" y="72" text-anchor="middle" fill="#111827" font-size="12.5" font-weight="700">Datasets + run harness</text><text x="338" y="90" text-anchor="middle" fill="#0d9488" font-size="11">Ken</text></g>
+      <g><rect x="250" y="250" width="170" height="54" rx="11" fill="#fff" stroke="#e1e4ea"/><rect x="250" y="250" width="4" height="54" rx="2" fill="#d97706"/>
+        <text x="338" y="274" text-anchor="middle" fill="#111827" font-size="12" font-weight="700">Storage backends + indexes</text><text x="338" y="292" text-anchor="middle" fill="#d97706" font-size="11">Brent</text></g>
+      <g><rect x="470" y="250" width="150" height="54" rx="11" fill="#fff" stroke="#e1e4ea"/><rect x="470" y="250" width="4" height="54" rx="2" fill="#d97706"/>
+        <text x="545" y="274" text-anchor="middle" fill="#111827" font-size="12.5" font-weight="700">Router</text><text x="545" y="292" text-anchor="middle" fill="#d97706" font-size="11">Brent</text></g>
+      <g><rect x="672" y="120" width="180" height="54" rx="11" fill="#fff" stroke="#e1e4ea"/><rect x="672" y="120" width="4" height="54" rx="2" fill="#4f46e5"/>
+        <text x="762" y="144" text-anchor="middle" fill="#111827" font-size="12" font-weight="700">Persistence + orchestrator</text><text x="762" y="162" text-anchor="middle" fill="#4f46e5" font-size="11">Keith</text></g>
+      <g><rect x="672" y="300" width="180" height="54" rx="11" fill="#fff" stroke="#e1e4ea"/><rect x="672" y="300" width="4" height="54" rx="2" fill="#db2777"/>
+        <text x="762" y="324" text-anchor="middle" fill="#111827" font-size="12.5" font-weight="700">Dreaming worker</text><text x="762" y="342" text-anchor="middle" fill="#db2777" font-size="11">Scott B.</text></g>
+      <g><rect x="905" y="200" width="145" height="58" rx="12" fill="#eef2ff" stroke="url(#dgp)" stroke-width="1.4"/>
+        <text x="977" y="226" text-anchor="middle" fill="#111827" font-size="13" font-weight="700">Integration</text><text x="977" y="244" text-anchor="middle" fill="#6b7280" font-size="10.5">all · D8</text></g>
+      <g><rect x="1065" y="200" width="120" height="58" rx="12" fill="#e0f2fe" stroke="url(#dgp)" stroke-width="1.8"/>
+        <text x="1125" y="226" text-anchor="middle" fill="#111827" font-size="13" font-weight="800">Ship</text><text x="1125" y="244" text-anchor="middle" fill="#6b7280" font-size="10.5">metrics · D10</text></g>
+    </svg>
+    <figcaption>Teal = critical path (freeze → backends → router → orchestrator → integration → ship). Grey = supporting dependencies.</figcaption>
+  </figure>
+  <ul>
+    <li><strong>Keith + Brent (D1–D3):</strong> co-author and freeze the storage interface + schema, so persistence and adapters share one contract.</li>
+    <li><strong>Brent → Keith:</strong> the router lands before the orchestrator can route in week 2.</li>
+    <li><strong>Ken → all (by D5):</strong> datasets, logging and the shared run harness ready, so baselines can start ~D4–D6.</li>
+    <li><strong>Keith + Brent → Scott B.:</strong> the dreaming worker integrates once real storage exists (D8+).</li>
+    <li><strong>Sharded keys:</strong> each captain on a separate API budget — baselines week 1, treatment week 2.</li>
+  </ul>
+  <blockquote><p><strong>Top risk is semantic, not structural:</strong> defining <em>what counts as "good memory."</em>
+    Ken and Scott B. must align on memory semantics in week 1, or the harness stores everything and retrieves nothing useful.</p></blockquote>
+
+  <h2><span class="num">8</span>Milestones</h2>
+  <table>
+    <thead><tr><th>Day</th><th>Milestone</th></tr></thead>
+    <tbody>
+      <tr><td><strong>D3</strong></td><td><strong>Contract freeze</strong> — storage interface + memory-item schema locked; metric definitions agreed.</td></tr>
+      <tr><td><strong>D5</strong></td><td><strong>End of week 1</strong> — three backends read/write; shared run harness + loaders ready; no-memory baselines started on sharded keys.</td></tr>
+      <tr><td><strong>D8</strong></td><td><strong>Integration start</strong> — router + orchestrator connected; dreaming worker running against real stores.</td></tr>
+      <tr><td><strong>D10</strong></td><td><strong>Ship</strong> — all benchmark shards complete (Haiku + harness); four metrics aggregated vs. baselines.</td></tr>
+    </tbody>
+  </table>
+
+  <h2><span class="num">9</span>Benchmarks &amp; metrics</h2>
+  <table>
+    <thead><tr><th>Benchmark</th><th>Primary metrics</th><th>Reference</th></tr></thead>
+    <tbody>
+      <tr><td><strong>MemoryAgentBench</strong></td><td>Relevancy, Accuracy, conflict resolution</td><td>arXiv 2507.05257</td></tr>
+      <tr><td><strong>LongMemEval</strong></td><td>Recency, Accuracy, temporal reasoning</td><td>arXiv 2410.10813</td></tr>
+      <tr><td><strong>SWE-ContextBench</strong></td><td>Efficiency, Relevancy, Accuracy</td><td>arXiv 2602.08316</td></tr>
+      <tr><td><strong>SWE-Bench-CL</strong></td><td>Relevancy, Accuracy, continual learning</td><td>arXiv 2507.00014</td></tr>
+      <tr><td><strong>ContextBench</strong></td><td>Relevancy, Efficiency, retrieval recall/precision</td><td>arXiv 2602.05892</td></tr>
+    </tbody>
+  </table>
+  <p>Full descriptions, dataset links and the metric-mapping matrix live on the project site's <strong>Benchmarks</strong> page.</p>
+
+  <h2><span class="num">10</span>Collaboration &amp; deliverables</h2>
+  <p>Four developers, one repo, no conflicts: <strong>prd.md / architecture.md / plan.md</strong> are the contracts;
+    GitHub Flow + CODEOWNERS + branch protection enforce one-owner-per-directory and all-owner sign-off to change a
+    frozen interface. See <code>CONTRIBUTING.md</code> and the site's <strong>Collaborate</strong> page.</p>
+  <ul>
+    <li>A model-agnostic memory harness (4 modules) integrated with OpenCode.</li>
+    <li>Three indexed storage backends behind one interface.</li>
+    <li>The async dreaming component with governance &amp; pruning.</li>
+    <li>A reproducible eval harness (shared runner + cost gates) + baselines on five benchmarks.</li>
+    <li>A results scoreboard testing the hypothesis (logged via <code>results.json</code> / GitHub Actions).</li>
+    <li>The project site (GitHub Pages) documenting all of the above.</li>
+  </ul>
+
+  <footer>Cookbook Memory — Project Plan · Keith · Ken · Brent · Scott B. · github.com/kenhuangus/agent-memory-harness</footer>
+</body>
+</html>

@@ -1,5 +1,7 @@
 # AI Agent Memory Harness (codename: Cookbook Memory)
 
+**Repository:** <https://github.com/kenhuangus/agent-memory-harness> · **Live site:** <https://kenhuangus.github.io/agent-memory-harness/>
+
 A project site (GitHub Pages) for a **persistent memory harness for long-running coding agents**.
 
 The harness gives an agent self-curating memory so a smaller model (Haiku) can close the gap to a frontier

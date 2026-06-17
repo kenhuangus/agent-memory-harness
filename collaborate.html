@@ -172,6 +172,18 @@ python -m memeval.results run --benchmark longmemeval --model claude-haiku-4-5 \
 git add ../results.json &amp;&amp; git commit -m "results: longmemeval haiku+mem" <span class="c"># via PR</span></pre>
     <p class="note">Then it appears on <a href="results.html">Results</a> after merge. Each captain logs their
       benchmark on their own API key (see the <a href="plan.html#dependencies">plan</a>).</p>
+
+    <h3>4 · Or launch it from GitHub Actions (no local setup)</h3>
+    <p>Any collaborator with write access can run a benchmark from the browser:
+      <strong>Actions → "Benchmark run" → Run workflow</strong>. Defaults are <strong>free + offline</strong>
+      (EchoModel on the bundled fixture, no secrets); choose a real model + dataset (and a budget) for a paid run.</p>
+    <ul>
+      <li>Inputs: benchmark · model · memory on/off · dataset (blank = fixture) · dev-slice / limit · budget_usd · open-PR.</li>
+      <li>It uploads the trajectory + <code>results.json</code> as <strong>artifacts</strong> and (by default) opens a
+        <strong>PR</strong> adding the run to the <a href="results.html">Results</a> page — review &amp; merge to publish.</li>
+      <li>Paid models read the <code>ANTHROPIC_API_KEY</code> repo secret (Settings → Secrets); echo runs need nothing.
+        Always set <code>budget_usd</code> for a paid run.</li>
+    </ul>
   </div>
 </section>
 
@@ -207,9 +219,10 @@ git add ../results.json &amp;&amp; git commit -m "results: longmemeval haiku+mem
     </div>
     <div class="callout fade-up" style="margin-top:20px">
       <span class="ic">🔑</span>
-      <div><p style="margin:0"><strong>Before the team starts:</strong> replace the placeholder handles in
-        <code>.github/CODEOWNERS</code> with real GitHub usernames and add all four as collaborators; then turn on
-        <code>enforce_admins</code> so the freeze binds everyone.</p></div>
+      <div><p style="margin:0"><strong>Status:</strong> code owners are set — Keith <code>@kmazanec</code>,
+        Brent <code>@bgibson1618</code>, Scott B. <code>@NerdAlert58</code> — and all three are invited with
+        <strong>write</strong> access. Accept the email invite to activate code-owner review; once everyone has
+        accepted, turn on <code>enforce_admins</code> so the freeze binds everyone too.</p></div>
     </div>
   </div>
 </section>

@@ -4,6 +4,8 @@
 > contracts change. The detailed narrative lives in [`project-plan.md`](project-plan.md);
 > this file is the lean, enforceable version four people work against.
 
+**Repository:** <https://github.com/kenhuangus/agent-memory-harness> · **Live site:** <https://kenhuangus.github.io/agent-memory-harness/>
+
 ## Team
 | | Owner | Area |
 |---|---|---|
