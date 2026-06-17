@@ -15,7 +15,8 @@ one unit. The cost of a call is therefore::
 
 What lives here
 ---------------
-PRICING         per-model $/Mtok table (PLACEHOLDER values -- see warning).
+PRICING         per-model $/Mtok table (live Anthropic prices, see prd.md §7).
+DEFAULT_BUDGET_USD  default $10 hard cap when no budget is supplied.
 price_for       safe lookup with a sensible fallback.
 cost_of         price one (model, tokens_in, tokens_out) call in USD.
 BudgetExceeded  raised by CostTracker.add when a budget is overrun.
@@ -33,18 +34,25 @@ from typing import Any, Optional
 from .schema import ModelConfig
 
 # --------------------------------------------------------------------------- #
+# Default budget
+# --------------------------------------------------------------------------- #
+#: Default hard USD cap for a run when the caller (CLI / Action / driver) does
+#: not specify one. $10 is enough for a meaningful sweep on the bundled
+#: fixtures while keeping an accidental full-dataset run from running away.
+#: A value <= 0 is treated by the CLIs as "no cap" (pure accounting).
+DEFAULT_BUDGET_USD: float = 10.0
+
+# --------------------------------------------------------------------------- #
 # Pricing table
 # --------------------------------------------------------------------------- #
-# !!! PLACEHOLDER PRICES -- USD per MILLION tokens. !!!
-# These are plausible stand-ins so the offline path (smoke tests, cost gates,
-# cheapest-first ordering) is exercisable WITHOUT a live price sheet. They are
-# NOT authoritative: confirm every number against the current Anthropic price
-# list (the claude-api skill / console) BEFORE spending real money on a run.
-# Keys are model ids; values are {"in": $/Mtok input, "out": $/Mtok output}.
+# LIVE PRICES -- USD per MILLION tokens. Confirmed against the Anthropic price
+# list (2026-06; see prd.md section 7). Keys are model ids; values are
+# {"in": $/Mtok input, "out": $/Mtok output}. Re-confirm against the console
+# price sheet before a large paid run -- list prices do change.
 PRICING: dict[str, dict[str, float]] = {
-    "claude-haiku-4-5": {"in": 1.00, "out": 5.00},    # PLACEHOLDER
-    "claude-sonnet-4-6": {"in": 3.00, "out": 15.00},  # PLACEHOLDER
-    "claude-opus-4-8": {"in": 15.00, "out": 75.00},   # PLACEHOLDER
+    "claude-haiku-4-5": {"in": 1.00, "out": 5.00},    # Haiku 4.5
+    "claude-sonnet-4-6": {"in": 3.00, "out": 15.00},  # Sonnet 4.6
+    "claude-opus-4-8": {"in": 5.00, "out": 25.00},    # Opus 4.8
     "echo": {"in": 0.0, "out": 0.0},                  # offline adapter: free
 }
 
@@ -311,6 +319,7 @@ def cheapest_first(configs: list[ModelConfig]) -> list[ModelConfig]:
 
 __all__ = [
     "PRICING",
+    "DEFAULT_BUDGET_USD",
     "price_for",
     "cost_of",
     "BudgetExceeded",

@@ -28,7 +28,7 @@ import os
 import sys
 from typing import Optional
 
-from .cost import CostTracker, load_key_config
+from .cost import DEFAULT_BUDGET_USD, CostTracker, load_key_config
 from .harness import run
 from .models import get_model
 from .schema import Benchmark
@@ -89,7 +89,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--k", type=int, default=5, help="Retrieval depth (top-k memories)."
     )
     run_p.add_argument(
-        "--budget-usd", type=float, default=None, help="Abort if spend exceeds this."
+        "--budget-usd",
+        type=float,
+        default=None,
+        help=f"Abort if spend exceeds this (default ${DEFAULT_BUDGET_USD:.0f}; <=0 means no cap).",
     )
     run_p.add_argument(
         "--budget-tokens", type=int, default=None, help="Abort if tokens exceed this."
@@ -158,6 +161,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     budget_tokens = args.budget_tokens
     if budget_usd is None and "budget_usd" in key_cfg:
         budget_usd = float(key_cfg["budget_usd"])
+    if budget_usd is None:
+        budget_usd = DEFAULT_BUDGET_USD  # default $10 cap when nothing supplied
+    if budget_usd <= 0:
+        budget_usd = None  # explicit opt-out: <=0 means no cap
     if budget_tokens is None and "budget_tokens" in key_cfg:
         budget_tokens = int(key_cfg["budget_tokens"])
 

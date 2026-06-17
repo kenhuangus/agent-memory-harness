@@ -45,10 +45,49 @@ codebase and benefit from persistent, self-curating memory.
 - Python 3.11+ (developed on 3.13).
 - The offline evaluation path is reproducible with **zero required dependencies**.
 
-## 7. Open questions (parking lot)
-- Final embedding model + reranker for the vector backend.
-- Real CODE scoring (patch-apply / test-run) wiring per benchmark.
-- Live pricing for the cost tracker (placeholders today).
+## 7. Must-have decisions (resolved)
+These three were the open risks; each now has a committed default with a
+documented fallback. They are requirements for a real (paid) production run,
+not the offline path.
+
+### 7.1 Embedding model + reranker for the vector backend
+- **Embeddings — default: Voyage AI `voyage-3-large`** (1024-d, top retrieval
+  quality / cost on code + long-context; matches our coding-agent use case).
+  Budget alternative: `voyage-3-lite`.
+- **Reranker — default: Voyage `rerank-2.5`**; Cohere `rerank-3.5` is an
+  equivalent drop-in. Rerank the top ~50 ANN hits down to top-k before they
+  enter the prompt.
+- **Open-source fallback (no external API / air-gapped): `BAAI/bge-m3`
+  embeddings + `BAAI/bge-reranker-v2-m3`.** Self-hostable, keeps the offline
+  guarantee for teams that cannot call a hosted embedding API.
+- Wiring: behind the `MemoryStore` protocol — the embedder/reranker are
+  injected, so swapping providers does not touch benchmark or harness code.
+
+### 7.2 Real CODE scoring (patch-apply / test-run) per benchmark
+- **Default: the official SWE-bench Docker harness**
+  (`swebench.harness.run_evaluation`). A task PASSES only when **every
+  `FAIL_TO_PASS` test now passes AND every `PASS_TO_PASS` test still passes**
+  after the model's patch is applied in the per-task container.
+- Cloud option: `sb-cli` runs the same evaluation on hosted infra when local
+  Docker is unavailable (CI).
+- Wiring: exposed as a per-benchmark `grader` for the coding benchmarks
+  (`swe_contextbench`, `swe_bench_cl`, `contextbench`). The offline default
+  grader stays string/overlap-based so the zero-dependency path keeps working;
+  the Docker grader is opt-in for paid/production runs.
+
+### 7.3 Live pricing for the cost tracker
+Confirmed against the Anthropic price list (USD per **million** tokens) and
+committed in `eval/memeval/cost.py` (`PRICING`):
+
+| Model            | Input $/Mtok | Output $/Mtok |
+|------------------|-------------:|--------------:|
+| Haiku 4.5        |         1.00 |          5.00 |
+| Sonnet 4.6       |         3.00 |         15.00 |
+| Opus 4.8         |         5.00 |         25.00 |
+
+Default per-run budget is **$10** (`DEFAULT_BUDGET_USD`); override with
+`--budget-usd` (set `<=0` to disable the cap). Re-confirm list prices before a
+large paid run.
 
 ---
 See [`architecture.md`](architecture.md) for the technical contract and

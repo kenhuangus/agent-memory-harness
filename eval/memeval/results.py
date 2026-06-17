@@ -30,6 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+from .cost import DEFAULT_BUDGET_USD
 from .schema import RunResult
 
 #: Bump if the ledger record shape changes (the Results page checks this).
@@ -138,7 +139,12 @@ def _cli(argv: Optional[list[str]] = None) -> int:
     r.add_argument("--limit", type=int, default=None)
     r.add_argument("--dev-slice", type=float, default=None)
     r.add_argument("--k", type=int, default=5)
-    r.add_argument("--budget-usd", type=float, default=None)
+    r.add_argument(
+        "--budget-usd",
+        type=float,
+        default=DEFAULT_BUDGET_USD,
+        help=f"Hard USD cap for this run (default ${DEFAULT_BUDGET_USD:.0f}; <=0 means no cap).",
+    )
     r.add_argument("--out", default=None, help="Optional per-task trajectory JSONL.")
     r.add_argument("--results", default=DEFAULT_PATH, help="Ledger path (default ./results.json).")
     r.add_argument("--run-id", default="")
@@ -169,7 +175,8 @@ def _cli(argv: Optional[list[str]] = None) -> int:
     from .models import get_model
     from .schema import Benchmark
 
-    cost = CostTracker(budget_usd=args.budget_usd) if args.budget_usd is not None else None
+    # default $10 cap; a value <= 0 disables the cap (pure accounting).
+    cost = CostTracker(budget_usd=args.budget_usd) if args.budget_usd and args.budget_usd > 0 else None
     logger = None
     if args.out:
         from .trajectory import TrajectoryLogger

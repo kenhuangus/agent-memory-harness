@@ -188,12 +188,29 @@ git add ../results.json &amp;&amp; git commit -m "results: longmemeval haiku+mem
       <li>Inputs: benchmark · model · memory on/off · dataset (blank = fixture) · dev-slice / limit · budget_usd · open-PR.</li>
       <li>It uploads the trajectory + <code>results.json</code> as <strong>artifacts</strong> and (by default) opens a
         <strong>PR</strong> adding the run to the <a href="results.html">Results</a> page — review &amp; merge to publish.</li>
-      <li>Paid models use <strong>your own key</strong>: the workflow auto-selects the repo secret
-        <code>ANTHROPIC_API_KEY_&lt;YOUR_HANDLE&gt;</code> (e.g. <code>ANTHROPIC_API_KEY_KMAZANEC</code>) by who launched
-        it, falling back to a shared <code>ANTHROPIC_API_KEY</code>. An admin adds repo secrets (Settings → Secrets
-        and variables → Actions), or run it in <strong>your own fork</strong> where you control your secret. echo runs
-        need no key. Always set <code>budget_usd</code> for a paid run.</li>
+      <li><code>budget_usd</code> defaults to <strong>$10</strong> per run; set <code>0</code> to disable the cap. echo runs are free and need no key.</li>
     </ul>
+
+    <div class="card bl4" style="margin-top:1rem">
+      <h3>Bring your own key — there is no shared key</h3>
+      <p>Paid models run on <strong>your own</strong> Anthropic key, selected by who launched the workflow. The
+        launcher's key is read from the repo secret <code>ANTHROPIC_API_KEY_&lt;YOUR_HANDLE&gt;</code>
+        (uppercased, e.g. <code>ANTHROPIC_API_KEY_KMAZANEC</code>). <strong>There is no fallback to anyone else's
+        key</strong> — Ken's key is bound to <code>@kenhuangus</code> and cannot be spent by another collaborator. If
+        no key is found for a paid run, the job fails fast with instructions.</p>
+      <p>Two ways to provide yours:</p>
+      <ol class="steps">
+        <li><strong>Admin adds a repo secret (run in this repo).</strong> A repo admin opens
+          <em>Settings → Secrets and variables → Actions → New repository secret</em>, names it
+          <code>ANTHROPIC_API_KEY_&lt;YOUR_HANDLE&gt;</code>, and pastes your key. Then launch from the Actions tab as
+          normal.</li>
+        <li><strong>Run in your own fork (no admin needed).</strong> Fork the repo, add
+          <code>ANTHROPIC_API_KEY_&lt;YOUR_HANDLE&gt;</code> under your fork's <em>Settings → Secrets and variables →
+          Actions</em>, and run <em>Benchmark run</em> there. Open a PR back to publish results.</li>
+      </ol>
+      <p class="note">Keys are never printed in logs. Get a key at <code>console.anthropic.com → API Keys</code>. Locally,
+        <code>memeval</code> just reads <code>ANTHROPIC_API_KEY</code> from your environment.</p>
+    </div>
   </div>
 </section>
 

@@ -44,9 +44,9 @@ on:
         type: string
         default: ""
       budget_usd:
-        description: "Hard $ cap for paid models (blank = none; strongly advised for non-echo)"
+        description: "Hard $ cap for paid models (default 10; set 0 to disable the cap)"
         type: string
-        default: ""
+        default: "10"
       open_pr:
         description: "Open a PR adding the result to results.json (shows on the site)"
         type: boolean
@@ -88,13 +88,15 @@ jobs:
 
       - name: Run benchmark and log to results.json
         working-directory: eval
-        # Each collaborator runs with THEIR OWN key: the workflow picks the repo
-        # secret ANTHROPIC_API_KEY_<LAUNCHER-HANDLE> (e.g. ANTHROPIC_API_KEY_KMAZANEC),
-        # falling back to a shared ANTHROPIC_API_KEY. Keys are never printed. Add yours
-        # at Settings -> Secrets and variables -> Actions (an admin adds repo secrets),
-        # or run this workflow in your own fork where you control secrets. echo = no key.
+        # Each collaborator runs with THEIR OWN key. The workflow picks ONLY the
+        # repo secret ANTHROPIC_API_KEY_<LAUNCHER-HANDLE> (e.g. ANTHROPIC_API_KEY_KMAZANEC).
+        # There is NO shared fallback key — Ken's key is bound to @kenhuangus and
+        # nobody else can spend it. To run a paid model you MUST supply your own key:
+        #   * an admin adds repo secret ANTHROPIC_API_KEY_<YOURHANDLE> (Settings ->
+        #     Secrets and variables -> Actions), OR
+        #   * run this workflow in your own fork where you control the secrets.
+        # Keys are never printed. model=echo is free/offline and needs no key.
         env:
-          SECRET_DEFAULT: ${{ secrets.ANTHROPIC_API_KEY }}
           SECRET_KENHUANGUS: ${{ secrets.ANTHROPIC_API_KEY_KENHUANGUS }}
           SECRET_KMAZANEC: ${{ secrets.ANTHROPIC_API_KEY_KMAZANEC }}
           SECRET_BGIBSON1618: ${{ secrets.ANTHROPIC_API_KEY_BGIBSON1618 }}
@@ -103,9 +105,8 @@ jobs:
           set -eo pipefail
           HANDLE_UP="$(printf '%s' '${{ github.actor }}' | tr '[:lower:]' '[:upper:]' | tr -cd 'A-Z0-9')"
           VAR="SECRET_${HANDLE_UP}"; KEY="${!VAR}"
-          [ -z "$KEY" ] && KEY="${SECRET_DEFAULT}"
           if [ "${{ inputs.model }}" != "echo" ] && [ -z "$KEY" ]; then
-            echo "::error::No LLM key for @${{ github.actor }}. Add repo secret ANTHROPIC_API_KEY_${HANDLE_UP}, or run with model=echo (free/offline)."
+            echo "::error::No LLM key for @${{ github.actor }}. Each developer uses their OWN key — there is no shared key. Add repo secret ANTHROPIC_API_KEY_${HANDLE_UP} (admin) or run in your own fork, then retry. Or run with model=echo (free/offline)."
             exit 1
           fi
           export ANTHROPIC_API_KEY="$KEY"

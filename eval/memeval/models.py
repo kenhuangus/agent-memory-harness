@@ -317,7 +317,16 @@ class AnthropicAdapter:
             params["stop_sequences"] = stop
         params.update(kwargs)
 
-        resp = client.messages.create(**params)
+        try:
+            resp = client.messages.create(**params)
+        except Exception as exc:  # pragma: no cover - live only
+            # Some newer models (e.g. Opus 4.8) deprecate `temperature` and 400 on it.
+            # Drop the offending param and retry once rather than failing the run.
+            if "temperature" in str(exc).lower() and "temperature" in params:
+                params.pop("temperature", None)
+                resp = client.messages.create(**params)
+            else:
+                raise
 
         # Concatenate all text blocks of the response content.
         parts: list[str] = []
