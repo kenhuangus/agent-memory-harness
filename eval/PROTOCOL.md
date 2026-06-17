@@ -109,6 +109,24 @@ test passes AND every `PASS_TO_PASS` test still passes** after the patch applies
 to leave tasks ungraded (instead of erroring) where Docker is absent. Without a
 grader, CODE accuracy stays `None` (ungraded) so it never inflates the score.
 
+> **Windows note:** `swebench` is **Linux-only** (it imports `resource`) and the
+> harness runs Linux Docker containers, so CODE grading must run from **WSL**,
+> not the Windows-host Python. The offline path and QA grading run fine on
+> Windows. On this machine a ready WSL env exists:
+>
+> ```bash
+> # one-time: a WSL venv with memeval + swebench (Docker Desktop WSL integration on)
+> python3 -m venv ~/.venvs/swebench
+> ~/.venvs/swebench/bin/pip install -e /mnt/c/Users/kenhu/agent-memory-harness/eval "swebench>=4.0"
+>
+> # run CODE grading from WSL (Docker reachable; pulls per-instance images — slow)
+> wsl -d Ubuntu -- ~/.venvs/swebench/bin/python -m memeval.results run \
+>     --benchmark swe_bench_cl --model claude-haiku-4-5 --memory \
+>     --grader swebench --results /mnt/c/Users/kenhu/agent-memory-harness/results.json
+> ```
+>
+> First grade per instance pulls/builds a multi-GB image; budget time + disk.
+
 ## 6. The four metrics
 
 | Metric | Definition | Better |

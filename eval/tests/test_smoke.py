@@ -625,6 +625,12 @@ def test_grader_resolved_from_report_rule() -> None:
     assert G.resolved_from_report(bad, iid) is False
     # Absent instance -> None (could not grade).
     assert G.resolved_from_report({}, iid) is None
+    # Summary-report shape (swebench >=2.x make_run_report output).
+    summ = {"resolved_ids": ["django__django-1"], "unresolved_ids": ["x__y-2"],
+            "error_ids": [], "incomplete_ids": [], "empty_patch_ids": []}
+    assert G.resolved_from_report(summ, "django__django-1") is True
+    assert G.resolved_from_report(summ, "x__y-2") is False
+    assert G.resolved_from_report(summ, "not__there-9") is None
 
 
 def test_grader_overlap_offline() -> None:

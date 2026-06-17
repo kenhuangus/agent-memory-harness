@@ -65,13 +65,27 @@ def build_prediction(task: Task, prediction: str, *, model_name: str) -> dict:
 def resolved_from_report(report: dict, instance_id: str) -> Optional[bool]:
     """Interpret a SWE-bench evaluation report for one instance.
 
-    Robust across report shapes: honors an explicit ``resolved`` boolean when
-    present; otherwise derives it from ``tests_status`` using the canonical rule
-    — all ``FAIL_TO_PASS`` succeed and all ``PASS_TO_PASS`` succeed, with no
-    failures. Returns ``None`` when the instance is absent from the report (could
-    not be graded — e.g. the patch failed to apply and the harness recorded
-    nothing conclusive).
+    Robust across report shapes:
+
+    * **Summary report** (swebench >= 2.x ``make_run_report`` output) — has
+      ``resolved_ids`` / ``unresolved_ids`` / ``error_ids`` lists. Resolved iff
+      the id is in ``resolved_ids``; ``False`` if it's in any not-resolved list;
+      ``None`` if absent (not evaluated).
+    * **Per-instance report** — ``{instance_id: {resolved | tests_status}}``;
+      honors an explicit ``resolved`` boolean, else derives from ``tests_status``
+      (all ``FAIL_TO_PASS`` and ``PASS_TO_PASS`` succeed, no failures).
+
+    Returns ``None`` when the instance cannot be found (not graded).
     """
+    # Summary shape first (the modern harness output).
+    if "resolved_ids" in report:
+        if instance_id in (report.get("resolved_ids") or []):
+            return True
+        for key in ("unresolved_ids", "error_ids", "incomplete_ids", "empty_patch_ids"):
+            if instance_id in (report.get(key) or []):
+                return False
+        return None
+
     entry = report.get(instance_id)
     if entry is None:
         # Some reports nest under a top-level key; also accept a flat shape.
@@ -171,12 +185,14 @@ class SWEBenchDockerGrader:
         or Docker is not present.
         """
         try:
-            from swebench.harness.run_evaluation import run_evaluation  # type: ignore
+            from swebench.harness import run_evaluation as _re  # type: ignore
         except Exception as exc:
             raise _Unavailable(
                 "SWE-bench grading requires the optional 'swebench' package and "
                 "a running Docker daemon. Install with `pip install memeval[swebench]` "
-                "and ensure Docker is available, or pass on_unavailable='skip'."
+                "and ensure Docker is available, or pass on_unavailable='skip'. "
+                "Note: swebench is Linux-only (imports `resource`); on Windows run "
+                "the eval from WSL."
             ) from exc
 
         import tempfile
@@ -187,27 +203,40 @@ class SWEBenchDockerGrader:
         with tempfile.TemporaryDirectory() as tmp:
             preds_path = Path(tmp) / "predictions.json"
             preds_path.write_text(json.dumps([pred]), encoding="utf-8")
-            # run_evaluation writes <model_name>.<run_id>.json and returns its path
-            # (signature stable across recent swebench releases).
-            report_path = run_evaluation(
+            report_path = self._invoke(_re, iid, str(preds_path), tmp)
+            data = json.loads(Path(report_path).read_text(encoding="utf-8"))
+        return data
+
+    def _invoke(self, _re: Any, iid: str, preds_path: str, report_dir: str):  # pragma: no cover
+        """Call the swebench evaluation entry point across version differences.
+
+        swebench >= 4.x exposes ``main`` (returns the summary-report path) with a
+        long required-arg list; older releases expose ``run_evaluation``. Try the
+        modern entry point first, then fall back.
+        """
+        if hasattr(_re, "main"):
+            return _re.main(
                 dataset_name=self.dataset_name,
                 split="test",
                 instance_ids=[iid],
-                predictions_path=str(preds_path),
+                predictions_path=preds_path,
                 max_workers=self.max_workers,
+                force_rebuild=False,
+                cache_level="env",
+                clean=False,
+                open_file_limit=4096,
                 run_id=self.run_id,
                 timeout=self.timeout,
+                namespace=None,
+                rewrite_reports=False,
+                modal=False,
+                report_dir=report_dir,
             )
-            data = json.loads(Path(report_path).read_text(encoding="utf-8"))
-        # Normalize to {instance_id: entry}. Official reports use this shape or a
-        # summary with a nested per-instance section.
-        if iid in data:
-            return data
-        for key in ("results", "instances", "report"):
-            sub = data.get(key)
-            if isinstance(sub, dict) and iid in sub:
-                return sub
-        return data
+        return _re.run_evaluation(  # older API
+            dataset_name=self.dataset_name, split="test", instance_ids=[iid],
+            predictions_path=preds_path, max_workers=self.max_workers,
+            run_id=self.run_id, timeout=self.timeout,
+        )
 
 
 class _Unavailable(Exception):
