@@ -250,7 +250,7 @@ def load_key_config(path: str | Path) -> dict[str, dict[str, Any]]:
 
     Captains (baked into keys.example.json):
       SWE-Bench-CL=Keith, LongMemEval=Ken, SWE-ContextBench=Brent,
-      MemoryAgentBench=Scott.
+      MemoryAgentBench=Scott B.
 
     Keys whose name starts with ``_`` are treated as comments and skipped
     (lets the example file carry inline documentation as a ``"_comment"`` field

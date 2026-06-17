@@ -1,4 +1,4 @@
-# memeval — AI Agent Memory Harness evaluation infra
+# memeval — AI Agent Memory Harness (codename: Cookbook Memory) evaluation infra
 
 Evaluation infrastructure for the **AI Agent Memory Harness**.
 
@@ -215,7 +215,7 @@ lives in `memeval/config/keys.example.json`:
 | `swe_bench_cl`       | Keith   | `ANTHROPIC_API_KEY_KEITH`   | 50.0         |
 | `longmemeval`        | Ken     | `ANTHROPIC_API_KEY_KEN`     | 50.0         |
 | `swe_contextbench`   | Brent   | `ANTHROPIC_API_KEY_BRENT`   | 50.0         |
-| `memoryagentbench`   | Scott   | `ANTHROPIC_API_KEY_SCOTT`   | 50.0         |
+| `memoryagentbench`   | Scott B.   | `ANTHROPIC_API_KEY_SCOTT`   | 50.0         |
 
 `api_key_env` names the **environment variable** that holds the key — the key
 value lives in your environment, never in the file. Copy the example, fill in

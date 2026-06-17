@@ -1,4 +1,4 @@
-# AI Agent Memory Harness
+# AI Agent Memory Harness (codename: Cookbook Memory)
 
 A project site (GitHub Pages) for a **persistent memory harness for long-running coding agents**.
 

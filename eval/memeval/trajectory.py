@@ -19,7 +19,7 @@ There are two ways to produce a Trajectory, and both are supported:
    the FROZEN-contract entry point that other workstreams call.
 
 Reading is symmetric: :func:`read_trajectories` streams one Trajectory per
-line (the dreaming worker, Scott, consumes this), and
+line (the dreaming worker, Scott B., consumes this), and
 :func:`read_trajectory_list` materializes them.
 
 On-disk format (the contract the dreaming worker reads)

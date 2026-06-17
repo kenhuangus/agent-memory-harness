@@ -1,0 +1,49 @@
+# CODEOWNERS — Cookbook Memory (agent-memory-harness)
+#
+# Every PR that touches a path needs that path's owner to approve. Combined with
+# branch protection ("Require review from Code Owners"), this enforces the
+# one-owner-per-area rule and the frozen-contract sign-off.
+#
+# ⚠️ SETUP TODO: replace the placeholder handles (@keith, @brent, @scott-b) with
+# the developers' REAL GitHub usernames and add all four as repo collaborators
+# (Settings → Collaborators & teams). Until then only @kenhuangus is a valid
+# owner; branch protection runs with enforce_admins OFF so @kenhuangus can still
+# merge during bootstrap. Turn enforce_admins ON once the team is added.
+#
+# Last match wins — keep general rules first, specific paths last.
+
+# ── Default owner for anything not matched below ──
+*                               @kenhuangus
+
+# ── FROZEN CONTRACT (Day-3 freeze): change ONLY via a [CONTRACT] PR with all owners' sign-off ──
+/eval/memeval/schema.py         @kenhuangus @keith @brent @scott-b
+/eval/memeval/protocols.py      @kenhuangus @keith @brent @scott-b
+
+# ── Keith — harness architecture + OpenCode integration ──
+/eval/memeval/harness.py        @keith
+/eval/memeval/models.py         @keith
+/eval/memeval/cli.py            @keith
+
+# ── Ken — evaluation infrastructure (the eval/ package) ──
+/eval/memeval/loaders/          @kenhuangus
+/eval/memeval/metrics.py        @kenhuangus
+/eval/memeval/cost.py           @kenhuangus
+/eval/memeval/trajectory.py     @kenhuangus
+/eval/tests/                    @kenhuangus
+/eval/pyproject.toml            @kenhuangus
+/eval/README.md                 @kenhuangus
+
+# ── Brent — storage backends + retrieval router (dirs created on his first commit) ──
+/eval/memeval/stores/           @brent
+/eval/memeval/router.py         @brent
+
+# ── Scott B. — async "dreaming": dedup, conflict resolution, governance ──
+/eval/memeval/dreaming/         @scott-b
+
+# ── Shared: static site + the three contract docs (collective sign-off to change) ──
+/*.html                         @kenhuangus
+/assets/                        @kenhuangus
+/project-plan.md                @kenhuangus
+/prd.md                         @kenhuangus @keith @brent @scott-b
+/plan.md                        @kenhuangus @keith @brent @scott-b
+/architecture.md                @kenhuangus @keith @brent @scott-b
