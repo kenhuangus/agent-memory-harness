@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Implementation · AI Agent Memory Harness</title>
+<meta name="description" content="Implementation reference: the memory-item schema, storage interface, per-backend schemas, router contract, the zooming worker, the ranking formula, and the evaluation protocol.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+<script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html"><span class="mark">M</span><span>Memory Harness<small>persistent memory for coding agents</small></span></a>
+    <button class="nav-toggle" aria-label="Toggle navigation">☰</button>
+    <nav class="nav-links">
+      <a href="index.html">Overview</a>
+      <a href="plan.html">Plan</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="benchmarks.html">Benchmarks</a>
+      <a href="implementation.html">Implementation</a>
+      <a href="results.html">Results</a>
+      <a class="nav-cta" href="https://github.com/" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<section class="page-head">
+  <div class="wrap">
+    <div class="crumb"><a href="index.html">Overview</a> / Implementation</div>
+    <h1>Implementation reference</h1>
+    <p class="lead">Contracts the four workstreams build against — the memory-item schema, the storage interface,
+      per-backend schemas, the router and zooming contracts, and the evaluation protocol. Pseudocode is illustrative,
+      not prescriptive.</p>
+  </div>
+</section>
+
+<!-- MEMORY ITEM -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">The unit of memory</div>
+      <h2>Memory-item schema</h2>
+      <p>Every memory — wherever it is stored — shares one shape. This is what the persistence layer writes and the
+        zooming component reconciles.</p>
+    </div>
+<pre><span class="c"># A memory item, shown as Markdown YAML frontmatter</span>
+id: mem_8f2a1c
+content: "Forward Windows env vars into WSL login shells via WSLENV."
+created_at: 2026-06-16T22:14:05Z
+session: sess_2026-06-16_a
+relevancy: 0.82            <span class="c"># 0..1, decays over time</span>
+source: agent_step        <span class="c"># agent_step | user | tool | reconciled</span>
+tags: [wsl, env, secrets]
+backends: [markdown, sqlite]
+status: active            <span class="c"># active | superseded | blacklisted</span>
+supersedes: null          <span class="c"># id of the item this replaces, if any</span></pre>
+  </div>
+</section>
+
+<!-- STORAGE INTERFACE -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Person 1 owns this</div>
+      <h2>Storage interface</h2>
+      <p>The single abstraction every backend implements. Freezing this on day 3 is what lets the four streams build
+        in parallel.</p>
+    </div>
+<pre><span class="k">class</span> MemoryStore(Protocol):
+    <span class="k">def</span> write(self, item: MemoryItem) -&gt; str: ...        <span class="c"># returns id</span>
+    <span class="k">def</span> get(self, id: str) -&gt; MemoryItem | None: ...
+    <span class="k">def</span> search(self, query: Query, k: int = 8) -&gt; list[Hit]: ...
+    <span class="k">def</span> delete(self, id: str) -&gt; None: ...
+    <span class="k">def</span> all(self) -&gt; Iterable[MemoryItem]: ...           <span class="c"># for the offline zooming sweep</span></pre>
+    <div class="callout fade-up">
+      <span class="ic">🧩</span>
+      <div><p style="margin:0">Backends are swappable: <code>MarkdownStore</code>, <code>SqliteVectorStore</code> and
+        <code>GraphStore</code> each satisfy this interface, so the orchestrator and zooming worker never depend on a
+        concrete store.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- BACKEND SCHEMAS -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Person 3 owns this</div>
+      <h2>Per-backend schema &amp; index</h2>
+    </div>
+    <div class="grid grid-2">
+      <div>
+        <h3 class="a2">SQLite + vectors</h3>
+<pre><span class="k">CREATE TABLE</span> memory (
+  id         TEXT PRIMARY KEY,
+  content    TEXT NOT NULL,
+  embedding  BLOB,        <span class="c">-- float32[d] → HNSW/FAISS</span>
+  created_at TEXT,
+  relevancy  REAL,
+  session    TEXT,
+  status     TEXT DEFAULT 'active'
+);
+<span class="k">CREATE INDEX</span> idx_session ON memory(session);</pre>
+        <p class="note">Embed on write, mirror the vector into an HNSW/FAISS ANN index, hydrate rows by id on hit.</p>
+      </div>
+      <div>
+        <h3 class="a4">Graph store (Cypher-style)</h3>
+<pre>(:Memory {id, content, created_at})
+
+(:Memory)-[:RELATES_TO]-&gt;(:Memory)
+(:Memory)-[:CONTRADICTS]-&gt;(:Memory)
+(:Memory)-[:SUPERSEDES]-&gt;(:Memory)</pre>
+        <p class="note">Typed traversal index over node/edge types; bound traversals by depth or relevancy.</p>
+        <h3 class="a1" style="margin-top:22px">Markdown</h3>
+<pre>memories/&lt;session&gt;/mem_8f2a1c.md
+inverted_index.json   <span class="c"># keyword → [file paths]</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ROUTER + ZOOMING -->
+<section class="section">
+  <div class="wrap">
+    <div class="grid grid-2" style="align-items:start">
+      <div>
+        <div class="eyebrow">Person 3</div>
+        <h2>Router contract</h2>
+<pre><span class="k">def</span> route(query: Query) -&gt; Backend:
+    <span class="k">if</span> query.kind == <span class="s">"relationship"</span>:
+        <span class="k">return</span> GRAPH
+    <span class="k">if</span> query.needs_semantic:
+        <span class="k">return</span> VECTOR
+    <span class="k">return</span> MARKDOWN   <span class="c"># literal recall</span></pre>
+        <p class="note">Start rule-based; later swap the body for a learned classifier over the query embedding +
+          metadata. Same signature, no caller changes.</p>
+      </div>
+      <div>
+        <div class="eyebrow">Person 4</div>
+        <h2>Zooming worker</h2>
+<pre><span class="k">def</span> zoom(store: MemoryStore) -&gt; Governance:
+    items = list(store.all())
+    merge_duplicates(items)      <span class="c"># exact·semantic·near</span>
+    resolve_conflicts(items)     <span class="c"># recency·conf·source</span>
+    gov = session_rules(items)   <span class="c"># know·do·blacklist</span>
+    prune(items)                 <span class="c"># decay + caps</span>
+    <span class="k">return</span> gov</pre>
+        <p class="note">Runs asynchronously when the agent is idle; emits a conflict-free state + the per-session
+          governance object the next run loads.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- RANKING + METRICS -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Person 1 + Person 2</div>
+      <h2>Ranking &amp; metric definitions</h2>
+    </div>
+    <div class="grid grid-2" style="align-items:start">
+      <div>
+        <h3>Retrieval ranking</h3>
+<pre>score(item, q) = w_r · recency(item)
+              + w_s · relevancy(item, q)
+
+recency(item)  = exp(-Δt / τ)     <span class="c"># freshness decay</span>
+relevancy(i,q) = cos(emb_i, emb_q)</pre>
+      </div>
+      <div>
+        <h3>The four metrics</h3>
+        <ul>
+          <li><strong class="a2">Recency</strong> — % of queries where the freshest relevant item is ranked #1.</li>
+          <li><strong class="a3">Efficiency</strong> — memory tokens ÷ total tokens; target <code>&lt; 10%</code> overhead.</li>
+          <li><strong class="a4">Relevancy</strong> — mean cosine of retrieved items to query; target <code>&gt; 0.7</code>.</li>
+          <li><strong class="a1">Accuracy</strong> — task success rate, memory-on vs memory-off.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- EVAL PROTOCOL -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Person 2 owns this</div>
+      <h2>Evaluation protocol</h2>
+      <p>One controlled grid per benchmark. The cell that matters: does <em>Haiku + harness</em> clear
+        <em>Opus 4.8 baseline</em>?</p>
+    </div>
+    <div class="table-wrap fade-up">
+      <table>
+        <thead><tr><th>Run</th><th>Model</th><th>Memory</th><th>Role</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Treatment</strong></td><td>Haiku</td><td class="check">on</td><td>The hypothesis under test</td></tr>
+          <tr><td>Lower bound</td><td>Haiku</td><td class="dash">off</td><td>How far memory lifts the small model</td></tr>
+          <tr><td>Target</td><td>Opus 4.8</td><td class="dash">off</td><td>The bar to beat</td></tr>
+          <tr><td>Reference</td><td>Sonnet</td><td class="dash">off</td><td>Middle-tier sanity check</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note" style="margin-top:14px">Hold prompts, tools and task order fixed across runs; log every trajectory
+      (written / retrieved / used) for reproducibility, and report deltas with a significance test.</p>
+  </div>
+</section>
+
+<!-- REPO LAYOUT -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Where things live</div>
+      <h2>Suggested repo layout</h2>
+    </div>
+<pre>agent-memory-harness/
+├── index.html              <span class="c"># this site (GitHub Pages)</span>
+├── assets/{css,js,img}/    <span class="c"># style.css · main.js · architecture.svg</span>
+├── harness/
+│   ├── persistence.py      <span class="c"># P1 — write path</span>
+│   ├── orchestrator.py     <span class="c"># P1 — rank · dedup · return</span>
+│   ├── router.py           <span class="c"># P3 — dispatch</span>
+│   ├── stores/
+│   │   ├── markdown_store.py
+│   │   ├── sqlite_store.py
+│   │   └── graph_store.py  <span class="c"># P3 — backends</span>
+│   └── zooming.py          <span class="c"># P4 — async curation</span>
+├── eval/
+│   ├── datasets/           <span class="c"># P2 — the 4 benchmarks</span>
+│   ├── metrics.py
+│   └── run_baselines.py
+└── README.md</pre>
+    <p class="center" style="margin-top:24px"><a class="btn btn-primary" href="results.html">See the results template →</a></p>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="wrap footer-grid">
+    <div>
+      <a class="brand" href="index.html"><span class="mark">M</span><span>Memory Harness</span></a>
+      <p style="margin-top:14px;max-width:34ch;">Persistent, self-curating memory for long-running coding agents.</p>
+    </div>
+    <div class="cols">
+      <div class="col"><h5>Project</h5><a href="index.html">Overview</a><a href="plan.html">2-week plan</a><a href="architecture.html">Architecture</a></div>
+      <div class="col"><h5>Reference</h5><a href="benchmarks.html">Benchmarks</a><a href="implementation.html">Implementation</a><a href="results.html">Results</a></div>
+    </div>
+  </div>
+  <div class="wrap" style="margin-top:30px;"><span class="note">© <span data-year>2026</span> AI Agent Memory Harness project.</span></div>
+</footer>
+
+<script src="assets/js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Results · AI Agent Memory Harness</title>
+<meta name="description" content="Results template for the memory harness: per-benchmark tables comparing Haiku with memory against Opus 4.8 without, across recency, efficiency, relevancy and accuracy.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+<script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html"><span class="mark">M</span><span>Memory Harness<small>persistent memory for coding agents</small></span></a>
+    <button class="nav-toggle" aria-label="Toggle navigation">☰</button>
+    <nav class="nav-links">
+      <a href="index.html">Overview</a>
+      <a href="plan.html">Plan</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="benchmarks.html">Benchmarks</a>
+      <a href="implementation.html">Implementation</a>
+      <a href="results.html">Results</a>
+      <a class="nav-cta" href="https://github.com/" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<section class="page-head">
+  <div class="wrap">
+    <div class="crumb"><a href="index.html">Overview</a> / Results</div>
+    <h1>Results &amp; metrics</h1>
+    <p class="lead">This page is the live scoreboard. It is intentionally empty until the day-10 runs land — the
+      template below is what we fill in.</p>
+  </div>
+</section>
+
+<!-- STATUS -->
+<section class="section">
+  <div class="wrap">
+    <div class="callout warn fade-up">
+      <span class="ic">⏳</span>
+      <div>
+        <p style="color:var(--text);font-weight:600;margin-bottom:4px">Status: awaiting first run</p>
+        <p style="margin:0">Numbers populate after the week-2 sprint. Until then, every cell reads <code>—</code>.
+          Replace the placeholders below with measured values and commit.</p>
+      </div>
+    </div>
+
+    <div class="stats" style="margin-top:34px">
+      <div class="stat"><div class="n">—</div><div class="l">Haiku + memory · accuracy</div></div>
+      <div class="stat"><div class="n">—</div><div class="l">Opus 4.8 baseline · accuracy</div></div>
+      <div class="stat"><div class="n">—</div><div class="l">Δ gap closed</div></div>
+      <div class="stat"><div class="n">0 / 4</div><div class="l">Benchmarks where Haiku+mem &gt; Opus</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- SUCCESS CRITERION -->
+<section class="section">
+  <div class="wrap">
+    <div class="callout fade-up">
+      <span class="ic">🎯</span>
+      <div><p style="margin:0"><strong>We declare success</strong> when Haiku + the memory harness beats the Opus 4.8
+        no-memory baseline on <strong>at least two</strong> of the four benchmarks, without blowing the efficiency
+        budget (memory overhead under ~10%).</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- PER-BENCHMARK TEMPLATES -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Fill me in</div>
+      <h2>Per-benchmark scoreboard</h2>
+      <p>One table per benchmark. Bold the treatment row when it clears the Opus target.</p>
+    </div>
+
+    <h3 style="margin-top:8px">MemoryAgentBench</h3>
+    <div class="table-wrap fade-up" style="margin-bottom:30px">
+      <table>
+        <thead><tr><th>Run</th><th>Recency</th><th>Efficiency</th><th>Relevancy</th><th>Accuracy</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Haiku + harness</strong></td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td>Haiku (no memory)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td>Opus 4.8 (no memory)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td>Sonnet (no memory)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>LongMemEval</h3>
+    <div class="table-wrap fade-up" style="margin-bottom:30px">
+      <table>
+        <thead><tr><th>Run</th><th>Recency</th><th>Efficiency</th><th>Relevancy</th><th>Accuracy</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Haiku + harness</strong></td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td>Haiku (no memory)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td>Opus 4.8 (no memory)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td>Sonnet (no memory)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>SWE-ContextBench</h3>
+    <div class="table-wrap fade-up" style="margin-bottom:30px">
+      <table>
+        <thead><tr><th>Run</th><th>Recency</th><th>Efficiency</th><th>Relevancy</th><th>Accuracy</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Haiku + harness</strong></td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td>Haiku (no memory)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td>Opus 4.8 (no memory)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td>Sonnet (no memory)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>SWE-Bench-CL</h3>
+    <div class="table-wrap fade-up">
+      <table>
+        <thead><tr><th>Run</th><th>Recency</th><th>Efficiency</th><th>Relevancy</th><th>Accuracy</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Haiku + harness</strong></td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td>Haiku (no memory)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td>Opus 4.8 (no memory)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td>Sonnet (no memory)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="note" style="margin-top:18px">Tip: keep raw trajectory logs and the exact dataset commit hash next to
+      each number so any result can be reproduced from <code>eval/run_baselines.py</code>.</p>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="wrap footer-grid">
+    <div>
+      <a class="brand" href="index.html"><span class="mark">M</span><span>Memory Harness</span></a>
+      <p style="margin-top:14px;max-width:34ch;">Persistent, self-curating memory for long-running coding agents.</p>
+    </div>
+    <div class="cols">
+      <div class="col"><h5>Project</h5><a href="index.html">Overview</a><a href="plan.html">2-week plan</a><a href="architecture.html">Architecture</a></div>
+      <div class="col"><h5>Reference</h5><a href="benchmarks.html">Benchmarks</a><a href="implementation.html">Implementation</a><a href="results.html">Results</a></div>
+    </div>
+  </div>
+  <div class="wrap" style="margin-top:30px;"><span class="note">© <span data-year>2026</span> AI Agent Memory Harness project.</span></div>
+</footer>
+
+<script src="assets/js/main.js"></script>
+</body>
+</html>

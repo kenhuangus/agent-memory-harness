@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Architecture · AI Agent Memory Harness</title>
+<meta name="description" content="The four-module memory harness: persistence, intelligent router, retrieval orchestrator and the async zooming component — plus per-backend indexing for fast retrieval.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+<script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html"><span class="mark">M</span><span>Memory Harness<small>persistent memory for coding agents</small></span></a>
+    <button class="nav-toggle" aria-label="Toggle navigation">☰</button>
+    <nav class="nav-links">
+      <a href="index.html">Overview</a>
+      <a href="plan.html">Plan</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="benchmarks.html">Benchmarks</a>
+      <a href="implementation.html">Implementation</a>
+      <a href="results.html">Results</a>
+      <a class="nav-cta" href="https://github.com/" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<section class="page-head">
+  <div class="wrap">
+    <div class="crumb"><a href="index.html">Overview</a> / Architecture</div>
+    <h1>Architecture</h1>
+    <p class="lead">A coding agent writes memories as it works; a router sends each query to the one backend that
+      answers it best; an offline worker keeps the store clean. Three storage backends sit behind a single interface.</p>
+  </div>
+</section>
+
+<!-- DIAGRAM -->
+<section class="section">
+  <div class="wrap">
+    <div class="card" style="padding:18px;background:var(--bg-elev)">
+      <svg viewBox="0 0 1100 720" xmlns="http://www.w3.org/2000/svg" font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" role="img" aria-label="AI Agent Memory Harness architecture diagram">
+        <defs>
+          <linearGradient id="g-agent" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6366f1"/><stop offset="1" stop-color="#22d3ee"/></linearGradient>
+          <linearGradient id="g-bus" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#1b2433"/><stop offset="1" stop-color="#243044"/></linearGradient>
+          <marker id="ah-m" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6d7e95"/></marker>
+          <marker id="ah-b" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#8b9dff"/></marker>
+          <marker id="ah-t" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#2dd4bf"/></marker>
+          <marker id="ah-a" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#fbbf24"/></marker>
+          <marker id="ah-p" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#f472b6"/></marker>
+          <marker id="ah-t2" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto"><path d="M7,0 L0,3 L7,6 Z" fill="#2dd4bf"/></marker>
+          <marker id="ah-p2" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto"><path d="M7,0 L0,3 L7,6 Z" fill="#f472b6"/></marker>
+          <marker id="ah-m2" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto"><path d="M7,0 L0,3 L7,6 Z" fill="#6d7e95"/></marker>
+        </defs>
+        <rect x="0" y="0" width="1100" height="720" rx="16" fill="#0b0e14"/>
+        <g>
+          <rect x="400" y="36" width="300" height="78" rx="14" fill="#121826" stroke="url(#g-agent)" stroke-width="1.6"/>
+          <text x="550" y="68" text-anchor="middle" fill="#e7edf5" font-size="18" font-weight="700">Coding Agent</text>
+          <text x="550" y="92" text-anchor="middle" fill="#9fb0c5" font-size="12.5">OpenCode harness · write · query · session lifecycle</text>
+        </g>
+        <rect x="44" y="158" width="1012" height="286" rx="16" fill="#0e1320" stroke="#243044" stroke-width="1.2"/>
+        <text x="66" y="184" fill="#6d7e95" font-size="12" font-weight="700" letter-spacing="2">AI MEMORY HARNESS</text>
+        <g>
+          <rect x="70" y="200" width="300" height="222" rx="12" fill="#121826" stroke="#243044"/>
+          <rect x="70" y="200" width="300" height="4" rx="2" fill="#8b9dff"/>
+          <circle cx="96" cy="232" r="13" fill="#1a2233" stroke="#8b9dff"/><text x="96" y="237" text-anchor="middle" fill="#8b9dff" font-size="13" font-weight="700">1</text>
+          <text x="120" y="237" fill="#e7edf5" font-size="16" font-weight="700">Persistence Layer</text>
+          <text x="90" y="268" fill="#9fb0c5" font-size="12.5">Write path — decides what, when</text>
+          <text x="90" y="287" fill="#9fb0c5" font-size="12.5">&amp; where to save. Tags each item:</text>
+          <text x="90" y="318" fill="#cbd5e8" font-size="12.5">• timestamp · relevancy score</text>
+          <text x="90" y="340" fill="#cbd5e8" font-size="12.5">• session tag · provenance</text>
+          <text x="90" y="362" fill="#cbd5e8" font-size="12.5">• versioning + dedup hints</text>
+          <text x="90" y="397" fill="#6d7e95" font-size="11.5" font-style="italic">save → MD · SQLite · Graph</text>
+        </g>
+        <g>
+          <rect x="400" y="200" width="300" height="98" rx="12" fill="#121826" stroke="#243044"/>
+          <rect x="400" y="200" width="300" height="4" rx="2" fill="#2dd4bf"/>
+          <circle cx="426" cy="232" r="13" fill="#16241f" stroke="#2dd4bf"/><text x="426" y="237" text-anchor="middle" fill="#2dd4bf" font-size="13" font-weight="700">3</text>
+          <text x="450" y="237" fill="#e7edf5" font-size="16" font-weight="700">Retrieval Orchestrator</text>
+          <text x="420" y="266" fill="#9fb0c5" font-size="12.5">Unified query API → rank by</text>
+          <text x="420" y="285" fill="#9fb0c5" font-size="12.5">recency × relevancy → dedup → return</text>
+        </g>
+        <g>
+          <rect x="400" y="322" width="300" height="100" rx="12" fill="#121826" stroke="#243044"/>
+          <rect x="400" y="322" width="300" height="4" rx="2" fill="#fbbf24"/>
+          <circle cx="426" cy="354" r="13" fill="#241f12" stroke="#fbbf24"/><text x="426" y="359" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700">2</text>
+          <text x="450" y="359" fill="#e7edf5" font-size="16" font-weight="700">Intelligent Router</text>
+          <text x="420" y="388" fill="#9fb0c5" font-size="12.5">Classifies the query and routes to</text>
+          <text x="420" y="407" fill="#9fb0c5" font-size="12.5">the single best backend (rules/learned)</text>
+        </g>
+        <g>
+          <rect x="730" y="200" width="300" height="222" rx="12" fill="#121826" stroke="#243044"/>
+          <rect x="730" y="200" width="300" height="4" rx="2" fill="#f472b6"/>
+          <circle cx="756" cy="232" r="13" fill="#241622" stroke="#f472b6"/><text x="756" y="237" text-anchor="middle" fill="#f472b6" font-size="13" font-weight="700">4</text>
+          <text x="780" y="232" fill="#e7edf5" font-size="16" font-weight="700">Zooming Component</text>
+          <text x="780" y="250" fill="#f472b6" font-size="11" font-weight="600">ASYNC · OFFLINE</text>
+          <text x="752" y="288" fill="#cbd5e8" font-size="12.5">• Deduplicate across backends</text>
+          <text x="752" y="312" fill="#cbd5e8" font-size="12.5">• Resolve contradictions</text>
+          <text x="752" y="336" fill="#cbd5e8" font-size="12.5">• Session governance:</text>
+          <text x="766" y="356" fill="#9fb0c5" font-size="12">must-know · must-do · blacklist</text>
+          <text x="752" y="384" fill="#cbd5e8" font-size="12.5">• Selective retention &amp; pruning</text>
+        </g>
+        <rect x="70" y="468" width="960" height="34" rx="10" fill="url(#g-bus)" stroke="#243044"/>
+        <text x="550" y="490" text-anchor="middle" fill="#9fb0c5" font-size="12.5" font-weight="600">Unified Storage Interface · per-backend index</text>
+        <g>
+          <rect x="70" y="540" width="300" height="150" rx="12" fill="#121826" stroke="#243044"/>
+          <text x="220" y="578" text-anchor="middle" fill="#e7edf5" font-size="15" font-weight="700">Markdown + YAML</text>
+          <text x="220" y="604" text-anchor="middle" fill="#9fb0c5" font-size="12.5">Human-readable notes</text>
+          <text x="220" y="640" text-anchor="middle" fill="#8b9dff" font-size="12.5" font-weight="600">Index: inverted keyword map</text>
+          <text x="220" y="662" text-anchor="middle" fill="#6d7e95" font-size="11.5">keyword → file path</text>
+        </g>
+        <g>
+          <rect x="400" y="540" width="300" height="150" rx="12" fill="#121826" stroke="#243044"/>
+          <text x="550" y="578" text-anchor="middle" fill="#e7edf5" font-size="15" font-weight="700">SQLite + Vectors</text>
+          <text x="550" y="604" text-anchor="middle" fill="#9fb0c5" font-size="12.5">Semantic similarity search</text>
+          <text x="550" y="640" text-anchor="middle" fill="#2dd4bf" font-size="12.5" font-weight="600">Index: HNSW / FAISS ANN</text>
+          <text x="550" y="662" text-anchor="middle" fill="#6d7e95" font-size="11.5">embed → nearest neighbours</text>
+        </g>
+        <g>
+          <rect x="730" y="540" width="300" height="150" rx="12" fill="#121826" stroke="#243044"/>
+          <text x="880" y="578" text-anchor="middle" fill="#e7edf5" font-size="15" font-weight="700">Graph Store</text>
+          <text x="880" y="604" text-anchor="middle" fill="#9fb0c5" font-size="12.5">Memory relationships &amp; conflicts</text>
+          <text x="880" y="640" text-anchor="middle" fill="#f472b6" font-size="12.5" font-weight="600">Index: typed traversal</text>
+          <text x="880" y="662" text-anchor="middle" fill="#6d7e95" font-size="11.5">node / edge type lookup</text>
+        </g>
+        <path d="M470,114 C420,150 300,160 235,200" fill="none" stroke="#8b9dff" stroke-width="1.8" marker-end="url(#ah-b)"/>
+        <rect x="316" y="150" width="56" height="20" rx="5" fill="#0b0e14"/><text x="344" y="164" text-anchor="middle" fill="#8b9dff" font-size="11.5" font-weight="600">write</text>
+        <line x1="536" y1="116" x2="536" y2="198" stroke="#2dd4bf" stroke-width="1.8" marker-end="url(#ah-t)"/>
+        <line x1="566" y1="198" x2="566" y2="116" stroke="#2dd4bf" stroke-width="1.8" marker-end="url(#ah-t2)"/>
+        <rect x="486" y="146" width="44" height="20" rx="5" fill="#0b0e14"/><text x="508" y="160" text-anchor="middle" fill="#2dd4bf" font-size="11.5" font-weight="600">query</text>
+        <rect x="572" y="146" width="50" height="20" rx="5" fill="#0b0e14"/><text x="597" y="160" text-anchor="middle" fill="#2dd4bf" font-size="11.5" font-weight="600">results</text>
+        <line x1="550" y1="298" x2="550" y2="320" stroke="#9fb0c5" stroke-width="1.6" marker-end="url(#ah-m)"/>
+        <line x1="220" y1="422" x2="220" y2="466" stroke="#8b9dff" stroke-width="1.8" marker-end="url(#ah-b)"/>
+        <line x1="550" y1="422" x2="550" y2="466" stroke="#fbbf24" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#ah-a)"/>
+        <rect x="556" y="434" width="92" height="20" rx="5" fill="#0b0e14"/><text x="602" y="448" fill="#fbbf24" font-size="11" font-weight="600" text-anchor="middle">route to 1 backend</text>
+        <line x1="880" y1="422" x2="880" y2="466" stroke="#f472b6" stroke-width="1.8" stroke-dasharray="2 4" marker-end="url(#ah-p)" marker-start="url(#ah-p2)"/>
+        <rect x="886" y="434" width="104" height="20" rx="5" fill="#0b0e14"/><text x="938" y="448" fill="#f472b6" font-size="11" font-weight="600" text-anchor="middle">async reconcile</text>
+        <line x1="220" y1="502" x2="220" y2="538" stroke="#6d7e95" stroke-width="1.6" marker-end="url(#ah-m)" marker-start="url(#ah-m2)"/>
+        <line x1="550" y1="502" x2="550" y2="538" stroke="#6d7e95" stroke-width="1.6" marker-end="url(#ah-m)" marker-start="url(#ah-m2)"/>
+        <line x1="880" y1="502" x2="880" y2="538" stroke="#6d7e95" stroke-width="1.6" marker-end="url(#ah-m)" marker-start="url(#ah-m2)"/>
+      </svg>
+    </div>
+    <div class="legend">
+      <span><i style="background:#8b9dff"></i> Write path</span>
+      <span><i style="background:#2dd4bf"></i> Query / results</span>
+      <span><i style="background:#fbbf24"></i> Router dispatch (one backend)</span>
+      <span><i style="background:#f472b6"></i> Async reconciliation</span>
+    </div>
+    <p class="note" style="margin-top:14px">The diagram is also available as a standalone file:
+      <a href="assets/img/architecture.svg" target="_blank" rel="noopener"><code>assets/img/architecture.svg</code></a>.</p>
+  </div>
+</section>
+
+<!-- DATA FLOWS -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Three flows</div>
+      <h2>How data moves</h2>
+    </div>
+    <div class="grid grid-3">
+      <div class="card bl1 fade-up">
+        <h3 class="a1">① Write</h3>
+        <p>On each agent step, the persistence layer captures a candidate memory, tags it (timestamp, relevancy,
+          session), and writes it through the storage interface to the appropriate backend(s).</p>
+      </div>
+      <div class="card bl2 fade-up">
+        <h3 class="a2">② Read</h3>
+        <p>The agent asks the orchestrator. The orchestrator calls the router, which picks one backend, fetches
+          candidates, then ranks by <code>recency × relevancy</code>, de-duplicates, and returns a tight context.</p>
+      </div>
+      <div class="card bl4 fade-up">
+        <h3 class="a4">③ Curate (offline)</h3>
+        <p>When the agent is idle, the zooming component sweeps every backend: merges duplicates, resolves
+          contradictions, refreshes session governance, and prunes — leaving a conflict-free state for next session.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ROUTER -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">The dispatch layer</div>
+      <h2>Why a router, not a fan-out</h2>
+      <p class="lead">Querying all three backends in parallel is wasteful and noisy. The router is a smart dispatcher
+        that reads the shape of the query and sends it to the single backend most likely to answer fast and well.</p>
+    </div>
+    <div class="grid grid-2">
+      <div class="card fade-up">
+        <h3>Rule-based (start here)</h3>
+        <ul>
+          <li><strong>Relationship / "what relates to X"</strong> → Graph store traversal.</li>
+          <li><strong>Semantic / "have I seen something like this"</strong> → SQLite vector search.</li>
+          <li><strong>Literal keyword / exact recall</strong> → Markdown inverted index.</li>
+        </ul>
+        <p class="note">Deterministic, debuggable, zero training data needed on day one.</p>
+      </div>
+      <div class="card fade-up">
+        <h3>Learned (upgrade path)</h3>
+        <p>A lightweight classifier over the query embedding + metadata (query type, recency need, graph
+          complexity) predicts which backend answers fastest and most accurately.</p>
+        <p>Instrument every decision — backend chosen, latency, hit accuracy — and retrain periodically so routing
+          improves with the access patterns the team actually sees.</p>
+      </div>
+    </div>
+    <div class="callout fade-up" style="margin-top:20px">
+      <span class="ic">🧭</span>
+      <div><p style="margin:0">The router sits as middleware between the retrieval orchestrator and the backends. It is the
+        intelligent dispatch layer — a single, learnable bottleneck that trades a tiny classification cost for large
+        savings in latency and retrieved-context noise.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- INDEXING -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Fast retrieval</div>
+      <h2>Indexing per backend</h2>
+      <p class="lead">Each store keeps its own index so the router's chosen backend returns candidates in
+        milliseconds — not by scanning everything.</p>
+    </div>
+    <div class="grid grid-3">
+      <div class="card bl2 fade-up">
+        <div class="kicker a2">SQLite + vectors</div>
+        <h3>Dense ANN index</h3>
+        <p>Embed each item on write and insert into an HNSW / FAISS index beside the SQLite row. On query, embed,
+          run approximate nearest-neighbour search, get IDs back in <code>&lt;100ms</code>, then hydrate metadata
+          from SQLite — even at thousands of memories.</p>
+      </div>
+      <div class="card bl1 fade-up">
+        <div class="kicker a1">Markdown</div>
+        <h3>Inverted keyword index</h3>
+        <p>A hash map from keywords / semantic clusters to file paths. On write, extract key terms and update the
+          map; on query, look up matching files then lightly re-rank. Slower than vectors, ideal for literal recall.</p>
+      </div>
+      <div class="card bl4 fade-up">
+        <div class="kicker a4">Graph store</div>
+        <h3>Typed traversal index</h3>
+        <p>Pre-computed indexes over node and relationship types. Start from a query node and follow indexed edges
+          bounded by depth or a relevancy threshold — what graph DBs like Neo4j do natively.</p>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <p class="center"><a class="btn btn-ghost" href="implementation.html">Schemas, APIs &amp; the eval protocol →</a></p>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="wrap footer-grid">
+    <div>
+      <a class="brand" href="index.html"><span class="mark">M</span><span>Memory Harness</span></a>
+      <p style="margin-top:14px;max-width:34ch;">Persistent, self-curating memory for long-running coding agents.</p>
+    </div>
+    <div class="cols">
+      <div class="col"><h5>Project</h5><a href="index.html">Overview</a><a href="plan.html">2-week plan</a><a href="architecture.html">Architecture</a></div>
+      <div class="col"><h5>Reference</h5><a href="benchmarks.html">Benchmarks</a><a href="implementation.html">Implementation</a><a href="results.html">Results</a></div>
+    </div>
+  </div>
+  <div class="wrap" style="margin-top:30px;"><span class="note">© <span data-year>2026</span> AI Agent Memory Harness project.</span></div>
+</footer>
+
+<script src="assets/js/main.js"></script>
+</body>
+</html>
