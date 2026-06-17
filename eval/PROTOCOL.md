@@ -187,3 +187,22 @@ See [`../collaborate.html`](../collaborate.html).
    (and `--grader swebench` for CODE).
 3. Offline/echo runs reproduce exactly; live-model runs reproduce metric logic
    deterministically given identical model outputs (set the same model + `k`).
+
+## 11. Tracing (Langfuse, optional)
+
+Both run paths (`harness.run` and `agent.run_agent`) mirror each run to
+**Langfuse** when keys are present — one trace per task (retrieve / generate
+steps) plus a run-level span carrying the four metrics as scores. It is a
+**no-op** unless `langfuse` is installed *and* keys are set, so the offline path
+is untouched.
+
+```bash
+pip install -e ".[langfuse]"
+export LANGFUSE_PUBLIC_KEY=pk-... LANGFUSE_SECRET_KEY=sk-...
+export LANGFUSE_HOST=https://us.cloud.langfuse.com   # or LANGFUSE_BASE_URL; EU: https://cloud.langfuse.com
+python -m memeval.results run --benchmark longmemeval --model claude-haiku-4-5 --memory
+```
+
+On this machine the keys are already in the env (Windows + WSL) and set as repo
+secrets, so local runs and the **Benchmark run** Action trace automatically; a
+fork without `LANGFUSE_*` secrets simply skips tracing.

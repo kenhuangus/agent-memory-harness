@@ -77,6 +77,8 @@ jobs:
           if [ "${{ inputs.model }}" != "echo" ]; then pip install -e ".[anthropic]"; fi
           DS="${{ inputs.dataset }}"
           if [ -n "$DS" ] && [ ! -f "$DS" ]; then pip install -e ".[hf]"; fi
+          # Langfuse tracing is active only when the repo/fork has LANGFUSE_* secrets.
+          if [ -n "${{ secrets.LANGFUSE_PUBLIC_KEY }}" ]; then pip install -e ".[langfuse]"; fi
 
       - name: Resolve dataset (default to the bundled fixture)
         id: ds
@@ -101,6 +103,10 @@ jobs:
           SECRET_KMAZANEC: ${{ secrets.ANTHROPIC_API_KEY_KMAZANEC }}
           SECRET_BGIBSON1618: ${{ secrets.ANTHROPIC_API_KEY_BGIBSON1618 }}
           SECRET_NERDALERT58: ${{ secrets.ANTHROPIC_API_KEY_NERDALERT58 }}
+          # Langfuse tracing (no-op if these secrets are unset, e.g. in a fork).
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST }}
         run: |
           set -eo pipefail
           HANDLE_UP="$(printf '%s' '${{ github.actor }}' | tr '[:lower:]' '[:upper:]' | tr -cd 'A-Z0-9')"

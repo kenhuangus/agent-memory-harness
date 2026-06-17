@@ -61,6 +61,10 @@ embeddings = ["numpy>=1.26"]
 # Used by memeval.grader.SWEBenchDockerGrader; the offline path never imports it.
 swebench = ["swebench>=2.1.0"]
 
+# Langfuse Cloud tracing (memeval.tracing). Lazy + no-op unless keys are set, so
+# the offline path never imports it.
+langfuse = ["langfuse>=3.0"]
+
 # Convenience: everything needed for real (online, paid) runs.
 full = [
     "anthropic>=0.40.0",

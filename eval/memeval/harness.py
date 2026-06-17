@@ -48,6 +48,7 @@ from .loaders import get_loader
 from .metrics import compute_metrics, qa_match
 from .models import estimate_tokens
 from .protocols import MemoryStore, ModelAdapter
+from . import tracing
 from .schema import (
     Benchmark,
     MemoryItem,
@@ -307,6 +308,17 @@ def run(
     cost_usd = cost.spent_usd if cost is not None else 0.0
     partial = truncated or budget_hit or len(trajectories) < total_available
 
+    # Mirror the aggregate metrics into Langfuse as run-level scores (no-op when
+    # tracing is disabled). Matches the run_agent path so single-shot and
+    # multi-step runs trace identically.
+    with tracing.task_span(
+        f"run:{bench.value}:{cfg.label}",
+        metadata={"cost_usd": cost_usd, "n_tasks": len(trajectories), "partial": partial},
+    ) as rspan:
+        for _m in ("recency", "efficiency", "relevancy", "accuracy"):
+            rspan.score(_m, getattr(metrics, _m))
+    tracing.flush()
+
     return RunResult(
         benchmark=bench,
         config=cfg,
@@ -362,48 +374,62 @@ def _run_task(
     query_time = _task_query_time(task)
     step_ts = query_time if query_time is not None else 0.0
 
-    retrieved: list[RetrievedItem] = []
-    if memory:
-        # Ingest this task's sessions, then retrieve.
-        for sess in task.sessions:
-            store.write(MemoryItem.from_session(sess))
-        retrieved = store.search(task.question, k=k, as_of=query_time)
+    with tracing.task_span(
+        task.task_id,
+        input=task.question,
+        metadata={"benchmark": task.benchmark.value, "memory": memory, "model": model.name},
+    ) as tspan:
+        retrieved: list[RetrievedItem] = []
+        if memory:
+            # Ingest this task's sessions, then retrieve.
+            for sess in task.sessions:
+                store.write(MemoryItem.from_session(sess))
+            retrieved = store.search(task.question, k=k, as_of=query_time)
+            traj.add(
+                TrajectoryStep(
+                    step=0,
+                    kind="retrieve",
+                    content=task.question,
+                    timestamp=step_ts,
+                    retrieved=retrieved,
+                )
+            )
+            tspan.step(
+                "retrieve", "retrieve", input=task.question,
+                metadata={"k": len(retrieved), "hits": [
+                    {"id": h.item_id, "score": round(h.score, 4), "rank": h.rank}
+                    for h in retrieved
+                ]},
+            )
+
+        prompt = _build_prompt(task, retrieved)
+        text, tin, tout = model.generate(
+            prompt,
+            max_tokens=config.max_tokens,
+            temperature=config.temperature,
+        )
+
+        # Charge cost BEFORE recording the generate step so a budget breach aborts
+        # cleanly without a half-recorded trajectory committed to the run.
+        if cost is not None:
+            cost.add(model.name, tin, tout)  # may raise BudgetExceeded
+
         traj.add(
             TrajectoryStep(
                 step=0,
-                kind="retrieve",
-                content=task.question,
+                kind="generate",
+                content=text,
                 timestamp=step_ts,
-                retrieved=retrieved,
+                tokens_in=tin,
+                tokens_out=tout,
             )
         )
+        tspan.step("generate", "generate", output=text, tokens_in=tin, tokens_out=tout)
 
-    prompt = _build_prompt(task, retrieved)
-    text, tin, tout = model.generate(
-        prompt,
-        max_tokens=config.max_tokens,
-        temperature=config.temperature,
-    )
-
-    # Charge cost BEFORE recording the generate step so a budget breach aborts
-    # cleanly without a half-recorded trajectory committed to the run.
-    if cost is not None:
-        cost.add(model.name, tin, tout)  # may raise BudgetExceeded
-
-    traj.add(
-        TrajectoryStep(
-            step=0,
-            kind="generate",
-            content=text,
-            timestamp=step_ts,
-            tokens_in=tin,
-            tokens_out=tout,
-        )
-    )
-
-    traj.prediction = text
-    traj.success = _grade(task, text, grader)
-    traj.ended_at = clock()
+        traj.prediction = text
+        traj.success = _grade(task, text, grader)
+        traj.ended_at = clock()
+        tspan.update(output=text)
     return traj
 
 

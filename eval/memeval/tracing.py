@@ -14,9 +14,10 @@ Mirrors the lazy ``anthropic`` / ``datasets`` pattern used elsewhere.
 
 Enable a real run with::
 
-    pip install langfuse
+    pip install langfuse           # or: pip install memeval[langfuse]
     export LANGFUSE_PUBLIC_KEY=pk-...  LANGFUSE_SECRET_KEY=sk-...
-    # (optional) LANGFUSE_HOST=https://cloud.langfuse.com
+    # host: LANGFUSE_HOST (SDK-native) or LANGFUSE_BASE_URL (alias). For
+    # Langfuse Cloud US use https://us.cloud.langfuse.com (EU: https://cloud.langfuse.com).
 
 Then ``run_agent`` automatically emits one trace per task with nested step spans
 and attaches the four metrics as scores. Nothing to change at call sites.
@@ -40,6 +41,11 @@ _AS_TYPE = {
 }
 
 
+def _host() -> Optional[str]:
+    """Langfuse host: ``LANGFUSE_HOST`` (SDK-native) or ``LANGFUSE_BASE_URL`` alias."""
+    return os.getenv("LANGFUSE_HOST") or os.getenv("LANGFUSE_BASE_URL")
+
+
 def enabled() -> bool:
     """True iff Langfuse keys are present (the cheap gate before importing it)."""
     return bool(os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY"))
@@ -55,7 +61,10 @@ def _get_client() -> Any:
         return None
     try:  # pragma: no cover - exercised only when langfuse is installed
         from langfuse import Langfuse  # lazy: only when keys are set
-        _client = Langfuse()
+        # Pass host explicitly so LANGFUSE_BASE_URL works as well as the
+        # SDK-native LANGFUSE_HOST; keys come from the env the SDK already reads.
+        host = _host()
+        _client = Langfuse(host=host) if host else Langfuse()
     except Exception:
         _client = None  # never break a run because tracing failed
     return _client
