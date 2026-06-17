@@ -1,0 +1,32 @@
+[
+  {
+    "task_id": "scb_django_1",
+    "instance_id": "scb_django_1",
+    "group_id": "django_orm_ctx",
+    "language": "python",
+    "problem_statement": "Fix the null-pointer crash when filtering an empty queryset.",
+    "repo": "example/django-fork",
+    "base_commit": "aaaa1111",
+    "patch": "diff --git a/orm.py b/orm.py\n@@\n-    return qs.filter()\n+    return qs.filter() if qs else []",
+    "test_patch": "diff --git a/test_orm.py b/test_orm.py\n@@\n+def test_empty(): assert filter_empty() == []",
+    "fail_to_pass": ["test_orm.py::test_empty"],
+    "pass_to_pass": ["test_orm.py::test_basic"],
+    "hints_text": "The crash happens in orm.filter when the queryset is None."
+  },
+  {
+    "task_id": "scb_django_2",
+    "instance_id": "scb_django_2",
+    "group_id": "django_orm_ctx",
+    "language": "python",
+    "problem_statement": "Add an index hint to the same ORM filter path.",
+    "repo": "example/django-fork",
+    "base_commit": "aaaa2222",
+    "patch": "diff --git a/orm.py b/orm.py\n@@\n+    qs = qs.using_index('idx_main')",
+    "test_patch": "diff --git a/test_orm.py b/test_orm.py\n@@\n+def test_index(): assert uses_index()",
+    "fail_to_pass": ["test_orm.py::test_index"],
+    "pass_to_pass": ["test_orm.py::test_basic", "test_orm.py::test_empty"],
+    "context": [
+      {"session_id": "scb_ctx_prev", "content": "Earlier in this group we guarded the queryset against None in orm.filter.", "timestamp": "2024-01-01T00:00:00"}
+    ]
+  }
+]

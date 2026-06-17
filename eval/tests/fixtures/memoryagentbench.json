@@ -1,0 +1,45 @@
+[
+  {
+    "task_id": "mab_event_1",
+    "subset": "EventQA",
+    "competency": "EventQA",
+    "question": "Which city did the user move to for the new job?",
+    "answer": "Berlin",
+    "gold_memory_ids": ["mab_s_move"],
+    "sessions": [
+      {
+        "session_id": "mab_s_intro",
+        "content": "Discussed weekend plans and a hiking trip near the lake.",
+        "timestamp": "2023-01-05T09:00:00",
+        "index": 0
+      },
+      {
+        "session_id": "mab_s_move",
+        "content": "The user accepted an offer and relocated to Berlin for the new job.",
+        "timestamp": "2023-03-12T14:30:00",
+        "index": 1
+      }
+    ]
+  },
+  {
+    "task_id": "mab_fact_1",
+    "subset": "FactConsolidation",
+    "question": "What is the user's current favorite programming language?",
+    "answer": "Rust",
+    "gold_memory_ids": ["mab_s_update"],
+    "sessions": [
+      {
+        "session_id": "mab_s_old",
+        "content": "The user said their favorite programming language was Python.",
+        "timestamp": "2022-06-01T10:00:00",
+        "index": 0
+      },
+      {
+        "session_id": "mab_s_update",
+        "content": "The user now prefers Rust over everything else for systems work.",
+        "timestamp": "2024-02-20T16:45:00",
+        "index": 1
+      }
+    ]
+  }
+]

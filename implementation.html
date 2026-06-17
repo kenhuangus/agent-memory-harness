@@ -235,10 +235,10 @@ relevancy(i,q) = cos(emb_i, emb_q)</pre>
 │   │   ├── sqlite_store.py
 │   │   └── graph_store.py  <span class="c"># P3 — backends</span>
 │   └── dreaming.py          <span class="c"># P4 — async curation</span>
-├── eval/
-│   ├── datasets/           <span class="c"># P2 — the 4 benchmarks</span>
-│   ├── metrics.py
-│   └── run_baselines.py
+├── eval/                   <span class="c"># P2 — Ken's eval infra (built · 35 tests pass)</span>
+│   ├── memeval/            <span class="c"># loaders · metrics · trajectory · cost · models · harness · cli</span>
+│   ├── tests/              <span class="c"># offline smoke tests (stdlib-only)</span>
+│   └── pyproject.toml
 └── README.md</pre>
     <p class="center" style="margin-top:24px"><a class="btn btn-primary" href="results.html">See the results template →</a></p>
   </div>

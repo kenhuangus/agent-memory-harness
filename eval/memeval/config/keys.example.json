@@ -1,0 +1,7 @@
+{
+  "_comment": "Per-captain / per-benchmark sharded-eval config. Copy to keys.json and fill real env-var names; never commit real keys. api_key_env names the ENV VAR holding that captain's Anthropic key (the value lives in the environment, not here). budget_usd / budget_tokens cap CostTracker spend per shard. Prices in memeval.cost.PRICING are USD per MILLION tokens and are PLACEHOLDERS -- verify before real runs.",
+  "swe_bench_cl":     {"captain": "Keith", "api_key_env": "ANTHROPIC_API_KEY_KEITH", "budget_usd": 50.0, "budget_tokens": 50000000},
+  "longmemeval":      {"captain": "Ken",   "api_key_env": "ANTHROPIC_API_KEY_KEN",   "budget_usd": 50.0, "budget_tokens": 50000000},
+  "swe_contextbench": {"captain": "Brent", "api_key_env": "ANTHROPIC_API_KEY_BRENT", "budget_usd": 50.0, "budget_tokens": 50000000},
+  "memoryagentbench": {"captain": "Scott", "api_key_env": "ANTHROPIC_API_KEY_SCOTT", "budget_usd": 50.0, "budget_tokens": 50000000}
+}

@@ -1,0 +1,37 @@
+[
+  {
+    "instance_id": "astropy__astropy-1001",
+    "task_id": "astropy__astropy-1001",
+    "sequence": "astropy_seq",
+    "group_id": "astropy_seq",
+    "order": 0,
+    "position": 0,
+    "repo": "astropy/astropy",
+    "base_commit": "ccc01111",
+    "problem_statement": "Units conversion raises on dimensionless quantities.",
+    "patch": "diff --git a/units.py b/units.py\n@@\n+    if q.is_dimensionless: return q",
+    "test_patch": "diff --git a/test_units.py b/test_units.py\n@@\n+def test_dimensionless(): assert convert(1) == 1",
+    "fail_to_pass": ["test_units.py::test_dimensionless"],
+    "pass_to_pass": ["test_units.py::test_basic"],
+    "language": "python"
+  },
+  {
+    "instance_id": "astropy__astropy-1002",
+    "task_id": "astropy__astropy-1002",
+    "sequence": "astropy_seq",
+    "group_id": "astropy_seq",
+    "order": 1,
+    "position": 1,
+    "repo": "astropy/astropy",
+    "base_commit": "ccc02222",
+    "problem_statement": "Follow-up: dimensionless units should also format cleanly.",
+    "patch": "diff --git a/units.py b/units.py\n@@\n+    return '' if q.is_dimensionless else str(q.unit)",
+    "test_patch": "diff --git a/test_units.py b/test_units.py\n@@\n+def test_format(): assert fmt(1) == ''",
+    "fail_to_pass": ["test_units.py::test_format"],
+    "pass_to_pass": ["test_units.py::test_basic", "test_units.py::test_dimensionless"],
+    "language": "python",
+    "context": [
+      {"session_id": "swecl_ctx_prev", "content": "In the previous issue of this sequence we special-cased dimensionless quantities in units conversion.", "timestamp": "2024-03-01T00:00:00"}
+    ]
+  }
+]

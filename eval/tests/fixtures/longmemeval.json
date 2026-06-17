@@ -1,0 +1,38 @@
+[
+  {
+    "question_id": "lme_temporal_1",
+    "question_type": "temporal-reasoning",
+    "question": "Where did the user go for their summer vacation?",
+    "answer": "Lisbon",
+    "question_date": "2023-09-01 12:00",
+    "haystack_session_ids": ["lme_sess_a", "lme_sess_b"],
+    "haystack_dates": ["2023-05-10 (Wed) 08:30", "2023-07-15 (Sat) 19:20"],
+    "answer_session_ids": ["lme_sess_b"],
+    "haystack_sessions": [
+      [
+        {"role": "user", "content": "I am thinking about where to travel."},
+        {"role": "assistant", "content": "There are many great options."}
+      ],
+      [
+        {"role": "user", "content": "We spent our summer vacation in Lisbon and loved the food."},
+        {"role": "assistant", "content": "Lisbon is wonderful in summer."}
+      ]
+    ]
+  },
+  {
+    "question_id": "lme_abstain_1_abs",
+    "question_type": "single-session-user",
+    "question": "What is the user's blood type?",
+    "answer": "I don't know.",
+    "question_date": "2023-09-02 09:00",
+    "haystack_session_ids": ["lme_sess_c"],
+    "haystack_dates": ["2023-08-01 (Tue) 11:00"],
+    "answer_session_ids": [],
+    "haystack_sessions": [
+      [
+        {"role": "user", "content": "I went grocery shopping today."},
+        {"role": "assistant", "content": "Hope you found everything."}
+      ]
+    ]
+  }
+]

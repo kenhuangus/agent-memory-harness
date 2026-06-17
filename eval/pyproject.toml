@@ -1,0 +1,118 @@
+# pyproject.toml -- packaging for the AI Agent Memory Harness evaluation infra.
+#
+# Distribution name : agent-memory-eval   (pip install agent-memory-eval)
+# Import package    : memeval             (import memeval ; NOT "eval")
+#
+# DESIGN RULE (load-bearing): the OFFLINE path -- parsing local fixtures,
+# metrics math, the harness with EchoModel + InMemoryStore, cost gates,
+# trajectory JSONL IO, and the smoke tests -- runs on the Python STANDARD
+# LIBRARY ALONE. There are therefore NO required runtime dependencies below.
+# Every heavy dependency (anthropic, datasets, numpy, pyyaml, requests, faiss)
+# is OPTIONAL, lives in an extras group here, and is imported LAZILY inside the
+# one function that needs it -- never at module top level. So a bare
+# `pip install agent-memory-eval` is enough to run `python -m pytest tests`
+# and the echo-model CLI offline.
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-memory-eval"
+version = "0.1.0"
+description = "Evaluation infrastructure for the AI Agent Memory Harness: unified loaders, four memory metrics (recency/efficiency/relevancy/accuracy), a deterministic offline harness, cost gating, and trajectory logging across four public memory benchmarks."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "AI Agent Memory Harness team" },
+]
+keywords = [
+    "llm", "memory", "agents", "evaluation", "benchmark",
+    "longmemeval", "memoryagentbench", "swe-bench", "anthropic", "claude",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+
+# No required runtime deps: the offline path is stdlib-only by contract.
+dependencies = []
+
+[project.optional-dependencies]
+# Real Anthropic models (AnthropicAdapter lazy-imports `anthropic`).
+anthropic = ["anthropic>=0.40.0"]
+
+# Remote benchmark download/parse via HuggingFace `datasets`
+# (loaders' `_load_remote` path; the local-file path stays stdlib-only).
+hf = ["datasets>=2.19.0"]
+
+# Embedding-based relevancy / vector stores (optional; offline path is numpy-free).
+embeddings = ["numpy>=1.26"]
+
+# Convenience: everything needed for real (online, paid) runs.
+full = [
+    "anthropic>=0.40.0",
+    "datasets>=2.19.0",
+    "numpy>=1.26",
+    "requests>=2.31",
+    "pyyaml>=6.0",
+]
+
+# Test/lint toolchain. NOTE: the smoke tests do NOT require pytest -- they run
+# under `python tests/test_smoke.py` too. This group is for `python -m pytest`.
+dev = [
+    "pytest>=8.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-org/agent-memory-harness"
+Repository = "https://github.com/your-org/agent-memory-harness"
+"Benchmark: MemoryAgentBench" = "https://huggingface.co/datasets/ai-hyz/MemoryAgentBench"
+"Benchmark: LongMemEval" = "https://github.com/xiaowu0162/LongMemEval"
+"Benchmark: SWE-ContextBench" = "https://huggingface.co/papers/2602.08316"
+"Benchmark: SWE-Bench-CL" = "https://github.com/thomasjoshi/agents-never-forget"
+
+[project.scripts]
+# Console entry point mirroring `python -m memeval.cli`.
+memeval = "memeval.cli:main"
+
+# --------------------------------------------------------------------------- #
+# setuptools packaging
+# --------------------------------------------------------------------------- #
+[tool.setuptools]
+# Explicit package list keeps the builtin-shadowing-free `memeval` name and its
+# subpackages in; excludes tests from the wheel.
+packages = [
+    "memeval",
+    "memeval.loaders",
+]
+
+[tool.setuptools.package-data]
+# Ship the example sharded-key config inside the wheel so `load_key_config`
+# has a template to point at after install.
+memeval = ["config/*.json"]
+
+# --------------------------------------------------------------------------- #
+# Tooling config (optional; offline path does not depend on these)
+# --------------------------------------------------------------------------- #
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_ignores = true
+ignore_missing_imports = true   # heavy deps (anthropic, datasets, ...) are optional

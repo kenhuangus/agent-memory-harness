@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+build/
+dist/
+
+# Eval run artifacts (trajectories / outputs are regenerated)
+run*.jsonl
+*.run.jsonl
+results/

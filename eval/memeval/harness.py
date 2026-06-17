@@ -1,0 +1,588 @@
+"""The evaluation harness -- ties loaders + models + memory + metrics + cost.
+
+:func:`run` is the one entry point that drives any of the four benchmarks
+through any :class:`~memeval.protocols.ModelAdapter`, with memory on or off,
+and returns a fully-populated :class:`~memeval.schema.RunResult`.
+
+Flow per task
+-------------
+1. **Ingest** the task's sessions into the :class:`MemoryStore` (memory-on).
+2. **Retrieve** the top-``k`` memories for the question, honoring ``as_of`` so
+   nothing newer than the query is visible. Record a ``retrieve`` step whose
+   :class:`RetrievedItem` list carries each item's tokens + 0-based rank --
+   this is what the efficiency / recency / relevancy metrics read.
+3. **Generate** a prediction. The retrieved memory is injected into the prompt
+   as ``[memory] ...`` lines, which is *exactly* what makes the offline
+   :class:`EchoModel` memory-sensitive (it echoes a retrieved line when one is
+   present, and otherwise falls back to the question and typically misses).
+   Token counts come back from the adapter and are charged to the
+   :class:`CostTracker`.
+4. **Grade** QA tasks with normalized exact match; CODE tasks are graded
+   externally (success left ``None`` unless a grader is supplied), so accuracy
+   over a CODE run reflects only graded trajectories.
+5. **Log** the trajectory (optional JSONL) and, after the loop, compute the
+   four metrics over all trajectories.
+
+Determinism
+-----------
+No wall-clock enters the *logic*: retrieval ``as_of`` and recency use the
+explicit task/session timestamps. ``started_at``/``ended_at`` are wall-clock
+*metadata* only (sourced from an injectable ``clock`` for test stability) and
+never feed a metric. Given the same inputs the same metrics come out.
+
+Cheapest-first
+--------------
+:func:`cheapest_first` orders configs Haiku+mem -> Haiku -> Sonnet -> Opus so a
+sweep spends the least first; :func:`should_early_exit` lets a sweep stop once a
+cheap config clears the target accuracy. :func:`stratified_dev_slice` draws a
+deterministic per-competency sample for fast dev iteration.
+"""
+
+from __future__ import annotations
+
+import time
+from typing import Any, Callable, Optional
+
+from .cost import BudgetExceeded, CostTracker
+from .loaders import get_loader
+from .metrics import compute_metrics, qa_match
+from .models import estimate_tokens
+from .protocols import MemoryStore, ModelAdapter
+from .schema import (
+    Benchmark,
+    MemoryItem,
+    Metrics,
+    ModelConfig,
+    RetrievedItem,
+    RunResult,
+    Session,
+    Task,
+    TaskKind,
+    Trajectory,
+    TrajectoryStep,
+)
+from .trajectory import TrajectoryLogger
+
+
+# --------------------------------------------------------------------------- #
+# InMemoryStore -- reference MemoryStore (stdlib only)
+# --------------------------------------------------------------------------- #
+def _tokenize(text: str) -> list[str]:
+    """Lowercase word tokens (alnum runs). Stdlib-only, deterministic."""
+    out: list[str] = []
+    cur: list[str] = []
+    for ch in text.lower():
+        if ch.isalnum():
+            cur.append(ch)
+        elif cur:
+            out.append("".join(cur))
+            cur = []
+    if cur:
+        out.append("".join(cur))
+    return out
+
+
+class InMemoryStore:
+    """Reference :class:`~memeval.protocols.MemoryStore` (standard library).
+
+    Retrieval is bag-of-words overlap (Jaccard-style), scored into ``[0, 1]``:
+    ``score = |q ∩ d| / |q ∪ d|`` over lowercased alnum tokens. Ties break by
+    higher write-time ``relevancy`` then more-recent ``timestamp`` then
+    ``item_id`` (so results are deterministic). ``write`` is idempotent on
+    ``item_id``. ``search`` honors ``as_of`` (no items newer than the query),
+    sets each :class:`RetrievedItem`'s 0-based ``rank`` and ensures the
+    underlying ``MemoryItem.tokens`` is populated (estimated if zero) so the
+    efficiency metric has a number to divide.
+    """
+
+    def __init__(self) -> None:
+        self._items: dict[str, MemoryItem] = {}
+        self._order: list[str] = []  # insertion order, for stable iteration
+
+    def write(self, item: MemoryItem) -> None:
+        """Persist ``item`` (overwrites any existing item with the same id)."""
+        if item.tokens <= 0 and item.content:
+            item.tokens = estimate_tokens(item.content)
+        if item.item_id not in self._items:
+            self._order.append(item.item_id)
+        self._items[item.item_id] = item
+
+    def get(self, item_id: str) -> Optional[MemoryItem]:
+        """Return the item with ``item_id`` or ``None``."""
+        return self._items.get(item_id)
+
+    def search(
+        self,
+        query: str,
+        *,
+        k: int = 5,
+        as_of: Optional[float] = None,
+        **kwargs: Any,
+    ) -> list[RetrievedItem]:
+        """Top-``k`` items by token overlap, best first, with rank+tokens set."""
+        q = set(_tokenize(query))
+        scored: list[tuple[float, MemoryItem]] = []
+        for item_id in self._order:
+            item = self._items[item_id]
+            if as_of is not None and item.timestamp > as_of:
+                continue  # no peeking at the future
+            d = set(_tokenize(item.content))
+            if not q and not d:
+                score = 0.0
+            elif not (q | d):
+                score = 0.0
+            else:
+                inter = len(q & d)
+                union = len(q | d)
+                score = inter / union if union else 0.0
+            scored.append((score, item))
+
+        # Deterministic ordering: score desc, relevancy desc, ts desc, id asc.
+        scored.sort(
+            key=lambda si: (-si[0], -si[1].relevancy, -si[1].timestamp, si[1].item_id)
+        )
+
+        results: list[RetrievedItem] = []
+        for rank, (score, item) in enumerate(scored[: max(0, k)]):
+            if item.tokens <= 0 and item.content:
+                item.tokens = estimate_tokens(item.content)
+            results.append(RetrievedItem(item=item, score=score, rank=rank))
+        return results
+
+    def all(self) -> list[MemoryItem]:
+        """Every stored item, in insertion order (used by the dreaming worker)."""
+        return [self._items[i] for i in self._order]
+
+
+# --------------------------------------------------------------------------- #
+# Prompt construction
+# --------------------------------------------------------------------------- #
+def _build_prompt(task: Task, retrieved: list[RetrievedItem]) -> str:
+    """Assemble the model prompt, injecting retrieved memory as ``[memory]`` lines.
+
+    The ``[memory] <content>`` lines are the contract with :class:`EchoModel`:
+    when memory carrying the answer is retrieved it echoes it (scores correct);
+    with no memory it falls back to the question and typically misses -- which
+    is precisely the memory-on vs memory-off lift the dashboard reports.
+
+    Items are emitted **worst-ranked first, best-ranked last** so the most
+    relevant memory sits closest to the question (the position a model weights
+    most, and the ``[memory]`` line :class:`EchoModel` anchors on).
+    """
+    parts: list[str] = []
+    # ``retrieved`` is best-first (rank 0 == top); reverse so the top hit is last.
+    for r in sorted(retrieved, key=lambda x: x.rank, reverse=True):
+        content = r.item.content.replace("\n", " ").strip()
+        if content:
+            parts.append(f"[memory] {content}")
+    parts.append(f"Question: {task.question}")
+    if task.choices:
+        parts.append("Choices: " + " | ".join(task.choices))
+    parts.append("Answer:")
+    return "\n".join(parts)
+
+
+# --------------------------------------------------------------------------- #
+# run()
+# --------------------------------------------------------------------------- #
+def run(
+    benchmark: "Benchmark | str",
+    model: ModelAdapter,
+    memory: bool,
+    *,
+    limit: Optional[int] = None,
+    store: Optional[MemoryStore] = None,
+    logger: Optional[TrajectoryLogger] = None,
+    cost: Optional[CostTracker] = None,
+    dev_slice: Optional[float | int] = None,
+    path_or_id: Optional[str] = None,
+    config: Optional[ModelConfig] = None,
+    tau: float = 86400.0,
+    threshold: float = 0.7,
+    k: int = 5,
+    grader: Optional[Callable[[Task, str], Optional[bool]]] = None,
+    clock: Callable[[], float] = time.time,
+) -> RunResult:
+    """Run one benchmark through one model+memory configuration.
+
+    Parameters
+    ----------
+    benchmark:
+        Benchmark enum or loose string (resolved via the loader registry).
+    model:
+        Any :class:`~memeval.protocols.ModelAdapter` (``EchoModel`` offline,
+        ``AnthropicAdapter`` online).
+    memory:
+        When True, ingest each task's sessions into ``store`` and retrieve the
+        top-``k`` before generating; when False, no store is consulted (the
+        memory-off baseline).
+    limit:
+        Cap the number of tasks (after any ``dev_slice`` sampling).
+    store:
+        Memory backend; defaults to a fresh :class:`InMemoryStore`. Reset
+        per task so retrieval can't leak across unrelated tasks (except within
+        a ``group_id`` -- continual-learning groups keep their store).
+    logger:
+        Optional :class:`TrajectoryLogger`; each trajectory is logged as JSONL.
+    cost:
+        Optional :class:`CostTracker`; a :class:`BudgetExceeded` aborts the run
+        and returns a *partial* :class:`RunResult` with what completed.
+    dev_slice:
+        Fraction (0,1] or absolute int -> stratified dev sample of the tasks.
+    path_or_id:
+        Local fixture path or remote dataset id passed to the loader.
+    config:
+        Optional :class:`ModelConfig` describing this cell; one is synthesized
+        from the model + ``memory`` flag if omitted.
+    tau, threshold, k:
+        Recency decay constant, relevancy precision threshold, retrieval depth.
+    grader:
+        Optional ``(task, prediction) -> Optional[bool]`` override (e.g. an
+        external CODE grader). Defaults to normalized QA exact match for QA
+        tasks and ``None`` (ungraded) for CODE tasks.
+
+    Returns
+    -------
+    RunResult
+        Aggregate metrics + per-task trajectories + cost. ``partial`` is True
+        if the run was truncated by ``limit``/``dev_slice``/budget abort.
+    """
+    bench = benchmark if isinstance(benchmark, Benchmark) else Benchmark.from_str(benchmark)
+    cfg = config or _config_for(model, memory)
+
+    started_at = clock()
+
+    loader = get_loader(bench)
+    all_tasks = loader.load(path_or_id, limit=None)
+    total_available = len(all_tasks)
+
+    tasks = all_tasks
+    truncated = False
+    if dev_slice is not None:
+        tasks = stratified_dev_slice(tasks, _as_fraction(dev_slice, len(tasks)))
+        truncated = truncated or len(tasks) < total_available
+    if limit is not None:
+        if len(tasks) > limit:
+            truncated = True
+        tasks = tasks[:limit]
+
+    trajectories: list[Trajectory] = []
+    budget_hit = False
+
+    # Group-scoped stores for continual-learning benchmarks: tasks sharing a
+    # group_id share memory (carried in chronological `order`); ungrouped tasks
+    # each get a clean store so retrieval can't leak across unrelated tasks.
+    group_stores: dict[str, MemoryStore] = {}
+
+    for task in tasks:
+        active_store = _store_for_task(task, store, group_stores)
+        try:
+            traj = _run_task(
+                task=task,
+                model=model,
+                memory=memory,
+                store=active_store,
+                cost=cost,
+                k=k,
+                grader=grader,
+                clock=clock,
+                config=cfg,
+            )
+        except BudgetExceeded:
+            budget_hit = True
+            break
+        trajectories.append(traj)
+        if logger is not None:
+            logger.log(traj)
+
+    ended_at = clock()
+
+    # Metrics over everything that completed (deterministic; no wall-clock).
+    metrics: Metrics = compute_metrics(
+        trajectories, tasks[: len(trajectories)], tau=tau, threshold=threshold
+    )
+
+    tokens_in = sum(s.tokens_in for t in trajectories for s in t.steps)
+    tokens_out = sum(s.tokens_out for t in trajectories for s in t.steps)
+    cost_usd = cost.spent_usd if cost is not None else 0.0
+    partial = truncated or budget_hit or len(trajectories) < total_available
+
+    return RunResult(
+        benchmark=bench,
+        config=cfg,
+        metrics=metrics,
+        trajectories=trajectories,
+        n_tasks=len(trajectories),
+        cost_usd=cost_usd,
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        budget_exceeded=budget_hit,
+        partial=partial,
+        started_at=started_at,
+        ended_at=ended_at,
+        metadata={
+            "memory": memory,
+            "k": k,
+            "tau": tau,
+            "threshold": threshold,
+            "total_available": total_available,
+            "source": path_or_id or getattr(loader, "default_source", ""),
+        },
+    )
+
+
+def _run_task(
+    *,
+    task: Task,
+    model: ModelAdapter,
+    memory: bool,
+    store: MemoryStore,
+    cost: Optional[CostTracker],
+    k: int,
+    grader: Optional[Callable[[Task, str], Optional[bool]]],
+    clock: Callable[[], float],
+    config: ModelConfig,
+) -> Trajectory:
+    """Execute a single task and return its :class:`Trajectory`.
+
+    Raises :class:`BudgetExceeded` (propagated to :func:`run`) if charging the
+    generate call would breach the budget -- nothing is committed in that case.
+    """
+    traj = Trajectory(
+        task_id=task.task_id,
+        benchmark=task.benchmark,
+        model=model.name,
+        memory_on=memory,
+        started_at=clock(),
+    )
+
+    # Query time drives `as_of` (None => no temporal filter, no future-peeking).
+    # The trajectory step timestamp must be a concrete float per the schema, so
+    # an absent query time records as 0.0 while `as_of` stays None.
+    query_time = _task_query_time(task)
+    step_ts = query_time if query_time is not None else 0.0
+
+    retrieved: list[RetrievedItem] = []
+    if memory:
+        # Ingest this task's sessions, then retrieve.
+        for sess in task.sessions:
+            store.write(MemoryItem.from_session(sess))
+        retrieved = store.search(task.question, k=k, as_of=query_time)
+        traj.add(
+            TrajectoryStep(
+                step=0,
+                kind="retrieve",
+                content=task.question,
+                timestamp=step_ts,
+                retrieved=retrieved,
+            )
+        )
+
+    prompt = _build_prompt(task, retrieved)
+    text, tin, tout = model.generate(
+        prompt,
+        max_tokens=config.max_tokens,
+        temperature=config.temperature,
+    )
+
+    # Charge cost BEFORE recording the generate step so a budget breach aborts
+    # cleanly without a half-recorded trajectory committed to the run.
+    if cost is not None:
+        cost.add(model.name, tin, tout)  # may raise BudgetExceeded
+
+    traj.add(
+        TrajectoryStep(
+            step=0,
+            kind="generate",
+            content=text,
+            timestamp=step_ts,
+            tokens_in=tin,
+            tokens_out=tout,
+        )
+    )
+
+    traj.prediction = text
+    traj.success = _grade(task, text, grader)
+    traj.ended_at = clock()
+    return traj
+
+
+# --------------------------------------------------------------------------- #
+# Grading
+# --------------------------------------------------------------------------- #
+def _grade(
+    task: Task,
+    prediction: str,
+    grader: Optional[Callable[[Task, str], Optional[bool]]],
+) -> Optional[bool]:
+    """Grade a prediction. QA -> normalized exact match; CODE -> external.
+
+    A custom ``grader`` (returning ``True``/``False``/``None``) wins when given.
+    Without one: QA tasks with a gold ``answer`` are scored by
+    :func:`memeval.metrics.qa_match`; CODE tasks (or QA without a gold) are
+    left ``None`` (ungraded) so accuracy reflects only what was actually graded.
+    """
+    if grader is not None:
+        return grader(task, prediction)
+    if task.kind == TaskKind.QA and task.answer is not None:
+        return qa_match(prediction, task.answer)
+    return None
+
+
+# --------------------------------------------------------------------------- #
+# Store / timing helpers
+# --------------------------------------------------------------------------- #
+def _store_for_task(
+    task: Task,
+    store: Optional[MemoryStore],
+    group_stores: dict[str, MemoryStore],
+) -> MemoryStore:
+    """Pick the memory store for ``task``.
+
+    If the caller passed an explicit ``store``, always use it (the caller owns
+    its lifecycle). Otherwise grouped tasks (``group_id``) share a per-group
+    :class:`InMemoryStore` -- preserving continual-learning carry-over -- while
+    ungrouped tasks each get a fresh store so unrelated tasks don't cross-talk.
+    """
+    if store is not None:
+        return store
+    if task.group_id:
+        gs = group_stores.get(task.group_id)
+        if gs is None:
+            gs = InMemoryStore()
+            group_stores[task.group_id] = gs
+        return gs
+    return InMemoryStore()
+
+
+def _task_query_time(task: Task) -> Optional[float]:
+    """Determine the ``as_of`` query time for a task.
+
+    Uses an explicit ``metadata['query_time']`` if present, else the latest
+    session timestamp, else ``None`` (no temporal filter). Never wall-clock.
+    """
+    qt = task.metadata.get("query_time")
+    if isinstance(qt, (int, float)):
+        return float(qt)
+    ts = [s.timestamp for s in task.sessions if s.timestamp]
+    if ts:
+        return max(ts)
+    return None
+
+
+# --------------------------------------------------------------------------- #
+# Config + cheapest-first ordering + early-exit + dev slice
+# --------------------------------------------------------------------------- #
+DEFAULT_TIER_ORDER: list[str] = ["haiku", "sonnet", "opus"]
+
+
+def _infer_tier(name: str) -> str:
+    """Best-effort tier from a model name (for cheapest-first ordering)."""
+    low = name.lower()
+    for tier in DEFAULT_TIER_ORDER:
+        if tier in low:
+            return tier
+    return ""  # unknown tiers sort after known ones
+
+
+def _config_for(model: ModelAdapter, memory: bool) -> ModelConfig:
+    """Synthesize a :class:`ModelConfig` from an adapter + memory flag."""
+    return ModelConfig(
+        name=model.name,
+        memory=memory,
+        price_in=getattr(model, "price_in", 0.0),
+        price_out=getattr(model, "price_out", 0.0),
+        tier=_infer_tier(model.name),
+    )
+
+
+def cheapest_first(configs: list[ModelConfig]) -> list[ModelConfig]:
+    """Order configs cheapest-first: Haiku+mem -> Haiku -> Sonnet -> Opus.
+
+    Sort key is ``(tier_index, memory_desc)`` so within a tier the memory-on
+    variant comes first (the harness's whole bet is that cheap+memory wins, so
+    it's evaluated before the pricier no-memory baselines). Unknown tiers sort
+    last; ties fall back to name for determinism.
+    """
+    order = {t: i for i, t in enumerate(DEFAULT_TIER_ORDER)}
+
+    def key(c: ModelConfig) -> tuple[int, int, str]:
+        tier = c.tier or _infer_tier(c.name)
+        tier_idx = order.get(tier, len(order))
+        return (tier_idx, 0 if c.memory else 1, c.name)
+
+    return sorted(configs, key=key)
+
+
+def should_early_exit(results: list[RunResult], *, target_accuracy: float) -> bool:
+    """True once any completed (non-partial-by-budget) run hits the target.
+
+    Used by a cheapest-first sweep: stop spending on pricier configs as soon as
+    a cheaper one clears ``target_accuracy``. A run aborted by budget does not
+    count as a passing result.
+    """
+    for r in results:
+        if r.budget_exceeded:
+            continue
+        if r.metrics.accuracy >= target_accuracy:
+            return True
+    return False
+
+
+def _as_fraction(dev_slice: float | int, n: int) -> float:
+    """Normalize a dev_slice (fraction in (0,1] or absolute count) to a fraction."""
+    if isinstance(dev_slice, int) and not isinstance(dev_slice, bool):
+        if dev_slice <= 0 or n == 0:
+            return 0.0
+        return min(1.0, dev_slice / n)
+    frac = float(dev_slice)
+    if frac <= 0:
+        return 0.0
+    if frac > 1.0:  # treat >1 as an absolute count
+        return min(1.0, frac / n) if n else 0.0
+    return frac
+
+
+def stratified_dev_slice(
+    tasks: list[Task], fraction: float = 0.12, *, seed: int = 0
+) -> list[Task]:
+    """Deterministic per-stratum sample of ``tasks``.
+
+    Strata are :meth:`Task.stratum` (competency, else kind). Within each
+    stratum the tasks are shuffled with a seeded RNG and the first
+    ``ceil(fraction * stratum_size)`` are kept (at least 1 per non-empty
+    stratum when ``fraction > 0``). Output preserves the input order of the
+    selected tasks so downstream ordering (continual-learning) is stable.
+    Deterministic given ``(tasks, fraction, seed)``.
+    """
+    import math
+    import random
+
+    if fraction <= 0 or not tasks:
+        return []
+    if fraction >= 1.0:
+        return list(tasks)
+
+    by_stratum: dict[str, list[int]] = {}
+    for i, t in enumerate(tasks):
+        by_stratum.setdefault(t.stratum(), []).append(i)
+
+    keep: set[int] = set()
+    for stratum, idxs in sorted(by_stratum.items()):
+        rng = random.Random(f"{seed}:{stratum}")
+        order = list(idxs)
+        rng.shuffle(order)
+        n_keep = max(1, math.ceil(fraction * len(order)))
+        keep.update(order[:n_keep])
+
+    return [tasks[i] for i in range(len(tasks)) if i in keep]
+
+
+__all__ = [
+    "InMemoryStore",
+    "run",
+    "DEFAULT_TIER_ORDER",
+    "cheapest_first",
+    "should_early_exit",
+    "stratified_dev_slice",
+]
