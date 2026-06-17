@@ -46,6 +46,9 @@ Defined in `eval/memeval/protocols.py` and `schema.py`:
 **Invariants not captured by the signatures** (the real contract — easy to violate silently):
 - `search` returns items sorted by **descending score**, with `rank` set (0 = best),
   and **must** set `RetrievedItem.tokens` (the efficiency metric depends on it).
+- `MemoryItem.version` is the per-`item_id` revision counter: a new write is `1`;
+  every in-place update (persistence-layer versioning, dreaming conflict-resolution /
+  fact-update) **increments** it. A store keeps the highest version as current.
 - Retrieval must respect the query's "as-of" time — never surface memories from the future.
 - The offline path imports **no** third-party package at module top level; heavy
   deps (`anthropic`, `datasets`, `numpy`, …) are imported lazily inside the function that needs them.

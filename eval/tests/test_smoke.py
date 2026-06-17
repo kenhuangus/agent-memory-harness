@@ -566,6 +566,23 @@ def test_trajectory_fixture_loads() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Schema -- MemoryItem.version (revision counter)
+# --------------------------------------------------------------------------- #
+def test_memory_item_version_default_and_round_trip() -> None:
+    from memeval.trajectory import _memory_item_to_dict, _memory_item_from_dict
+    # Default version is 1 for a fresh write.
+    fresh = MemoryItem(item_id="m1", content="x")
+    assert fresh.version == 1
+    # An explicit (updated) version survives a serialize/deserialize round trip.
+    updated = MemoryItem(item_id="m1", content="x v3", version=3)
+    back = _memory_item_from_dict(_memory_item_to_dict(updated))
+    assert back.version == 3
+    # Legacy dicts without a version field default to 1 (back-compat).
+    legacy = _memory_item_from_dict({"item_id": "m2", "content": "old"})
+    assert legacy.version == 1
+
+
+# --------------------------------------------------------------------------- #
 # Grader -- CODE scoring (SWE-bench report parsing + offline heuristic)
 # --------------------------------------------------------------------------- #
 def _code_task(instance_id: str = "django__django-1", patch: str = "") -> Task:

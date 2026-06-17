@@ -177,6 +177,12 @@ class MemoryItem:
     (provenance session), ``source`` (provenance system), and ``embedding``
     (optional dense vector; ``None`` keeps the offline path numpy-free).
     ``tokens`` is the item's token cost, used by the efficiency metric.
+
+    ``version`` is the revision counter for this ``item_id``: a fresh write is
+    ``1`` and each in-place update (the persistence layer's versioning, and the
+    dreaming worker's conflict-resolution / fact-update path) increments it. It
+    lets a store keep the latest revision while history is reconcilable, and lets
+    consumers tell an updated memory from the original. Starts at ``1``.
     """
 
     item_id: str
@@ -188,6 +194,7 @@ class MemoryItem:
     tags: list[str] = field(default_factory=list)
     embedding: Optional[list[float]] = None
     tokens: int = 0
+    version: int = 1
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod

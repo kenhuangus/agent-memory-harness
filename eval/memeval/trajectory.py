@@ -117,6 +117,7 @@ def _memory_item_to_dict(item: MemoryItem) -> dict[str, Any]:
         "tags": list(item.tags),
         "embedding": list(item.embedding) if item.embedding is not None else None,
         "tokens": item.tokens,
+        "version": item.version,
         "metadata": dict(item.metadata),
     }
 
@@ -134,6 +135,7 @@ def _memory_item_from_dict(d: dict[str, Any]) -> MemoryItem:
         tags=list(d.get("tags", [])),
         embedding=[float(x) for x in emb] if emb is not None else None,
         tokens=int(d.get("tokens", 0)),
+        version=int(d.get("version", 1)),
         metadata=dict(d.get("metadata", {})),
     )
 
