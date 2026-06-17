@@ -5,7 +5,7 @@ Evaluation infrastructure for the **AI Agent Memory Harness**.
 > **Hypothesis under test:** a small model (**Claude Haiku**) *plus* the memory
 > harness can beat **Claude Opus 4.8 with no memory** on public memory
 > benchmarks. `memeval` is the apparatus that measures whether that's true —
-> the same harness drives four public benchmarks through one unified data model
+> the same harness drives five public benchmarks through one unified data model
 > and scores every run on the same four metrics, memory-ON vs memory-OFF.
 
 - **Distribution name:** `agent-memory-eval`
@@ -91,7 +91,7 @@ python -m pytest tests
 python tests/test_smoke.py
 ```
 
-It covers: fixture parsing for each of the four benchmarks, the metrics math
+It covers: fixture parsing for each of the five benchmarks, the metrics math
 (recency / efficiency / relevancy / accuracy), the harness end-to-end with
 `EchoModel` + `InMemoryStore`, the cost gate raising `BudgetExceeded`, and the
 trajectory JSONL round-trip.
@@ -139,7 +139,7 @@ the cost workflow below.
 
 ---
 
-## The four benchmarks → loaders → metrics
+## The five benchmarks → loaders → metrics
 
 Each loader normalizes its source into `list[Task]`. The local-file path is
 stdlib-only; the remote path lazily imports `datasets`. Resolve a loader with
@@ -151,6 +151,7 @@ stdlib-only; the remote path lazily imports `datasets`. Resolve a loader with
 | **LongMemEval** | `LongMemEvalLoader` | `xiaowu0162/LongMemEval` | QA | GitHub `xiaowu0162/LongMemEval`; arXiv 2410.10813. Files `longmemeval_s.json` (~115k tok/q), `longmemeval_m.json` (~1.5M), `longmemeval_oracle.json`. Multiple timestamped sessions/question; abilities incl. temporal reasoning, knowledge updates, abstention. |
 | **SWE-ContextBench** | `SWEContextBenchLoader` | `jiayuanz3/SWEContextBench` | CODE | HF `jiayuanz3/SWEContextBench`; GitHub `jiayuanz3/SWEContextBench`; arXiv 2602.08316. Parquet files (Experience + Related + Relationship; `lite=True` for Lite_* subsets), SWE-bench column schema. 1,100 base + 376 related, 51 repos, 9 languages; `group_id` from the Relationship links. |
 | **SWE-Bench-CL** | `SWEBenchCLLoader` | `thomasjoshi/agents-never-forget` | CODE | GitHub `thomasjoshi/agents-never-forget`; arXiv 2507.00014. Built on SWE-bench Verified; chronological per-repo issue *sequences* (`group_id` = sequence, `order` within it). Continual-learning metrics. |
+| **ContextBench** | `ContextBenchLoader` | `Contextbench/ContextBench` | CODE | HF `Contextbench/ContextBench` (configs `default` / `contextbench_verified`, single `train` split; `verified=True` for the 500-task subset); GitHub `EuniAI/ContextBench`; arXiv 2602.05892. In-task retrieval quality: 1,136 tasks, 66 repos, 8 langs, human-annotated `gold_context` spans (file/block/line) → `sessions` + `gold_memory_ids`. Primary metrics: relevancy + efficiency. |
 
 All defaults are overridable via the `--path` flag, CLI args, or env.
 

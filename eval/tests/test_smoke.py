@@ -247,17 +247,40 @@ def test_swe_bench_cl_loader_parses_fixture() -> None:
     assert t0.order == 0 and t1.order == 1
 
 
-def test_loader_registry_lists_all_four() -> None:
+def test_contextbench_loader_parses_fixture() -> None:
+    tasks = get_loader("contextbench").load(_fixture("contextbench.json"))
+    assert len(tasks) == 2
+    t0, t1 = tasks
+    assert t0.benchmark is Benchmark.CONTEXTBENCH
+    assert t0.kind is TaskKind.CODE
+    assert t0.repo == "astropy/astropy"
+    assert t0.group_id == "astropy/astropy"
+    assert t0.competency == "python"
+    assert t0.fail_to_pass == ["test_quantity.py::test_div"]
+    assert "test_quantity.py::test_basic" in t0.pass_to_pass
+    assert t0.answer is None  # CODE task, no QA answer
+    assert t0.metadata.get("source") == "Verified"
+    # gold_context (a JSON STRING here) parses into 2 gold span sessions; all gold.
+    assert len(t0.sessions) == 2
+    assert t0.gold_memory_ids == [s.session_id for s in t0.sessions]
+    assert "astropy/units/quantity.py:120-135" in t0.gold_memory_ids
+    # second row's gold_context is a native list (one span).
+    assert len(t1.sessions) == 1
+
+
+def test_loader_registry_lists_all_five() -> None:
     benches = set(available())
     assert benches == {
         Benchmark.MEMORY_AGENT_BENCH,
         Benchmark.LONGMEMEVAL,
         Benchmark.SWE_CONTEXTBENCH,
         Benchmark.SWE_BENCH_CL,
+        Benchmark.CONTEXTBENCH,
     }
     # Loose-string resolution goes through Benchmark.from_str.
     assert get_loader("LongMemEval").benchmark is Benchmark.LONGMEMEVAL
     assert get_loader("swe-bench-cl").benchmark is Benchmark.SWE_BENCH_CL
+    assert get_loader("contextbench").benchmark is Benchmark.CONTEXTBENCH
 
 
 # --------------------------------------------------------------------------- #
@@ -416,8 +439,10 @@ def test_load_key_config() -> None:
     cfg = C.load_key_config(_BASE_DIR / "memeval" / "config" / "keys.example.json")
     assert set(cfg.keys()) == {
         "swe_bench_cl", "longmemeval", "swe_contextbench", "memoryagentbench",
+        "contextbench",
     }
     assert cfg["longmemeval"]["captain"] == "Ken"
+    assert cfg["contextbench"]["captain"] == "Brent"
     assert cfg["longmemeval"]["api_key_env"] == "ANTHROPIC_API_KEY_KEN"
     assert cfg["swe_bench_cl"]["captain"] == "Keith"
     # Comment keys (leading _) are stripped.
@@ -545,6 +570,7 @@ _BENCH_FIXTURES = {
     Benchmark.LONGMEMEVAL: "longmemeval.json",
     Benchmark.SWE_CONTEXTBENCH: "swe_contextbench.json",
     Benchmark.SWE_BENCH_CL: "swe_bench_cl.json",
+    Benchmark.CONTEXTBENCH: "contextbench.json",
 }
 
 
@@ -609,6 +635,14 @@ def test_harness_run_swe_bench_cl_memory_off() -> None:
 def test_harness_run_swe_bench_cl_memory_on() -> None:
     _try_import("memeval.loaders.swe_bench_cl")
     _run_one(Benchmark.SWE_BENCH_CL, True)
+
+
+def test_harness_run_contextbench_memory_off() -> None:
+    _run_one(Benchmark.CONTEXTBENCH, False)
+
+
+def test_harness_run_contextbench_memory_on() -> None:
+    _run_one(Benchmark.CONTEXTBENCH, True)
 
 
 def test_harness_inmemory_store_satisfies_protocol() -> None:

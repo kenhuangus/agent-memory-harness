@@ -54,12 +54,13 @@ straight to GitHub Pages.
 > All internal links are relative, so the site works at a project-pages subpath or at a user/organisation root
 > without any changes.
 
-## The four benchmarks
+## The five benchmarks
 
 - **MemoryAgentBench** — [paper](https://arxiv.org/abs/2507.05257) · [code](https://github.com/HUST-AI-HYZ/MemoryAgentBench) · [dataset](https://huggingface.co/datasets/ai-hyz/MemoryAgentBench)
 - **LongMemEval** — [paper](https://arxiv.org/abs/2410.10813) · [code](https://github.com/xiaowu0162/LongMemEval) · [site](https://xiaowu0162.github.io/long-mem-eval/)
 - **SWE-ContextBench** — [paper](https://arxiv.org/abs/2602.08316) · [dataset](https://huggingface.co/datasets/jiayuanz3/SWEContextBench) · [code](https://github.com/jiayuanz3/SWEContextBench)
 - **SWE-Bench-CL** — [paper](https://arxiv.org/abs/2507.00014) · [code](https://github.com/thomasjoshi/agents-never-forget)
+- **ContextBench** (in-task retrieval quality) — [paper](https://arxiv.org/abs/2602.05892) · [dataset](https://huggingface.co/datasets/Contextbench/ContextBench) · [code](https://github.com/EuniAI/ContextBench)
 
 Complementary: [LoCoMo](https://arxiv.org/abs/2402.17753), [SWE-bench](https://www.swebench.com).
 

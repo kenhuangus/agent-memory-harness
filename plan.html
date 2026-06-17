@@ -114,7 +114,7 @@
           <li>The intelligent router (rule-based; learned-classifier hook).</li>
           <li>The async dreaming component: dedup, conflict resolution, governance, retention.</li>
           <li>OpenCode integration for write/read on each agent step.</li>
-          <li>Eval harness on four benchmarks; baselines for Haiku, Opus 4.8, Sonnet.</li>
+          <li>Eval harness on five benchmarks; baselines for Haiku, Opus 4.8, Sonnet.</li>
           <li>Metric definitions, a reproducible protocol, and a results dashboard.</li>
         </ul>
       </div>
@@ -239,7 +239,7 @@
         <ul>
           <li>Adapters for all three backends behind Keith's interface.</li>
           <li>Implement the router; performance-test each backend.</li>
-          <li>Captain the <strong>SWE-ContextBench</strong> runs on his own API key.</li>
+          <li>Captain the <strong>SWE-ContextBench</strong> &amp; <strong>ContextBench</strong> runs on his own API key.</li>
         </ul>
       </div>
 
@@ -301,6 +301,7 @@
           <tr><td>Run LongMemEval eval (own key)</td><td><span class="pill p2">P2</span></td><td class="dash">—</td></tr>
           <tr><td>Run SWE-ContextBench eval (own key)</td><td><span class="pill p3">P3</span></td><td class="dash">—</td></tr>
           <tr><td>Run MemoryAgentBench eval (own key)</td><td><span class="pill p4">P4</span></td><td class="dash">—</td></tr>
+          <tr><td>Run ContextBench eval (own key)</td><td><span class="pill p3">P3</span></td><td class="dash">—</td></tr>
           <tr><td>Final end-to-end integration</td><td><span class="pill">All</span></td><td class="dash">—</td></tr>
         </tbody>
       </table>
@@ -314,8 +315,8 @@
     <div class="section-head">
       <div class="eyebrow">Running the evals</div>
       <h2>Divide &amp; conquer the benchmark runs</h2>
-      <p class="lead">16 runs (4 benchmarks × 4 configs) is too much cost and time for one person on one key. Each
-        teammate captains the benchmark that stresses their own component, on their own API budget — runs go wide, not deep.</p>
+      <p class="lead">~20 runs (5 benchmarks × 4 configs) is too much cost and time for one person on one key. Each
+        teammate captains the benchmark(s) that stress their own component, on their own API budget — runs go wide, not deep.</p>
     </div>
 
     <div class="table-wrap fade-up">
@@ -326,6 +327,7 @@
           <tr><td><strong>LongMemEval</strong></td><td><span class="pill p2">Ken</span></td><td>Eval lead; recency / temporal reasoning.</td><td>4</td></tr>
           <tr><td><strong>SWE-ContextBench</strong></td><td><span class="pill p3">Brent</span></td><td>Context reuse exercises his retrieval + router.</td><td>4</td></tr>
           <tr><td><strong>MemoryAgentBench</strong></td><td><span class="pill p4">Scott</span></td><td>Tests conflict resolution — his dreaming component.</td><td>4</td></tr>
+          <tr><td><strong>ContextBench</strong></td><td><span class="pill p3">Brent</span></td><td>Retrieval-quality (gold contexts) — same retrieval/router he owns.</td><td>4</td></tr>
         </tbody>
       </table>
     </div>

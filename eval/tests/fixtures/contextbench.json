@@ -1,0 +1,34 @@
+[
+  {
+    "instance_id": "cb_astropy_1",
+    "original_inst_id": "astropy__astropy-12345",
+    "repo": "astropy/astropy",
+    "repo_url": "https://github.com/astropy/astropy",
+    "language": "python",
+    "base_commit": "bbbb1111",
+    "problem_statement": "Dividing a dimensionless Quantity by itself raises instead of returning 1.",
+    "gold_context": "[{\"file\": \"astropy/units/quantity.py\", \"start_line\": 120, \"end_line\": 135, \"content\": \"def _divide(self, other): handle dimensionless division\"}, {\"file\": \"astropy/units/core.py\", \"start_line\": 40, \"end_line\": 52, \"content\": \"class UnitBase: __truediv__ for matching units\"}]",
+    "patch": "diff --git a/astropy/units/quantity.py b/astropy/units/quantity.py\n@@\n+    if self.unit == other.unit:\n+        return Quantity(1)",
+    "test_patch": "diff --git a/test_quantity.py b/test_quantity.py\n@@\n+def test_div(): assert (q / q).value == 1",
+    "f2p": ["test_quantity.py::test_div"],
+    "p2p": ["test_quantity.py::test_basic"],
+    "source": "Verified"
+  },
+  {
+    "instance_id": "cb_flask_1",
+    "original_inst_id": "pallets__flask-9999",
+    "repo": "pallets/flask",
+    "repo_url": "https://github.com/pallets/flask",
+    "language": "python",
+    "base_commit": "cccc2222",
+    "problem_statement": "Nested blueprint registration drops the parent url_prefix.",
+    "gold_context": [
+      {"file": "src/flask/blueprints.py", "start_line": 200, "end_line": 220, "content": "def register(self, app, options): join nested url_prefix"}
+    ],
+    "patch": "diff --git a/src/flask/blueprints.py b/src/flask/blueprints.py\n@@\n+    prefix = parent_prefix + self.url_prefix",
+    "test_patch": "diff --git a/test_blueprints.py b/test_blueprints.py\n@@\n+def test_nested(): assert prefix == '/a/b'",
+    "f2p": ["test_blueprints.py::test_nested"],
+    "p2p": ["test_blueprints.py::test_register"],
+    "source": "Multi"
+  }
+]

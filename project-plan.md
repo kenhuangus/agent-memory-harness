@@ -82,7 +82,7 @@ holding prompts/tools/task order fixed and logging every trajectory for reproduc
 - The intelligent router (rule-based; learned-classifier hook).
 - The async dreaming component: dedup, conflict resolution, session governance, retention/pruning.
 - OpenCode integration for systematic memory write/read on each agent step.
-- Evaluation harness over the four benchmarks; baselines for Haiku, Opus 4.8 and Sonnet.
+- Evaluation harness over the five benchmarks; baselines for Haiku, Opus 4.8 and Sonnet.
 - Metric definitions, a reproducible protocol, and a results dashboard.
 
 ### Out of scope (non-goals)
@@ -119,6 +119,7 @@ Four parallel workstreams, locked behind a shared storage interface that is **fr
 | Run LongMemEval eval (own key) | **P2** | — |
 | Run SWE-ContextBench eval (own key) | **P3** | — |
 | Run MemoryAgentBench eval (own key) | **P4** | — |
+| Run ContextBench eval (own key) | **P3** | — |
 | Final end-to-end integration | **All** | — |
 
 **Roles in one line each**
@@ -130,8 +131,8 @@ Four parallel workstreams, locked behind a shared storage interface that is **fr
 
 ### Dividing the eval runs (API cost & time)
 
-Four benchmarks × four model configs is too much API cost and wall-clock for one person on one key. Each teammate
-**captains** the benchmark that stresses their own component and runs it on their **own API budget** — runs go wide in
+Five benchmarks × four model configs is too much API cost and wall-clock for one person on one key. Each teammate
+**captains** the benchmark(s) that stress their own component and runs them on their **own API budget** — runs go wide in
 parallel instead of deep on a single key.
 
 | Benchmark | Captain | Why them |
@@ -140,6 +141,7 @@ parallel instead of deep on a single key.
 | **LongMemEval** | **Ken (P2)** | Eval lead; recency / temporal reasoning. |
 | **SWE-ContextBench** | **Brent (P3)** | Context reuse exercises his retrieval + router. |
 | **MemoryAgentBench** | **Scott (P4)** | Tests conflict resolution — his dreaming component. |
+| **ContextBench** | **Brent (P3)** | Retrieval-quality (gold contexts) — the retrieval/router he already owns. |
 
 Ken owns the shared runner everyone plugs into — `run(benchmark, model, memory) → metrics` — and aggregates all results.
 
@@ -175,7 +177,7 @@ Ken owns the shared runner everyone plugs into — `run(benchmark, model, memory
 - **Week 1:** SQLite + vector pipeline (embedding model, HNSW/FAISS index). Markdown store with YAML frontmatter +
   inverted index. Graph store schema (Neo4j) with typed traversal index.
 - **Week 2:** Adapters for all three backends behind Keith's interface. Implement the router; performance-test each backend.
-  **Captain the SWE-ContextBench runs** on his own API key.
+  **Captain the SWE-ContextBench & ContextBench runs** on his own API key.
 
 ### Person 4 · Scott — Dreaming Component & Memory Governance
 - **Week 1:** Deduplication logic (exact / semantic / near-dup). Conflict detection + reconciliation rules
@@ -220,6 +222,7 @@ Full end-to-end run: Haiku + harness on ≥ 1 benchmark, capturing all four metr
 | **LongMemEval** | Recency, Accuracy, temporal reasoning | arXiv 2410.10813 |
 | **SWE-ContextBench** | Efficiency, Relevancy, Accuracy | arXiv 2602.08316 |
 | **SWE-Bench-CL** | Relevancy, Accuracy, continual learning | arXiv 2507.00014 |
+| **ContextBench** | Relevancy, Efficiency, retrieval recall/precision | arXiv 2602.05892 |
 
 Full descriptions, dataset links, and the metric-mapping matrix live on the project site's
 **Benchmarks** page.
@@ -231,6 +234,6 @@ Full descriptions, dataset links, and the metric-mapping matrix live on the proj
 - A working, model-agnostic memory harness (4 modules) integrated with OpenCode.
 - Three indexed storage backends behind one interface.
 - The async dreaming component with governance & pruning.
-- A reproducible evaluation harness + baseline numbers on four benchmarks.
+- A reproducible evaluation harness + baseline numbers on five benchmarks.
 - A results scoreboard testing the central hypothesis.
 - This project site (GitHub Pages) documenting all of the above.

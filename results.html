@@ -54,7 +54,7 @@
       <div class="stat"><div class="n">—</div><div class="l">Haiku + memory · accuracy</div></div>
       <div class="stat"><div class="n">—</div><div class="l">Opus 4.8 baseline · accuracy</div></div>
       <div class="stat"><div class="n">—</div><div class="l">Δ gap closed</div></div>
-      <div class="stat"><div class="n">0 / 4</div><div class="l">Benchmarks where Haiku+mem &gt; Opus</div></div>
+      <div class="stat"><div class="n">0 / 5</div><div class="l">Benchmarks where Haiku+mem &gt; Opus</div></div>
     </div>
   </div>
 </section>
@@ -65,7 +65,7 @@
     <div class="callout fade-up">
       <span class="ic">🎯</span>
       <div><p style="margin:0"><strong>We declare success</strong> when Haiku + the memory harness beats the Opus 4.8
-        no-memory baseline on <strong>at least two</strong> of the four benchmarks, without blowing the efficiency
+        no-memory baseline on <strong>at least two</strong> of the five benchmarks, without blowing the efficiency
         budget (memory overhead under ~10%).</p></div>
     </div>
   </div>
@@ -132,8 +132,21 @@
       </table>
     </div>
 
+    <h3>ContextBench <span class="pill p3" style="font-size:.72rem;vertical-align:middle">Captain: Brent</span> <span class="note" style="font-weight:400">— retrieval quality; relevancy &amp; efficiency are the primary cells</span></h3>
+    <div class="table-wrap fade-up">
+      <table>
+        <thead><tr><th>Run</th><th>Recency</th><th>Efficiency</th><th>Relevancy</th><th>Accuracy</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Haiku + harness</strong></td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td>Haiku (no memory)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td>Opus 4.8 (no memory)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td>Sonnet (no memory)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+
     <p class="note" style="margin-top:18px">Tip: keep raw trajectory logs and the exact dataset commit hash next to
-      each number so any result can be reproduced from <code>eval/run_baselines.py</code>.</p>
+      each number so any result can be reproduced from <code>python -m memeval.cli run …</code>.</p>
   </div>
 </section>
 

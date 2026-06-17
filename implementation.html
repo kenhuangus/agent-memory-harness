@@ -209,7 +209,7 @@ relevancy(i,q) = cos(emb_i, emb_q)</pre>
     <div class="callout fade-up" style="margin-top:16px">
       <span class="ic">🔀</span>
       <div><p style="margin:0">Runs are <strong>sharded by benchmark captain</strong>, each on a separate API key —
-        Keith (SWE-Bench-CL), Ken (LongMemEval), Brent (SWE-ContextBench), Scott (MemoryAgentBench). Iterate on a
+        Keith (SWE-Bench-CL), Ken (LongMemEval), Brent (SWE-ContextBench + ContextBench), Scott (MemoryAgentBench). Iterate on a
         ~10–15% stratified dev slice, cache + checkpoint every call, and enforce a per-benchmark budget gate. Full
         cost strategy on the <a href="plan.html">plan</a>.</p></div>
     </div>

@@ -5,10 +5,10 @@ metrics, trajectory, cost, models) imports its types from here and from
 ``memeval.protocols``. Nothing here imports a third-party package -- it is
 standard-library only and must import cleanly on Python 3.11+ (target 3.13).
 
-The model is intentionally benchmark-agnostic: the four public benchmarks
-(MemoryAgentBench, LongMemEval, SWE-ContextBench, SWE-Bench-CL) all normalize
-into the same :class:`Task` shape so a single :func:`memeval.harness.run` can
-drive them all.
+The model is intentionally benchmark-agnostic: the five public benchmarks
+(MemoryAgentBench, LongMemEval, SWE-ContextBench, SWE-Bench-CL, ContextBench)
+all normalize into the same :class:`Task` shape so a single
+:func:`memeval.harness.run` can drive them all.
 
 Glossary
 --------
@@ -36,16 +36,20 @@ from typing import Any, Optional
 # Enums
 # --------------------------------------------------------------------------- #
 class Benchmark(str, Enum):
-    """The four public memory benchmarks this harness evaluates.
+    """The five public memory benchmarks this harness evaluates.
 
     Inherits from ``str`` so the enum value is JSON-serializable and usable
     directly as a dict key / CLI argument (``Benchmark("longmemeval")``).
+
+    The first four score task success; ``CONTEXTBENCH`` scores in-task context
+    *retrieval* quality (recall/precision/efficiency).
     """
 
     MEMORY_AGENT_BENCH = "memoryagentbench"
     LONGMEMEVAL = "longmemeval"
     SWE_CONTEXTBENCH = "swe_contextbench"
     SWE_BENCH_CL = "swe_bench_cl"
+    CONTEXTBENCH = "contextbench"
 
     @classmethod
     def from_str(cls, value: str) -> "Benchmark":
@@ -67,6 +71,10 @@ class Benchmark(str, Enum):
             "swe_bench_cl": cls.SWE_BENCH_CL,
             "swebench_cl": cls.SWE_BENCH_CL,
             "swe_bench_continual": cls.SWE_BENCH_CL,
+            "contextbench": cls.CONTEXTBENCH,
+            "context_bench": cls.CONTEXTBENCH,
+            "euniai_contextbench": cls.CONTEXTBENCH,
+            "cb": cls.CONTEXTBENCH,
         }
         if norm in aliases:
             return aliases[norm]
@@ -116,7 +124,7 @@ class Session:
 
 @dataclass(slots=True)
 class Task:
-    """One scorable unit, normalized across all four benchmarks.
+    """One scorable unit, normalized across all five benchmarks.
 
     QA tasks use ``question`` + ``answer`` (gold). CODE tasks use ``question``
     (problem statement / issue text), ``repo``, ``base_commit`` and a gold

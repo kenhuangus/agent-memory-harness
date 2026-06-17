@@ -3,5 +3,6 @@
   "swe_bench_cl":     {"captain": "Keith", "api_key_env": "ANTHROPIC_API_KEY_KEITH", "budget_usd": 50.0, "budget_tokens": 50000000},
   "longmemeval":      {"captain": "Ken",   "api_key_env": "ANTHROPIC_API_KEY_KEN",   "budget_usd": 50.0, "budget_tokens": 50000000},
   "swe_contextbench": {"captain": "Brent", "api_key_env": "ANTHROPIC_API_KEY_BRENT", "budget_usd": 50.0, "budget_tokens": 50000000},
-  "memoryagentbench": {"captain": "Scott", "api_key_env": "ANTHROPIC_API_KEY_SCOTT", "budget_usd": 50.0, "budget_tokens": 50000000}
+  "memoryagentbench": {"captain": "Scott", "api_key_env": "ANTHROPIC_API_KEY_SCOTT", "budget_usd": 50.0, "budget_tokens": 50000000},
+  "contextbench":      {"captain": "Brent", "api_key_env": "ANTHROPIC_API_KEY_BRENT", "budget_usd": 25.0, "budget_tokens": 25000000, "complementary": true}
 }

@@ -1,6 +1,6 @@
 """The evaluation harness -- ties loaders + models + memory + metrics + cost.
 
-:func:`run` is the one entry point that drives any of the four benchmarks
+:func:`run` is the one entry point that drives any of the five benchmarks
 through any :class:`~memeval.protocols.ModelAdapter`, with memory on or off,
 and returns a fully-populated :class:`~memeval.schema.RunResult`.
 

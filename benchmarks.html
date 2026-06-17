@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Benchmarks &amp; Datasets · AI Agent Memory Harness</title>
-<meta name="description" content="The public memory and coding-agent benchmarks the harness is validated against — MemoryAgentBench, LongMemEval, SWE-ContextBench, SWE-Bench-CL — with links and metric mappings.">
+<meta name="description" content="The public memory and coding-agent benchmarks the harness is validated against — MemoryAgentBench, LongMemEval, SWE-ContextBench, SWE-Bench-CL, ContextBench — with links and metric mappings.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -44,7 +44,7 @@
     <div class="section-head">
       <div class="eyebrow">At a glance</div>
       <h2>Which benchmark measures which metric</h2>
-      <p>✓ = primary coverage · ~ = partial / implicit coverage. Together the four benchmarks cover all four metrics.</p>
+      <p>✓ = primary coverage · ~ = partial / implicit coverage. Together the five benchmarks cover all four metrics.</p>
     </div>
     <div class="table-wrap fade-up">
       <table>
@@ -56,6 +56,7 @@
           <tr><td><strong>LongMemEval</strong></td><td class="check">✓</td><td class="dash">~</td><td class="dash">~</td><td class="check">✓</td><td>Temporal reasoning, knowledge updates</td></tr>
           <tr><td><strong>SWE-ContextBench</strong></td><td class="dash">~</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td>Context reuse, cost efficiency</td></tr>
           <tr><td><strong>SWE-Bench-CL</strong></td><td class="dash">~</td><td class="dash">~</td><td class="check">✓</td><td class="check">✓</td><td>Forgetting, knowledge transfer</td></tr>
+          <tr><td><strong>ContextBench</strong></td><td class="dash">~</td><td class="check">✓</td><td class="check">✓</td><td class="dash">~</td><td>Retrieval recall/precision (file/block/line)</td></tr>
         </tbody>
       </table>
     </div>
@@ -66,7 +67,7 @@
 <section class="section">
   <div class="wrap">
     <div class="section-head">
-      <div class="eyebrow">The four anchors</div>
+      <div class="eyebrow">The five benchmarks</div>
       <h2>Benchmark details</h2>
     </div>
 
@@ -124,7 +125,7 @@
     </div>
 
     <!-- SWE-Bench-CL -->
-    <div class="card bl4 fade-up" id="swe-bench-cl" style="margin-bottom:0">
+    <div class="card bl4 fade-up" id="swe-bench-cl" style="margin-bottom:22px">
       <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:6px">
         <h3 style="margin:0">SWE-Bench-CL</h3>
         <span class="pill p4">Relevancy</span><span class="pill p1">Accuracy</span><span class="pill">Continual learning</span>
@@ -137,6 +138,24 @@
       <p style="margin:0">
         <a href="https://arxiv.org/abs/2507.00014" target="_blank" rel="noopener">📄 Paper (arXiv 2507.00014)</a> &nbsp;·&nbsp;
         <a href="https://github.com/thomasjoshi/agents-never-forget" target="_blank" rel="noopener">💻 GitHub</a>
+      </p>
+    </div>
+
+    <!-- ContextBench -->
+    <div class="card bl2 fade-up" id="contextbench" style="margin-bottom:0">
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:6px">
+        <h3 style="margin:0">ContextBench</h3>
+        <span class="pill p3">Efficiency</span><span class="pill p4">Relevancy</span><span class="pill">Retrieval quality</span>
+      </div>
+      <p>The 5th, process-level benchmark: <strong>in-task context retrieval quality</strong>. 1,136 issue tasks across
+        66 repos / 8 languages, each with human-annotated <strong>gold contexts</strong> (file / block / line). Scores
+        context recall, precision and efficiency — distinct from SWE-ContextBench (cross-task reuse).</p>
+      <p class="note"><strong>How we use it:</strong> direct ground truth for <em>relevancy</em> &amp; <em>efficiency</em> —
+        does the store retrieve the gold spans, at what overhead? (Captain: Brent.)</p>
+      <p style="margin:0">
+        <a href="https://arxiv.org/abs/2602.05892" target="_blank" rel="noopener">📄 Paper (arXiv 2602.05892)</a> &nbsp;·&nbsp;
+        <a href="https://huggingface.co/datasets/Contextbench/ContextBench" target="_blank" rel="noopener">🤗 Dataset</a> &nbsp;·&nbsp;
+        <a href="https://github.com/EuniAI/ContextBench" target="_blank" rel="noopener">💻 GitHub</a>
       </p>
     </div>
   </div>

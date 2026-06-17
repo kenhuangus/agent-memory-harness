@@ -20,7 +20,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agent-memory-eval"
 version = "0.1.0"
-description = "Evaluation infrastructure for the AI Agent Memory Harness: unified loaders, four memory metrics (recency/efficiency/relevancy/accuracy), a deterministic offline harness, cost gating, and trajectory logging across four public memory benchmarks."
+description = "Evaluation infrastructure for the AI Agent Memory Harness: unified loaders, four memory metrics (recency/efficiency/relevancy/accuracy), a deterministic offline harness, cost gating, and trajectory logging across five public memory benchmarks."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
