@@ -2,7 +2,7 @@
 
 Real source
 -----------
-* GitHub: ``thomasjoshi/agents-never-forget``
+* HuggingFace dataset: ``thomasjoshi/swe-bench-cl`` (ships ``SWE-Bench-CL.json``)
 * arXiv: 2507.00014
 * Built on SWE-bench Verified, reorganized into chronologically ordered
   **sequences** of issues per repository for **continual learning** evaluation.
@@ -44,8 +44,10 @@ class SWEBenchCLLoader(BaseLoader):
     """Loader for SWE-Bench-CL (``thomasjoshi/agents-never-forget``)."""
 
     benchmark: Benchmark = Benchmark.SWE_BENCH_CL
-    default_source: str = "thomasjoshi/agents-never-forget"
+    default_source: str = "thomasjoshi/swe-bench-cl"
     kind: TaskKind = TaskKind.CODE
+    #: The single JSON file the HF dataset repo ships.
+    _hf_file: str = "SWE-Bench-CL.json"
 
     def _load_local(
         self, path: str, *, limit: Optional[int] = None, **kwargs: Any
@@ -64,28 +66,41 @@ class SWEBenchCLLoader(BaseLoader):
         split: str = "test",
         **kwargs: Any,
     ) -> list[Task]:
-        """Fetch the SWE-Bench-CL dataset (lazy ``requests`` import).
+        """Fetch the SWE-Bench-CL dataset from HuggingFace (lazy import).
 
-        The repo ships ``SWE-Bench-CL.json`` (a list of sequences). We download
-        and flatten it; ``datasets`` is not required for this source.
+        The repo (``thomasjoshi/swe-bench-cl``) ships a single
+        ``SWE-Bench-CL.json`` with ``{"sequences": [{"tasks": [...]}]}``; we
+        download it via ``huggingface_hub`` (cached) and flatten it. A full
+        http(s) URL or a bare HF id are both accepted as ``source``.
         """
-        url = source
-        if not (url.startswith("http://") or url.startswith("https://")):
-            url = (
-                "https://raw.githubusercontent.com/thomasjoshi/"
-                "agents-never-forget/main/SWE-Bench-CL.json"
+        if source.startswith("http://") or source.startswith("https://"):
+            try:
+                import requests  # type: ignore
+            except Exception as exc:  # pragma: no cover - optional dep
+                raise RuntimeError(
+                    "Loading SWE-Bench-CL from a URL needs the optional "
+                    "'requests' package. Pass a local path or the HF id instead."
+                ) from exc
+            resp = requests.get(source, timeout=120)  # pragma: no cover - network
+            resp.raise_for_status()  # pragma: no cover - network
+            data = resp.json()  # pragma: no cover - network
+        else:
+            try:
+                from huggingface_hub import hf_hub_download  # type: ignore
+            except Exception as exc:  # pragma: no cover - optional dep
+                raise RuntimeError(
+                    "Remote SWE-Bench-CL loading requires 'huggingface_hub' "
+                    "(installed with the 'datasets' extra). For offline use, "
+                    "download SWE-Bench-CL.json and pass its local path."
+                ) from exc
+            import json  # pragma: no cover - network
+
+            path = hf_hub_download(  # pragma: no cover - network
+                source, filename=self._hf_file, repo_type="dataset"
             )
-        try:
-            import requests  # type: ignore
-        except Exception as exc:  # pragma: no cover - optional dep
-            raise RuntimeError(
-                "Remote SWE-Bench-CL loading requires the optional 'requests' "
-                "package. For offline use, download SWE-Bench-CL.json and pass "
-                f"its path. URL was {url!r}."
-            ) from exc
-        resp = requests.get(url, timeout=120)  # pragma: no cover - network
-        resp.raise_for_status()  # pragma: no cover - network
-        rows = self._flatten_sequences(resp.json())  # pragma: no cover
+            with open(path, encoding="utf-8") as fh:  # pragma: no cover - network
+                data = json.load(fh)
+        rows = self._flatten_sequences(data)  # pragma: no cover - network
         return self._parse_rows(rows, limit=limit)  # pragma: no cover
 
     # -- sequence flattening ------------------------------------------------ #
@@ -121,9 +136,11 @@ class SWEBenchCLLoader(BaseLoader):
             for order, t in enumerate(tasks):
                 if not isinstance(t, dict):
                     continue
-                row = dict(t)
+                row = _flatten_task(t)
                 row.setdefault("group_id", seq_id)
-                row.setdefault("order", order)
+                # Prefer the dataset's own sequence_position when present.
+                pos = first_present(row, "sequence_position", "order")
+                row["order"] = int(pos) if isinstance(pos, (int, float)) else order
                 rows.append(row)
         return rows
 
@@ -257,6 +274,28 @@ class SWEBenchCLLoader(BaseLoader):
             competency=competency,
             metadata=metadata,
         )
+
+
+def _flatten_task(t: dict) -> dict:
+    """Flatten a SWE-Bench-CL task's nested sub-objects into one row.
+
+    The HF dataset nests each task as ``{"metadata": {...}, "task": {...},
+    "evaluation": {...}, "continual_learning": {...}}``. We merge those known
+    sub-dicts up to the top level (so ``_row_to_task`` finds ``instance_id`` /
+    ``problem_statement`` / ``patch`` / ``FAIL_TO_PASS`` / ``sequence_position``
+    directly) while keeping any already-flat keys. Top-level keys win over
+    nested ones on a name clash.
+    """
+    row: dict[str, Any] = {}
+    for sub in ("metadata", "task", "evaluation", "continual_learning"):
+        v = t.get(sub)
+        if isinstance(v, dict):
+            row.update(v)
+    for k, v in t.items():
+        if k in ("metadata", "task", "evaluation", "continual_learning"):
+            continue
+        row[k] = v
+    return row
 
 
 def _parse_test_list(value: Any) -> list[str]:

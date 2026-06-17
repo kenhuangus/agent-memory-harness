@@ -57,6 +57,10 @@ hf = ["datasets>=2.19.0"]
 # Embedding-based relevancy / vector stores (optional; offline path is numpy-free).
 embeddings = ["numpy>=1.26"]
 
+# Real CODE scoring: the official SWE-bench harness (also needs a Docker daemon).
+# Used by memeval.grader.SWEBenchDockerGrader; the offline path never imports it.
+swebench = ["swebench>=2.1.0"]
+
 # Convenience: everything needed for real (online, paid) runs.
 full = [
     "anthropic>=0.40.0",
@@ -76,9 +80,9 @@ dev = [
 Homepage = "https://github.com/your-org/agent-memory-harness"
 Repository = "https://github.com/your-org/agent-memory-harness"
 "Benchmark: MemoryAgentBench" = "https://huggingface.co/datasets/ai-hyz/MemoryAgentBench"
-"Benchmark: LongMemEval" = "https://github.com/xiaowu0162/LongMemEval"
-"Benchmark: SWE-ContextBench" = "https://huggingface.co/papers/2602.08316"
-"Benchmark: SWE-Bench-CL" = "https://github.com/thomasjoshi/agents-never-forget"
+"Benchmark: LongMemEval" = "https://huggingface.co/datasets/xiaowu0162/longmemeval"
+"Benchmark: SWE-ContextBench" = "https://huggingface.co/datasets/jiayuanz3/SWEContextBench"
+"Benchmark: SWE-Bench-CL" = "https://huggingface.co/datasets/thomasjoshi/swe-bench-cl"
 
 [project.scripts]
 # Console entry point mirroring `python -m memeval.cli`.

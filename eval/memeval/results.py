@@ -145,6 +145,10 @@ def _cli(argv: Optional[list[str]] = None) -> int:
         default=DEFAULT_BUDGET_USD,
         help=f"Hard USD cap for this run (default ${DEFAULT_BUDGET_USD:.0f}; <=0 means no cap).",
     )
+    r.add_argument("--grader", default=None,
+                   help="CODE grader: swebench (Docker), overlap (offline heuristic), or none.")
+    r.add_argument("--grader-skip-unavailable", action="store_true",
+                   help="With --grader swebench: leave tasks ungraded if Docker/swebench is absent (else error).")
     r.add_argument("--out", default=None, help="Optional per-task trajectory JSONL.")
     r.add_argument("--results", default=DEFAULT_PATH, help="Ledger path (default ./results.json).")
     r.add_argument("--run-id", default="")
@@ -199,6 +203,14 @@ def _cli(argv: Optional[list[str]] = None) -> int:
 
     # default $10 cap; a value <= 0 disables the cap (pure accounting).
     cost = CostTracker(budget_usd=args.budget_usd) if args.budget_usd and args.budget_usd > 0 else None
+    grader = None
+    if args.grader:
+        from . import grader as grader_mod
+        gkwargs: dict[str, Any] = {}
+        if args.grader.strip().lower() in ("swebench", "docker", "swebench-docker"):
+            gkwargs["on_unavailable"] = "skip" if args.grader_skip_unavailable else "error"
+        grader = grader_mod.get_grader(args.grader, **gkwargs)
+
     logger = None
     if args.out:
         from .trajectory import TrajectoryLogger
@@ -213,6 +225,7 @@ def _cli(argv: Optional[list[str]] = None) -> int:
             path_or_id=args.path_or_id,
             cost=cost,
             logger=logger,
+            grader=grader,
             k=args.k,
         )
     finally:

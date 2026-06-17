@@ -291,6 +291,35 @@ def test_loader_registry_lists_all_five() -> None:
     assert get_loader("contextbench").benchmark is Benchmark.CONTEXTBENCH
 
 
+def test_live_loaders_against_real_sources() -> None:
+    """Opt-in: validate every loader against its real HF source (network).
+
+    Skipped unless ``MEMEVAL_LIVE=1`` so the default suite stays offline + fast.
+    Uses tiny limits (and LongMemEval's small ``oracle`` variant) so it is cheap.
+    Run with: ``MEMEVAL_LIVE=1 python -m pytest tests/test_smoke.py -k live``.
+    """
+    import os
+    if os.environ.get("MEMEVAL_LIVE") != "1":
+        raise SkipTest("set MEMEVAL_LIVE=1 to run the live loader check")
+    cases = [
+        ("longmemeval", "longmemeval_oracle", TaskKind.QA),
+        ("memoryagentbench", None, TaskKind.QA),
+        ("swe_contextbench", None, TaskKind.CODE),
+        ("swe_bench_cl", None, TaskKind.CODE),
+        ("contextbench", None, TaskKind.CODE),
+    ]
+    for name, src, kind in cases:
+        tasks = get_loader(name).load(src, limit=2)
+        assert tasks, f"{name}: real source returned no tasks"
+        t = tasks[0]
+        assert t.kind is kind, f"{name}: expected {kind}, got {t.kind}"
+        assert t.question, f"{name}: task has empty question"
+        if kind is TaskKind.QA:
+            assert t.answer, f"{name}: QA task missing gold answer"
+        else:
+            assert t.repo, f"{name}: CODE task missing repo"
+
+
 # --------------------------------------------------------------------------- #
 # Metrics -- exact values on a crafted trajectory
 # --------------------------------------------------------------------------- #
@@ -534,6 +563,78 @@ def test_trajectory_fixture_loads() -> None:
     m = M.compute_metrics(read, tasks)
     assert isinstance(m, Metrics)
     assert _approx(m.recency, 1.0)  # s3 is gold, freshest, ranked #1
+
+
+# --------------------------------------------------------------------------- #
+# Grader -- CODE scoring (SWE-bench report parsing + offline heuristic)
+# --------------------------------------------------------------------------- #
+def _code_task(instance_id: str = "django__django-1", patch: str = "") -> Task:
+    return Task(
+        task_id=instance_id, benchmark=Benchmark.SWE_BENCH_CL, kind=TaskKind.CODE,
+        question="fix the bug", patch=patch,
+        metadata={"instance_id": instance_id},
+    )
+
+
+def test_grader_instance_id_and_prediction() -> None:
+    from memeval import grader as G
+    t = _code_task("astropy__astropy-42")
+    assert G.instance_id_of(t) == "astropy__astropy-42"
+    pred = G.build_prediction(t, "diff --git a b", model_name="memeval")
+    assert pred == {
+        "instance_id": "astropy__astropy-42",
+        "model_name_or_path": "memeval",
+        "model_patch": "diff --git a b",
+    }
+
+
+def test_grader_resolved_from_report_rule() -> None:
+    from memeval import grader as G
+    iid = "django__django-1"
+    # Explicit resolved flag honored.
+    assert G.resolved_from_report({iid: {"resolved": True}}, iid) is True
+    assert G.resolved_from_report({iid: {"resolved": False}}, iid) is False
+    # Derived from tests_status: all FAIL_TO_PASS + PASS_TO_PASS succeed -> True.
+    ok = {iid: {"tests_status": {
+        "FAIL_TO_PASS": {"success": ["t1", "t2"], "failure": []},
+        "PASS_TO_PASS": {"success": ["t3"], "failure": []},
+    }}}
+    assert G.resolved_from_report(ok, iid) is True
+    # Any PASS_TO_PASS regression -> not resolved.
+    bad = {iid: {"tests_status": {
+        "FAIL_TO_PASS": {"success": ["t1"], "failure": []},
+        "PASS_TO_PASS": {"success": [], "failure": ["t3"]},
+    }}}
+    assert G.resolved_from_report(bad, iid) is False
+    # Absent instance -> None (could not grade).
+    assert G.resolved_from_report({}, iid) is None
+
+
+def test_grader_overlap_offline() -> None:
+    from memeval import grader as G
+    gold = "diff --git a/f.py b/f.py\n+    return x + 1"
+    t = _code_task(patch=gold)
+    assert G.overlap_grader(t, gold) is True              # identical -> resolved
+    assert G.overlap_grader(t, "totally unrelated text") is False
+    # QA task (no patch) -> None (nothing to compare).
+    qa = Task(task_id="q", benchmark=Benchmark.LONGMEMEVAL, kind=TaskKind.QA,
+              question="?", answer="a")
+    assert G.overlap_grader(qa, "a") is None
+
+
+def test_grader_registry_and_unavailable_skip() -> None:
+    from memeval import grader as G
+    assert G.get_grader("none")(_code_task(), "x") is None
+    # swebench grader with skip policy returns None when Docker/swebench absent
+    # (this environment has neither) instead of raising.
+    g = G.get_grader("swebench", on_unavailable="skip")
+    assert g(_code_task(patch="p"), "some patch") is None
+    # Unknown grader name is a clear error.
+    try:
+        G.get_grader("bogus")
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
 
 
 # --------------------------------------------------------------------------- #

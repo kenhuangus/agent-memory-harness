@@ -83,16 +83,22 @@ class SWEContextBenchLoader(BaseLoader):
                 "JSON path instead."
             ) from exc
 
-        prefix = "SWEContextBench_Lite_" if lite else "SWEContextBench_"
-        exp_file = f"{prefix}Experience.parquet"
-        rel_file = f"{prefix}Related.parquet"
+        # The repo ships parquet files under data/. Non-lite: Experience +
+        # Related; lite: Lite_Experience + Related_Lite (note the asymmetric
+        # naming on the HF repo).
+        if lite:
+            exp_file = "data/SWEContextBench_Lite_Experience.parquet"
+            rel_file = "data/SWEContextBench_Related_Lite.parquet"
+        else:
+            exp_file = "data/SWEContextBench_Experience.parquet"
+            rel_file = "data/SWEContextBench_Related.parquet"
 
         # related_instance_id -> experience_instance_id (shared-context group root)
         rel_map: dict[str, str] = {}
         try:  # pragma: no cover - network
             rel_ds = load_dataset(
                 source,
-                data_files="SWEContextBench_Relationship.parquet",
+                data_files="data/SWEContextBench_Relationship.parquet",
                 split="train",
             )
             for r in rel_ds:

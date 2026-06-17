@@ -2,10 +2,10 @@
 
 Real source
 -----------
-* GitHub: ``xiaowu0162/LongMemEval``
+* HuggingFace dataset: ``xiaowu0162/longmemeval``
 * arXiv: 2410.10813
-* Data files: ``longmemeval_s.json`` (~115k tok/q), ``longmemeval_m.json``
-  (~1.5M tok/q), ``longmemeval_oracle.json``.
+* Data files (one JSON each, bare names): ``longmemeval_s`` (~278 MB, default),
+  ``longmemeval_m`` (larger haystack), ``longmemeval_oracle`` (~15 MB).
 
 Each LongMemEval question carries multiple **timestamped** sessions (a user's
 chat history). Five abilities are probed, including *temporal reasoning*,
@@ -35,20 +35,16 @@ from typing import Any, Optional
 from ..schema import Benchmark, Session, Task, TaskKind
 from .base import BaseLoader, first_present, rows_of, to_epoch
 
-#: Raw GitHub release files; the repo distributes plain JSON (not a HF dataset).
-_VARIANT_URLS = {
-    "longmemeval_s": (
-        "https://raw.githubusercontent.com/xiaowu0162/LongMemEval/"
-        "main/data/longmemeval_s.json"
-    ),
-    "longmemeval_m": (
-        "https://raw.githubusercontent.com/xiaowu0162/LongMemEval/"
-        "main/data/longmemeval_m.json"
-    ),
-    "longmemeval_oracle": (
-        "https://raw.githubusercontent.com/xiaowu0162/LongMemEval/"
-        "main/data/longmemeval_oracle.json"
-    ),
+#: HuggingFace dataset repo hosting the LongMemEval JSON files (each variant is
+#: a single JSON file stored under its bare name -- no extension).
+_HF_REPO = "xiaowu0162/longmemeval"
+#: Known variant ids -> the filename in the HF repo. ``longmemeval_s`` (~278 MB)
+#: is the default; ``longmemeval_oracle`` (~15 MB) is the smallest, handy for
+#: a quick validation pass.
+_VARIANT_FILES = {
+    "longmemeval_s": "longmemeval_s",
+    "longmemeval_m": "longmemeval_m",
+    "longmemeval_oracle": "longmemeval_oracle",
 }
 
 
@@ -74,21 +70,29 @@ class LongMemEvalLoader(BaseLoader):
         split: str = "test",
         **kwargs: Any,
     ) -> list[Task]:
-        """Download a LongMemEval JSON variant (lazy ``requests`` import)."""
-        url = _VARIANT_URLS.get(source, source)
-        if not (url.startswith("http://") or url.startswith("https://")):
-            url = _VARIANT_URLS.get("longmemeval_s")
+        """Download a LongMemEval JSON variant from HuggingFace (lazy import).
+
+        ``source`` is a variant id (``longmemeval_s`` / ``_m`` / ``_oracle``) or
+        the bare filename in :data:`_HF_REPO`. The repo distributes each variant
+        as a single JSON file; we fetch it via ``huggingface_hub`` (cached) and
+        parse it with the shared row parser.
+        """
+        filename = _VARIANT_FILES.get(source, source or "longmemeval_s")
         try:
-            import requests  # type: ignore
+            from huggingface_hub import hf_hub_download  # type: ignore
         except Exception as exc:  # pragma: no cover - optional dep
             raise RuntimeError(
-                "Remote LongMemEval loading requires the optional 'requests' "
-                "package. For offline use, download longmemeval_s.json and "
-                f"pass its path. URL was {url!r}."
+                "Remote LongMemEval loading requires 'huggingface_hub' "
+                "(installed with the 'datasets' extra). For offline use, "
+                f"download {filename!r} and pass its local path."
             ) from exc
-        resp = requests.get(url, timeout=120)  # pragma: no cover - network
-        resp.raise_for_status()  # pragma: no cover - network
-        rows = rows_of(resp.json())  # pragma: no cover - network
+        import json  # pragma: no cover - network
+
+        path = hf_hub_download(  # pragma: no cover - network
+            _HF_REPO, filename=filename, repo_type="dataset"
+        )
+        with open(path, encoding="utf-8") as fh:  # pragma: no cover - network
+            rows = rows_of(json.load(fh))
         return self._parse_rows(rows, limit=limit)  # pragma: no cover
 
     def _parse_rows(

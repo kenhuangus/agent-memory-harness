@@ -71,11 +71,88 @@ class MemoryAgentBenchLoader(BaseLoader):
     default_source: str = "ai-hyz/MemoryAgentBench"
     kind: TaskKind = TaskKind.QA
 
+    #: The dataset ships one split per competency (no generic ``test`` split).
+    _SPLITS = (
+        "Accurate_Retrieval",
+        "Test_Time_Learning",
+        "Long_Range_Understanding",
+        "Conflict_Resolution",
+    )
+
     def _load_local(
         self, path: str, *, limit: Optional[int] = None, **kwargs: Any
     ) -> list[Task]:
         rows = self._read_rows(path)
         return self._parse_rows(rows, limit=limit)
+
+    def _load_remote(
+        self,
+        source: str,
+        *,
+        limit: Optional[int] = None,
+        split: Optional[str] = None,
+        **kwargs: Any,
+    ) -> list[Task]:
+        """Load MemoryAgentBench from its per-competency HF splits.
+
+        The dataset has no ``test`` split; it ships four competency splits, each
+        a set of rows shaped ``{context, questions[], answers[], metadata}`` --
+        one long context shared by *many* questions. We expand every
+        ``(context, question[i], answer[i])`` into one flat row (competency =
+        split name), then reuse the shared row parser. ``split`` restricts to a
+        single competency; otherwise all four are read in order. ``datasets`` is
+        imported lazily by :meth:`_expand_split`.
+        """
+        # load() passes split="test" by default; only honor an explicit, known
+        # competency split, otherwise read all four.
+        splits = [split] if split in self._SPLITS else list(self._SPLITS)
+        rows: list[dict] = []
+        for sp in splits:
+            for row in self._expand_split(source, sp):
+                rows.append(row)
+                if limit is not None and len(rows) >= limit:
+                    return self._parse_rows(rows, limit=limit)
+        return self._parse_rows(rows, limit=limit)
+
+    def _expand_split(self, source: str, split: str) -> "list[dict]":
+        """Stream one competency split, expanding parallel Q/A into flat rows."""
+        try:
+            from datasets import load_dataset  # type: ignore
+        except Exception as exc:  # pragma: no cover - optional dep
+            raise RuntimeError(
+                "MemoryAgentBench remote loading needs the optional 'datasets' "
+                "package (`pip install datasets`). For offline use, pass a local "
+                "JSON path instead."
+            ) from exc
+        competency = _canon_competency(split) or split.lower()
+        ds = load_dataset(source, split=split, streaming=True)  # pragma: no cover
+        out: list[dict] = []
+        for ridx, row in enumerate(ds):  # pragma: no cover - network
+            context = row.get("context")
+            questions = row.get("questions") or []
+            answers = row.get("answers") or []
+            meta = row.get("metadata") or {}
+            for qi, q in enumerate(questions):
+                ans = answers[qi] if qi < len(answers) else None
+                # answers[i] is itself a list of acceptable answers; take the
+                # first as gold and keep the rest in metadata.
+                if isinstance(ans, (list, tuple)):
+                    gold = str(ans[0]) if ans else None
+                    alts = [str(a) for a in ans]
+                else:
+                    gold = None if ans is None else str(ans)
+                    alts = [] if ans is None else [str(ans)]
+                out.append({
+                    "task_id": f"mab_{split}_{ridx}_{qi}",
+                    "question": q,
+                    "answer": gold,
+                    "context": context,
+                    "competency": competency,
+                    "subset": split,
+                    "metadata": meta,
+                    "acceptable_answers": alts,
+                })
+        return out
 
     def _parse_rows(
         self, rows: list[dict], *, limit: Optional[int] = None

@@ -12,6 +12,8 @@ Evaluation infrastructure for the **AI Agent Memory Harness**.
 - **Import package:** `memeval` (deliberately *not* `eval`, to avoid shadowing
   the builtin)
 - **Python:** 3.11+ (developed/targeted on 3.13)
+- **Run + read it:** see [`PROTOCOL.md`](PROTOCOL.md) — the reproducible guide
+  for running benchmarks, real CODE grading, and reading the hypothesis scoreboard.
 
 ---
 
