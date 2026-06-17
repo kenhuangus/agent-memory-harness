@@ -7,24 +7,15 @@ Team of 4 · Two-week sprint · Model-agnostic · Validated on public benchmarks
 
 ## 1. The problem
 
-Long-running coding agents are effectively **stateless across sessions**. Every new session starts
-cold: the agent has forgotten the fixes it already made, the conventions of the codebase, the
-dead-ends it already explored, and the environment "gotchas" it already learned. The same mistakes
-get repeated and the same context gets re-derived at cost.
+There is **no standard, model-agnostic layer** that decides **what to remember**, **where to store it**,
+**how to retrieve it fast**, and **how to keep it consistent over time** for long-running agents.
 
-This hits **smaller, cheaper models hardest**. A frontier model wins partly because it can hold more
-in its head at once; a smaller model cannot, so it falls behind on long-horizon work. Today the only
-reliable way to get good long-horizon performance is to pay for the largest model.
-
-There is **no standard, model-agnostic memory layer** that answers the four hard questions well:
-
-- **What** to remember (signal vs. noise), and **when** to write it.
-- **Where** to store it (different memory shapes want different stores).
-- **How** to retrieve the right thing **fast**, without flooding the context window.
-- **How** to keep the store **consistent** over time — de-duplicated, contradiction-free, and pruned.
-
-**The opportunity:** if an agent can reliably save, retrieve, and reconcile what it learns, a cheaper
-model should be able to *borrow* the long-horizon advantage of a bigger one.
+| | The four decisions |
+|---|---|
+| **What** | signal vs. noise |
+| **Where** | the right store |
+| **Fast** | no context flood |
+| **Consistent** | dedup, no conflicts |
 
 ---
 

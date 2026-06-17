@@ -38,9 +38,9 @@
   <div class="wrap">
     <span class="tag"><span class="dot"></span> Research &amp; engineering project · 4 people · 2 weeks</span>
     <h1>Persistent memory that lets a <span class="grad">small model think like a big one</span>.</h1>
-    <p class="lead">A pluggable memory harness for long-running coding agents. It decides what to remember,
-      where to store it, and how to retrieve it fast — then quietly cleans itself up offline. The thesis:
-      with the right memory, <strong>Haiku can close the gap to Opus&nbsp;4.8</strong> on memory benchmarks.</p>
+    <p class="lead">A pluggable memory harness for long-running coding agents: decide what to remember, where to
+      store it, how to retrieve it fast, and keep it consistent. The bet — with memory,
+      <strong>Haiku closes the gap to Opus&nbsp;4.8</strong>.</p>
     <div class="btn-row">
       <a class="btn btn-primary" href="plan.html">View the 2-week plan →</a>
       <a class="btn btn-ghost" href="architecture.html">See the architecture</a>
@@ -60,20 +60,16 @@
   <div class="wrap">
     <div class="section-head">
       <div class="eyebrow">The hypothesis</div>
-      <h2>Memory is leverage. We want to measure exactly how much.</h2>
-      <p class="lead">Frontier models win partly because they hold more in their head at once. If an agent can
-        reliably <em>save, retrieve, and reconcile</em> what it learns across sessions, a cheaper model should
-        be able to borrow that advantage.</p>
+      <h2>Memory is leverage. We measure how much.</h2>
+      <p class="lead">Frontier models win by holding more in their head. Give a smaller model a memory it can save,
+        retrieve, and reconcile — and it borrows that edge.</p>
     </div>
     <div class="callout fade-up">
       <span class="ic">🎯</span>
       <div>
-        <p style="color:var(--text);font-weight:600;font-size:1.06rem;margin-bottom:6px;">
-          Success criterion</p>
-        <p>On at least two memory benchmarks, <strong>Haiku&nbsp;+&nbsp;the memory harness beats Opus&nbsp;4.8 with
-          no memory</strong> — measured across recency, efficiency, relevancy, and accuracy. The harness is
-          model-agnostic and is validated against <a href="benchmarks.html">existing public benchmarks</a>, not
-          ones we invented.</p>
+        <p style="color:var(--text);font-weight:600;font-size:1.06rem;margin-bottom:6px;">Success criterion</p>
+        <p>On ≥2 benchmarks, <strong>Haiku&nbsp;+&nbsp;harness beats Opus&nbsp;4.8 with no memory</strong> across
+          recency, efficiency, relevancy, accuracy — on <a href="benchmarks.html">public benchmarks</a>, not ones we invented.</p>
       </div>
     </div>
   </div>
@@ -85,34 +81,32 @@
     <div class="section-head">
       <div class="eyebrow">How it works</div>
       <h2>Four modules, one loop</h2>
-      <p class="lead">A coding agent writes memories as it works. A router sends each query to the one backend
-        that answers it best. An offline worker keeps the whole store clean and trustworthy.</p>
+      <p class="lead">The agent writes memories as it works. The router sends each query to the one backend that
+        answers best. An offline worker keeps the store clean.</p>
     </div>
     <div class="grid grid-2">
       <div class="card hover bl1 fade-up">
         <div class="kicker a1">Module 1 · Write</div>
         <h3><span class="ic bg1 a1">💾</span> Persistence Layer</h3>
-        <p>Decides <strong>what, when and where</strong> to save. Each memory item is tagged with a timestamp,
-          a relevancy score and a session tag, then written to one or more of the three backends.</p>
+        <p>Decides <strong>what, when, where</strong> to save. Tags each item (timestamp, relevancy, session) and
+          writes it to the right backend(s).</p>
       </div>
       <div class="card hover bl3 fade-up">
         <div class="kicker a3">Module 2 · Dispatch</div>
         <h3><span class="ic bg3 a3">🧭</span> Intelligent Router</h3>
-        <p>Instead of fanning out to all three stores, the router <strong>classifies the query and picks the single
-          best backend</strong> — graph for relationships, vectors for semantics, keywords for Markdown. Rule-based
-          to start, learnable over time.</p>
+        <p><strong>Classifies the query and hits the one best backend</strong> — graph for relationships, vectors for
+          semantics, keywords for Markdown. Rule-based, then learned.</p>
       </div>
       <div class="card hover bl2 fade-up">
         <div class="kicker a2">Module 3 · Read</div>
         <h3><span class="ic bg2 a2">🔎</span> Retrieval Orchestrator</h3>
-        <p>A unified query API. It calls the router, ranks results by <strong>recency × relevancy</strong>,
-          de-duplicates, and returns a tight context the agent can actually use.</p>
+        <p>Unified query API: route, rank by <strong>recency × relevancy</strong>, de-dup, return a tight context.</p>
       </div>
       <div class="card hover bl4 fade-up">
         <div class="kicker a4">Module 4 · Curate (async)</div>
         <h3><span class="ic bg4 a4">🌙</span> Dreaming Component</h3>
-        <p>Runs <strong>while other agents sleep</strong>. It de-duplicates, resolves contradictions, and
-          maintains session governance — what must be known, what must be done, and what is blacklisted forever.</p>
+        <p>Runs <strong>while other agents sleep</strong>: de-dup, resolve contradictions, set session governance
+          (must-know / must-do / blacklist).</p>
       </div>
     </div>
     <div class="spacer"></div>
@@ -130,19 +124,19 @@
     <div class="metric-row">
       <div class="metric bl2 fade-up">
         <div class="top"><span class="ic bg2 a2">⏱️</span><h4>Recency</h4></div>
-        <p>Temporal distance of retrieved memory to the current task. Is the freshest relevant item ranked first?</p>
+        <p>Is the freshest relevant memory ranked first?</p>
       </div>
       <div class="metric bl3 fade-up">
         <div class="top"><span class="ic bg3 a3">⚡</span><h4>Efficiency</h4></div>
-        <p>Tokens spent per retrieval. Target: memory adds less than ~10% context overhead.</p>
+        <p>Tokens per retrieval — target &lt; ~10% overhead.</p>
       </div>
       <div class="metric bl4 fade-up">
         <div class="top"><span class="ic bg4 a4">🎯</span><h4>Relevancy</h4></div>
-        <p>Semantic similarity of retrieved items to the query. Only pull memories that truly relate.</p>
+        <p>Retrieved items actually relate to the query.</p>
       </div>
       <div class="metric bl1 fade-up">
         <div class="top"><span class="ic bg1 a1">✅</span><h4>Accuracy</h4></div>
-        <p>Correctness of agent output with memory vs. without. The bottom-line measure of value.</p>
+        <p>Task correctness, memory on vs. off.</p>
       </div>
     </div>
   </div>

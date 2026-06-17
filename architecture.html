@@ -164,18 +164,18 @@
     <div class="grid grid-3">
       <div class="card bl1 fade-up">
         <h3 class="a1">① Write</h3>
-        <p>On each agent step, the persistence layer captures a candidate memory, tags it (timestamp, relevancy,
-          session), and writes it through the storage interface to the appropriate backend(s).</p>
+        <p>Each step, the persistence layer tags a candidate memory (timestamp, relevancy, session) and writes it to
+          the right backend(s).</p>
       </div>
       <div class="card bl2 fade-up">
         <h3 class="a2">② Read</h3>
-        <p>The agent asks the orchestrator. The orchestrator calls the router, which picks one backend, fetches
-          candidates, then ranks by <code>recency × relevancy</code>, de-duplicates, and returns a tight context.</p>
+        <p>The orchestrator calls the router, which picks one backend; results are ranked by
+          <code>recency × relevancy</code>, de-duplicated, returned tight.</p>
       </div>
       <div class="card bl4 fade-up">
         <h3 class="a4">③ Dream (while idle)</h3>
-        <p>While other agents sleep, the dreaming component sweeps every backend: merges duplicates, resolves
-          contradictions, refreshes session governance, and prunes — leaving a conflict-free state for next session.</p>
+        <p>While other agents sleep, it sweeps every backend: merge duplicates, resolve contradictions, refresh
+          governance, prune — a clean state for next session.</p>
       </div>
     </div>
   </div>
@@ -187,8 +187,8 @@
     <div class="section-head">
       <div class="eyebrow">The dispatch layer</div>
       <h2>Why a router, not a fan-out</h2>
-      <p class="lead">Querying all three backends in parallel is wasteful and noisy. The router is a smart dispatcher
-        that reads the shape of the query and sends it to the single backend most likely to answer fast and well.</p>
+      <p class="lead">Querying all three in parallel is wasteful and noisy. The router reads the query and sends it to
+        the single backend most likely to answer fast and well.</p>
     </div>
     <div class="grid grid-2">
       <div class="card fade-up">
@@ -202,17 +202,14 @@
       </div>
       <div class="card fade-up">
         <h3>Learned (upgrade path)</h3>
-        <p>A lightweight classifier over the query embedding + metadata (query type, recency need, graph
-          complexity) predicts which backend answers fastest and most accurately.</p>
-        <p>Instrument every decision — backend chosen, latency, hit accuracy — and retrain periodically so routing
-          improves with the access patterns the team actually sees.</p>
+        <p>A lightweight classifier over the query embedding + metadata predicts the fastest, most accurate backend.
+          Log every decision (backend, latency, hit) and retrain so routing improves with real access patterns.</p>
       </div>
     </div>
     <div class="callout fade-up" style="margin-top:20px">
       <span class="ic">🧭</span>
-      <div><p style="margin:0">The router sits as middleware between the retrieval orchestrator and the backends. It is the
-        intelligent dispatch layer — a single, learnable bottleneck that trades a tiny classification cost for large
-        savings in latency and retrieved-context noise.</p></div>
+      <div><p style="margin:0">One learnable dispatch point between orchestrator and backends — a tiny classification
+        cost for big savings in latency and context noise.</p></div>
     </div>
   </div>
 </section>
@@ -230,21 +227,20 @@
       <div class="card bl2 fade-up">
         <div class="kicker a2">SQLite + vectors</div>
         <h3>Dense ANN index</h3>
-        <p>Embed each item on write and insert into an HNSW / FAISS index beside the SQLite row. On query, embed,
-          run approximate nearest-neighbour search, get IDs back in <code>&lt;100ms</code>, then hydrate metadata
-          from SQLite — even at thousands of memories.</p>
+        <p>Embed on write into an HNSW / FAISS index beside the row. On query: embed, ANN search, IDs back in
+          <code>&lt;100ms</code>, hydrate from SQLite — even at thousands of memories.</p>
       </div>
       <div class="card bl1 fade-up">
         <div class="kicker a1">Markdown</div>
         <h3>Inverted keyword index</h3>
-        <p>A hash map from keywords / semantic clusters to file paths. On write, extract key terms and update the
-          map; on query, look up matching files then lightly re-rank. Slower than vectors, ideal for literal recall.</p>
+        <p>A keyword → file-path hash map. Write updates it; query looks up matching files, then light re-rank. Ideal
+          for literal recall.</p>
       </div>
       <div class="card bl4 fade-up">
         <div class="kicker a4">Graph store</div>
         <h3>Typed traversal index</h3>
-        <p>Pre-computed indexes over node and relationship types. Start from a query node and follow indexed edges
-          bounded by depth or a relevancy threshold — what graph DBs like Neo4j do natively.</p>
+        <p>Pre-computed indexes over node/edge types. Traverse from a query node along indexed edges, bounded by depth
+          or relevancy — native in Neo4j.</p>
       </div>
     </div>
     <div class="spacer"></div>

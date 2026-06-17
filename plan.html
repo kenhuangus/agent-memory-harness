@@ -48,26 +48,15 @@
     <div class="section-head">
       <div class="eyebrow">Why this exists</div>
       <h2>The problem</h2>
-      <p class="lead">Long-running coding agents are stateless across sessions. They forget what they learned, so every
-        session restarts cold — and that caps how well a smaller, cheaper model can ever do.</p>
+      <p class="lead">There is no standard, model-agnostic layer that decides <strong>what to remember</strong>,
+        <strong>where to store it</strong>, <strong>how to retrieve it fast</strong>, and <strong>how to keep it
+        consistent over time</strong> for long-running agents.</p>
     </div>
-    <div class="grid grid-2">
-      <div class="card fade-up">
-        <h3>Memory is thrown away</h3>
-        <p>Past fixes, codebase conventions, dead-ends and environment gotchas vanish at the end of a session. The same
-          mistakes get repeated and the same context re-derived at cost.</p>
-      </div>
-      <div class="card fade-up">
-        <h3>Small models pay the most</h3>
-        <p>A frontier model wins partly by holding more in its head at once. Without persistent memory, the only
-          reliable way to get good long-horizon performance is to pay for the largest model.</p>
-      </div>
-    </div>
-    <div class="callout fade-up" style="margin-top:20px">
-      <span class="ic">💡</span>
-      <div><p style="margin:0">There is no standard, model-agnostic layer that decides <strong>what</strong> to remember,
-        <strong>where</strong> to store it, <strong>how</strong> to retrieve it fast, and <strong>how</strong> to keep it
-        consistent over time. Build that, and a cheaper model can borrow a bigger one's long-horizon advantage.</p></div>
+    <div class="metric-row">
+      <div class="metric bl1"><div class="top"><span class="ic bg1 a1">💾</span><h4>What</h4></div><p>signal vs. noise</p></div>
+      <div class="metric bl3"><div class="top"><span class="ic bg3 a3">🗂️</span><h4>Where</h4></div><p>the right store</p></div>
+      <div class="metric bl2"><div class="top"><span class="ic bg2 a2">⚡</span><h4>Fast</h4></div><p>no context flood</p></div>
+      <div class="metric bl4"><div class="top"><span class="ic bg4 a4">♻️</span><h4>Consistent</h4></div><p>dedup, no conflicts</p></div>
     </div>
   </div>
 </section>
@@ -99,8 +88,8 @@
       </div>
       <div class="card fade-up">
         <h3>Validated, not invented</h3>
-        <p>Integrated into the open-source OpenCode agent. A controlled grid per benchmark runs Haiku + harness against
-          Haiku, Opus 4.8 and Sonnet baselines — prompts and task order held fixed, every trajectory logged.</p>
+        <p>Integrated into OpenCode. Per benchmark, a controlled grid runs Haiku + harness vs. Haiku, Opus 4.8 and
+          Sonnet — prompts and task order fixed, every trajectory logged.</p>
       </div>
     </div>
     <div class="spacer"></div>
@@ -114,7 +103,7 @@
     <div class="section-head">
       <div class="eyebrow">Boundaries</div>
       <h2>Scope</h2>
-      <p>What the two-week sprint commits to — and, just as importantly, what it does not.</p>
+      <p>What the sprint commits to — and what it doesn't.</p>
     </div>
     <div class="grid grid-2">
       <div class="card bl2 fade-up">
@@ -202,7 +191,7 @@
       <div class="card bl1 fade-up">
         <div class="kicker a1">Keith · Person 1</div>
         <h3><span class="ic bg1 a1">🏗️</span> Harness Architecture &amp; OpenCode Integration</h3>
-        <p class="note" style="margin-bottom:14px;">Owns the critical path: the module contracts everyone else builds against.</p>
+        <p class="note" style="margin-bottom:14px;">Critical path — the contracts everyone builds against.</p>
         <strong style="color:var(--text)">Week 1</strong>
         <ul>
           <li>Design the three-module abstraction &amp; storage interface (swappable backends).</li>
@@ -221,7 +210,7 @@
       <div class="card bl2 fade-up">
         <div class="kicker a2">Ken · Person 2</div>
         <h3><span class="ic bg2 a2">📊</span> Evaluation Infrastructure &amp; Coordination</h3>
-        <p class="note" style="margin-bottom:14px;">Owns the shared runner, metrics and the cost+results dashboard — and captains one benchmark like everyone else.</p>
+        <p class="note" style="margin-bottom:14px;">Shared runner, metrics, dashboard — and captains one benchmark.</p>
         <strong style="color:var(--text)">Week 1</strong>
         <ul>
           <li>Download &amp; parse all four datasets; loaders + trajectory logging (with Scott).</li>
@@ -239,7 +228,7 @@
       <div class="card bl3 fade-up">
         <div class="kicker a3">Brent · Person 3</div>
         <h3><span class="ic bg3 a3">🗄️</span> Storage Implementation &amp; Router</h3>
-        <p class="note" style="margin-bottom:14px;">Turns the abstraction into three real, fast backends + the dispatch layer.</p>
+        <p class="note" style="margin-bottom:14px;">Three fast backends + the dispatch layer.</p>
         <strong style="color:var(--text)">Week 1</strong>
         <ul>
           <li>SQLite + vector pipeline (embedding model, HNSW/FAISS index).</li>
@@ -258,7 +247,7 @@
       <div class="card bl4 fade-up">
         <div class="kicker a4">Scott · Person 4</div>
         <h3><span class="ic bg4 a4">🌙</span> Dreaming Component &amp; Memory Governance</h3>
-        <p class="note" style="margin-bottom:14px;">Owns the offline engine that keeps memory clean and trustworthy.</p>
+        <p class="note" style="margin-bottom:14px;">The offline engine that keeps memory clean.</p>
         <strong style="color:var(--text)">Week 1</strong>
         <ul>
           <li>Deduplication logic (exact / semantic / near-duplicate).</li>
@@ -325,9 +314,8 @@
     <div class="section-head">
       <div class="eyebrow">Running the evals</div>
       <h2>Divide &amp; conquer the benchmark runs</h2>
-      <p class="lead">Four benchmarks × four model configs is too much API cost and wall-clock for one person on one
-        key. So each teammate captains the benchmark that stresses their own component and runs it on their own API
-        budget — runs go wide in parallel instead of deep on a single key.</p>
+      <p class="lead">16 runs (4 benchmarks × 4 configs) is too much cost and time for one person on one key. Each
+        teammate captains the benchmark that stresses their own component, on their own API budget — runs go wide, not deep.</p>
     </div>
 
     <div class="table-wrap fade-up">
@@ -341,9 +329,8 @@
         </tbody>
       </table>
     </div>
-    <p class="note" style="margin-top:10px">Captains run the benchmark that exercises their own component, so the person
-      best able to debug a bad number is the one watching it. Ken owns the shared runner everyone plugs into and
-      aggregates all results.</p>
+    <p class="note" style="margin-top:10px">Whoever can best debug a bad number is the one watching it. Ken owns the
+      shared runner and aggregates results.</p>
 
     <div class="spacer"></div>
     <h3>Cost &amp; throughput controls</h3>
@@ -357,9 +344,8 @@
     </div>
     <div class="callout fade-up" style="margin-top:20px">
       <span class="ic">⚖️</span>
-      <div><p style="margin:0"><strong>The matrix, made affordable.</strong> Treatment (Haiku + harness) and the Opus 4.8
-        target are the must-run cells; Haiku no-memory is cheap and stays. The Sonnet reference is optional if budget
-        is tight — keeping the hypothesis test intact while cutting the long tail of spend.</p></div>
+      <div><p style="margin:0"><strong>Must-run cells:</strong> Haiku + harness (treatment) and Opus 4.8 (target).
+        Haiku no-memory is cheap and stays; Sonnet is optional if budget is tight.</p></div>
     </div>
   </div>
 </section>

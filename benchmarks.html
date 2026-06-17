@@ -33,8 +33,8 @@
   <div class="wrap">
     <div class="crumb"><a href="index.html">Overview</a> / Benchmarks</div>
     <h1>Benchmarks &amp; datasets</h1>
-    <p class="lead">We do not build our own evals. The harness proves itself on established, public benchmarks that
-      explicitly measure memory — so the results are defensible and comparable.</p>
+    <p class="lead">No home-grown evals. The harness proves itself on established public memory benchmarks —
+      defensible and comparable.</p>
   </div>
 </section>
 
@@ -76,11 +76,9 @@
         <h3 style="margin:0">MemoryAgentBench</h3>
         <span class="pill p4">Relevancy</span><span class="pill p1">Accuracy</span><span class="pill">Conflict resolution</span>
       </div>
-      <p>The benchmark most aligned with this project. It evaluates agent memory across four core competencies —
-        <strong>accurate retrieval, test-time learning, long-range understanding, and conflict resolution</strong> —
-        by restructuring datasets into multi-turn incremental interactions. Includes two purpose-built datasets,
-        EventQA and FactConsolidation, that expose where memory systems break (multi-hop conflict resolution is
-        brutally hard for current methods).</p>
+      <p>The closest fit to this project. Evaluates four competencies — <strong>accurate retrieval, test-time
+        learning, long-range understanding, conflict resolution</strong> — over multi-turn interactions. Multi-hop
+        conflict resolution is brutally hard for current methods.</p>
       <p class="note"><strong>How we use it:</strong> accuracy of retrieve-and-apply, plus the dedup / conflict
         behaviour our dreaming component is responsible for.</p>
       <p style="margin:0">
@@ -96,10 +94,9 @@
         <h3 style="margin:0">LongMemEval</h3>
         <span class="pill p2">Recency</span><span class="pill p1">Accuracy</span><span class="pill">Temporal reasoning</span>
       </div>
-      <p>500 curated questions over freely scalable, timestamped chat histories, testing five long-term memory
-        abilities: <strong>information extraction, multi-session reasoning, temporal reasoning, knowledge updates,
-        and abstention</strong>. Commercial assistants show a ~30% accuracy drop sustaining memory across sessions.
-        Two test sets: <code>LongMemEval_S</code> (~115k tokens / question) and <code>LongMemEval_M</code> (~1.5M tokens).</p>
+      <p>500 questions over timestamped chat histories, testing five abilities incl. <strong>temporal reasoning,
+        knowledge updates, abstention</strong>. Two sets: <code>_S</code> (~115k tokens) and <code>_M</code> (~1.5M).
+        Commercial assistants drop ~30% sustaining memory across sessions.</p>
       <p class="note"><strong>How we use it:</strong> the recency &amp; temporal-reasoning workhorse — "what changed
         between sessions?", "what happened most recently?".</p>
       <p style="margin:0">
@@ -115,10 +112,8 @@
         <h3 style="margin:0">SWE-ContextBench</h3>
         <span class="pill p3">Efficiency</span><span class="pill p4">Relevancy</span><span class="pill p1">Accuracy</span>
       </div>
-      <p>Tests whether coding agents <strong>reuse experience across related problems</strong>. 1,100 base tasks plus
-        376 related tasks derived from real dependency/reference relationships among GitHub issues and PRs, grouped
-        with shared context across <strong>51 repositories and 9 programming languages</strong>. Scored on three
-        dimensions: prediction accuracy, time efficiency, and cost efficiency.</p>
+      <p>Tests whether coding agents <strong>reuse experience across related problems</strong>. 1,100 base + 376
+        related tasks across <strong>51 repos and 9 languages</strong>; scored on accuracy, time, and cost.</p>
       <p class="note"><strong>How we use it:</strong> the coding-agent test for relevancy &amp; efficiency — does
         the harness retrieve the right prior solution, and at what token/time cost?</p>
       <p style="margin:0">
@@ -133,11 +128,9 @@
         <h3 style="margin:0">SWE-Bench-CL</h3>
         <span class="pill p4">Relevancy</span><span class="pill p1">Accuracy</span><span class="pill">Continual learning</span>
       </div>
-      <p>A continual-learning benchmark built on SWE-Bench Verified. It organizes GitHub issues into chronologically
-        ordered sequences to test whether an agent can <strong>accumulate experience, transfer knowledge, and resist
-        catastrophic forgetting</strong>. Ships a LangGraph evaluation framework with a FAISS-backed semantic memory
-        module and CL metrics: average accuracy, forgetting, forward/backward transfer, tool-use efficiency, and a
-        composite CL score.</p>
+      <p>Built on SWE-Bench Verified, it orders issues chronologically to test <strong>knowledge transfer and
+        resistance to catastrophic forgetting</strong>. Ships a LangGraph harness + FAISS memory and CL metrics
+        (forgetting, forward/backward transfer, composite score).</p>
       <p class="note"><strong>How we use it:</strong> relevancy precision &amp; accuracy over time — avoid negative
         transfer (irrelevant memories that hurt) across task sequences.</p>
       <p style="margin:0">
@@ -154,13 +147,13 @@
     <div class="section-head">
       <div class="eyebrow">Optional / complementary</div>
       <h2>Useful references nearby</h2>
-      <p>Not in the core four, but valuable for grounding the design and for extra long-horizon coverage.</p>
+      <p>Not core, but useful for grounding and extra long-horizon coverage.</p>
     </div>
     <div class="grid grid-2">
       <div class="card fade-up">
         <h3>LoCoMo</h3>
-        <p>The most-cited very-long-term conversational memory benchmark — ~300 turns and up to 35 sessions per
-          dialogue, scored with F1, ROUGE and MMRelevance over QA, summarization and multimodal generation.</p>
+        <p>The most-cited very-long-term conversational memory benchmark — ~300 turns, up to 35 sessions per
+          dialogue; F1 / ROUGE / MMRelevance.</p>
         <p style="margin:0">
           <a href="https://arxiv.org/abs/2402.17753" target="_blank" rel="noopener">📄 arXiv 2402.17753</a> &nbsp;·&nbsp;
           <a href="https://github.com/snap-research/locomo" target="_blank" rel="noopener">💻 GitHub</a>
@@ -168,8 +161,8 @@
       </div>
       <div class="card fade-up">
         <h3>SWE-bench (Verified / Pro)</h3>
-        <p>The standard real-world coding-agent benchmark. Verified is a 500-task human-validated subset; Pro is the
-          harder, long-context, cross-file variant. The accuracy anchor SWE-Bench-CL is built upon.</p>
+        <p>The standard real-world coding-agent benchmark. Verified = 500 human-validated tasks; Pro = harder
+          cross-file variant. SWE-Bench-CL builds on it.</p>
         <p style="margin:0">
           <a href="https://www.swebench.com" target="_blank" rel="noopener">🌐 swebench.com</a> &nbsp;·&nbsp;
           <a href="https://github.com/SWE-bench/SWE-bench" target="_blank" rel="noopener">💻 GitHub</a> &nbsp;·&nbsp;
@@ -179,8 +172,7 @@
     </div>
     <div class="callout warn fade-up" style="margin-top:22px">
       <span class="ic">🔗</span>
-      <div><p style="margin:0">arXiv identifiers and dataset URLs were captured from public listings at build time. Always
-        confirm the latest dataset version/license on the source page before downloading or redistributing.</p></div>
+      <div><p style="margin:0">Links captured at build time — confirm the latest dataset version/license on the source before use.</p></div>
     </div>
   </div>
 </section>

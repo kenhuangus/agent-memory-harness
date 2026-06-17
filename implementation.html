@@ -33,9 +33,8 @@
   <div class="wrap">
     <div class="crumb"><a href="index.html">Overview</a> / Implementation</div>
     <h1>Implementation reference</h1>
-    <p class="lead">Contracts the four workstreams build against — the memory-item schema, the storage interface,
-      per-backend schemas, the router and dreaming contracts, and the evaluation protocol. Pseudocode is illustrative,
-      not prescriptive.</p>
+    <p class="lead">The contracts the four workstreams build against — memory-item schema, storage interface,
+      per-backend schemas, router and dreaming contracts, eval protocol. Pseudocode is illustrative.</p>
   </div>
 </section>
 
@@ -79,9 +78,8 @@ supersedes: null          <span class="c"># id of the item this replaces, if any
     <span class="k">def</span> all(self) -&gt; Iterable[MemoryItem]: ...           <span class="c"># for the offline dreaming sweep</span></pre>
     <div class="callout fade-up">
       <span class="ic">🧩</span>
-      <div><p style="margin:0">Backends are swappable: <code>MarkdownStore</code>, <code>SqliteVectorStore</code> and
-        <code>GraphStore</code> each satisfy this interface, so the orchestrator and dreaming worker never depend on a
-        concrete store.</p></div>
+      <div><p style="margin:0">Backends are swappable: each store satisfies this interface, so the orchestrator and
+        dreaming worker never depend on a concrete store.</p></div>
     </div>
   </div>
 </section>
