@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Collaborate · Cookbook Memory</title>
+<meta name="description" content="How the four Cookbook Memory developers collaborate on GitHub: branch model, who owns which branches, running the benchmark pipeline inside the OpenCode memory harness, PR + merge flow, and optional Langfuse tracing.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+<script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html"><span class="mark">M</span><span>Memory Harness<small>Cookbook Memory · persistent memory for coding agents</small></span></a>
+    <button class="nav-toggle" aria-label="Toggle navigation">☰</button>
+    <nav class="nav-links">
+      <a href="index.html">Overview</a>
+      <a href="plan.html">Plan</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="benchmarks.html">Benchmarks</a>
+      <a href="implementation.html">Implementation</a>
+      <a href="results.html">Results</a>
+      <a href="collaborate.html">Collaborate</a>
+      <a class="nav-cta" href="https://github.com/kenhuangus/agent-memory-harness" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<section class="page-head">
+  <div class="wrap">
+    <div class="crumb"><a href="index.html">Overview</a> / Collaborate</div>
+    <h1>Collaborate on GitHub</h1>
+    <p class="lead">Four developers, one repo, no conflicts. The three contracts
+      (<a href="https://github.com/kenhuangus/agent-memory-harness/blob/main/prd.md">prd.md</a> ·
+      <a href="https://github.com/kenhuangus/agent-memory-harness/blob/main/architecture.md">architecture.md</a> ·
+      <a href="https://github.com/kenhuangus/agent-memory-harness/blob/main/plan.md">plan.md</a>) say what/how/who;
+      this page is the day-to-day workflow.</p>
+  </div>
+</section>
+
+<!-- BRANCH MODEL -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">How we branch</div>
+      <h2>GitHub Flow, short-lived branches</h2>
+      <p><code>main</code> is protected — no direct pushes. Everything lands through a small, reviewed PR.</p>
+    </div>
+    <div class="grid grid-2">
+      <div class="card bl1 fade-up">
+        <h3>The loop</h3>
+        <ol class="steps">
+          <li>Branch from <code>main</code>: <code>git switch -c &lt;area&gt;/&lt;short-desc&gt;</code></li>
+          <li>Commit small, one concern per branch (&lt; ~400 lines).</li>
+          <li>Sync daily: <code>git fetch &amp;&amp; git rebase origin/main</code>.</li>
+          <li>Push &amp; open a PR early; let CI + the code owner review.</li>
+          <li>Squash-merge when green + approved; delete the branch.</li>
+        </ol>
+      </div>
+      <div class="card bl3 fade-up">
+        <h3>Rules that prevent conflicts</h3>
+        <ul>
+          <li><strong>One owner per directory</strong> — edit only paths you own.</li>
+          <li><strong>Short-lived</strong> branches (1–2 days); long branches rot.</li>
+          <li><strong>Stubs first</strong> — the interface lands before dependents.</li>
+          <li><strong>Don't reformat</strong> files you don't own.</li>
+          <li>The <strong>frozen contract</strong> (<code>schema.py</code>/<code>protocols.py</code>) changes only via a <code>[CONTRACT]</code> PR.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- OWNERSHIP / WHICH BRANCHES ARE MINE -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Who owns what</div>
+      <h2>Your branches &amp; directories</h2>
+      <p>Git lets anyone make any branch, so we use a <strong>naming convention</strong> + <code>CODEOWNERS</code>:
+        you work in branches prefixed by your area, and the directories you own gate the PR. Your rows are highlighted.</p>
+    </div>
+    <div class="table-wrap fade-up">
+      <table>
+        <thead><tr><th>Developer</th><th>Owns (directories)</th><th>Branch prefixes</th></tr></thead>
+        <tbody>
+          <tr style="background:rgba(45,212,191,.10)">
+            <td><span class="pill p2">Ken — you</span></td>
+            <td><code>eval/memeval/loaders/</code>, <code>metrics.py</code>, <code>cost.py</code>, <code>trajectory.py</code>, <code>agent.py</code>, <code>tracing.py</code>, <code>results.py</code>, <code>eval/tests/</code></td>
+            <td><code>eval/*</code> · <code>loaders/*</code> · <code>metrics/*</code> · <code>eval-infra/*</code></td>
+          </tr>
+          <tr>
+            <td><span class="pill p1">Keith</span></td>
+            <td><code>eval/memeval/harness.py</code>, <code>models.py</code>, <code>cli.py</code>, the site (<code>*.html</code>, <code>assets/</code>)</td>
+            <td><code>harness/*</code> · <code>opencode/*</code> · <code>site/*</code></td>
+          </tr>
+          <tr>
+            <td><span class="pill p3">Brent</span></td>
+            <td><code>eval/memeval/stores/</code>, <code>router.py</code> <span class="note">(created on first commit)</span></td>
+            <td><code>stores/*</code> · <code>router/*</code></td>
+          </tr>
+          <tr>
+            <td><span class="pill p4">Scott B.</span></td>
+            <td><code>eval/memeval/dreaming/</code> <span class="note">(created on first commit)</span></td>
+            <td><code>dreaming/*</code></td>
+          </tr>
+          <tr>
+            <td><span class="pill">All four</span></td>
+            <td><code>schema.py</code>, <code>protocols.py</code> (frozen) + the contract docs</td>
+            <td><code>[CONTRACT] …</code> (all owners approve)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note" style="margin-top:10px">List your open branches: <code>git branch -a --list 'eval/*' 'loaders/*'</code>.
+      Full map: <a href="https://github.com/kenhuangus/agent-memory-harness/blob/main/.github/CODEOWNERS">.github/CODEOWNERS</a>.</p>
+  </div>
+</section>
+
+<!-- RUN THE PIPELINE IN THE OPENCODE MEMORY HARNESS -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Run the benchmark pipeline</div>
+      <h2>Datasets → OpenCode memory harness → metrics</h2>
+      <p>The eval pipeline talks to memory only through the <code>MemoryStore</code> seam. Offline it uses the
+        reference store; for real runs you pass <strong>Keith's memory harness</strong> as <code>store=</code>, and
+        OpenCode drives the multi-step loop via the <code>AgentAdapter</code> seam.</p>
+    </div>
+
+    <h3>1 · Set up &amp; smoke-test (offline, zero deps)</h3>
+<pre><span class="c"># from the eval/ directory</span>
+pip install -e .
+python tests/test_smoke.py                 <span class="c"># 43 offline checks, stdlib-only</span>
+python -m memeval.cli run --benchmark longmemeval --model echo \
+    --no-memory --path tests/fixtures/longmemeval.json</pre>
+
+    <h3>2 · Run a dataset through the OpenCode memory harness (real code)</h3>
+<pre><span class="k">from</span> memeval.agent <span class="k">import</span> run_agent, AgentResult
+<span class="k">from</span> memeval.results <span class="k">import</span> append_result
+<span class="k">from</span> memeval.schema <span class="k">import</span> Benchmark
+<span class="k">from</span> cookbook_memory <span class="k">import</span> CookbookMemory   <span class="c"># Keith's harness: implements MemoryStore</span>
+
+<span class="k">class</span> OpenCodeAgent:                          <span class="c"># satisfies AgentAdapter</span>
+    name = <span class="s">"opencode+claude-haiku-4-5"</span>
+    price_in, price_out = 0.80, 4.0           <span class="c"># $/Mtok (verify)</span>
+    <span class="k">def</span> solve(self, task, ctx):
+        <span class="c"># OpenCode runs its loop; every step touches the SHARED store:</span>
+        <span class="k">for</span> _ <span class="k">in</span> range(MAX_STEPS):
+            hits = ctx.retrieve(subquery)             <span class="c"># -> Keith's memory harness</span>
+            edit = ctx.generate(build_prompt(task, hits))
+            ctx.remember(f<span class="s">"tried: {summary(edit)}"</span>)     <span class="c"># written to the shared store</span>
+            <span class="k">if</span> tests_pass(edit): <span class="k">break</span>
+        <span class="k">return</span> AgentResult(prediction=patch, patch=patch, success=tests_pass(patch))
+
+store = CookbookMemory(backends=[<span class="s">"markdown"</span>, <span class="s">"sqlite"</span>, <span class="s">"graph"</span>])   <span class="c"># the real harness</span>
+rr = run_agent(Benchmark.SWE_BENCH_CL, OpenCodeAgent(), memory=<span class="n">True</span>,
+               store=store, path_or_id=<span class="s">"data/swe_bench_cl.json"</span>)
+append_result(rr, <span class="s">"results.json"</span>, run_id=<span class="s">"brent-swecl-haiku-mem"</span>)   <span class="c"># -> Results page</span></pre>
+    <p class="note">The <code>store=</code> is the integration point: pass any <code>MemoryStore</code> (Keith's harness, or
+      a single backend). Memory-off baseline = same code with <code>memory=False</code>. Coding solve-rate needs a
+      CODE <code>grader=</code> (apply patch + run tests) — until then CODE accuracy is left ungraded.</p>
+
+    <h3>3 · Log the run so it shows on the Results page</h3>
+<pre><span class="c"># one command: run + append to the ledger the Results page renders</span>
+python -m memeval.results run --benchmark longmemeval --model claude-haiku-4-5 \
+    --memory --results ../results.json --out runs/lme_haiku_mem.jsonl
+git add ../results.json &amp;&amp; git commit -m "results: longmemeval haiku+mem" <span class="c"># via PR</span></pre>
+    <p class="note">Then it appears on <a href="results.html">Results</a> after merge. Each captain logs their
+      benchmark on their own API key (see the <a href="plan.html#dependencies">plan</a>).</p>
+  </div>
+</section>
+
+<!-- PR + MERGE -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Ship it</div>
+      <h2>Pull requests &amp; merge</h2>
+    </div>
+    <div class="grid grid-2">
+      <div class="card fade-up">
+        <h3>Normal PR</h3>
+        <ol class="steps">
+          <li><code>git push -u origin eval/add-locomo-loader</code></li>
+          <li><code>gh pr create</code> — fill the template (scope, contract impact).</li>
+          <li>CI runs the <strong><code>test</code></strong> check; the directory's <strong>code owner</strong> reviews.</li>
+          <li>Resolve conversations; keep the branch <strong>up to date</strong> with <code>main</code>.</li>
+          <li>Squash-merge once <strong>green + approved</strong>; branch auto-deletes.</li>
+        </ol>
+      </div>
+      <div class="card bl4 fade-up">
+        <h3>Changing the frozen contract</h3>
+        <ul>
+          <li>Title the PR <code>[CONTRACT] …</code>.</li>
+          <li>Edit <code>schema.py</code>/<code>protocols.py</code> <strong>and</strong> <code>architecture.md</code> together.</li>
+          <li>Fill the "affected dependents" table.</li>
+          <li>Needs <strong>all four owners</strong>' approval (CODEOWNERS enforces it).</li>
+        </ul>
+        <p class="note" style="margin-top:8px">Branch protection: PR required · code-owner review · <code>test</code> must pass ·
+          up-to-date branch. (Admin can bootstrap-merge until all four are added as collaborators.)</p>
+      </div>
+    </div>
+    <div class="callout fade-up" style="margin-top:20px">
+      <span class="ic">🔑</span>
+      <div><p style="margin:0"><strong>Before the team starts:</strong> replace the placeholder handles in
+        <code>.github/CODEOWNERS</code> with real GitHub usernames and add all four as collaborators; then turn on
+        <code>enforce_admins</code> so the freeze binds everyone.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- LANGFUSE TRACING -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Optional</div>
+      <h2>Langfuse tracing for the agent loop</h2>
+      <p>Verdict: <strong>optional, lazy add-on</strong> — keep the <code>Trajectory</code> JSONL + metrics as the
+        source of truth; use Langfuse as a <em>mirror</em> to inspect multi-step agent runs and the dreaming loop.
+        It's a <strong>no-op</strong> unless installed and keyed, so the offline/CI path is untouched.</p>
+    </div>
+    <div class="grid grid-2">
+      <div class="card fade-up">
+        <h3>Turn it on</h3>
+<pre>pip install langfuse
+export LANGFUSE_PUBLIC_KEY=pk-...
+export LANGFUSE_SECRET_KEY=sk-...
+<span class="c"># then run_agent emits a trace per task automatically</span></pre>
+        <p class="note"><code>memeval/tracing.py</code> wires it in: one span per task, nested
+          <code>retrieve / generate / write</code> steps, the four metrics as <strong>scores</strong>.</p>
+      </div>
+      <div class="card fade-up">
+        <h3>Why bother</h3>
+        <ul>
+          <li>Nested <strong>trace tree</strong> per task (vs. a flat JSONL dump).</li>
+          <li>Per-step <strong>latency</strong> + retrieved items inline — find the bad retrieval.</li>
+          <li><strong>Experiment diff</strong>: memory-on vs off, Haiku vs Opus, side by side.</li>
+          <li>Debug the <strong>dreaming</strong> loop's merge/dedup decisions step by step.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="wrap footer-grid">
+    <div>
+      <a class="brand" href="index.html"><span class="mark">M</span><span>Cookbook Memory</span></a>
+      <p style="margin-top:14px;max-width:34ch;">Persistent, self-curating memory for long-running coding agents.</p>
+    </div>
+    <div class="cols">
+      <div class="col"><h5>Project</h5><a href="index.html">Overview</a><a href="plan.html">2-week plan</a><a href="architecture.html">Architecture</a></div>
+      <div class="col"><h5>Reference</h5><a href="benchmarks.html">Benchmarks</a><a href="implementation.html">Implementation</a><a href="results.html">Results</a></div>
+    </div>
+  </div>
+  <div class="wrap" style="margin-top:30px;"><span class="note">© <span data-year>2026</span> Cookbook Memory project.</span></div>
+</footer>
+
+<script src="assets/js/main.js"></script>
+</body>
+</html>

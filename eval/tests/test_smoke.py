@@ -718,6 +718,40 @@ def test_run_agent_result_forces_success_and_budget() -> None:
     assert rr2.budget_exceeded is True and rr2.partial is True
 
 
+def test_results_ledger_round_trip() -> None:
+    """A run appends a flat row to the ledger that the Results page can read."""
+    from memeval.results import append_result, load_results
+    from memeval.harness import run
+    fx = _fixture("longmemeval.json")
+    rr = run(Benchmark.LONGMEMEVAL, EchoModel(), True, path_or_id=fx)
+    with tempfile.TemporaryDirectory() as tmp:
+        ledger = Path(tmp) / "results.json"
+        rec = append_result(rr, ledger, run_id="t", notes="smoke")
+        # Row shape the page renders.
+        assert rec["benchmark"] == "longmemeval"
+        assert rec["memory"] is True
+        for kk in ("recency", "efficiency", "relevancy", "accuracy"):
+            assert isinstance(rec["metrics"][kk], float)
+        assert rec["n_tasks"] == rr.n_tasks and rec["run_id"] == "t"
+        # Appends accumulate; file is valid JSON with a runs[] list.
+        append_result(rr, ledger)
+        data = load_results(ledger)
+        assert len(data["runs"]) == 2 and data["schema"] >= 1
+        json.dumps(data)  # serializable
+
+
+def test_tracing_is_safe_noop() -> None:
+    """The Langfuse shim never raises (and is a no-op when unconfigured)."""
+    from memeval import tracing
+    assert isinstance(tracing.enabled(), bool)
+    with tracing.task_span("t", input="x") as span:
+        span.step("generate", "g", output="y", tokens_in=1, tokens_out=1)
+        span.score("accuracy", 1.0)
+        span.update(output="z")
+    tracing.flush()  # must not raise
+    tracing.NOOP.step("k", "n"); tracing.NOOP.score("a", 1.0); tracing.NOOP.update()
+
+
 def test_harness_run_with_budget_partial() -> None:
     """A tiny USD budget on a non-free model yields a partial RunResult.
 

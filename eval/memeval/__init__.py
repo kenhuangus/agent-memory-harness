@@ -48,6 +48,9 @@ from .agent import (
     run_agent,
 )
 
+# Results ledger lives in ``memeval.results`` (append_result / load_results) — not
+# re-exported here so ``python -m memeval.results`` runs without a double-import warning.
+
 __all__ = [
     "__version__",
     # schema

@@ -54,6 +54,7 @@ from .harness import InMemoryStore, stratified_dev_slice
 from .loaders import get_loader
 from .metrics import compute_metrics, qa_match
 from .models import EchoModel, estimate_tokens_words
+from . import tracing
 from .protocols import MemoryStore, ModelAdapter
 from .schema import (
     Benchmark,
@@ -152,6 +153,7 @@ class AgentContext:
         k: int,
         as_of: Optional[float],
         step_ts: float,
+        tracer: Any = None,
     ) -> None:
         self.task = task
         self.store = store
@@ -162,6 +164,7 @@ class AgentContext:
         self._traj = trajectory
         self._cost = cost
         self._ts = step_ts
+        self._tracer = tracer if tracer is not None else tracing.NOOP
 
     # -- retrieval -------------------------------------------------------- #
     def retrieve(
@@ -187,6 +190,13 @@ class AgentContext:
             step=0, kind="retrieve", content=query, timestamp=self._ts,
             retrieved=list(hits),
         ))
+        self._tracer.step(
+            "retrieve", "retrieve", input=query,
+            metadata={"k": len(hits), "hits": [
+                {"id": h.item_id, "score": round(h.score, 4), "rank": h.rank}
+                for h in hits
+            ]},
+        )
 
     # -- generation ------------------------------------------------------- #
     def generate(self, prompt: str, **kwargs: Any) -> str:
@@ -220,6 +230,10 @@ class AgentContext:
             step=0, kind="generate", content=text, timestamp=self._ts,
             tokens_in=tokens_in, tokens_out=tokens_out,
         ))
+        self._tracer.step(
+            "generate", "generate", output=text,
+            tokens_in=tokens_in, tokens_out=tokens_out,
+        )
 
     # -- memory writes ---------------------------------------------------- #
     def remember(self, content: str, *, item_id: Optional[str] = None,
@@ -251,6 +265,10 @@ class AgentContext:
             step=0, kind="write", content=item.content, timestamp=self._ts,
             metadata={"item_id": item.item_id},
         ))
+        self._tracer.step(
+            "write", "write", input=item.content,
+            metadata={"item_id": item.item_id},
+        )
         return item.item_id
 
     def note(self, text: str) -> None:
@@ -258,6 +276,7 @@ class AgentContext:
         self._traj.add(TrajectoryStep(
             step=0, kind="note", content=text, timestamp=self._ts,
         ))
+        self._tracer.step("note", "note", input=text)
 
 
 # --------------------------------------------------------------------------- #
@@ -333,19 +352,23 @@ def run_agent(
             for sess in task.sessions:
                 active_store.write(MemoryItem.from_session(sess))
 
-        ctx = AgentContext(
-            task=task, store=active_store, model=_agent_model(agent),
-            memory_on=memory, trajectory=traj, cost=cost, k=k,
-            as_of=query_time, step_ts=step_ts,
-        )
+        with tracing.task_span(
+            task.task_id, input=task.question,
+            metadata={"benchmark": bench.value, "memory": memory, "agent": agent.name},
+        ) as tspan:
+            ctx = AgentContext(
+                task=task, store=active_store, model=_agent_model(agent),
+                memory_on=memory, trajectory=traj, cost=cost, k=k,
+                as_of=query_time, step_ts=step_ts, tracer=tspan,
+            )
+            try:
+                result = agent.solve(task, ctx)
+            except BudgetExceeded:
+                budget_hit = True
+                break
+            pred, forced_success = _coerce_result(result)
+            tspan.update(output=pred)
 
-        try:
-            result = agent.solve(task, ctx)
-        except BudgetExceeded:
-            budget_hit = True
-            break
-
-        pred, forced_success = _coerce_result(result)
         traj.prediction = pred
         traj.success = (
             forced_success if forced_success is not None
@@ -363,6 +386,16 @@ def run_agent(
     tokens_in = sum(s.tokens_in for t in trajectories for s in t.steps)
     tokens_out = sum(s.tokens_out for t in trajectories for s in t.steps)
     partial = truncated or budget_hit or len(trajectories) < total_available
+
+    # Mirror the aggregate metrics into Langfuse as run-level scores (no-op offline).
+    with tracing.task_span(
+        f"run:{bench.value}:{cfg.label}",
+        metadata={"cost_usd": cost.spent_usd if cost is not None else 0.0,
+                  "n_tasks": len(trajectories), "partial": partial},
+    ) as rspan:
+        for _m in ("recency", "efficiency", "relevancy", "accuracy"):
+            rspan.score(_m, getattr(metrics, _m))
+    tracing.flush()
 
     return RunResult(
         benchmark=bench, config=cfg, metrics=metrics, trajectories=trajectories,
