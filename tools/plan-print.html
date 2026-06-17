@@ -121,7 +121,117 @@
   <p>Public benchmarks only — no home-grown evals. Per benchmark, a controlled grid runs Haiku + harness vs. Haiku,
     Opus 4.8 and Sonnet — prompts and task order fixed, every trajectory logged.</p>
 
-  <h2><span class="num">4</span>Scope</h2>
+  <h2 class="pb"><span class="num">4</span>System design (final architecture)</h2>
+  <p>The design is <strong>contract-first</strong>: two stdlib-only files — <code>schema.py</code> (data model) and
+    <code>protocols.py</code> (interfaces) — are <strong>frozen on Day&nbsp;3</strong>, and every component is built
+    against those <code>typing.Protocol</code> seams, never against each other's code. That is what lets four people
+    work in parallel without collisions. The full technical contract lives in <code>architecture.md</code>.</p>
+  <figure>
+    <svg viewBox="0 0 1200 470" xmlns="http://www.w3.org/2000/svg" font-family="Helvetica, Arial, sans-serif" role="img" aria-label="System architecture data flow">
+      <defs>
+        <linearGradient id="adg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6366f1"/><stop offset="1" stop-color="#22d3ee"/></linearGradient>
+        <marker id="aah" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#475569"/></marker>
+        <marker id="aah-p" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#db2777"/></marker>
+      </defs>
+      <rect x="0" y="0" width="1200" height="470" rx="14" fill="#f7f8fa" stroke="#e1e4ea"/>
+
+      <!-- eval harness banner (Ken) -->
+      <rect x="24" y="22" width="1152" height="46" rx="11" fill="#ecfeff" stroke="#0d9488" stroke-width="1.4"/>
+      <text x="600" y="42" text-anchor="middle" fill="#0f766e" font-size="12.5" font-weight="700">Evaluation harness — run_agent() drives the loop · logs every trajectory · scores 4 metrics + cost</text>
+      <text x="600" y="59" text-anchor="middle" fill="#0d9488" font-size="11" font-weight="700">Ken · eval/memeval/{agent.py · harness.py(seam) · metrics.py · cost.py · trajectory.py}</text>
+      <path d="M150,68 L150,150" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#aah)"/>
+
+      <!-- OpenCode agent (Keith) -->
+      <g><rect x="40" y="150" width="200" height="74" rx="12" fill="#fff" stroke="url(#adg)" stroke-width="1.8"/>
+        <text x="140" y="180" text-anchor="middle" fill="#111827" font-size="13" font-weight="700">OpenCode agent</text>
+        <text x="140" y="199" text-anchor="middle" fill="#6b7280" font-size="10">retrieve → generate →</text>
+        <text x="140" y="213" text-anchor="middle" fill="#6b7280" font-size="10">tool → remember loop</text></g>
+      <text x="140" y="240" text-anchor="middle" fill="#4f46e5" font-size="10.5" font-weight="700">Keith · opencode/agent.py</text>
+      <path d="M240,187 L300,187" fill="none" stroke="#475569" stroke-width="2.2" marker-end="url(#aah)"/>
+
+      <!-- Memory framework (Keith) -->
+      <g><rect x="300" y="150" width="210" height="74" rx="12" fill="#eef2ff" stroke="url(#adg)" stroke-width="1.8"/>
+        <text x="405" y="178" text-anchor="middle" fill="#111827" font-size="13" font-weight="700">MemoryFramework</text>
+        <text x="405" y="196" text-anchor="middle" fill="#6b7280" font-size="10">a MemoryStore facade:</text>
+        <text x="405" y="210" text-anchor="middle" fill="#6b7280" font-size="10">write · search · all</text></g>
+      <text x="405" y="240" text-anchor="middle" fill="#4f46e5" font-size="10.5" font-weight="700">Keith · opencode/framework.py</text>
+      <path d="M510,187 L570,187" fill="none" stroke="#475569" stroke-width="2.2" marker-end="url(#aah)"/>
+
+      <!-- Router (Brent) -->
+      <g><rect x="570" y="150" width="150" height="74" rx="12" fill="#fff" stroke="#d97706" stroke-width="1.6"/>
+        <text x="645" y="182" text-anchor="middle" fill="#111827" font-size="13" font-weight="700">Router</text>
+        <text x="645" y="201" text-anchor="middle" fill="#6b7280" font-size="10">query → 1 best backend</text></g>
+      <text x="645" y="240" text-anchor="middle" fill="#d97706" font-size="10.5" font-weight="700">Brent · router.py</text>
+
+      <!-- backends (Brent) -->
+      <path d="M720,170 C 760,150 770,118 800,116" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#aah)"/>
+      <path d="M720,187 L800,187" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#aah)"/>
+      <path d="M720,204 C 760,224 770,256 800,258" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#aah)"/>
+      <g><rect x="800" y="98" width="270" height="40" rx="9" fill="#fff" stroke="#d97706" stroke-width="1.3"/>
+        <text x="815" y="123" fill="#111827" font-size="11.5" font-weight="700">Markdown + YAML</text><text x="1055" y="123" text-anchor="end" fill="#9a6207" font-size="9.5">inverted keyword</text></g>
+      <g><rect x="800" y="167" width="270" height="40" rx="9" fill="#fff" stroke="#d97706" stroke-width="1.3"/>
+        <text x="815" y="192" fill="#111827" font-size="11.5" font-weight="700">SQLite + vectors</text><text x="1055" y="192" text-anchor="end" fill="#9a6207" font-size="9.5">dense ANN (HNSW)</text></g>
+      <g><rect x="800" y="236" width="270" height="40" rx="9" fill="#fff" stroke="#d97706" stroke-width="1.3"/>
+        <text x="815" y="261" fill="#111827" font-size="11.5" font-weight="700">Graph store</text><text x="1055" y="261" text-anchor="end" fill="#9a6207" font-size="9.5">typed traversal</text></g>
+      <text x="935" y="294" text-anchor="middle" fill="#d97706" font-size="10.5" font-weight="700">Brent · stores/ (3 indexed backends)</text>
+
+      <!-- Dreaming worker (Scott) async -->
+      <g><rect x="660" y="360" width="410" height="74" rx="12" fill="#fdf2f8" stroke="#db2777" stroke-width="1.6"/>
+        <text x="865" y="388" text-anchor="middle" fill="#111827" font-size="13" font-weight="700">Dreaming worker — async, while agents sleep</text>
+        <text x="865" y="408" text-anchor="middle" fill="#6b7280" font-size="10.5">reads store.all() + trajectories: dedup · conflict resolution ·</text>
+        <text x="865" y="422" text-anchor="middle" fill="#6b7280" font-size="10.5">governance (must-know / must-do / blacklist) · retention</text></g>
+      <text x="865" y="450" text-anchor="middle" fill="#db2777" font-size="10.5" font-weight="700">Scott B. · dreaming/worker.py</text>
+      <path d="M900,360 C 905,320 910,300 915,278" fill="none" stroke="#db2777" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#aah-p)"/>
+      <path d="M955,278 C 950,300 945,320 940,360" fill="none" stroke="#db2777" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#aah-p)"/>
+
+      <!-- frozen contract footer -->
+      <rect x="40" y="300" width="510" height="40" rx="9" fill="#eef2ff" stroke="url(#adg)" stroke-width="1.4"/>
+      <text x="295" y="320" text-anchor="middle" fill="#111827" font-size="11.5" font-weight="700">Frozen contract — schema.py + protocols.py</text>
+      <text x="295" y="334" text-anchor="middle" fill="#4f46e5" font-size="10">all four sign off to change · stdlib-only</text>
+    </svg>
+    <figcaption>Data flow: the eval harness (Ken) drives OpenCode (Keith), which reads/writes through the MemoryFramework
+      (Keith) → Router (Brent) → one of three indexed backends (Brent); the Dreaming worker (Scott&nbsp;B.) consolidates
+      the store asynchronously. Every box implements a frozen <code>protocols.py</code> seam.</figcaption>
+  </figure>
+
+  <h3>Frozen public interfaces (the seams)</h3>
+  <table>
+    <thead><tr><th>Protocol</th><th>Key methods</th><th>Implemented by</th></tr></thead>
+    <tbody>
+      <tr><td><strong>MemoryStore</strong></td><td><code>write(item)</code> · <code>get(id)</code> · <code>search(query, k) → RetrievedItem[]</code> · <code>all()</code></td><td>Brent's backends + Keith's <code>MemoryFramework</code></td></tr>
+      <tr><td><strong>AgentAdapter</strong></td><td><code>solve(task, ctx)</code> — the multi-step loop</td><td>Keith's <code>OpenCodeAgent</code></td></tr>
+      <tr><td><strong>ModelAdapter</strong></td><td><code>generate(prompt) → (text, tok_in, tok_out)</code></td><td>Keith's <code>models.py</code> (+ EchoModel)</td></tr>
+      <tr><td><strong>Loader</strong></td><td><code>load(path_or_id) → Task[]</code></td><td>Ken's <code>loaders/</code> (five benchmarks)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>How a request flows</h3>
+  <ul>
+    <li><strong>Drive:</strong> <code>run_agent(benchmark, OpenCodeAgent, memory=True, store=MemoryFramework)</code> hands the agent one task at a time and a per-task <code>AgentContext</code> (centralizes cost + trajectory + grading).</li>
+    <li><strong>Retrieve:</strong> the agent calls <code>ctx.retrieve(query)</code> → framework asks the <strong>Router</strong> for the one best backend → that backend's <code>search</code> returns ranked, deduped hits (each carrying its token count).</li>
+    <li><strong>Generate:</strong> <code>ctx.generate(prompt)</code> calls the model, charges cost, logs a step.</li>
+    <li><strong>Remember:</strong> <code>ctx.remember(fact)</code> writes back to the shared store, so a later task in the same group can retrieve it.</li>
+    <li><strong>Dream (async):</strong> between sessions the <strong>Dreaming worker</strong> reads <code>store.all()</code> + trajectories and consolidates — dedup, conflict resolution, governance, pruning.</li>
+  </ul>
+
+  <h3>Module → directory → owner</h3>
+  <table>
+    <thead><tr><th>Path</th><th>Role</th><th>Owner</th></tr></thead>
+    <tbody>
+      <tr><td><code>schema.py</code>, <code>protocols.py</code></td><td>Frozen contract (data model + seams)</td><td><strong>All four</strong></td></tr>
+      <tr><td><code>opencode/</code></td><td>OpenCode agent + MemoryFramework (store/retrieve + dreaming wiring)</td><td><strong>Keith</strong></td></tr>
+      <tr><td><code>harness.py</code>, <code>models.py</code>, <code>cli.py</code></td><td>Single-shot harness · model adapters · CLI</td><td><strong>Keith</strong></td></tr>
+      <tr><td><code>stores/</code>, <code>router.py</code></td><td>Three indexed backends + the dispatch router</td><td><strong>Brent</strong></td></tr>
+      <tr><td><code>dreaming/</code></td><td>Async consolidation engine</td><td><strong>Scott B.</strong></td></tr>
+      <tr><td><code>loaders/</code>, <code>metrics.py</code>, <code>cost.py</code>, <code>trajectory.py</code>, <code>agent.py</code>, <code>results.py</code></td><td>Eval infrastructure + the AgentAdapter seam</td><td><strong>Ken</strong></td></tr>
+    </tbody>
+  </table>
+  <blockquote><p><strong>Load-bearing invariants</strong> (the contract tests can't catch): <code>search</code> returns
+    items sorted by descending score with <code>rank</code> and <code>tokens</code> set (the efficiency metric needs them);
+    retrieval respects the query's "as-of" time — never surface a memory from the future; the offline path imports
+    <strong>no</strong> third-party package at module top level.</p></blockquote>
+
+  <h2><span class="num">5</span>Scope</h2>
   <h3>In scope</h3>
   <ul>
     <li>The memory harness: all four modules, end to end.</li>
@@ -141,7 +251,7 @@
     <li>Validating non-coding agents — design generalizes, but not tested now.</li>
   </ul>
 
-  <h2 class="pb"><span class="num">5</span>Team &amp; ownership — who owns what</h2>
+  <h2 class="pb"><span class="num">6</span>Team &amp; ownership — who owns what</h2>
   <p>Four parallel workstreams, locked behind a shared storage interface <strong>frozen on Day 3</strong>.</p>
   <p><strong>The team:</strong> <strong>P1 Keith</strong> (harness, OpenCode) &nbsp;·&nbsp; <strong>P2 Ken</strong> (benchmark)
     &nbsp;·&nbsp; <strong>P3 Brent</strong> (store, retrieve) &nbsp;·&nbsp; <strong>P4 Scott B.</strong> (dreaming).</p>
@@ -193,7 +303,7 @@
     Controls: sharded keys (one per captain); cheapest-first + early-exit (Opus last, confirm-only); dev-slice → full;
     cache + resume; hard per-benchmark budget gates; no-memory baselines in week 1.</p>
 
-  <h2 class="pb"><span class="num">6</span>Two-week timeline</h2>
+  <h2 class="pb"><span class="num">7</span>Two-week timeline</h2>
   <h3>Person 1 · Keith — Harness Architecture &amp; OpenCode Integration</h3>
   <ul>
     <li><strong>Week 1:</strong> Three-module abstraction &amp; storage interface. Persistence layer (write, versioning, tagging). Instrument OpenCode to write memory each step.</li>
@@ -215,7 +325,7 @@
     <li><strong>Week 2:</strong> Async scheduler that runs while agents sleep; must-know / must-do extraction; retention &amp; pruning; observability; integration with Keith &amp; Brent. <strong>Captain the MemoryAgentBench runs.</strong></li>
   </ul>
 
-  <h2 class="pb"><span class="num">7</span>Dependency map &amp; critical path</h2>
+  <h2 class="pb"><span class="num">8</span>Dependency map &amp; critical path</h2>
   <p>The Day-3 interface freeze unblocks every stream; the bold chain is the critical path to ship.</p>
   <figure>
     <svg viewBox="0 0 1200 410" xmlns="http://www.w3.org/2000/svg" font-family="Helvetica, Arial, sans-serif" role="img" aria-label="Dependency map">
@@ -271,7 +381,7 @@
   <blockquote><p><strong>Top risk is semantic, not structural:</strong> defining <em>what counts as "good memory."</em>
     Ken and Scott B. must align on memory semantics in week 1, or the harness stores everything and retrieves nothing useful.</p></blockquote>
 
-  <h2><span class="num">8</span>Milestones</h2>
+  <h2><span class="num">9</span>Milestones</h2>
   <table>
     <thead><tr><th>Day</th><th>Milestone</th></tr></thead>
     <tbody>
@@ -282,7 +392,7 @@
     </tbody>
   </table>
 
-  <h2><span class="num">9</span>Benchmarks &amp; metrics</h2>
+  <h2><span class="num">10</span>Benchmarks &amp; metrics</h2>
   <table>
     <thead><tr><th>Benchmark</th><th>Primary metrics</th><th>Reference</th></tr></thead>
     <tbody>
@@ -295,7 +405,7 @@
   </table>
   <p>Full descriptions, dataset links and the metric-mapping matrix live on the project site's <strong>Benchmarks</strong> page.</p>
 
-  <h2><span class="num">10</span>Collaboration &amp; deliverables</h2>
+  <h2><span class="num">11</span>Collaboration &amp; deliverables</h2>
   <p>Four developers, one repo, no conflicts: <strong>prd.md / architecture.md / plan.md</strong> are the contracts;
     GitHub Flow + CODEOWNERS + branch protection enforce one-owner-per-directory and all-owner sign-off to change a
     frozen interface. See <code>CONTRIBUTING.md</code> and the site's <strong>Collaborate</strong> page.</p>
