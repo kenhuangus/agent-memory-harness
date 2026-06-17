@@ -149,7 +149,7 @@ stdlib-only; the remote path lazily imports `datasets`. Resolve a loader with
 |---|---|---|---|---|
 | **MemoryAgentBench** | `MemoryAgentBenchLoader` | `ai-hyz/MemoryAgentBench` | QA | HF `ai-hyz/MemoryAgentBench`; GitHub `HUST-AI-HYZ/MemoryAgentBench`; arXiv 2507.05257. Competencies: accurate retrieval, test-time learning, long-range understanding, conflict resolution (EventQA, FactConsolidation). |
 | **LongMemEval** | `LongMemEvalLoader` | `xiaowu0162/LongMemEval` | QA | GitHub `xiaowu0162/LongMemEval`; arXiv 2410.10813. Files `longmemeval_s.json` (~115k tok/q), `longmemeval_m.json` (~1.5M), `longmemeval_oracle.json`. Multiple timestamped sessions/question; abilities incl. temporal reasoning, knowledge updates, abstention. |
-| **SWE-ContextBench** | `SWEContextBenchLoader` | arXiv `2602.08316` | CODE | HF paper `huggingface.co/papers/2602.08316`. 1,100 base + 376 related tasks, 51 repos, 9 languages; scored on accuracy/time/cost; tasks grouped by shared context (`group_id`). |
+| **SWE-ContextBench** | `SWEContextBenchLoader` | `jiayuanz3/SWEContextBench` | CODE | HF `jiayuanz3/SWEContextBench`; GitHub `jiayuanz3/SWEContextBench`; arXiv 2602.08316. Parquet files (Experience + Related + Relationship; `lite=True` for Lite_* subsets), SWE-bench column schema. 1,100 base + 376 related, 51 repos, 9 languages; `group_id` from the Relationship links. |
 | **SWE-Bench-CL** | `SWEBenchCLLoader` | `thomasjoshi/agents-never-forget` | CODE | GitHub `thomasjoshi/agents-never-forget`; arXiv 2507.00014. Built on SWE-bench Verified; chronological per-repo issue *sequences* (`group_id` = sequence, `order` within it). Continual-learning metrics. |
 
 All defaults are overridable via the `--path` flag, CLI args, or env.
