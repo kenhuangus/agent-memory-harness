@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/img/logo.svg" alt="Cookbook Memory" width="112">
+</p>
+
 # AI Agent Memory Harness (codename: Cookbook Memory)
 
 **Repository:** <https://github.com/kenhuangus/agent-memory-harness> · **Live site:** <https://kenhuangus.github.io/agent-memory-harness/>

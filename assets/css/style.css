@@ -83,8 +83,7 @@ ul, ol { color: var(--text-dim); }
 .brand { display: flex; align-items: center; gap: 11px; font-weight: 700; color: var(--text); letter-spacing: -.02em; }
 .brand:hover { color: var(--text); }
 .brand .mark {
-  width: 30px; height: 30px; border-radius: 8px; background: var(--grad);
-  display: grid; place-items: center; font-size: 15px; color: #06121f; font-weight: 800;
+  width: 30px; height: 30px; border-radius: 8px; display: block; object-fit: contain;
   box-shadow: 0 4px 14px -4px rgba(34,211,238,.5);
 }
 .brand small { display: block; font-size: .68rem; font-weight: 600; color: var(--text-mute); letter-spacing: .02em; }
