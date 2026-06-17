@@ -37,6 +37,17 @@ from .harness import (
     stratified_dev_slice,
 )
 
+# Multi-step agent seam (for OpenCode and other agent-loop drivers). Sits beside
+# the single-shot ``run`` and reuses the same RunResult/metrics/trajectory.
+from .agent import (
+    AgentAdapter,
+    AgentContext,
+    AgentResult,
+    EchoAgent,
+    function_agent,
+    run_agent,
+)
+
 __all__ = [
     "__version__",
     # schema
@@ -61,4 +72,11 @@ __all__ = [
     "cheapest_first",
     "should_early_exit",
     "stratified_dev_slice",
+    # agent seam
+    "run_agent",
+    "AgentAdapter",
+    "AgentContext",
+    "AgentResult",
+    "EchoAgent",
+    "function_agent",
 ]

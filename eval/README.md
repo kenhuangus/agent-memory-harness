@@ -204,6 +204,44 @@ for traj in read_trajectories("runs/lme.jsonl"):
 
 ---
 
+## Multi-step agents (OpenCode integration)
+
+`run` is a **single-shot** loop (one retrieve → one generate) — right for the
+QA-style memory benchmarks. Coding agents run a **multi-step loop**, so
+`memeval.agent` adds a sibling path **without touching the frozen contract**:
+
+- **`AgentAdapter`** — the seam an agent implements: one method, `solve(task, ctx)`.
+  **OpenCode plugs in here** (architecture A): Keith wraps the OpenCode loop as an
+  `AgentAdapter` and, each step, calls `ctx.retrieve` / `ctx.remember` against the
+  **shared `MemoryStore`** (his real memory harness, passed as `store=`) and reports
+  generations via `ctx.generate` (or `ctx.record_generate` if OpenCode called its
+  own model). Every op lands as a `TrajectoryStep`, so the existing metrics and the
+  dreaming worker consume agent runs unchanged.
+- **`AgentContext`** — keeps cost + trajectory + grading centralized; the agent only
+  decides *what* to do. Memory methods are no-ops when memory is off, so the same
+  agent code runs the memory-off baseline.
+- **`run_agent(...)`** — the sibling of `run(...)`; same `RunResult`/metrics.
+- **`EchoAgent`** — offline reference agent (a real retrieve→generate→write-back loop).
+
+```python
+from memeval.agent import run_agent, EchoAgent, AgentResult
+from memeval.schema import Benchmark
+
+# Offline demo (3-step loop, write-back accumulates memory across a group):
+rr = run_agent(Benchmark.LONGMEMEVAL, EchoAgent(), memory=True,
+               path_or_id="tests/fixtures/longmemeval.json")
+
+# Real integration: pass Keith's memory harness as the shared store.
+# rr = run_agent(Benchmark.SWE_BENCH_CL, OpenCodeAgent(), memory=True,
+#                store=keiths_memory_harness, cost=tracker, grader=swe_grader)
+```
+
+OpenCode's `AgentAdapter` returns an `AgentResult(prediction=..., patch=..., success=...)`;
+`success` (if set, e.g. after it runs the tests) overrides grading, otherwise a
+`grader(task, prediction)` (the CODE grader — separate piece) decides solve-rate.
+
+---
+
 ## Sharded-key cost workflow
 
 Real runs are sharded **one captain (and key + budget) per benchmark** so four

@@ -82,6 +82,13 @@ from memeval.trajectory import (  # noqa: E402
     trajectory_to_dict,
 )
 from memeval.loaders import available, get_loader  # noqa: E402
+from memeval.agent import (  # noqa: E402
+    AgentResult,
+    EchoAgent,
+    function_agent,
+    run_agent,
+)
+from memeval.harness import InMemoryStore  # noqa: E402
 
 # Use unittest.SkipTest so pytest treats it as a skip AND the __main__ runner
 # can distinguish skip from failure.
@@ -662,6 +669,53 @@ def test_harness_inmemory_store_satisfies_protocol() -> None:
     assert hits[0].rank == 0
     # tokens flow through RetrievedItem (invariant #1) for the efficiency metric.
     assert hits[0].tokens == hits[0].item.tokens
+
+
+def test_agent_adapter_protocol() -> None:
+    from memeval.agent import AgentAdapter
+    assert isinstance(EchoAgent(), AgentAdapter)
+
+
+def test_run_agent_longmemeval_memory_on_off() -> None:
+    fx = _fixture("longmemeval.json")
+    for mem in (False, True):
+        rr = run_agent(Benchmark.LONGMEMEVAL, EchoAgent(), mem, path_or_id=fx)
+        _assert_runresult(rr, Benchmark.LONGMEMEVAL, mem)
+        assert rr.metadata.get("mode") == "agent"
+
+
+def test_run_agent_is_multistep_and_writes_memory() -> None:
+    fx = _fixture("longmemeval.json")
+    rr = run_agent(Benchmark.LONGMEMEVAL, EchoAgent(write_back=True), True, path_or_id=fx)
+    # Memory-ON: the loop records retrieve + generate + write steps (multi-step).
+    kinds = {s.kind for t in rr.trajectories for s in t.steps}
+    assert {"retrieve", "generate", "write"} <= kinds
+    # Memory-OFF: no retrieve / no write, but still generates.
+    rr_off = run_agent(Benchmark.LONGMEMEVAL, EchoAgent(), False, path_or_id=fx)
+    kinds_off = {s.kind for t in rr_off.trajectories for s in t.steps}
+    assert "generate" in kinds_off and "retrieve" not in kinds_off and "write" not in kinds_off
+
+
+def test_run_agent_shared_store_accumulates() -> None:
+    # A caller-supplied store is shared across tasks; agent write-backs land in it.
+    fx = _fixture("longmemeval.json")
+    store = InMemoryStore()
+    rr = run_agent(Benchmark.LONGMEMEVAL, EchoAgent(write_back=True), True,
+                   path_or_id=fx, store=store)
+    assert isinstance(rr, RunResult)
+    assert any(getattr(m, "source", None) == "agent" for m in store.all())
+
+
+def test_run_agent_result_forces_success_and_budget() -> None:
+    fx = _fixture("longmemeval.json")
+    # An AgentResult(success=True) overrides grading -> accuracy 1.0 for any text.
+    agent = function_agent(lambda task, ctx: AgentResult(prediction="zzz", success=True))
+    rr = run_agent(Benchmark.LONGMEMEVAL, agent, False, path_or_id=fx)
+    assert _approx(rr.metrics.accuracy, 1.0)
+    # Budget abort mid-loop -> partial RunResult (echo priced like opus).
+    tracker = CostTracker(budget_usd=1e-9, pricing={"echo": {"in": 15.0, "out": 75.0}})
+    rr2 = run_agent(Benchmark.LONGMEMEVAL, EchoAgent(), True, path_or_id=fx, cost=tracker)
+    assert rr2.budget_exceeded is True and rr2.partial is True
 
 
 def test_harness_run_with_budget_partial() -> None:
