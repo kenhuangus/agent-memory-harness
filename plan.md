@@ -57,12 +57,14 @@ process below. Build against them; never edit them casually.
 1. Title the PR **`[CONTRACT] …`**.
 2. Edit `schema.py`/`protocols.py` **and** [`architecture.md`](architecture.md) in the same PR.
 3. Fill the PR template's "Affected dependents" table (module · owner · migration).
-4. Get approval from **all four** owners — enforced by `.github/CODEOWNERS` on the frozen files.
-5. CI must stay green; merge only after dependents confirm or the PR includes their migration.
+4. By **team convention**, loop in all four owners (CODEOWNERS auto-requests them). This is a courtesy for contract changes, **not a hard gate** — branch protection no longer blocks the merge.
+5. Keep CI green and let dependents confirm; then any collaborator may merge.
 
 ## How we avoid conflicts (summary)
 GitHub Flow + short-lived branches + small PRs · one owner per directory ·
-`main` protected (PR + code-owner review + green CI) · stubs committed first ·
+`main` uses **non-blocking** protection (PR is the workflow, but **no required
+reviews or status checks** — every PR is mergeable by default and any collaborator
+can merge; CI + code-owner requests run as signals) · stubs committed first ·
 don't reformat files you don't own. Full rules in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Cadence & Definition of Done

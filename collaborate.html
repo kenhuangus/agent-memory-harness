@@ -64,8 +64,8 @@
           <li>Branch from <code>main</code>: <code>git switch -c &lt;area&gt;/&lt;short-desc&gt;</code></li>
           <li>Commit small, one concern per branch (&lt; ~400 lines).</li>
           <li>Sync daily: <code>git fetch &amp;&amp; git rebase origin/main</code>.</li>
-          <li>Push &amp; open a PR early; let CI + the code owner review.</li>
-          <li>Squash-merge when green + approved; delete the branch.</li>
+          <li>Push &amp; open a PR early; CI runs as a signal (it doesn't gate the merge).</li>
+          <li>Squash-merge when you're ready — <strong>any collaborator can merge</strong>; delete the branch.</li>
         </ol>
       </div>
       <div class="card bl3 fade-up">
@@ -227,9 +227,9 @@ git add ../results.json &amp;&amp; git commit -m "results: longmemeval haiku+mem
         <ol class="steps">
           <li><code>git push -u origin eval/add-locomo-loader</code></li>
           <li><code>gh pr create</code> — fill the template (scope, contract impact).</li>
-          <li>CI runs the <strong><code>test</code></strong> check; the directory's <strong>code owner</strong> reviews.</li>
-          <li>Resolve conversations; keep the branch <strong>up to date</strong> with <code>main</code>.</li>
-          <li>Squash-merge once <strong>green + approved</strong>; branch auto-deletes.</li>
+          <li>CI runs the <strong><code>test</code></strong> check and the directory's <strong>code owner</strong> is auto-requested — both as <em>signals</em>, neither blocks the merge.</li>
+          <li>Review is encouraged but <strong>not required</strong>; every PR is eligible to merge by default.</li>
+          <li>Squash-merge whenever you're ready — <strong>any collaborator can merge</strong>; branch auto-deletes.</li>
         </ol>
       </div>
       <div class="card bl4 fade-up">
@@ -238,18 +238,19 @@ git add ../results.json &amp;&amp; git commit -m "results: longmemeval haiku+mem
           <li>Title the PR <code>[CONTRACT] …</code>.</li>
           <li>Edit <code>schema.py</code>/<code>protocols.py</code> <strong>and</strong> <code>architecture.md</code> together.</li>
           <li>Fill the "affected dependents" table.</li>
-          <li>Needs <strong>all four owners</strong>' approval (CODEOWNERS enforces it).</li>
+          <li>By <strong>team convention</strong>, loop in all four owners (CODEOWNERS auto-requests them) — a courtesy for contract changes, not a hard gate.</li>
         </ul>
-        <p class="note" style="margin-top:8px">Branch protection: PR required · code-owner review · <code>test</code> must pass ·
-          up-to-date branch. (Admin can bootstrap-merge until all four are added as collaborators.)</p>
+        <p class="note" style="margin-top:8px">Branch protection is intentionally <strong>non-blocking</strong>: a PR is the
+          workflow, but <strong>no approvals or passing checks are required to merge</strong> — every PR is eligible by
+          default and any collaborator can merge. CI + code-owner requests still run as signals.</p>
       </div>
     </div>
     <div class="callout fade-up" style="margin-top:20px">
       <span class="ic">🔑</span>
-      <div><p style="margin:0"><strong>Status:</strong> code owners are set — Keith <code>@kmazanec</code>,
-        Brent <code>@bgibson1618</code>, Scott B. <code>@NerdAlert58</code> — and all three are invited with
-        <strong>write</strong> access. Accept the email invite to activate code-owner review; once everyone has
-        accepted, turn on <code>enforce_admins</code> so the freeze binds everyone too.</p></div>
+      <div><p style="margin:0"><strong>Status:</strong> all three collaborators — Keith <code>@kmazanec</code>,
+        Brent <code>@bgibson1618</code>, Scott B. <code>@NerdAlert58</code> — have accepted and hold <strong>write</strong>
+        access, so each can merge PRs. Branch protection is non-blocking by design: no required reviews or status checks,
+        so every PR is mergeable by default. CODEOWNERS still auto-requests the right reviewer as a courtesy.</p></div>
     </div>
   </div>
 </section>
