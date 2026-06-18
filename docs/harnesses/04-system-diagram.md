@@ -1,61 +1,69 @@
 # System Diagram — Cookbook Memory
 
-> Clean version of the team whiteboard sketch. The memory layer (orchestrator +
-> stores + the offline "subconscious") sitting beside a harness session, with the
-> plugin as the only thing the harness sees. Renders inline on GitHub.
+> Clean version of the team whiteboard sketch. A **Conscious** band (the active
+> session — synchronous, in-loop) over a **Subconscious** band (async
+> consolidation — day-dreaming & night-dreaming), with the plugin as the only thing
+> the harness sees.
 >
 > Vocabulary ties back to [`01-cross-harness-comparison.md`](01-cross-harness-comparison.md)
 > and [`../opencode/05-integration-strategy.md`](../opencode/05-integration-strategy.md).
 
+![Cookbook Memory system diagram](../../assets/system-diagram.svg)
+
+The two bands are the core idea: the **Conscious** top row is the live path
+(Plugin → Session → Orchestrator ↔ Memory); the **Subconscious** bottom row is the
+offline path (Logs · Day Dream · Model · Dream). Arrows cross the async boundary
+between them.
+
+<details>
+<summary>Editable Mermaid source (same diagram, auto-layout)</summary>
+
 ```mermaid
 flowchart LR
-  %% ---------- Harness side ----------
-  subgraph HARNESS["Coding harness (OpenCode / Claude Code / Codex)"]
-    direction TB
-    Plugin["<b>Plugin / Adapter</b><br/>skills · MCP · hooks"]
-    Session["<b>Session</b><br/>message history / turns"]
-    Logs[("<b>Logs</b><br/>.jsonl trajectory")]
-    Plugin ==>|registers tools<br/>+ hooks| Session
-    Session -->|every step| Logs
-  end
+  %% ===== TOP ROW — live path (left to right) =====
+  Plugin["Plugin<br>skills · MCP · hooks"]
+  Session["Session<br>message history"]
+  Orch(("Orchestrator<br>route · rank · dedup"))
+  Mem["Memory<br>vectors · graph · markdown"]
 
-  %% ---------- Memory core ----------
-  subgraph CORE["Memory core (portable, Python)"]
-    direction TB
-    Orch(("<b>Orchestrator</b><br/>route · rank · dedup"))
-    Mem["<b>Memory stores</b><br/>markdown · vectors · graph"]
-    Orch <==>|R / W| Mem
-  end
+  Plugin --> Session
+  Session <-->|where / how| Orch
+  Orch <-->|R / W| Mem
 
-  %% ---------- Subconscious (offline) ----------
-  subgraph SUB["Subconscious — consolidation"]
-    direction TB
-    DayDream["<b>Day Dream</b><br/>in-session / idle<br/>light, frequent"]
-    Dream["<b>Dream</b><br/>offline / after session<br/>deep: dedup · conflict · retention"]
-    Model["<b>Model</b><br/>non-frontier (cheap)"]
-    DayDream <-->|when / what| Dream
-    DayDream -->|consolidate| Model
-    Dream -->|consolidate| Model
-  end
+  %% ===== BOTTOM ROW — offline / subconscious =====
+  Logs["Logs<br>.jsonl"]
+  DayDream["Day Dream<br>in-session / idle"]
+  Model["Model<br>not frontier"]
+  Dream["Dream<br>offline / after session"]
 
-  %% ---------- Cross-cluster wiring ----------
-  Session <==>|where / how<br/>recall · remember| Orch
-  DayDream ==>|write| Orch
-  Dream <==>|R / W| Orch
+  %% vertical drops from top row to bottom row
+  Session --> Logs
+  DayDream -->|write| Orch
+  Orch <-->|R / W| Dream
   Mem -->|read| Dream
-  DayDream -.->|adapter:<br/>chunk / batch| Logs
 
-  %% ---------- Styling ----------
-  classDef harness fill:#eef4ff,stroke:#3b6fb0,stroke-width:1px,color:#10243e;
-  classDef core fill:#fff3e6,stroke:#c97a1a,stroke-width:1px,color:#3e2710;
-  classDef sub fill:#f0eaff,stroke:#7a52c0,stroke-width:1px,color:#2a1a4e;
-  classDef store fill:#fffbe6,stroke:#b08900,stroke-width:1px,color:#3e3410;
+  %% bottom-row wiring
+  DayDream -.->|adapter · chunk / batch| Logs
+  DayDream <-->|when / what| Dream
+  DayDream <--> Model
+  Dream --> Model
+
+  %% pin the two rows (invisible alignment edges)
+  Logs ~~~ DayDream ~~~ Model ~~~ Dream
+
+  %% ===== styling =====
+  classDef harness fill:#eaf2ff,stroke:#3b6fb0,color:#10243e;
+  classDef core fill:#fff1df,stroke:#c97a1a,color:#3e2710;
+  classDef store fill:#fff8e0,stroke:#b08900,color:#3e3410;
+  classDef sub fill:#efe8ff,stroke:#7a52c0,color:#2a1a4e;
+  classDef log fill:#eef0f2,stroke:#7a8088,color:#1f2429;
   class Plugin,Session harness;
-  class Logs store;
   class Orch core;
   class Mem store;
   class DayDream,Dream,Model sub;
+  class Logs log;
 ```
+</details>
 
 ## Legend
 
@@ -65,7 +73,7 @@ flowchart LR
 | **Session** | The harness's live message history / turn loop. |
 | **Logs (.jsonl)** | The trajectory log the eval harness grades from — one step per record. |
 | **Orchestrator** | The memory core's read/write brain: routes a query to the right store, ranks by `recency × relevancy`, dedups, returns a tight context. Handles the **where / how** of memory. |
-| **Memory stores** | The three indexed backends — markdown+YAML, SQLite+vectors, graph. |
+| **Memory** | The three indexed backends — markdown+YAML, SQLite+vectors, graph. |
 | **Subconscious** | The offline consolidation band. |
 | **Day Dream** | **In-session / idle** consolidation — light, frequent (e.g. between batches). |
 | **Dream** | **Offline / after-session** consolidation — deep: cross-session dedup, conflict resolution, retention/pruning. |
