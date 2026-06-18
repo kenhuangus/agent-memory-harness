@@ -90,11 +90,12 @@ become optional adapter niceties (extra trigger points), not core dependencies.
 
 ```
                 ┌─────────────────────────────────────────────┐
-                │            Memory Core (portable)            │
+                │       Memory Core (portable, Python)         │
                 │  persistence · router · retrieval · dreaming │
                 │  store keyed by MEMORY_STORE path (per run)  │
+                │  surfaces:  `memory mcp` (model) · CLI (us)  │
                 └───────────────┬─────────────────────────────┘
-                                │ (MCP tools + a small local API)
+                                │ MCP (model, in-loop) + `memory` CLI (harness/human)
         ┌───────────────────────┼───────────────────────┐
         │                       │                       │
 ┌───────▼────────┐    ┌─────────▼─────────┐   ┌─────────▼─────────┐
@@ -124,6 +125,57 @@ become optional adapter niceties (extra trigger points), not core dependencies.
 Each adapter is **thin**: config plus small shell/TS shims that call the core's
 MCP server or a tiny local endpoint. The retrieval+dreaming logic lives once.
 
+## Core packaging: one binary, two surfaces (MCP **and** CLI)
+
+> Resolves two PR questions: "CLI or MCP?" and "what language?"
+
+**MCP and a CLI are not alternatives — they serve different consumers, and we want
+both from one core program:**
+
+| Consumer | Surface | Why |
+|---|---|---|
+| **The model, in-loop** | **MCP tool** (`recall` / `remember`) | native, typed, discoverable in the tool list, no shell hop, gated by the model's own decision — this is "memory as a native capability" (constraint #1) |
+| **The dreaming worker / test harness / a human dev** | **CLI** (`memory dream`, `memory query`, `memory reset --store …`, `memory stats`) | scripting, cron, ops, debugging, per-run store setup, and **triggering the interleaved dreaming passes between test batches** |
+
+A model can only reach a CLI by shelling out through the harness's `bash`/`shell`
+tool — strictly worse for in-loop use (consumes the shell tool, no schema, bash
+permission prompts, model must *know* to shell out). So the **CLI is for us and the
+human; MCP is for the model.** One core exposes both, mirroring Codex's own split
+(`codex mcp` vs `codex exec`):
+
+```
+memory                       # the single core program (Python)
+  memory mcp                 # speak MCP over stdio  → the model's recall/remember
+  memory dream [--store P]   # CLI → run a consolidation pass (harness uses this between batches)
+  memory query "<q>"         # CLI → debug retrieval
+  memory reset --store P     # CLI → fresh per-run store (per-version isolation)
+  memory stats --store P     # CLI → inspect memory state
+```
+
+This also means the **test harness never needs special access to the agent**: it
+drives the agent as a user would (MCP does the in-loop memory) and calls the
+`memory` CLI directly for setup/dreaming — both public surfaces of the same core.
+
+## Core language: **Python** (reuse the engine)
+
+The memory engine (Brent's `stores/` + `router.py`, Scott's `dreaming/`) is already
+**Python**, and the eval harness is Python. The core is therefore **Python**:
+
+- **No porting, no duplicated logic** — the MCP server and CLI are thin wrappers
+  that `import` the existing engine. Critical for the 2-week sprint.
+- MCP via the official Python SDK (`mcp` / FastMCP); CLI via Typer/argparse.
+- Ships via `pipx` / `uvx` (a dev installs `cookbook-memory`, then points each
+  harness's config at `memory mcp`).
+- **Cost accepted:** a Python runtime dependency for any dev installing the plugin.
+  Acceptable for a research contribution; **Go (single static binary)** or
+  **TypeScript (native adapter glue)** are documented as a *post-project rewrite*
+  if the plugin gains real traction — both would require porting the engine and
+  duplicating logic the eval harness already owns, so they are out of scope now.
+
+Adapter glue stays in each harness's native language (TS plugin for OpenCode /
+Claude Code; `config.toml` for Codex), but it only does config + small shims to
+`memory mcp` / the `memory` CLI — the logic stays in the Python core.
+
 ## Constraints to bake into the core (so adapters stay thin)
 
 1. **Retrieval primary = model-pulled `recall` tool**, not forced injection — the
@@ -136,6 +188,9 @@ MCP server or a tiny local endpoint. The retrieval+dreaming logic lives once.
 5. **Token accounting our way** — each harness counts tokens differently (OpenCode
    is char/4); the core reports `RetrievedItem.tokens` so the efficiency metric is
    consistent across harnesses.
+6. **One Python core, two surfaces** — `memory mcp` (the model's in-loop tool) and a
+   `memory` CLI (harness/human: dreaming, reset, query). The engine logic lives once,
+   in Python, reused from the eval harness — no port, no duplication.
 
 ## Verdict
 
