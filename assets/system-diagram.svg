@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 720" font-family="ui-sans-serif, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#374151"/>
+    </marker>
+    <marker id="arrowMuted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9ca3af"/>
+    </marker>
+    <style>
+      .band-c   { fill:#eff6ff; stroke:#bfdbfe; stroke-width:1.5; }
+      .band-s   { fill:#f5f3ff; stroke:#ddd6fe; stroke-width:1.5; }
+      .band-lbl { font-size:13px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; }
+      .band-sub { font-size:11.5px; font-weight:500; fill:#6b7280; }
+      .node     { rx:12; ry:12; stroke-width:1.6; }
+      .n-harness{ fill:#dbeafe; stroke:#3b82f6; }
+      .n-core   { fill:#ffedd5; stroke:#ea580c; }
+      .n-store  { fill:#fef9c3; stroke:#ca8a04; }
+      .n-sub    { fill:#ede9fe; stroke:#7c3aed; }
+      .n-log    { fill:#e5e7eb; stroke:#6b7280; }
+      .t-title  { font-size:15px; font-weight:700; fill:#111827; }
+      .t-sub    { font-size:11.5px; fill:#4b5563; }
+      .edge     { fill:none; stroke:#374151; stroke-width:1.8; marker-end:url(#arrow); }
+      .edge-bi  { fill:none; stroke:#374151; stroke-width:1.8; marker-end:url(#arrow); marker-start:url(#arrow); }
+      .edge-dash{ fill:none; stroke:#9ca3af; stroke-width:1.6; stroke-dasharray:5 4; marker-end:url(#arrowMuted); }
+      .lbl      { font-size:11.5px; fill:#374151; }
+      .lbl-bg   { fill:#ffffff; opacity:.9; }
+    </style>
+  </defs>
+
+  <!-- ===================== BANDS ===================== -->
+  <rect class="band-c" x="24" y="64"  width="1132" height="246" rx="16"/>
+  <rect class="band-s" x="24" y="384" width="1132" height="300" rx="16"/>
+
+  <!-- band labels -->
+  <text class="band-lbl" x="48" y="96"  fill="#1d4ed8">Conscious</text>
+  <text class="band-sub" x="48" y="114">the active session — synchronous, in-loop</text>
+  <text class="band-lbl" x="48" y="416" fill="#6d28d9">Subconscious</text>
+  <text class="band-sub" x="48" y="434">async consolidation — day-dreaming &amp; night-dreaming</text>
+
+  <!-- ===================== CONSCIOUS NODES ===================== -->
+  <!-- Plugin -->
+  <rect class="node n-harness" x="60"  y="150" width="170" height="74"/>
+  <text class="t-title" x="145" y="182" text-anchor="middle">Plugin</text>
+  <text class="t-sub"   x="145" y="201" text-anchor="middle">skills · MCP · hooks</text>
+
+  <!-- Session -->
+  <rect class="node n-harness" x="300" y="142" width="190" height="90"/>
+  <text class="t-title" x="395" y="176" text-anchor="middle">Session</text>
+  <text class="t-sub"   x="395" y="195" text-anchor="middle">message history / turns</text>
+
+  <!-- Orchestrator (circle) -->
+  <circle class="node n-core" cx="690" cy="187" r="66"/>
+  <text class="t-title" x="690" y="182" text-anchor="middle">Orchestrator</text>
+  <text class="t-sub"   x="690" y="201" text-anchor="middle">route · rank · dedup</text>
+
+  <!-- Memory -->
+  <rect class="node n-store" x="930" y="142" width="200" height="90"/>
+  <text class="t-title" x="1030" y="170" text-anchor="middle">Memory</text>
+  <text class="t-sub"   x="1030" y="189" text-anchor="middle">vectors · graph</text>
+  <text class="t-sub"   x="1030" y="205" text-anchor="middle">markdown</text>
+
+  <!-- ===================== SUBCONSCIOUS NODES ===================== -->
+  <!-- Logs -->
+  <rect class="node n-log" x="60"  y="470" width="170" height="74"/>
+  <text class="t-title" x="145" y="502" text-anchor="middle">Logs</text>
+  <text class="t-sub"   x="145" y="521" text-anchor="middle">.jsonl trajectory</text>
+
+  <!-- Day Dream -->
+  <rect class="node n-sub" x="300" y="466" width="190" height="82"/>
+  <text class="t-title" x="395" y="496" text-anchor="middle">Day Dream</text>
+  <text class="t-sub"   x="395" y="515" text-anchor="middle">in-session / idle · light</text>
+
+  <!-- Model -->
+  <rect class="node n-sub" x="595" y="588" width="190" height="74"/>
+  <text class="t-title" x="690" y="616" text-anchor="middle">Model</text>
+  <text class="t-sub"   x="690" y="635" text-anchor="middle">non-frontier (cheap)</text>
+
+  <!-- Dream (night) -->
+  <rect class="node n-sub" x="930" y="466" width="200" height="90"/>
+  <text class="t-title" x="1030" y="496" text-anchor="middle">Dream</text>
+  <text class="t-sub"   x="1030" y="514" text-anchor="middle">offline / after session</text>
+  <text class="t-sub"   x="1030" y="530" text-anchor="middle">dedup · conflict · retention</text>
+
+  <!-- ===================== CONSCIOUS EDGES ===================== -->
+  <!-- Plugin -> Session -->
+  <path class="edge" d="M230,187 L296,187"/>
+  <g><rect class="lbl-bg" x="232" y="160" width="62" height="16"/><text class="lbl" x="263" y="172" text-anchor="middle">registers</text></g>
+
+  <!-- Session <-> Orchestrator (where/how) -->
+  <path class="edge-bi" d="M490,182 L620,185"/>
+  <g><rect class="lbl-bg" x="512" y="155" width="86" height="30"/>
+     <text class="lbl" x="555" y="167" text-anchor="middle">where / how</text>
+     <text class="lbl" x="555" y="181" text-anchor="middle" fill="#6b7280">recall · remember</text></g>
+
+  <!-- Orchestrator <-> Memory (R/W) -->
+  <path class="edge-bi" d="M756,187 L926,187"/>
+  <g><rect class="lbl-bg" x="820" y="161" width="44" height="16"/><text class="lbl" x="842" y="173" text-anchor="middle">R / W</text></g>
+
+  <!-- ===================== CROSS-BAND EDGES ===================== -->
+  <!-- Session -> Logs (every step) -->
+  <path class="edge" d="M360,232 L200,466"/>
+  <g><rect class="lbl-bg" x="232" y="346" width="68" height="16"/><text class="lbl" x="266" y="358" text-anchor="middle">every step</text></g>
+
+  <!-- Day Dream -> Orchestrator (write, up) -->
+  <path class="edge" d="M420,466 L640,250"/>
+  <g><rect class="lbl-bg" x="520" y="346" width="40" height="16"/><text class="lbl" x="540" y="358" text-anchor="middle">write</text></g>
+
+  <!-- Memory -> Dream (read, down) -->
+  <path class="edge" d="M1030,232 L1030,462"/>
+  <g><rect class="lbl-bg" x="1010" y="346" width="40" height="16"/><text class="lbl" x="1030" y="358" text-anchor="middle">read</text></g>
+
+  <!-- Orchestrator <-> Dream (R/W, diagonal) -->
+  <path class="edge-bi" d="M748,228 L962,462"/>
+  <g><rect class="lbl-bg" x="862" y="350" width="44" height="16"/><text class="lbl" x="884" y="362" text-anchor="middle">R / W</text></g>
+
+  <!-- ===================== SUBCONSCIOUS EDGES ===================== -->
+  <!-- Day Dream -> Logs (adapter chunk/batch, dashed) -->
+  <path class="edge-dash" d="M300,520 L234,512"/>
+  <g><rect class="lbl-bg" x="232" y="540" width="116" height="30"/>
+     <text class="lbl" x="290" y="552" text-anchor="middle" fill="#6b7280">adapter</text>
+     <text class="lbl" x="290" y="566" text-anchor="middle" fill="#6b7280">chunk / batch</text></g>
+
+  <!-- Day Dream <-> Dream (when/what) -->
+  <path class="edge-bi" d="M490,500 L926,505"/>
+  <g><rect class="lbl-bg" x="666" y="478" width="80" height="16"/><text class="lbl" x="706" y="490" text-anchor="middle">when / what</text></g>
+
+  <!-- Day Dream <-> Model -->
+  <path class="edge-bi" d="M440,548 L640,588"/>
+  <g><rect class="lbl-bg" x="500" y="566" width="74" height="16"/><text class="lbl" x="537" y="578" text-anchor="middle">consolidate</text></g>
+
+  <!-- Dream -> Model -->
+  <path class="edge" d="M1000,556 L760,608"/>
+  <g><rect class="lbl-bg" x="845" y="574" width="74" height="16"/><text class="lbl" x="882" y="586" text-anchor="middle">consolidate</text></g>
+</svg>
