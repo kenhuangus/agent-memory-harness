@@ -10,12 +10,17 @@ envelope, and returns the answer text plus token usage. Platform routing
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
 from .platform import ClaudeRuntime, detect, to_wsl_path
+
+#: Credentials stripped so the CLI uses the Claude Code *subscription* (OAuth),
+#: never an API key — benchmarking Claude Code on its own auth, no API billing.
+_API_KEY_VARS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
 
 
 class ClaudeNotInstalled(RuntimeError):
@@ -72,20 +77,25 @@ def build_argv(
     model: Optional[str] = None, mcp_config: Optional[str | Path] = None,
     allowed_tools: Optional[list[str]] = None, append_system_prompt: Optional[str] = None,
     permission_mode: str = "bypassPermissions", strict_mcp: bool = False,
+    strip_api_key: bool = True,
 ) -> tuple[list[str], Optional[str]]:
     """Build the (argv, subprocess_cwd) for a run. Pure — unit-tested per platform.
 
     Native: argv runs claude directly in ``cwd``. WSL: argv is
-    ``wsl -d <distro> --cd <wslcwd> -- <claude> …`` with file paths translated,
-    and the subprocess cwd is ``None`` (the WSL ``--cd`` sets claude's dir).
+    ``wsl -d <distro> --cd <wslcwd> -- [env -u API_KEY…] <claude> …`` with file
+    paths translated; the subprocess cwd is ``None`` (WSL ``--cd`` sets the dir).
+    ``strip_api_key`` drops API-key env vars so the CLI uses the subscription.
     """
     if runtime.kind == "wsl":
         mcp = to_wsl_path(mcp_config) if mcp_config else None
         flags = _flags(model=model, mcp_config=mcp, allowed_tools=allowed_tools,
                        append_system_prompt=append_system_prompt,
                        permission_mode=permission_mode, strict_mcp=strict_mcp)
+        prefix: list[str] = []
+        if strip_api_key:
+            prefix = ["env"] + [a for v in _API_KEY_VARS for a in ("-u", v)]
         argv = ["wsl", "-d", runtime.distro or "Ubuntu", "--cd", to_wsl_path(cwd),
-                "--", runtime.exe, "-p", prompt, *flags]
+                "--", *prefix, runtime.exe, "-p", prompt, *flags]
         return argv, None
     flags = _flags(model=model, mcp_config=(str(mcp_config) if mcp_config else None),
                    allowed_tools=allowed_tools, append_system_prompt=append_system_prompt,
@@ -93,20 +103,34 @@ def build_argv(
     return [runtime.exe, "-p", prompt, *flags], str(cwd)
 
 
+def _clean_env(strip_api_key: bool) -> Optional[dict]:
+    """Subprocess env with API-key vars removed (so WSLENV can't forward them and
+    a native CLI can't read them). ``None`` keeps the inherited env."""
+    if not strip_api_key:
+        return None
+    return {k: v for k, v in os.environ.items() if k not in _API_KEY_VARS}
+
+
 def run_claude(
     prompt: str, *, cwd: str | Path, model: Optional[str] = None,
     mcp_config: Optional[str | Path] = None, allowed_tools: Optional[list[str]] = None,
     append_system_prompt: Optional[str] = None, permission_mode: str = "bypassPermissions",
-    strict_mcp: bool = False, timeout: int = 300, runtime: Optional[ClaudeRuntime] = None,
+    strict_mcp: bool = False, strip_api_key: bool = True, timeout: int = 300,
+    runtime: Optional[ClaudeRuntime] = None,
 ) -> ClaudeResult:
-    """Run one headless ``claude -p`` turn (native or WSL) and return text + usage."""
+    """Run one headless ``claude -p`` turn (native or WSL) and return text + usage.
+
+    ``strip_api_key`` (default True) makes the CLI authenticate with the Claude
+    Code subscription, never an API key — no API billing for benchmark runs.
+    """
     rt = require_runtime(runtime)
     argv, sub_cwd = build_argv(
         rt, prompt, cwd=cwd, model=model, mcp_config=mcp_config, allowed_tools=allowed_tools,
         append_system_prompt=append_system_prompt, permission_mode=permission_mode,
-        strict_mcp=strict_mcp,
+        strict_mcp=strict_mcp, strip_api_key=strip_api_key,
     )
-    proc = subprocess.run(argv, cwd=sub_cwd, capture_output=True, text=True, timeout=timeout)
+    proc = subprocess.run(argv, cwd=sub_cwd, capture_output=True, text=True,
+                          timeout=timeout, env=_clean_env(strip_api_key))
     if proc.returncode != 0:
         raise RuntimeError(
             f"claude exited {proc.returncode}: {(proc.stderr or proc.stdout or '').strip()[:400]}"

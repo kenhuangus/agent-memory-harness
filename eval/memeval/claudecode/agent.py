@@ -38,6 +38,12 @@ _SYS_PLUGIN = (
     "notes, and answer concisely with just the final answer."
 )
 _SYS_PLAIN = "Answer concisely with just the final answer."
+# In headless -p mode the model follows a tool instruction in the USER prompt far
+# more reliably than one only in the system prompt, so plugin mode prepends this.
+_PLUGIN_PREFIX = (
+    "First call the memory_recall tool with the question to retrieve relevant prior "
+    "context, then answer concisely with just the final answer.\n\n"
+)
 
 
 class ClaudeCodeAgent:
@@ -78,7 +84,7 @@ class ClaudeCodeAgent:
             _write_claude_md(run_dir, task)
             res = self._run(prompt, run_dir, _SYS_PLAIN, mcp_config=None, allowed_tools=None)
         elif self.memory_mode == "plugin":
-            res = self._solve_plugin(task, ctx, prompt, run_dir)
+            res = self._solve_plugin(task, ctx, _PLUGIN_PREFIX + prompt, run_dir)
         else:  # off
             res = self._run(prompt, run_dir, _SYS_PLAIN, mcp_config=None, allowed_tools=None)
 

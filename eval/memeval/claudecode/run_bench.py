@@ -19,7 +19,9 @@ from .agent import ClaudeCodeAgent
 from .platform import describe, detect
 
 _ALL_BENCH = ["memoryagentbench", "longmemeval", "swe_contextbench", "swe_bench_cl", "contextbench"]
-_MODES = ["off", "builtin", "plugin"]
+# The comparison that matters: Claude Code's built-in memory vs our plugin memory.
+# (`off` is still accepted as an explicit --mode, but it's not part of `all`.)
+_MODES = ["builtin", "plugin"]
 
 
 def _resolve_path(benchmark: str, path: Optional[str]) -> Optional[str]:
@@ -59,13 +61,13 @@ def _run_one(benchmark: str, mode: str, args: argparse.Namespace) -> Optional[di
 def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(prog="memeval.claudecode.run_bench")
     ap.add_argument("--benchmark", default="all", help="one of the five, or 'all'.")
-    ap.add_argument("--mode", default="plugin", help="off | builtin | plugin | all.")
+    ap.add_argument("--mode", default="all", help="builtin | plugin | all (all = builtin+plugin).")
     ap.add_argument("--model", default="claude-haiku-4-5")
-    ap.add_argument("--path", default=None, help="local fixture/dataset path (blank = real source).")
+    ap.add_argument("--path", default=None, help="local fixture/dataset path, or 'fixtures' (blank = real source).")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--dev-slice", type=float, default=None)
     ap.add_argument("--k", type=int, default=5)
-    ap.add_argument("--timeout", type=int, default=300)
+    ap.add_argument("--timeout", type=int, default=600)
     ap.add_argument("--budget-usd", type=float, default=DEFAULT_BUDGET_USD)
     ap.add_argument("--results", default="results.json")
     args = ap.parse_args(argv)
