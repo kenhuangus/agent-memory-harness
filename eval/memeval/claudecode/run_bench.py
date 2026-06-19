@@ -22,6 +22,15 @@ _ALL_BENCH = ["memoryagentbench", "longmemeval", "swe_contextbench", "swe_bench_
 _MODES = ["off", "builtin", "plugin"]
 
 
+def _resolve_path(benchmark: str, path: Optional[str]) -> Optional[str]:
+    """``--path fixtures`` -> the bundled per-benchmark fixture; else passthrough."""
+    if path == "fixtures":
+        from pathlib import Path
+        fx = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / f"{benchmark}.json"
+        return str(fx)
+    return path
+
+
 def _run_one(benchmark: str, mode: str, args: argparse.Namespace) -> Optional[dict]:
     from ..agent import run_agent
     from ..cost import CostTracker
@@ -32,7 +41,8 @@ def _run_one(benchmark: str, mode: str, args: argparse.Namespace) -> Optional[di
     try:
         rr = run_agent(
             Benchmark.from_str(benchmark), agent, memory=(mode != "off"),
-            limit=args.limit, dev_slice=args.dev_slice, path_or_id=args.path,
+            limit=args.limit, dev_slice=args.dev_slice,
+            path_or_id=_resolve_path(benchmark, args.path),
             cost=cost, k=args.k, seed_sessions=False,  # the agent seeds memory itself
         )
     except Exception as exc:  # surface per-(benchmark,mode) failure, keep going
