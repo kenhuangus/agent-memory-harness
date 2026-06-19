@@ -124,17 +124,20 @@ at a stable path.
 | **Dreaming baseline** | on | on, **interleaved** | per suite: run N → dream → run next N → dream → … to 5×N | fresh per run |
 | **Full vX.Y** | on | on | (N + Dream) × 5 | fresh per run |
 
-Dreaming is invoked through the **public `memory dream` CLI**
-([`../harnesses/05-plugin-mvp-plan.md`](../harnesses/05-plugin-mvp-plan.md) ADR-P5) —
-the same surface a human developer could run between work sessions. The eval drives
-the cycle **run 5 → `memory dream` → run 5 → … → measure** by calling that public
-CLI between batches; it is a public action, **not an eval-private seam or an engine
-import**, so the black box holds. `dream` takes a scope: `--session <id>` (day —
-this session only) or `--all` (night — the entire memory across all sessions). For
-the **MVP there is no automatic in-run dreaming hook** (`Stop`/`PreCompact` do not
-trigger dreaming); an in-run trigger can be added later without changing the engine.
-(This supersedes the earlier "harness triggers the dream pass between batches"
-*and* the brief "in-run `Stop` hook" framings.)
+Dreaming is split by scope ([`../harnesses/05-plugin-mvp-plan.md`](../harnesses/05-plugin-mvp-plan.md) ADR-P5):
+- **Day — current session, automatic.** The **Daydreamer** fires on the plugin's own
+  in-session lifecycle hook (`Stop`/turn-complete + `PreCompact`, self-backgrounded —
+  OpenCode's equivalent is the `event` hook) and writes this session's memories as the
+  run proceeds. No harness involvement — it's the plugin watching its own session.
+- **Night — entire memory across all sessions, public CLI.** `memory dream --all`
+  consolidates the whole store; the eval drives the cycle **run 5 → `memory dream
+  --all` → run 5 → … → measure** by calling that **public** CLI between batches (a
+  public action a human could also run — **not** an eval-private seam or an engine
+  import), so the black box holds.
+
+(This supersedes both the earlier "harness triggers the dream pass between batches"
+framing *and* the brief "all dreaming is CLI-only, no in-run trigger" framing: day is
+an automatic in-session hook, night is the public CLI.)
 
 ## 4. Mapping OpenCode signals → our schema (grading/logging only)
 

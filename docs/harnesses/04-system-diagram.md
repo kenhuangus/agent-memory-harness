@@ -98,10 +98,11 @@ flowchart LR
 - **Day Dream ⇢ Logs** (*adapter: chunk/batch*): consolidation *reads* the session
   log through the adapter (it does not write back into the harness's log; what it
   writes goes through the Orchestrator, plus the events stream).
-- **MVP realization:** Day Dream + Dream are both the **public `memory dream` CLI**
-  (`--session` = day, `--all` = night), invoked between eval batches — not an
-  automatic in-run pass. In-loop memory creation is the model's `recall`/`remember`
-  ([`05`](05-plugin-mvp-plan.md) ADR-P4/P5).
+- **MVP realization:** **Day Dream is the Daydreamer**, fired **automatically** by the
+  plugin's `Stop`/`PreCompact` hook during each session (writes this session's
+  memories as the run proceeds). **Dream (night) is the public `memory dream --all`
+  CLI**, invoked between eval batches over the whole store. In-loop memory creation is
+  also the model's `remember` ([`05`](05-plugin-mvp-plan.md) ADR-P4/P5).
 
 > This is a conceptual proposal mirroring the whiteboard — not the frozen contract
 > ([`../../architecture.md`](../../architecture.md)). The four modules map to the
