@@ -566,6 +566,84 @@ def test_trajectory_fixture_loads() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# OKF -- Open Knowledge Format interchange (POC)
+# --------------------------------------------------------------------------- #
+def test_okf_round_trip_lossless() -> None:
+    from memeval import okf
+    m = MemoryItem(
+        item_id="orders", content="# Schema\nJoins [customers](/t/customers.md).",
+        timestamp=1748443200.0, relevancy=0.8, session_id="s1", source="BigQuery Table",
+        tags=["sales", "revenue"], tokens=42, version=3,
+        metadata={"okf_title": "Orders", "okf_description": "One row per order.", "extra": 1},
+    )
+    back = okf.doc_to_memory_item(okf.memory_item_to_doc(m))
+    for f in ("item_id", "content", "timestamp", "relevancy", "session_id", "tags",
+              "tokens", "version"):
+        assert getattr(back, f) == getattr(m, f), f
+    assert back.metadata["extra"] == 1
+    assert back.metadata["okf_links"] == ["/t/customers.md"]  # link -> graph edge
+
+
+def test_okf_bundle_export_import_and_conformance() -> None:
+    from memeval import okf
+    items = [
+        MemoryItem(item_id="customers", content="Customer table.", source="BigQuery Table",
+                   tags=["sales"], timestamp=1748443200.0),
+        MemoryItem(item_id="wau", content="Weekly active users.", source="Metric",
+                   timestamp=1748000000.0, version=2),
+    ]
+    with tempfile.TemporaryDirectory() as tmp:
+        manifest = okf.export_bundle(items, tmp)
+        assert manifest["okf_version"] == "0.1" and manifest["n_concepts"] == 2
+        assert (Path(tmp) / "index.md").exists() and (Path(tmp) / "log.md").exists()
+        assert 'okf_version: "0.1"' in (Path(tmp) / "index.md").read_text(encoding="utf-8")
+        assert okf.validate_bundle(tmp) == []  # conformant
+        got = {i.item_id for i in okf.import_bundle(tmp)}
+    assert got == {"customers", "wau"}
+
+
+def test_okf_imports_foreign_google_sample_doc() -> None:
+    # Verbatim shape of Google's okf/bundles/stackoverflow/tables/users.md:
+    # multi-line description, block-list tags, quoted timestamp, no x_ keys.
+    foreign = (
+        "---\n"
+        "type: BigQuery Table\n"
+        "resource: https://bigquery.googleapis.com/v2/projects/x/datasets/so/tables/users\n"
+        "title: Users\n"
+        "description: This table contains information about users,\n"
+        "  including profile information and activity metrics.\n"
+        "tags:\n- Stack Overflow\n- users\n"
+        "timestamp: '2026-05-28T23:32:24+00:00'\n"
+        "---\n\n"
+        "## Overview\nThe `users` table from [stackoverflow](../datasets/stackoverflow.md).\n"
+    )
+    from memeval import okf
+    it = okf.doc_to_memory_item(foreign, fallback_id="users")
+    assert it.source == "BigQuery Table"           # type -> source
+    assert "Stack Overflow" in it.tags and "users" in it.tags
+    assert it.timestamp > 0                          # ISO parsed to epoch
+    assert it.metadata["okf_title"] == "Users"       # OKF semantics preserved
+    assert it.metadata["okf_links"] == ["../datasets/stackoverflow.md"]
+    assert "Overview" in it.content
+
+
+def test_okf_store_is_a_memorystore() -> None:
+    from memeval.protocols import MemoryStore
+    from memeval import okf
+    with tempfile.TemporaryDirectory() as tmp:
+        store = okf.OKFStore(tmp)
+        assert isinstance(store, MemoryStore)
+        store.write(MemoryItem(item_id="m1", content="Paris is the capital of France",
+                               tags=["geo"], timestamp=10.0))
+        # persisted as an OKF doc on disk, and searchable through the store
+        assert any(p.suffix == ".md" for p in Path(tmp).rglob("*.md"))
+        hits = store.search("capital of France", k=3)
+        assert hits and hits[0].item.item_id == "m1"
+        # a fresh store autoloads the bundle from disk
+        assert {i.item_id for i in okf.OKFStore(tmp).all()} == {"m1"}
+
+
+# --------------------------------------------------------------------------- #
 # Schema -- MemoryItem.version (revision counter)
 # --------------------------------------------------------------------------- #
 def test_memory_item_version_default_and_round_trip() -> None:
