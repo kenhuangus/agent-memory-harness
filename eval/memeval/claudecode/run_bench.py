@@ -34,24 +34,48 @@ def _resolve_path(benchmark: str, path: Optional[str]) -> Optional[str]:
 
 
 def _run_one(benchmark: str, mode: str, args: argparse.Namespace) -> Optional[dict]:
+    import json
+    import os
     from ..agent import run_agent
     from ..cost import CostTracker
-    from ..results import append_result
+    from ..results import append_result, result_record
+    from ..trajectory import TrajectoryLogger
 
-    agent = ClaudeCodeAgent(model=args.model, memory_mode=mode, k=args.k, timeout=args.timeout)
+    # With --out-dir, each run is self-contained under it: the agent's working dir
+    # (CLAUDE.md / .mcp.json / recall.jsonl / OKF memory bundle) lands there
+    # (stable, not temp), plus a per-run trajectory JSONL and a per-run record JSON.
+    workdir = None
+    logger = None
+    traj_path = rec_path = None
+    if args.out_dir:
+        os.makedirs(args.out_dir, exist_ok=True)
+        workdir = args.out_dir
+        traj_path = os.path.join(args.out_dir, f"{benchmark}__{mode}.trajectory.jsonl")
+        rec_path = os.path.join(args.out_dir, f"{benchmark}__{mode}.record.json")
+        logger = TrajectoryLogger(traj_path, append=False)
+
+    agent = ClaudeCodeAgent(model=args.model, memory_mode=mode, k=args.k,
+                            timeout=args.timeout, workdir=workdir)
     cost = CostTracker(budget_usd=args.budget_usd) if args.budget_usd and args.budget_usd > 0 else None
     try:
         rr = run_agent(
             Benchmark.from_str(benchmark), agent, memory=(mode != "off"),
             limit=args.limit, dev_slice=args.dev_slice,
             path_or_id=_resolve_path(benchmark, args.path),
-            cost=cost, k=args.k, seed_sessions=False,  # the agent seeds memory itself
+            cost=cost, k=args.k, seed_sessions=False, logger=logger,  # agent seeds memory itself
         )
     except Exception as exc:  # surface per-(benchmark,mode) failure, keep going
         print(f"FAIL {benchmark:18} {mode:8} {type(exc).__name__}: {str(exc)[:140]}")
         return None
+    finally:
+        if logger is not None:
+            logger.close()
     rec = append_result(rr, args.results, run_id=f"claude-code-{mode}",
                         notes=f"Claude Code CLI · memory={mode}")
+    if rec_path:
+        with open(rec_path, "w", encoding="utf-8") as fh:
+            json.dump(result_record(rr, run_id=f"claude-code-{mode}",
+                                    notes=f"Claude Code CLI · memory={mode}"), fh, indent=2)
     m = rr.metrics
     print(f"OK   {benchmark:18} {mode:8} acc={m.accuracy:.2f} rel={m.relevancy:.2f} "
           f"rec={m.recency:.2f} eff={m.efficiency:.2f} n={rr.n_tasks} ${rr.cost_usd:.4f}")
@@ -70,6 +94,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--timeout", type=int, default=600)
     ap.add_argument("--budget-usd", type=float, default=DEFAULT_BUDGET_USD)
     ap.add_argument("--results", default="results.json")
+    ap.add_argument("--out-dir", default=None,
+                    help="Write per-run raw artifacts here (trajectory JSONL, record JSON, "
+                         "and the agent working dir with CLAUDE.md/.mcp.json/recall.jsonl/memory).")
     args = ap.parse_args(argv)
 
     print(describe())   # which CLI was detected (native / WSL / not found)
