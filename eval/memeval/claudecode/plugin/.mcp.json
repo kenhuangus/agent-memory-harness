@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "memeval-memory": {
+      "command": "python",
+      "args": [
+        "-m", "memeval.claudecode.memory_server",
+        "--bundle", "${CLAUDE_PROJECT_DIR}/.memeval-memory",
+        "--log", "${CLAUDE_PROJECT_DIR}/.memeval-memory/recall.jsonl"
+      ]
+    }
+  }
+}

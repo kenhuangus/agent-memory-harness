@@ -65,6 +65,11 @@ swebench = ["swebench>=2.1.0"]
 # the offline path never imports it.
 langfuse = ["langfuse>=3.0"]
 
+# Run the benchmarks through the Claude Code CLI with our memory plugin
+# (memeval.claudecode.*). Needs the MCP SDK for the memory server; the `claude`
+# CLI is installed separately via npm.
+claudecode = ["mcp>=1.0"]
+
 # Convenience: everything needed for real (online, paid) runs.
 full = [
     "anthropic>=0.40.0",

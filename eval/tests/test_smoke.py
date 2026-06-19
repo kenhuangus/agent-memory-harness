@@ -644,6 +644,93 @@ def test_okf_store_is_a_memorystore() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Claude Code pipeline -- run benchmarks via the CLI with built-in / plugin memory
+# --------------------------------------------------------------------------- #
+def test_claudecode_memory_service_recall_remember_and_log() -> None:
+    from memeval.okf import OKFStore
+    from memeval.claudecode.service import MemoryService
+    with tempfile.TemporaryDirectory() as tmp:
+        log = Path(tmp) / "recall.jsonl"
+        svc = MemoryService(OKFStore(Path(tmp) / "b"), log_path=log, default_k=3)
+        svc.seed_items([MemoryItem(item_id="s1", content="Paris is the capital of France",
+                                   timestamp=10.0)])
+        hits = svc.recall("capital of France")
+        assert hits and hits[0]["id"] == "s1"
+        rid = svc.remember("a new fact", tags=["x"])
+        recs = MemoryService.read_log(log)
+        assert any(r["op"] == "recall" for r in recs)
+        assert any(r["op"] == "remember" and r["id"] == rid for r in recs)
+
+
+def test_claudecode_agent_builtin_writes_claude_md() -> None:
+    # builtin mode = Claude Code's own memory: the run dir gets a CLAUDE.md, no MCP.
+    from memeval.claudecode.agent import ClaudeCodeAgent
+    from memeval.claudecode.cli import ClaudeResult
+    seen: dict = {}
+
+    def fake(prompt, *, cwd, model, mcp_config, allowed_tools, append_system_prompt,
+             timeout, claude_path):
+        cm = Path(cwd) / "CLAUDE.md"
+        seen["claude_md"] = cm.read_text(encoding="utf-8") if cm.exists() else None
+        seen["mcp"] = mcp_config
+        return ClaudeResult(text="Berlin", tokens_in=12, tokens_out=2)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        agent = ClaudeCodeAgent(memory_mode="builtin", runner=fake, workdir=tmp)
+        rr = run_agent(Benchmark.MEMORY_AGENT_BENCH, agent, memory=True,
+                       path_or_id=_fixture("memoryagentbench.json"), limit=1,
+                       seed_sessions=False)
+    assert rr.n_tasks == 1
+    assert seen["claude_md"] and "Memory" in seen["claude_md"]   # sessions seeded to CLAUDE.md
+    assert seen["mcp"] is None                                    # builtin uses no MCP
+    assert rr.metrics.accuracy == 1.0                             # "Berlin" matches the gold
+
+
+def test_claudecode_agent_plugin_records_retrieval() -> None:
+    # plugin mode = our memory: the fake CLI calls the configured server, whose
+    # recall log the agent reads back into the trajectory.
+    import json as _json
+    from memeval.okf import OKFStore
+    from memeval.claudecode.agent import ClaudeCodeAgent
+    from memeval.claudecode.cli import ClaudeResult
+    from memeval.claudecode.service import MemoryService
+    seen: dict = {}
+
+    def fake(prompt, *, cwd, model, mcp_config, allowed_tools, append_system_prompt,
+             timeout, claude_path):
+        seen["tools"] = allowed_tools
+        cfg = _json.loads(Path(mcp_config).read_text(encoding="utf-8"))
+        a = cfg["mcpServers"]["memeval-memory"]["args"]
+        bundle = a[a.index("--bundle") + 1]
+        log = a[a.index("--log") + 1]
+        svc = MemoryService(OKFStore(bundle), log_path=log)
+        hits = svc.recall(prompt, k=5)          # simulate the agent retrieving
+        return ClaudeResult(text=(hits[0]["content"] if hits else "?"), tokens_in=20, tokens_out=4)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        agent = ClaudeCodeAgent(memory_mode="plugin", runner=fake, workdir=tmp)
+        rr = run_agent(Benchmark.MEMORY_AGENT_BENCH, agent, memory=True,
+                       path_or_id=_fixture("memoryagentbench.json"), limit=1,
+                       seed_sessions=False)
+    kinds = [s.kind for t in rr.trajectories for s in t.steps]
+    assert "retrieve" in kinds and "generate" in kinds          # retrieval attributed
+    assert seen["tools"] == ["mcp__memeval-memory__memory_recall",
+                             "mcp__memeval-memory__memory_remember"]
+
+
+def test_claudecode_agent_naming_and_validation() -> None:
+    from memeval.claudecode.agent import ClaudeCodeAgent
+    a = ClaudeCodeAgent(model="claude-haiku-4-5", memory_mode="plugin")
+    assert a.name == "claude-code:claude-haiku-4-5:plugin"
+    assert a.price_in > 0 and a.price_out > 0     # priced from cost.PRICING
+    try:
+        ClaudeCodeAgent(memory_mode="bogus")
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
+
+
+# --------------------------------------------------------------------------- #
 # Schema -- MemoryItem.version (revision counter)
 # --------------------------------------------------------------------------- #
 def test_memory_item_version_default_and_round_trip() -> None:

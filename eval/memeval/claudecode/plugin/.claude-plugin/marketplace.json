@@ -1,0 +1,11 @@
+{
+  "name": "cookbook-memory",
+  "owner": { "name": "Cookbook Memory team" },
+  "plugins": [
+    {
+      "name": "memeval-memory",
+      "source": "./",
+      "description": "OKF-backed persistent memory for Claude Code (recall / remember)."
+    }
+  ]
+}
