@@ -135,7 +135,7 @@ both from one core program:**
 | Consumer | Surface | Why |
 |---|---|---|
 | **The model, in-loop** | **MCP tool** (`recall` / `remember`) | native, typed, discoverable in the tool list, no shell hop, gated by the model's own decision — this is "memory as a native capability" (constraint #1) |
-| **The dreaming worker / test harness / a human dev** | **CLI** (`memory dream`, `memory query`, `memory reset --store …`, `memory stats`) | scripting, cron, ops, debugging, per-run store setup, and **triggering the interleaved dreaming passes between test batches** |
+| **The dreaming worker / a human dev** | **CLI** (`memory dream`, `memory query`, `memory reset --store …`, `memory stats`) | scripting, cron, ops, debugging, per-run store setup |
 
 A model can only reach a CLI by shelling out through the harness's `bash`/`shell`
 tool — strictly worse for in-loop use (consumes the shell tool, no schema, bash
@@ -153,16 +153,31 @@ memory                       # the single core program (Python)
 ```
 
 This also means the **test harness never needs special access to the agent**: it
-drives the agent as a user would (MCP does the in-loop memory) and calls the
-`memory` CLI directly for setup/dreaming — both public surfaces of the same core.
+drives the agent as a user would (MCP does the in-loop memory). The `memory` CLI
+exists for the human dev and for the system's *own* hook scripts to call (e.g. the
+`Stop`-fired dreaming pass); it is **not** a back door for the eval harness.
+
+> **Black-box boundary (revised here).** The eval engine treats the memory system
+> as a **black box**: it drives the coding harness with the plugin installed
+> (`claude -p`) and points each run at a fresh `$MEMORY_STORE`, then verifies
+> memory behavior by reading the plugin's **events stream** output — it does **not**
+> import the engine and does **not** call the `memory` CLI to set up or trigger
+> dreaming. Dreaming is triggered by the plugin's own hooks inside the run, exactly
+> as it is for a human. The store path is the only seam. (See
+> [`05-plugin-mvp-plan.md`](05-plugin-mvp-plan.md) ADR-P1/P11; this supersedes the
+> earlier framing where the harness called the CLI for dreaming.)
 
 ## Core language: **Python** (reuse the engine)
 
 The memory engine (Brent's `stores/` + `router.py`, Scott's `dreaming/`) is already
-**Python**, and the eval harness is Python. The core is therefore **Python**:
+**Python**. The core is therefore **Python**:
 
 - **No porting, no duplicated logic** — the MCP server and CLI are thin wrappers
-  that `import` the existing engine. Critical for the 2-week sprint.
+  that `import` the existing engine. Critical for the 2-week sprint. (The engine
+  lives in the **memory system's own package**, extracted from `eval/memeval/` so
+  the eval engine never imports it — see [`05`](05-plugin-mvp-plan.md) ADR-P1. The
+  eval harness, also Python, shares no code with the core; it only drives the
+  harness binary.)
 - MCP via the official Python SDK (`mcp` / FastMCP); CLI via Typer/argparse.
 - Ships via `pipx` / `uvx` (a dev installs `cookbook-memory`, then points each
   harness's config at `memory mcp`).

@@ -129,9 +129,11 @@ A plugin is a TS module exporting `(input) => Hooks`; hooks are
 required — register the plugin via `.opencode/plugin/` or the `plugin` config key.
 Per our design ([`05`](05-integration-strategy.md)), **these hooks are the home of
 the memory system** as a distributable plugin — it is a native OpenCode capability,
-not a harness shim. (The memory engine itself is Python today; whether the plugin
-embeds a thin client to a local memory service or reimplements the engine in TS is
-an open team decision — see [`05`](05-integration-strategy.md) §5.)
+not a harness shim. (The memory engine itself is Python; the resolved pattern is an
+**in-process Python library reached via the `memory mcp` stdio server**, with the TS
+plugin as thin config + shims — not a local service, not a TS port. See
+[`05`](05-integration-strategy.md) §1/§5 and
+[`../harnesses/05-plugin-mvp-plan.md`](../harnesses/05-plugin-mvp-plan.md) ADR-P2.)
 
 ## 6. Session state / history storage
 
