@@ -12,6 +12,11 @@ thin per-harness **adapters**, and what each harness exposes. Owner: **P1 Keith*
    no-per-model-call-injection gap, headless `claude -p`.
 3. **[03 — Codex CLI](03-codex.md)** — MCP + `Stop`/`notify`, no session-end / no
    background jobs (the design floor), headless `codex exec --json`.
+4. **[05 — Claude Code plugin MVP build plan](05-plugin-mvp-plan.md)** — the HOW &
+   WHERE for the plugin + Daydreamer: ADR-style decisions + a vertical-slice
+   roadmap. Owner: Keith. Note: it **revises** two things in 01 — the Orchestrator
+   (not the eval harness) owns the store and all R/W route through it, and the eval
+   engine drives the memory system as a **black box** (never imports its internals).
 
 For the full OpenCode internals (the reference harness), see
 [`../opencode/`](../opencode/).

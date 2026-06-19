@@ -70,13 +70,14 @@ move injection into a `SystemContext` source in the fork
 (`packages/core/src/system-context/`, modeled on `instruction-context.ts`). The
 plugin's store + dreaming code is reusable as-is; only the injection site changes.
 
-> **Cross-language note.** The plugin is TypeScript. Brent's stores/router and
-> Scott's dreaming are Python. The plugin either (a) embeds a thin client that
-> talks to a **local memory service** (the Python harness components behind a small
-> local HTTP/stdio endpoint), or (b) the memory engine is reimplemented in TS
-> inside the plugin. Pick per component; the store path/config is the same either
-> way. This is a build-time decision for the team, captured as an open question
-> in §5.
+> **Cross-language note.** The OpenCode adapter glue is TypeScript; Brent's
+> stores/router and Scott's dreaming are Python. The resolved pattern (decided for
+> the Claude Code MVP, [`../harnesses/05-plugin-mvp-plan.md`](../harnesses/05-plugin-mvp-plan.md)
+> ADR-P2) is the **Python core as an in-process library** reached through the
+> **MCP server** (`memory mcp`, stdio) — *not* a separately-managed local HTTP
+> service and *not* a TS reimplementation. The TS plugin only registers tools/hooks
+> and shells to `memory mcp` / the `memory` CLI; the engine logic stays Python, in
+> the memory system's own package. The store path/config is the seam either way.
 
 ## 2. How OpenCode is driven (identically for dev and harness)
 
@@ -84,9 +85,12 @@ A developer types prompts into OpenCode. The harness does the same thing
 non-interactively: `opencode run --format json --dangerously-skip-permissions
 --dir <repo> --model anthropic/claude-haiku-4-5 "<task>"`
 (see [`04`](04-build-run-architecture.md)). **No special access.** The harness reads
-the NDJSON only to *grade and log* the run (map turns → our `Trajectory`); it never
-reaches into OpenCode's memory. Memory happens entirely inside the plugin, exactly
-as it would for the human.
+the NDJSON only to *grade and log task success* (map turns → our `Trajectory`); it
+never reaches into OpenCode's memory. To verify *memory behavior* (what was
+recalled/remembered/dreamed) it reads the memory system's own **events stream**
+([`../harnesses/05-plugin-mvp-plan.md`](../harnesses/05-plugin-mvp-plan.md)
+ADR-P11) — still an external output, never an internal import. Memory happens
+entirely inside the plugin, exactly as it would for the human.
 
 The eval-side `OpenCodeAgent.solve` (`eval/memeval/opencode/agent.py`) becomes a
 **runner + trajectory recorder**, not a memory orchestrator: spawn `opencode run`,
@@ -120,11 +124,17 @@ at a stable path.
 | **Dreaming baseline** | on | on, **interleaved** | per suite: run N → dream → run next N → dream → … to 5×N | fresh per run |
 | **Full vX.Y** | on | on | (N + Dream) × 5 | fresh per run |
 
-Dreaming is invoked **between task batches**, not by a harness backdoor: the
-plugin's `event` hook (or an explicit "dream now" signal the dev could also trigger)
-runs consolidation on the current store. The harness sequences batches and triggers
-the dream pass the same way a developer could between work sessions — i.e. a normal,
-public action, not a private hook.
+Dreaming is invoked through the **public `memory dream` CLI**
+([`../harnesses/05-plugin-mvp-plan.md`](../harnesses/05-plugin-mvp-plan.md) ADR-P5) —
+the same surface a human developer could run between work sessions. The eval drives
+the cycle **run 5 → `memory dream` → run 5 → … → measure** by calling that public
+CLI between batches; it is a public action, **not an eval-private seam or an engine
+import**, so the black box holds. `dream` takes a scope: `--session <id>` (day —
+this session only) or `--all` (night — the entire memory across all sessions). For
+the **MVP there is no automatic in-run dreaming hook** (`Stop`/`PreCompact` do not
+trigger dreaming); an in-run trigger can be added later without changing the engine.
+(This supersedes the earlier "harness triggers the dream pass between batches"
+*and* the brief "in-run `Stop` hook" framings.)
 
 ## 4. Mapping OpenCode signals → our schema (grading/logging only)
 
@@ -148,10 +158,12 @@ inferring it from OpenCode's heuristic.
 
 ## 5. Open questions for the team
 
-1. **Plugin memory engine: embed Python service vs. reimplement in TS.** Brent's
-   stores/router + Scott's dreaming are Python. Does the plugin call them over a
-   local endpoint, or do we port the engine to TS? Affects who owns what. **Bar:
-   whichever keeps the memory system uncompromised.**
+1. **Plugin memory engine: ~~embed Python service vs. reimplement in TS~~ — RESOLVED.**
+   The Python engine runs as an **in-process library reached via the `memory mcp`
+   stdio server** (not a managed local HTTP service, not a TS port), in the memory
+   system's own package ([`../harnesses/05-plugin-mvp-plan.md`](../harnesses/05-plugin-mvp-plan.md)
+   ADR-P1/P2). The TS adapter is config + thin shims only. Bar met: the memory
+   system is uncompromised and shared across harnesses.
 2. **Tools vs. forced injection as the headline policy.** `recall`/`remember`
    tools (model decides) vs. `experimental.chat.system.transform` (always inject).
    Both are available; measure both — the comparison is itself a result.

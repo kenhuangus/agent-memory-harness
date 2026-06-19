@@ -71,7 +71,7 @@ flowchart LR
 |---|---|
 | **Plugin / Adapter** | The thin per-harness piece (skills · MCP · hooks) — the *only* thing the harness exposes. Registers `recall`/`remember` and observation hooks. |
 | **Session** | The harness's live message history / turn loop. |
-| **Logs (.jsonl)** | The trajectory log the eval harness grades from — one step per record. |
+| **Logs (.jsonl)** | The coding harness's own session/trajectory log — the Day Dream pass reads it (via an adapter) to decide what to remember. (The memory system also emits a separate, plugin-owned **events stream** — `recall`/`remember`/`dream` — which is what the black-box eval reads to verify memory behavior; see [`05`](05-plugin-mvp-plan.md) ADR-P11.) |
 | **Orchestrator** | The memory core's read/write brain: routes a query to the right store, ranks by `recency × relevancy`, dedups, returns a tight context. Handles the **where / how** of memory. |
 | **Memory** | The three indexed backends — markdown+YAML, SQLite+vectors, graph. |
 | **Subconscious** | The offline consolidation band. |
@@ -88,14 +88,20 @@ flowchart LR
 - **Session → Logs:** every step is recorded as `.jsonl` for grading.
 - **Day Dream → Orchestrator** (*write*) and **Dream ⇄ Orchestrator** (*R/W*):
   consolidation reads from and writes back into the memory path.
-- **Memory stores → Dream** (*read*): deep dreaming reads the full store to
-  consolidate.
-- **Day Dream ⇄ Dream** (*when / what*): the light pass decides when/what to hand
-  to the deep pass.
+- **Memory stores → Dream** (*read*): deep (night) dreaming reads the full store —
+  **the entire memory across all sessions** — to consolidate.
+- **Day Dream vs Dream — scope:** Day Dream operates on the **current session only**;
+  Dream (night) operates on the **entire memory**. Both share one engine; scope is a
+  parameter ([`05`](05-plugin-mvp-plan.md) ADR-P5).
 - **Day Dream / Dream → Model:** both call the cheap, non-frontier model to do the
   actual summarizing/extraction.
-- **Day Dream ⇢ Logs** (*adapter: chunk/batch*): consolidation also emits batched
-  records to the trajectory log.
+- **Day Dream ⇢ Logs** (*adapter: chunk/batch*): consolidation *reads* the session
+  log through the adapter (it does not write back into the harness's log; what it
+  writes goes through the Orchestrator, plus the events stream).
+- **MVP realization:** Day Dream + Dream are both the **public `memory dream` CLI**
+  (`--session` = day, `--all` = night), invoked between eval batches — not an
+  automatic in-run pass. In-loop memory creation is the model's `recall`/`remember`
+  ([`05`](05-plugin-mvp-plan.md) ADR-P4/P5).
 
 > This is a conceptual proposal mirroring the whiteboard — not the frozen contract
 > ([`../../architecture.md`](../../architecture.md)). The four modules map to the
