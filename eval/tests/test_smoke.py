@@ -668,8 +668,7 @@ def test_claudecode_agent_builtin_writes_claude_md() -> None:
     from memeval.claudecode.cli import ClaudeResult
     seen: dict = {}
 
-    def fake(prompt, *, cwd, model, mcp_config, allowed_tools, append_system_prompt,
-             timeout, claude_path):
+    def fake(prompt, *, cwd, mcp_config=None, **kw):
         cm = Path(cwd) / "CLAUDE.md"
         seen["claude_md"] = cm.read_text(encoding="utf-8") if cm.exists() else None
         seen["mcp"] = mcp_config
@@ -693,12 +692,13 @@ def test_claudecode_agent_plugin_records_retrieval() -> None:
     from memeval.okf import OKFStore
     from memeval.claudecode.agent import ClaudeCodeAgent
     from memeval.claudecode.cli import ClaudeResult
+    from memeval.claudecode.platform import ClaudeRuntime
     from memeval.claudecode.service import MemoryService
     seen: dict = {}
 
-    def fake(prompt, *, cwd, model, mcp_config, allowed_tools, append_system_prompt,
-             timeout, claude_path):
+    def fake(prompt, *, cwd, mcp_config=None, allowed_tools=None, strict_mcp=False, **kw):
         seen["tools"] = allowed_tools
+        seen["strict_mcp"] = strict_mcp
         cfg = _json.loads(Path(mcp_config).read_text(encoding="utf-8"))
         a = cfg["mcpServers"]["memeval-memory"]["args"]
         bundle = a[a.index("--bundle") + 1]
@@ -707,8 +707,10 @@ def test_claudecode_agent_plugin_records_retrieval() -> None:
         hits = svc.recall(prompt, k=5)          # simulate the agent retrieving
         return ClaudeResult(text=(hits[0]["content"] if hits else "?"), tokens_in=20, tokens_out=4)
 
+    # pin a native runtime so the bundle path stays local (the fake runner opens it here)
+    native = ClaudeRuntime(kind="native", exe="claude", python="python")
     with tempfile.TemporaryDirectory() as tmp:
-        agent = ClaudeCodeAgent(memory_mode="plugin", runner=fake, workdir=tmp)
+        agent = ClaudeCodeAgent(memory_mode="plugin", runner=fake, runtime=native, workdir=tmp)
         rr = run_agent(Benchmark.MEMORY_AGENT_BENCH, agent, memory=True,
                        path_or_id=_fixture("memoryagentbench.json"), limit=1,
                        seed_sessions=False)
@@ -716,6 +718,50 @@ def test_claudecode_agent_plugin_records_retrieval() -> None:
     assert "retrieve" in kinds and "generate" in kinds          # retrieval attributed
     assert seen["tools"] == ["mcp__memeval-memory__memory_recall",
                              "mcp__memeval-memory__memory_remember"]
+    assert seen["strict_mcp"] is True                            # plugin isolates MCP
+
+
+def test_claudecode_platform_path_translation_and_argv() -> None:
+    from memeval.claudecode.platform import to_wsl_path, ClaudeRuntime
+    from memeval.claudecode.cli import build_argv
+    # Windows -> WSL path translation (drive-letter aware; POSIX passes through).
+    assert to_wsl_path(r"C:\Users\x\t") == "/mnt/c/Users/x/t"
+    assert to_wsl_path("/home/u/x") == "/home/u/x"
+    # native argv runs claude directly in cwd
+    nat = ClaudeRuntime(kind="native", exe="claude")
+    argv, cwd = build_argv(nat, "hi", cwd="/work", model="claude-haiku-4-5")
+    assert argv[:3] == ["claude", "-p", "hi"] and cwd == "/work"
+    # WSL argv wraps with `wsl -d <distro> --cd <wslpath> -- <exe>`, translates mcp path
+    wsl = ClaudeRuntime(kind="wsl", exe="/home/k/.local/bin/claude", distro="Ubuntu")
+    argv, cwd = build_argv(wsl, "hi", cwd=r"C:\w", mcp_config=r"C:\w\.mcp.json", strict_mcp=True)
+    assert argv[0] == "wsl" and "--cd" in argv and "/mnt/c/w" in argv
+    assert "/home/k/.local/bin/claude" in argv and cwd is None
+    assert "/mnt/c/w/.mcp.json" in argv and "--strict-mcp-config" in argv
+
+
+def test_claudecode_plugin_mcp_json_uses_wsl_python_and_paths() -> None:
+    # Under a WSL runtime the .mcp.json must use the WSL python + /mnt paths so the
+    # server claude spawns inside WSL can find memeval and the bundle.
+    import json as _json
+    from memeval.claudecode.agent import ClaudeCodeAgent
+    from memeval.claudecode.cli import ClaudeResult
+    from memeval.claudecode.platform import ClaudeRuntime
+    seen: dict = {}
+
+    def fake(prompt, *, cwd, mcp_config=None, **kw):
+        seen["cfg"] = _json.loads(Path(mcp_config).read_text(encoding="utf-8"))
+        return ClaudeResult(text="ok", tokens_in=1, tokens_out=1)
+
+    rt = ClaudeRuntime(kind="wsl", exe="/c/claude", distro="Ubuntu", python="/v/bin/python")
+    with tempfile.TemporaryDirectory() as tmp:
+        agent = ClaudeCodeAgent(memory_mode="plugin", runner=fake, runtime=rt, workdir=tmp)
+        run_agent(Benchmark.MEMORY_AGENT_BENCH, agent, memory=True,
+                  path_or_id=_fixture("memoryagentbench.json"), limit=1, seed_sessions=False)
+    srv = seen["cfg"]["mcpServers"]["memeval-memory"]
+    assert srv["command"] == "/v/bin/python"                       # WSL python
+    args = srv["args"]
+    bundle = args[args.index("--bundle") + 1]
+    assert bundle.startswith("/mnt/") or bundle.startswith("/")     # translated to POSIX
 
 
 def test_claudecode_agent_naming_and_validation() -> None:

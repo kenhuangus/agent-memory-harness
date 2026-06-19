@@ -16,7 +16,7 @@ from typing import Any, Optional
 from ..cost import DEFAULT_BUDGET_USD
 from ..schema import Benchmark
 from .agent import ClaudeCodeAgent
-from .cli import find_claude
+from .platform import describe, detect
 
 _ALL_BENCH = ["memoryagentbench", "longmemeval", "swe_contextbench", "swe_bench_cl", "contextbench"]
 _MODES = ["off", "builtin", "plugin"]
@@ -60,9 +60,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--results", default="results.json")
     args = ap.parse_args(argv)
 
-    if find_claude() is None:
-        print("WARNING: 'claude' CLI not found — runs will fail. Install with "
-              "`npm install -g @anthropic-ai/claude-code` (or set $CLAUDE_CLI).")
+    print(describe())   # which CLI was detected (native / WSL / not found)
+    if detect() is None:
+        print("WARNING: runs will fail until 'claude' is installed (native or in WSL). "
+              "`npm install -g @anthropic-ai/claude-code`; overrides: $CLAUDE_CLI / $CLAUDE_WSL_DISTRO.")
 
     benches = _ALL_BENCH if args.benchmark == "all" else [args.benchmark]
     modes = _MODES if args.mode == "all" else [args.mode]

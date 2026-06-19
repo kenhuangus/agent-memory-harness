@@ -9,10 +9,18 @@ comparing **Claude Code's built-in memory** vs **our memory** (the OKF-backed pl
 cd eval
 pip install -e ".[claudecode]"               # memeval + MCP SDK
 npm install -g @anthropic-ai/claude-code      # the `claude` CLI (the agent)
-claude --version                              # sanity check (or set $CLAUDE_CLI)
+python -m memeval.claudecode.run_bench --help # the runner prints the detected CLI
 ```
 
 `claude` uses your normal Claude Code auth — no separate key needed in the harness.
+
+**Platform support (auto-detected): macOS · Linux · Windows · Windows→WSL.** On
+Windows, if `claude` isn't on the native PATH the harness automatically routes
+through WSL (`wsl -d <distro> -- claude …`, with paths translated to `/mnt/...`).
+Overrides: `CLAUDE_CLI` (native path), `CLAUDE_WSL_DISTRO` (default `Ubuntu`),
+`CLAUDE_WSL_PYTHON` (the WSL python that has `memeval`+`mcp`, used by `--mode plugin`).
+`off`/`builtin` need only `claude` in WSL; `plugin` also needs the MCP server
+importable by that WSL python (`pip install -e ".[claudecode]"` *inside* WSL).
 
 ## 2. The three memory modes
 
