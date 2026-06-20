@@ -38,13 +38,24 @@ class ClaudeRuntime:
 
 
 def to_wsl_path(p: "str | Path") -> str:
-    """Translate a Windows path to its WSL ``/mnt`` form (idempotent for POSIX)."""
-    s = str(p).replace("\\", "/")
-    m = _WIN_DRIVE.match(str(p))
+    """Translate a Windows path to its WSL ``/mnt`` form (idempotent for POSIX).
+
+    A relative Windows path (e.g. ``..\\runs\\out``) has no drive to map, so it is
+    first resolved to an absolute path against the current directory — otherwise
+    ``wsl --cd <relative>`` fails with ``E_INVALIDARG``. POSIX paths (already
+    ``/mnt/...`` or ``/home/...``) pass through unchanged.
+    """
+    s = str(p)
+    if s.startswith("/"):              # already a POSIX/WSL path
+        return s.replace("\\", "/")
+    m = _WIN_DRIVE.match(s)
+    if not m:                          # relative (drive-less) -> make absolute first
+        s = str(Path(s).resolve())
+        m = _WIN_DRIVE.match(s)
     if m:
         drive, rest = m.group(1).lower(), m.group(2).replace("\\", "/")
         return f"/mnt/{drive}/{rest}"
-    return s
+    return s.replace("\\", "/")
 
 
 def _on_windows() -> bool:
