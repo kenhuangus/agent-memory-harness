@@ -53,7 +53,7 @@ def _estimate_tokens(content: str) -> int:
         from ..models import estimate_tokens  # shared estimate, for cross-store consistency
         return estimate_tokens(content)
     except Exception:
-        return max(1, len((content or "").split()))
+        return max(1, len(content or "") // 4)  # mirror models.estimate_tokens (chars // 4)
 
 
 def _cosine(a: list, b: list) -> float:
@@ -81,6 +81,7 @@ class SqliteVectorStore:
         self.embed_model = embed_model
         self._embed = embed or _HashingEmbedder(dim)
         self._conn = sqlite3.connect(self.path)
+        self._conn.row_factory = sqlite3.Row  # access columns by name, not fragile indices
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS items ("
             "item_id TEXT PRIMARY KEY, content TEXT, timestamp REAL, relevancy REAL, "
@@ -91,15 +92,16 @@ class SqliteVectorStore:
 
     # -- MemoryStore protocol ----------------------------------------------
     def write(self, item: MemoryItem) -> None:
-        if item.tokens <= 0 and item.content:
-            item.tokens = _estimate_tokens(item.content)
+        tokens = item.tokens  # don't mutate the caller's item; store a local value
+        if tokens <= 0 and item.content:
+            tokens = _estimate_tokens(item.content)
         self._conn.execute(
             "INSERT OR REPLACE INTO items (item_id, content, timestamp, relevancy, "
             "session_id, source, tags, tokens, version, metadata, vector) "
             "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (item.item_id, item.content, item.timestamp, item.relevancy,
              item.session_id, item.source, json.dumps(list(item.tags)),
-             item.tokens, item.version, json.dumps(item.metadata or {}),
+             tokens, item.version, json.dumps(item.metadata or {}),
              json.dumps(self._embed(item.content))),
         )
         self._conn.commit()
@@ -124,11 +126,11 @@ class SqliteVectorStore:
         rows = self._conn.execute(f"SELECT {_ITEM_COLS}, vector FROM items").fetchall()
         scored: list = []
         for row in rows:
-            ts = row[2]
+            ts = row["timestamp"]
             if as_of is not None and ts is not None and ts > as_of:
                 continue
-            score = _cosine(q, json.loads(row[10]))
-            scored.append((score, self._row_to_item(row[:10])))
+            score = _cosine(q, json.loads(row["vector"]))
+            scored.append((score, self._row_to_item(row)))
         scored.sort(key=lambda si: (-si[0], -si[1].relevancy, -si[1].timestamp, si[1].item_id))
         return [RetrievedItem(item=it, score=sc, rank=r)
                 for r, (sc, it) in enumerate(scored[: max(0, k)])]
@@ -142,9 +144,10 @@ class SqliteVectorStore:
     # -- helpers -----------------------------------------------------------
     def _row_to_item(self, row) -> MemoryItem:
         return MemoryItem(
-            item_id=row[0], content=row[1], timestamp=row[2], relevancy=row[3],
-            session_id=row[4], source=row[5], tags=json.loads(row[6] or "[]"),
-            tokens=row[7], version=row[8], metadata=json.loads(row[9] or "{}"),
+            item_id=row["item_id"], content=row["content"], timestamp=row["timestamp"],
+            relevancy=row["relevancy"], session_id=row["session_id"], source=row["source"],
+            tags=json.loads(row["tags"] or "[]"), tokens=row["tokens"],
+            version=row["version"], metadata=json.loads(row["metadata"] or "{}"),
         )
 
     def close(self) -> None:

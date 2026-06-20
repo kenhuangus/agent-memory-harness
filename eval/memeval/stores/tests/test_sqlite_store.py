@@ -100,6 +100,7 @@ class SqliteVectorStoreTests(unittest.TestCase):
             s2 = SqliteVectorStore(path)  # a fresh instance reads the file
             self.assertIsNotNone(s2.get("m1"))
             self.assertTrue(s2.search("configuration", k=1))
+            s2.close()
 
     def test_uses_injected_embedder(self) -> None:
         # the headline deferral claim: a real embedder is injected via embed=
