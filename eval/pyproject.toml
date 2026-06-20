@@ -65,6 +65,11 @@ swebench = ["swebench>=2.1.0"]
 # the offline path never imports it.
 langfuse = ["langfuse>=3.0"]
 
+# Run the benchmarks through the Claude Code CLI with our memory plugin
+# (memeval.claudecode.*). Needs the MCP SDK for the memory server; the `claude`
+# CLI is installed separately via npm.
+claudecode = ["mcp>=1.0"]
+
 # Convenience: everything needed for real (online, paid) runs.
 full = [
     "anthropic>=0.40.0",
@@ -95,18 +100,18 @@ memeval = "memeval.cli:main"
 # --------------------------------------------------------------------------- #
 # setuptools packaging
 # --------------------------------------------------------------------------- #
-[tool.setuptools]
-# Explicit package list keeps the builtin-shadowing-free `memeval` name and its
-# subpackages in; excludes tests from the wheel.
-packages = [
-    "memeval",
-    "memeval.loaders",
-]
+[tool.setuptools.packages.find]
+# Auto-discover every memeval subpackage (loaders, stores, dreaming, opencode,
+# claudecode, …) so they all ship in a wheel — not just a hand-maintained list.
+# Excludes tests from the distribution.
+include = ["memeval*"]
+exclude = ["tests*"]
 
 [tool.setuptools.package-data]
-# Ship the example sharded-key config inside the wheel so `load_key_config`
-# has a template to point at after install.
+# Ship the example sharded-key config and the Claude Code plugin assets inside the
+# wheel (load_key_config + the memeval-memory plugin both read these at runtime).
 memeval = ["config/*.json"]
+"memeval.claudecode" = ["plugin/.mcp.json", "plugin/README.md", "plugin/.claude-plugin/*.json"]
 
 # --------------------------------------------------------------------------- #
 # Tooling config (optional; offline path does not depend on these)
