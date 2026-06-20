@@ -70,6 +70,9 @@ BLIND_CASES = [
 ]
 
 _FLOOR = 0.85  # router must agree with >= 85% of the blind HARD cases
+_EXPECTED_HARD = 31  # locks the denominator — adding/removing a hard case must be deliberate
+_VALID_KINDS = {"hard", "amb", "none"}
+_VALID_LABELS = {"graph", "vectors", "markdown", "none"}
 
 
 def score():
@@ -81,17 +84,35 @@ def score():
 
 
 class RoutingEvalTests(unittest.TestCase):
+    def test_fixture_contract_is_valid(self) -> None:
+        seen: set = set()
+        hard = 0
+        for i, case in enumerate(BLIND_CASES):
+            self.assertEqual(len(case), 5, f"case[{i}] must be a 5-tuple")
+            query, label, _lens, kind, _note = case
+            self.assertIn(kind, _VALID_KINDS, f"case[{i}] bad kind: {kind!r}")
+            self.assertIn(label, _VALID_LABELS, f"case[{i}] bad label: {label!r}")
+            self.assertNotIn(query, seen, f"case[{i}] duplicate query")
+            seen.add(query)
+            if kind == "hard":
+                hard += 1
+                self.assertIn(label, {"graph", "vectors", "markdown"},
+                              f"hard case[{i}] cannot have label {label!r}")
+        self.assertEqual(hard, _EXPECTED_HARD,
+                         "hard-case count changed — update _EXPECTED_HARD deliberately")
+
     def test_blind_hard_case_agreement_meets_floor(self) -> None:
         agree, total, misses = score()
+        self.assertGreater(total, 0, "no hard cases configured — floor check is invalid")
         self.assertGreaterEqual(
             agree / total, _FLOOR,
             f"{agree}/{total}; unexpected misses: "
-            f"{[(c[0][:40], c[1], got) for c, got in misses if not c[4]]}")
+            f"{[(c[0][:40], c[1], got) for c, got in misses if not c[4].strip()]}")
 
     def test_all_intentional_misses_are_documented(self) -> None:
         # every hard-case disagreement must carry a `note` (adjudication or known limit)
         _, _, misses = score()
-        undocumented = [c[0] for c, _ in misses if not c[4]]
+        undocumented = [c[0] for c, _ in misses if not c[4].strip()]
         self.assertEqual(undocumented, [], f"undocumented router/blind disagreements: {undocumented}")
 
 
@@ -102,7 +123,7 @@ def _report() -> None:
     if misses:
         print("Disagreements (all should be intentional — adjudicated or known limits):")
         for c, got in misses:
-            print(f"  blind={c[1]:8} got={got:8} | {c[4] or '*** UNDOCUMENTED ***'} | {c[0][:55]}")
+            print(f"  blind={c[1]:8} got={got:8} | {c[4].strip() or '*** UNDOCUMENTED ***'} | {c[0][:55]}")
 
 
 if __name__ == "__main__":
