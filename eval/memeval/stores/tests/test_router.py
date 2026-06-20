@@ -57,7 +57,21 @@ EDGE_ADVERSARIAL = [
 # ⚠ provisional labels — routing is reported, not asserted for correctness.
 CONTESTED = [
     "everything that came up when we froze schema.py",
-    "compare the markdown store to the sqlite store",
+]
+
+# Bucket B — contested cases adjudicated by Brent (DECISION_LOG D012). All -> vectors.
+BUCKET_B = [
+    ("everything we know about `AuthGuard` middleware", VECTORS),  # B1 (a fusion candidate for D008)
+    ("compare our chosen retry-backoff strategy to the exponential one we rejected", VECTORS),  # B2: compare = synthesis
+    ("where did we note the tradeoff between `Postgres` and `DynamoDB`?", VECTORS),  # B3: drop between..and
+    ("compare the markdown store to the sqlite store", VECTORS),  # was seed ⚠, resolved by B2
+]
+
+# Guard (independent-verifier request): a real graph signal must WIN over an incidental
+# compare/between/about vector signal — the tie-break that keeps D012 from regressing graph.
+COMPETING_SIGNAL_GUARD = [
+    ("compare what depends on schema.py", GRAPH),
+    ("everything we know about what imports the logger", GRAPH),
 ]
 
 # Regressions from the blind adversarial round (2026-06-19): each FAILED on router
@@ -111,6 +125,16 @@ class RouterClassifyTests(unittest.TestCase):
         for query in DEGENERATE:
             with self.subTest(query=repr(query)):
                 self.assertEqual(self.router.classify(query), VECTORS)
+
+    def test_bucket_b_adjudicated_cases(self) -> None:
+        for query, expected in BUCKET_B:
+            with self.subTest(query=query):
+                self.assertEqual(self.router.classify(query), expected)
+
+    def test_real_graph_signal_wins_over_incidental_vector_signal(self) -> None:
+        for query, expected in COMPETING_SIGNAL_GUARD:
+            with self.subTest(query=query):
+                self.assertEqual(self.router.classify(query), expected)
 
 
 class RouterRouteTests(unittest.TestCase):

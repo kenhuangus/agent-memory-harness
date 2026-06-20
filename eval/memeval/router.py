@@ -43,17 +43,21 @@ _GRAPH_RE = re.compile(
     r"|\bconnect(?:s|ed|ion)?\s+to\b|\bconnected\b"
     r"|\brelate[sd]?\b|\brelationship\b"
     r"|\bconflicts?\s+with\b|\bcontradicts?\b"
-    r"|\bcompare[sd]?\b|\bbetween\b.+\band\b|\blinked?\s+to\b"
+    r"|\blinked?\s+to\b"
     r"|\brenam(?:e|es|ed|ing)\b|\bimpact(?:s|ed)?\b|\baffect(?:s|ed)?\b|\bwhat\s+breaks?\b",
     re.I,
 )
+# Note (DECISION_LOG D012): "compare" and "X between Y" were dropped here — they read
+# structural but usually mean "synthesize this for me", so they live in _VECTOR_RE now.
 
 # Conceptual / rationale / synthesis intent -> vectors. Overrides surface code tokens.
 _VECTOR_RE = re.compile(
     r"\bwhy\b|\bhow\s+come\b|\breason(?:ing|s|ed)?\b|\brationale\b"
     r"|\bsummar(?:y|ies|ize|ise)\b|\bexplain\b|\boverview\b"
     r"|\btrade[\s-]?offs?\b|\bdecid(?:e|ed|es|ing)\b|\bdecision\b"
-    r"|\bchose\b|\bchoose\b|\bchoosing\b|\bthoughts?\s+on\b|\bapproach\b",
+    r"|\bchose\b|\bchoose\b|\bchoosing\b|\bthoughts?\s+on\b|\bapproach\b"
+    r"|\bcompar(?:e|es|ed|ing)\b|\bcomparisons?\b|\beverything\b.{0,20}\babout\b"
+    r"|\banything\b.{0,20}\babout\b|\btell\s+me\s+about\b|\bwhat\s+do\s+we\s+know\b",
     re.I,
 )
 
