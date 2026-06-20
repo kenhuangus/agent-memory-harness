@@ -32,6 +32,7 @@ that documents the plan, architecture, benchmarks, implementation contracts, and
 │   ├── css/style.css        # theme + all components
 │   ├── js/main.js           # nav toggle, active link, reveal-on-scroll
 │   └── img/architecture.svg # standalone architecture diagram
+├── eval/                     # the evaluation harness (Python pkg `memeval`) — see "Run the benchmarks"
 ├── .nojekyll                # serve assets as-is (no Jekyll build)
 └── README.md
 ```
@@ -69,6 +70,42 @@ straight to GitHub Pages.
 - **ContextBench** (in-task retrieval quality) — [paper](https://arxiv.org/abs/2602.05892) · [dataset](https://huggingface.co/datasets/Contextbench/ContextBench) · [code](https://github.com/EuniAI/ContextBench)
 
 Complementary: [LoCoMo](https://arxiv.org/abs/2402.17753), [SWE-bench](https://www.swebench.com).
+
+## Run the benchmarks (the `eval/` harness)
+
+The evaluation code lives in [`eval/`](eval/) — a stdlib-first Python package
+(`memeval`). You can run all five benchmarks **locally through the Claude Code
+CLI**, comparing Claude Code's **built-in memory** vs **our plugin memory**, on
+your Claude Code **subscription** (no API key, no API billing).
+
+```bash
+cd eval
+pip install -e ".[claudecode,hf]"               # harness + MCP memory plugin + dataset loaders
+npm install -g @anthropic-ai/claude-code         # the `claude` CLI (the agent under test)
+
+# 1) offline smoke first (free, no claude, bundled fixtures):
+python -m memeval.claudecode.run_bench --benchmark longmemeval --mode builtin \
+    --path fixtures --limit 2 --results /tmp/cc.json
+
+# 2) the full comparison: 5 benchmarks x {builtin, plugin}, per-benchmark entry floors:
+python -m memeval.claudecode.run_bench --benchmark all --mode all \
+    --model claude-haiku-4-5 --out-dir ../runs/claudecode \
+    --results ../runs/claudecode/results.json
+
+# 3) read the verdict (our memory vs Claude Code's built-in memory, per benchmark):
+python -m memeval.results summary --path ../runs/claudecode/results.json
+```
+
+- **Auth is subscription-only** — `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` are
+  stripped from every `claude` invocation; runs use your Claude Code OAuth login.
+- **Cross-platform**, auto-detected: macOS · Linux · Windows · Windows→WSL.
+- **`--mode`** is `builtin` (Claude Code's own `CLAUDE.md` memory) | `plugin` (our
+  OKF-backed MCP memory) | `all`. CODE benchmarks need the SWE-bench Docker grader
+  (`pip install -e ".[swebench]"`) to score accuracy.
+
+Full guides: the per-developer, per-benchmark runbook is
+[`eval/memeval/claudecode/README.md`](eval/memeval/claudecode/README.md); the
+harness architecture, offline runs, and metrics are in [`eval/README.md`](eval/README.md).
 
 ## Source
 
