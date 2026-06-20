@@ -291,10 +291,20 @@ long-lived per session — that is MCP's normal model, not a daemon we manage.
 
 **Status:** Accepted · **Contract:** yes
 
+> **Update (post-extraction):** Daydreaming and Dreaming are **separate functions
+> with totally isolated entrypoints** — they may share helper code under the hood,
+> but they are **not** one `dream()` engine dispatched by a `scope` parameter. This
+> ADR has been split into the authoritative
+> [`docs/adrs/ADR-dreaming-001`](../adrs/ADR-dreaming-001-daydreaming-stop-fired.md)
+> (Daydreaming) and
+> [`docs/adrs/ADR-dreaming-002`](../adrs/ADR-dreaming-002-dreaming-consolidation-cli.md)
+> (Dreaming); the text below is corrected to match.
+
 ### Context
 The board splits the subconscious into **Day Dream** (in-session, light) and
-**Dream** (offline, deep), sharing one `dream()` engine whose internal logic handles
-scope. Two distinct things were conflated in an earlier draft and are separated here:
+**Dream** (offline, deep). These are **two separate functions with isolated
+entrypoints** (they may share helpers, but neither is the other's `scope` argument).
+Two distinct things were conflated in an earlier draft and are separated here:
 
 - **Memory creation** happens two ways: the model writes *in-loop* via `remember`
   (ADR-P4), **and** the **Daydreamer** watches the session log and extracts memories
@@ -315,7 +325,7 @@ night consolidation must be invokable between batches via a public surface.
   the Daydreamer is a first-class MVP component, not a manual step.
 
 ### Decision
-**Two triggers, one engine, split by scope:**
+**Two separate functions, two isolated entrypoints, two triggers:**
 
 - **Daydreamer (day scope — current session, automatic).** The plugin's `Stop` hook
   (`async: true`, with `PreCompact` as a final pre-compaction pass) runs the
@@ -327,8 +337,10 @@ night consolidation must be invokable between batches via a public surface.
   **public CLI** the eval invokes between batches (black-box-safe — a public action,
   not an internal seam, ADR-P1) and a human can run.
 
-Both call the engine's single `dream(store, *, scope, …)` (the meeting's one
-signature; internal logic dispatches on scope).
+These are **separate entrypoints** — e.g. `daydream(*, session_id, log_path, store)`
+and `consolidate(store, *, …)` — **not** a single `dream(store, *, scope, …)`
+dispatched on scope. They may share internal helpers (the log adapter, the dedup
+path, the `LLMClient` of ADR-P6), but the public entrypoints are isolated.
 
 ### Rationale
 The Daydreamer-on-`Stop` gives automatic in-session memory capture — the
@@ -354,16 +366,18 @@ there is **no** force-injection before the next model call (no such CC hook exis
 [`02`](02-claude-code.md) §1).
 
 ### Consequences for the build
-- **Contract — source of truth:** the engine `dream(store, *, scope, session_id=None,
-  log_path=None, …)` signature (`dreaming/worker.py`) + the `memory dream` CLI.
-- **Shape:** day = the `Stop`/`PreCompact` hook → `memory dream --session <id> --log
-  <transcript_path>` (async); night = `memory dream --all`. (`--session` and `--all`
-  select scope; both accept `--store P`.)
+- **Contract — source of truth:** the **two isolated entrypoints** — `daydream(*,
+  session_id, log_path, store)` and `consolidate(store, *, …)` (`dreaming/`) — plus
+  the `memory daydream` / `memory dream --all` CLI surfaces. **Not** one
+  scope-dispatched function.
+- **Shape:** day = the `Stop`/`PreCompact` hook → `memory daydream --session <id>
+  --log <transcript_path>` (async); night = `memory dream --all`. (Both accept
+  `--store P`.)
 - **Hooks wired:** `Stop` (`async: true`) and `PreCompact` → the Daydreamer day pass.
-- **Exhaustive consumers:** the plugin `Stop`/`PreCompact` hooks (day trigger), the
-  eval protocol + a human (night trigger), and the engine's `DreamingWorker`/`dream()`
-  (scope dispatch is Scott's — see [§Open questions](#open-questions)).
-- Both scopes write **through the Orchestrator** (ADR-P2), never the store directly.
+- **Exhaustive consumers:** the plugin `Stop`/`PreCompact` hooks (day trigger → the
+  Daydreaming entrypoint); the eval protocol + a human (night trigger → the
+  consolidation entrypoint).
+- Both functions write **through the Orchestrator** (ADR-P2), never the store directly.
 
 ---
 
@@ -659,11 +673,12 @@ Tagged with the owner who must resolve each — **not** decided here.
 - **[storage / Brent] Dedup-on-write confidence threshold.** The meeting noted
   "dedup on write if confidence is high enough" and "returns memory ID." The exact
   threshold and merge-vs-new-version policy live in the Orchestrator.
-- **[dreaming / Scott B.] `dream()` scope dispatch.** The single `dream()` signature
-  handling **day scope = current session only** vs **night scope = the ENTIRE memory
-  across all sessions** (night reads memory hashes/timestamps to find what changed).
-  `memory dream --session <id>` / `--all` (ADR-P5) call into it; the scope-dispatch
-  logic is Scott's.
+- **[dreaming / Scott B.] The two isolated subconscious functions.** **Daydreaming**
+  (current session only) and **Dreaming/consolidation** (the ENTIRE memory across all
+  sessions; reads memory hashes/timestamps to find what changed) are **separate
+  entrypoints** — `memory daydream --session <id>` and `memory dream --all` (ADR-P5)
+  call distinct callables, not one `dream(scope=…)`. Any helpers they share and the
+  consolidation logic are Scott's.
 - **[Keith, later] Semantic chunker (ADR-P7).** Upgrade from one-turn-one-chunk to
   topic-shift segmentation, driven by eval data.
 - **[Keith, later] Langfuse export (ADR-P11).** Wire the events stream to a real
@@ -673,13 +688,14 @@ Tagged with the owner who must resolve each — **not** decided here.
 
 A single **Claude Code plugin** (MCP + hooks + skills) is the conscious surface:
 the model creates memory **in-loop** via the `remember` MCP tool and reads via
-`recall`. The subconscious has two parts, split by scope: the **Daydreamer** —
-**day**, current session, fired **automatically** by the plugin's `Stop`/`PreCompact`
-hook — watches the session log (redacting adapter + turn-chunking + swappable
-OpenRouter-first model) and writes this session's memories as the run proceeds; and
-**Dream** — **night**, the entire memory across all sessions — the **public `memory
-dream --all` CLI** that consolidates (dedup/merge/prune). Both call one `dream(store,
-scope, …)` engine. Everything reaches memory **only through the in-process
+`recall`. The subconscious has two **separate functions with isolated entrypoints**: the
+**Daydreamer** — **day**, current session, fired **automatically** by the plugin's
+`Stop`/`PreCompact` hook — watches the session log (redacting adapter + turn-chunking
++ swappable OpenRouter-first model) and writes this session's memories as the run
+proceeds; and **Dream** — **night**, the entire memory across all sessions — the
+**public `memory dream --all` CLI** that consolidates (dedup/merge/prune). They are
+two distinct callables that may share helpers — **not** one `dream(store, scope, …)`
+engine. Everything reaches memory **only through the in-process
 Orchestrator** (`MemoryFramework` over `$MEMORY_STORE`), which owns where/how.
 Everything is **fail-open** — so the eval ramps cleanly: **(1)** no-op baseline,
 **(2)** `recall`/`remember` + Daydreamer wired, night `dream` no-op, **(3)** night
