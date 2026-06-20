@@ -256,6 +256,51 @@
   </div>
 </section>
 
+<!-- LATEST DECISIONS -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Latest decisions · 2026-06-20</div>
+      <h2>How it runs &amp; consolidates</h2>
+      <p class="lead">The whiteboard view: a <strong>Conscious</strong> band (the live, in-loop session)
+        over a <strong>Subconscious</strong> band (async consolidation), with the <strong>plugin</strong>
+        as the only surface the coding harness sees. Full contract in
+        <a href="https://github.com/kenhuangus/agent-memory-harness/blob/main/architecture.md">architecture.md §7</a>.</p>
+    </div>
+    <div class="card" style="padding:18px;background:var(--bg-elev);margin-bottom:20px">
+      <img src="assets/system-diagram.svg" alt="Cookbook Memory Conscious / Subconscious system diagram" style="width:100%;height:auto;border-radius:10px">
+    </div>
+    <div class="grid grid-3">
+      <div class="card bl2 fade-up">
+        <h3>① Benchmarks run via the local CLI</h3>
+        <p>Benchmarks run through the <strong>Claude Code CLI</strong> (subscription auth — API keys stripped,
+          no API billing), comparing Claude Code's <strong>built-in</strong> memory vs <strong>our plugin</strong> memory.
+          Entry point <code>python -m memeval.claudecode.run_bench</code>.</p>
+        <p class="note">Each run saves a per-benchmark, versioned file:
+          <code>results/{vX.Y}/{bench-name}-{timestamp}.json</code> — <code>vX.Y</code> is the memory-system
+          version (<code>MEMORY_VERSION</code>, starts <code>v0.1</code>; bump 0.1 per memory change + run).</p>
+      </div>
+      <div class="card bl4 fade-up">
+        <h3>② Plugin + <code>Stop</code> hook → Daydream</h3>
+        <p>The memory system ships as a <strong>Claude Code plugin</strong> (skills · MCP · hooks). A
+          <strong><code>Stop</code> hook</strong> fires the <strong>Daydream</strong> component when a session
+          ends, so in-session consolidation runs automatically — no manual trigger.</p>
+        <p class="note">Two memory-creation paths: the model's in-loop <code>remember</code> tool, and the
+          Daydream pass mining the logs for what wasn't saved. Fail-open throughout.</p>
+      </div>
+      <div class="card bl1 fade-up">
+        <h3>③ Daydream consolidation flow</h3>
+        <ul>
+          <li>Read the session <strong><code>.jsonl</code></strong> logs.</li>
+          <li>Track <strong>processed-vs-delta</strong> state; send only the unprocessed delta.</li>
+          <li>Call an <strong>OpenRouter</strong> model (cheap, non-frontier) to decide <em>what to remember</em>.</li>
+          <li>Call the <strong>Orchestrator</strong> to save it — route · rank · dedup · version.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
 <footer class="footer">
   <div class="wrap footer-grid">
     <div>

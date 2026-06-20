@@ -41,8 +41,10 @@
   <div class="wrap">
     <div class="crumb"><a href="index.html">Overview</a> / Results</div>
     <h1>Results &amp; metrics</h1>
-    <p class="lead">Every benchmark run is logged to <code>results.json</code> and rendered here. Run →
-      <code>append_result</code> → commit → this page shows it.</p>
+    <p class="lead">Every benchmark run is logged to the aggregate <code>results.json</code> ledger (rendered
+      here) <em>and</em> saved as a per-benchmark, versioned file:
+      <code>results/{vX.Y}/{bench-name}-{timestamp}.json</code>. Run → ledger + versioned file → commit →
+      this page shows it.</p>
   </div>
 </section>
 
@@ -74,17 +76,21 @@
         <span class="ic">⏳</span>
         <div>
           <p style="color:var(--text);font-weight:600;margin-bottom:4px">No runs logged yet</p>
-          <p style="margin:0">Log one and it appears here automatically:
-            <code>python -m memeval.results run --benchmark longmemeval --model echo --no-memory --path tests/fixtures/longmemeval.json --results ../results.json</code>,
+          <p style="margin:0">Run one and it appears here automatically:
+            <code>python -m memeval.claudecode.run_bench --benchmark longmemeval --mode all --model claude-haiku-4-5 --results ../results.json</code>
+            (or the offline echo path <code>python -m memeval.results run --benchmark longmemeval --model echo --no-memory --path tests/fixtures/longmemeval.json --results ../results.json</code>),
             then commit <code>results.json</code>.</p>
         </div>
       </div>
     </div>
 
-    <p class="note" style="margin-top:18px">How to log a run:
-      <code>python -m memeval.results run --benchmark &lt;name&gt; --model claude-haiku-4-5 --memory --results ../results.json</code>
-      (or call <code>memeval.results.append_result(run_result, "results.json")</code> after a run). Raw ledger:
-      <a href="results.json" target="_blank" rel="noopener">results.json</a>.</p>
+    <p class="note" style="margin-top:18px">How to run the benchmarks (built-in vs our plugin memory, via the
+      Claude Code CLI, subscription auth — no API key):
+      <code>python -m memeval.claudecode.run_bench --benchmark all --mode all --model claude-haiku-4-5 --results ../results.json</code>.
+      This appends to the aggregate ledger <em>and</em> writes per-benchmark versioned files under
+      <code>results/v0.1/</code>. The offline echo path still works too:
+      <code>python -m memeval.results run --benchmark &lt;name&gt; --model echo --memory --results ../results.json</code>.
+      Raw ledger: <a href="results.json" target="_blank" rel="noopener">results.json</a>.</p>
   </div>
 </section>
 
