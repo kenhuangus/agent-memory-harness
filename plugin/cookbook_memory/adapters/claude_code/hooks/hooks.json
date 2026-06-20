@@ -1,0 +1,60 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "memory-hook SessionStart",
+            "env": { "MEMORY_STORE": "${CLAUDE_PROJECT_DIR}/.cookbook-memory" }
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "memory-hook UserPromptSubmit",
+            "env": { "MEMORY_STORE": "${CLAUDE_PROJECT_DIR}/.cookbook-memory" }
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "memory-hook Stop",
+            "async": true,
+            "env": { "MEMORY_STORE": "${CLAUDE_PROJECT_DIR}/.cookbook-memory" }
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "memory-hook PreCompact",
+            "env": { "MEMORY_STORE": "${CLAUDE_PROJECT_DIR}/.cookbook-memory" }
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "memory-hook PostCompact",
+            "env": { "MEMORY_STORE": "${CLAUDE_PROJECT_DIR}/.cookbook-memory" }
+          }
+        ]
+      }
+    ]
+  }
+}

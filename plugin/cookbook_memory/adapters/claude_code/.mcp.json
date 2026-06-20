@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "cookbook-memory": {
+      "command": "memory",
+      "args": ["mcp"],
+      "env": {
+        "MEMORY_STORE": "${CLAUDE_PROJECT_DIR}/.cookbook-memory"
+      }
+    }
+  }
+}
