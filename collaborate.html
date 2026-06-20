@@ -97,7 +97,7 @@
         <tbody>
           <tr style="background:rgba(45,212,191,.10)">
             <td><span class="pill p2">Ken — you</span></td>
-            <td><code>eval/memeval/loaders/</code>, <code>metrics.py</code>, <code>cost.py</code>, <code>trajectory.py</code>, <code>agent.py</code>, <code>tracing.py</code>, <code>results.py</code>, <code>eval/tests/</code>, the site (<code>*.html</code>, <code>assets/</code>)</td>
+            <td><code>eval/memeval/loaders/</code>, <code>metrics.py</code>, <code>cost.py</code>, <code>trajectory.py</code>, <code>agent.py</code>, <code>tracing.py</code>, <code>results.py</code>, <code>claudecode/</code> <span class="note">(local Claude Code CLI benchmark runner)</span>, <code>eval/tests/</code>, the site (<code>*.html</code>, <code>assets/</code>)</td>
             <td><code>eval/*</code> · <code>loaders/*</code> · <code>metrics/*</code> · <code>eval-infra/*</code> · <code>site/*</code></td>
           </tr>
           <tr>
@@ -220,8 +220,11 @@ git add ../results.json &amp;&amp; git commit -m "results: longmemeval haiku+mem
           <code>ANTHROPIC_API_KEY_&lt;YOUR_HANDLE&gt;</code> under your fork's <em>Settings → Secrets and variables →
           Actions</em>, and run <em>Benchmark run</em> there. Open a PR back to publish results.</li>
       </ol>
-      <p class="note">Keys are never printed in logs. Get a key at <code>console.anthropic.com → API Keys</code>. Locally,
-        <code>memeval</code> just reads <code>ANTHROPIC_API_KEY</code> from your environment.</p>
+      <p class="note">Keys are never printed in logs. Get a key at <code>console.anthropic.com → API Keys</code>. This
+        key path is only for the <strong>GitHub Actions / OpenCode adapter</strong> paid runs above. The local
+        <strong>Claude Code CLI runner</strong> (step 2) is the opposite: it <em>strips</em>
+        <code>ANTHROPIC_API_KEY</code>/<code>ANTHROPIC_AUTH_TOKEN</code> from every invocation and runs on your Claude
+        Code <strong>subscription</strong> — no API key, no API billing.</p>
     </div>
   </div>
 </section>
