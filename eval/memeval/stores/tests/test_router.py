@@ -60,6 +60,26 @@ CONTESTED = [
     "compare the markdown store to the sqlite store",
 ]
 
+# Regressions from the blind adversarial round (2026-06-19): each FAILED on router
+# v1; the rules were fixed to pass them. See capstone-workspace/ROUTING_EVALS.md.
+ADVERSARIAL_FIXED = [
+    ("which modules import `TokenBucket`", GRAPH),                       # missing 'import' signal
+    ("does anything still import the old auth helper or did the v2 thing replace all of them everywhere", GRAPH),
+    ("what breaks if I rename `UserRepository.findActive`?", GRAPH),     # impact analysis
+    ("the reasoning behind using `WAL_MODE=true` in the SQLite config", VECTORS),  # 'using' false-positive
+    ("what was that flag called the one we set to true to skip the email step in staging", MARKDOWN),  # 'called' = naming
+    ("env var name for the S3 bucket override", MARKDOWN),              # 'name for', not only 'name of'
+    ("remind me how the queue consumer and the dead letter thing relate, does one feed the other or", GRAPH),  # 'relate' w/o 'to'
+]
+
+# Degenerate inputs must NOT route to markdown via the short-query rule firing on
+# zero real tokens — they degrade to the semantic default.
+DEGENERATE = ["", "   ", "???!!! \U0001f525\U0001f4a5\U0001f916"]
+
+# Known limitation (NOT asserted): "connect to" is syntactically a graph signal, so
+# topical use ("how the notes connect to the idea") routes graph; distinguishing it
+# from a real structural link needs semantics, not rules. Tracked, not fixed in v1.
+
 
 class RouterClassifyTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -81,6 +101,16 @@ class RouterClassifyTests(unittest.TestCase):
         for query in CONTESTED:
             with self.subTest(query=query):
                 self.assertIn(self.router.classify(query), {MARKDOWN, GRAPH, VECTORS})
+
+    def test_adversarial_fixed_cases(self) -> None:
+        for query, expected in ADVERSARIAL_FIXED:
+            with self.subTest(query=query):
+                self.assertEqual(self.router.classify(query), expected)
+
+    def test_degenerate_inputs_default_to_semantic_not_markdown(self) -> None:
+        for query in DEGENERATE:
+            with self.subTest(query=repr(query)):
+                self.assertEqual(self.router.classify(query), VECTORS)
 
 
 class RouterRouteTests(unittest.TestCase):

@@ -34,14 +34,17 @@ _STRONG = 3.0
 _TOKEN = 1.0
 _SHORT = 1.5
 
-# Relationship / traversal intent -> graph.
+# Relationship / traversal / dependency / impact intent -> graph.
+# Note: "called" (naming) is intentionally NOT here (it's literal); only "call(s|ing)"
+# (the call-graph sense) is. "using" was dropped — too broad ("by using X" != depends).
 _GRAPH_RE = re.compile(
     r"\bdepends?\s+on\b|\bdepend(?:s|ency|encies)?\b"
-    r"|\bcall(?:s|ed|ing)?\b|\buses?\b|\busing\b|\bused\s+by\b"
+    r"|\bcall(?:s|ing)?\b|\buses?\b|\bused\s+by\b|\bimport(?:s|ed|ing)?\b"
     r"|\bconnect(?:s|ed|ion)?\s+to\b|\bconnected\b"
-    r"|\brelate[sd]?\s+to\b|\brelated\b|\brelationship\b"
+    r"|\brelate[sd]?\b|\brelationship\b"
     r"|\bconflicts?\s+with\b|\bcontradicts?\b"
-    r"|\bcompare[sd]?\b|\bbetween\b.+\band\b|\blinked?\s+to\b",
+    r"|\bcompare[sd]?\b|\bbetween\b.+\band\b|\blinked?\s+to\b"
+    r"|\brenam(?:e|es|ed|ing)\b|\bimpact(?:s|ed)?\b|\baffect(?:s|ed)?\b|\bwhat\s+breaks?\b",
     re.I,
 )
 
@@ -54,10 +57,11 @@ _VECTOR_RE = re.compile(
     re.I,
 )
 
-# Literal-lookup intent -> markdown, even inside a question.
+# Literal-lookup intent -> markdown, even inside a question. "called" = naming
+# ("what is X called", "the flag called Y"), a literal/keyword ask, not a call-graph.
 _LITERAL_RE = re.compile(
-    r"\b(?:exact\s+)?name\s+of\b|\bvalue\s+of\b|\bsignature\b"
-    r"|\bdefinition\s+of\b|\bdefined\b|\bspelling\b|\bfile\b",
+    r"\b(?:exact\s+)?name\s+(?:of|for)\b|\bvalue\s+of\b|\bsignature\b"
+    r"|\bdefinition\s+of\b|\bdefined\b|\bspelling\b|\bfile\b|\bcalled\b",
     re.I,
 )
 
@@ -93,8 +97,11 @@ def _score(query: str) -> dict[str, float]:
     code_hits = len(_CODE_RE.findall(query)) + len(_QUOTED_RE.findall(query))
     if code_hits:
         scores[MARKDOWN] += min(2.0, float(code_hits)) * _TOKEN
-    # a short keyword-ish query with no question/relational framing -> literal recall
-    if len(query.split()) <= 3 and not _QUESTION_RE.search(query) and not _GRAPH_RE.search(query):
+    # a short keyword-ish query with no question/relational framing -> literal recall.
+    # Count word-like tokens (not raw split) so empty / whitespace / punctuation-only
+    # inputs score nothing here and fall to the semantic default instead of markdown.
+    words = re.findall(r"[A-Za-z0-9]+", query)
+    if 1 <= len(words) <= 3 and not _QUESTION_RE.search(query) and not _GRAPH_RE.search(query):
         scores[MARKDOWN] += _SHORT
     return scores
 
