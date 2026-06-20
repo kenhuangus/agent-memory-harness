@@ -1,4 +1,4 @@
-"""Durable blind routing eval — the 41 adversarial queries behind DECISION_LOG D011/D012.
+"""Durable blind routing eval — the 41 adversarial queries from the blind hardening + adjudication rounds.
 
 These were authored by 4 subagents *firewalled from router.py* (4 lenses: surface
 traps, genuine ambiguity, messy/real phrasing, boundary inputs). This file makes the
@@ -8,7 +8,7 @@ Reproduce the report:   cd eval && python3 -m memeval.stores.tests.test_routing_
 Run the regression guard: cd eval && python3 -m unittest memeval.stores.tests.test_routing_evals
 
 `expected` is the *blind generator's* label. Where the team later adjudicated a
-different route (D012) or accepted a known limitation, `note` records it — those
+different route (a team adjudication) or accepted a known limitation, `note` records it — those
 disagreements are INTENTIONAL, not regressions. Only `kind == "hard"` cases are graded.
 """
 
@@ -36,7 +36,7 @@ BLIND_CASES = [
     ("what does `EAGAIN` mean in our retry wrapper", "vectors", "surface", "amb", ""),
     # -- Lens 2: genuine ambiguity / multi-intent --
     ("why does the `PaymentService` depend on the `RetryQueue`?", "graph", "ambig", "hard", ""),
-    ("everything we know about the `AuthGuard` middleware", "graph", "ambig", "hard", "adjudicated to vectors (D012)"),
+    ("everything we know about the `AuthGuard` middleware", "graph", "ambig", "hard", "adjudicated to vectors"),
     ("compare our chosen retry-backoff strategy to the exponential one we rejected", "vectors", "ambig", "hard", ""),
     ("what breaks if I rename `UserRepository.findActive`?", "graph", "ambig", "hard", ""),
     ("how does our rate-limiting design connect to the idempotency rationale?", "graph", "ambig", "amb", ""),

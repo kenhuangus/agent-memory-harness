@@ -4,12 +4,12 @@ Classifies a memory query and routes it to the SINGLE best backend instead of
 fanning out: relationship/contradiction queries -> graph, conceptual/"why"
 queries -> vectors, literal keyword/identifier lookups -> markdown. Rule-based and
 deterministic (v1); a learned upgrade (a fine-tuned local model) slots behind the
-same `route()` signature later (DECISION_LOG D007).
+same `route()` signature later (a learned classifier can swap in behind it).
 
-Division of labor (DECISION_LOG D009): the PRIMARY AGENT decides *if* to retrieve;
+Division of labor: the PRIMARY AGENT decides *if* to retrieve;
 the router owns *where & how*. So cascade/fall-through across backends is the
 router's concern, not the caller's. v1 is single-route + graceful degradation to an
-available backend (D003); the cascade/meta-index (D008) grows here later.
+available backend; a cascade / meta-index can grow here later.
 
 Approach: cheap signal functions contribute to a per-backend score; argmax wins
 (ties + no-signal -> the semantic default). The top-two margin is a ready-made
@@ -47,7 +47,7 @@ _GRAPH_RE = re.compile(
     r"|\brenam(?:e|es|ed|ing)\b|\bimpact(?:s|ed)?\b|\baffect(?:s|ed)?\b|\bwhat\s+breaks?\b",
     re.I,
 )
-# Note (DECISION_LOG D012): "compare" and "X between Y" were dropped here — they read
+# Note: "compare" and "X between Y" were dropped here — they read
 # structural but usually mean "synthesize this for me", so they live in _VECTOR_RE now.
 
 # Conceptual / rationale / synthesis intent -> vectors. Overrides surface code tokens.
@@ -85,7 +85,7 @@ _QUESTION_RE = re.compile(
 
 # Tie-break priority: more specific intents beat the semantic default.
 _PRIORITY = (GRAPH, MARKDOWN, VECTORS)
-# Graceful-degradation order when the chosen backend isn't registered (D003).
+# Graceful-degradation order when the chosen backend isn't registered.
 _FALLBACK = (VECTORS, MARKDOWN, GRAPH)
 
 
@@ -141,7 +141,7 @@ class Router:
         return {"choice": self.classify(query), "scores": scores, "margin": margin}
 
     def route(self, query: str, **kwargs: Any) -> MemoryStore:
-        """Return the store for ``query``, degrading to an available backend (D003)."""
+        """Return the store for ``query``, degrading to an available backend."""
         choice = self.classify(query)
         for name in (choice, *_FALLBACK):
             store = self.backends.get(name)
