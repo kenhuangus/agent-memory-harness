@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 from typing import Any, Optional
 
+from .. import MEMORY_VERSION
 from ..cost import DEFAULT_BUDGET_USD
 from ..schema import Benchmark
 from .agent import ClaudeCodeAgent
@@ -153,6 +154,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--timeout", type=int, default=600)
     ap.add_argument("--budget-usd", type=float, default=DEFAULT_BUDGET_USD)
     ap.add_argument("--results", default="results.json")
+    ap.add_argument("--results-dir", default="results",
+                    help="Root for the per-benchmark result files written as "
+                         "{results-dir}/v{X.Y}/{benchmark}-{timestamp}.json (one file per "
+                         "benchmark, holding its runs). Pass '' to skip.")
+    ap.add_argument("--results-version", default=MEMORY_VERSION,
+                    help=f"Memory-system version bucket for --results-dir (default "
+                         f"v{MEMORY_VERSION}). Bump 0.1 per memory change + run.")
     ap.add_argument("--out-dir", default=None,
                     help="Write per-run raw artifacts here (trajectory JSONL, record JSON, "
                          "and the agent working dir with CLAUDE.md/.mcp.json/recall.jsonl/memory).")
@@ -167,12 +175,30 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     benches = _ALL_BENCH if args.benchmark == "all" else [args.benchmark]
     modes = _MODES if args.mode == "all" else [args.mode]
+
+    # One timestamp for the whole sweep, so a sweep's per-benchmark files share it:
+    # results/v{X.Y}/{benchmark}-{timestamp}.json
+    from ..results import run_timestamp, write_benchmark_results
+    stamp = run_timestamp()
+
     n_ok = 0
     for b in benches:
+        recs = []
         for mode in modes:
-            if _run_one(b, mode, args) is not None:
+            rec = _run_one(b, mode, args)
+            if rec is not None:
                 n_ok += 1
+                recs.append(rec)
+        if recs and args.results_dir:
+            path = write_benchmark_results(
+                b, recs, version=args.results_version, timestamp=stamp, root=args.results_dir)
+            print(f"     -> {path}")
+
     print(f"\n{n_ok}/{len(benches) * len(modes)} run(s) logged -> {args.results}")
+    if args.results_dir:
+        from ..results import normalize_version
+        print(f"Per-benchmark results: {args.results_dir}/{normalize_version(args.results_version)}/"
+              f"<benchmark>-{stamp}.json")
     print("Scoreboard:  python -m memeval.results summary --path " + args.results)
     return 0
 

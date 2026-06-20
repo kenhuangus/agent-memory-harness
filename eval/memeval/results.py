@@ -89,6 +89,51 @@ def result_record(
     return rec
 
 
+def normalize_version(version: str) -> str:
+    """Normalize a memory-system version to the ``vX.Y`` directory form.
+
+    Accepts ``"0.1"``, ``"v0.1"``, ``"V0.1"`` -> ``"v0.1"``. Leaves any other
+    shape alone beyond ensuring a single leading ``v`` (so ``"0.2.1"`` -> ``"v0.2.1"``).
+    """
+    v = str(version).strip().lstrip("vV")
+    return f"v{v}"
+
+
+def run_timestamp() -> str:
+    """Filesystem-safe UTC timestamp for result filenames, e.g. ``20260620T193045Z``."""
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def benchmark_results_path(
+    benchmark: str, *, version: str, timestamp: str, root: "str | Path" = "results",
+) -> Path:
+    """Path for one benchmark's result file: ``{root}/v{X.Y}/{bench}-{timestamp}.json``."""
+    return Path(root) / normalize_version(version) / f"{benchmark}-{timestamp}.json"
+
+
+def write_benchmark_results(
+    benchmark: str, records: list[dict], *, version: str, timestamp: str,
+    root: "str | Path" = "results",
+) -> Path:
+    """Write one benchmark's runs to ``{root}/v{X.Y}/{bench}-{timestamp}.json``.
+
+    ``records`` are :func:`result_record` rows (e.g. the builtin + plugin runs for
+    this benchmark). The file is self-describing: schema, memory version, the
+    benchmark, the run timestamp, and the list of run records. Returns the path.
+    """
+    path = benchmark_results_path(benchmark, version=version, timestamp=timestamp, root=root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc = {
+        "schema": SCHEMA_VERSION,
+        "memory_version": normalize_version(version),
+        "benchmark": benchmark,
+        "timestamp": timestamp,
+        "runs": list(records),
+    }
+    path.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
 def load_results(path: "str | Path" = DEFAULT_PATH) -> dict:
     """Load the ledger (``{"schema", "updated", "runs": [...]}``) or a fresh one."""
     p = Path(path)
@@ -262,6 +307,10 @@ __all__ = [
     "load_results",
     "append_record",
     "append_result",
+    "normalize_version",
+    "run_timestamp",
+    "benchmark_results_path",
+    "write_benchmark_results",
 ]
 
 

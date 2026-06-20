@@ -10,6 +10,13 @@ from __future__ import annotations
 
 __version__ = "0.1.0"
 
+#: Version of the **memory system** (the memory code + storage as a whole), used
+#: to bucket benchmark results under ``results/v{MEMORY_VERSION}/``. Bump this by
+#: 0.1 whenever a change to the memory code/storage is paired with a new run, so
+#: each generation's results live in their own versioned directory. This is
+#: intentionally separate from ``__version__`` (the Python package version).
+MEMORY_VERSION = "0.1"
+
 from .schema import (
     Benchmark,
     Metrics,
@@ -53,6 +60,7 @@ from .agent import (
 
 __all__ = [
     "__version__",
+    "MEMORY_VERSION",
     # schema
     "Benchmark",
     "TaskKind",
