@@ -69,6 +69,13 @@ def result_record(
         "mode": rr.metadata.get("mode", "single"),
         "metrics": rr.metrics.to_dict(),
         "n_tasks": rr.n_tasks,
+        # Dataset accounting (reported for every run): how many dataset entries
+        # were actually evaluated, how many the dataset held, and the --limit
+        # that was applied (None = no cap). entries_used mirrors n_tasks.
+        "entries_used": rr.n_tasks,
+        "entries_available": rr.metadata.get("total_available"),
+        "limit": rr.metadata.get("limit"),
+        "selection": rr.metadata.get("select", "flat"),
         "cost_usd": round(rr.cost_usd, 6),
         "tokens_in": rr.tokens_in,
         "tokens_out": rr.tokens_out,
@@ -187,11 +194,16 @@ def _cli(argv: Optional[list[str]] = None) -> int:
         print(f"{len(runs)} run(s) · updated {data.get('updated') or '—'} · {args.path}")
         for rec in runs:
             m = rec.get("metrics", {})
+            used = rec.get("entries_used", rec.get("n_tasks", 0))
+            avail = rec.get("entries_available")
+            lim = rec.get("limit")
+            entries = f"{used}/{avail}" if avail is not None else str(used)
+            entries += f" (limit={lim})" if lim is not None else ""
             print(
                 f"  {rec.get('benchmark',''):<18} {rec.get('label',rec.get('model','')):<22} "
                 f"acc={m.get('accuracy',0):.3f} rel={m.get('relevancy',0):.3f} "
                 f"rec={m.get('recency',0):.3f} eff={m.get('efficiency',0):.3f} "
-                f"n={rec.get('n_tasks',0)} ${rec.get('cost_usd',0):.4f}"
+                f"entries={entries} ${rec.get('cost_usd',0):.4f}"
             )
         return 0
 
@@ -201,7 +213,7 @@ def _cli(argv: Optional[list[str]] = None) -> int:
     from .models import get_model
     from .schema import Benchmark
 
-    # default $10 cap; a value <= 0 disables the cap (pure accounting).
+    # default cap (cost.DEFAULT_BUDGET_USD); a value <= 0 disables it (pure accounting).
     cost = CostTracker(budget_usd=args.budget_usd) if args.budget_usd and args.budget_usd > 0 else None
     grader = None
     if args.grader:

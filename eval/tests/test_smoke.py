@@ -789,6 +789,52 @@ def test_claudecode_strips_api_key_subscription_only() -> None:
     assert "ANTHROPIC_API_KEY" not in " ".join(argv2)
 
 
+def test_group_aware_draw_prefers_whole_largest_groups() -> None:
+    """Group-aware selection fills the limit with whole groups, largest first,
+    skipping singletons and preserving within-group order (priors first)."""
+    from memeval.agent import _select_group_aware
+
+    def mk(gid, i):
+        return Task(task_id=f"{gid}-{i}", benchmark=Benchmark.SWE_CONTEXTBENCH,
+                    kind=TaskKind.CODE, question="q", group_id=gid)
+
+    tasks = (
+        [mk("singleA", 0), mk("singleB", 0)]          # two singletons (no priors)
+        + [mk("big", i) for i in range(5)]            # one 5-task group
+        + [mk("mid", i) for i in range(3)]            # one 3-task group
+    )
+    sel = _select_group_aware(tasks, limit=6)
+    assert len(sel) == 6
+    gids = [t.group_id for t in sel]
+    # Largest group ('big', 5) fully included, then a 1-task prefix of 'mid'.
+    assert gids.count("big") == 5 and gids.count("mid") == 1
+    assert "singleA" not in gids and "singleB" not in gids  # singletons skipped
+    # Within-group order preserved (priors precede dependents).
+    assert [t.task_id for t in sel if t.group_id == "big"] == [f"big-{i}" for i in range(5)]
+
+
+def test_claudecode_per_benchmark_limit_floors() -> None:
+    """Bare runs use each benchmark's long-memory floor; --limit overrides; 0 = all."""
+    from memeval.claudecode import run_bench as rb
+    # Every benchmark the runner sweeps has an explicit floor of >=1 entry.
+    for b in rb._ALL_BENCH:
+        assert rb.DEFAULT_FLOORS.get(b, rb.DEFAULT_MIN_ENTRIES) >= 1
+    # CL code bench draws wider than a single QA question (memory is cross-entry).
+    assert rb.DEFAULT_FLOORS["swe_bench_cl"] >= rb.DEFAULT_FLOORS["longmemeval"]
+    # Resolution: None -> floor; positive -> itself; 0/negative -> None (whole set).
+    assert rb._resolve_limit("swe_bench_cl", None) == rb.DEFAULT_FLOORS["swe_bench_cl"]
+    assert rb._resolve_limit("longmemeval", 7) == 7
+    assert rb._resolve_limit("longmemeval", 0) is None
+    assert rb._resolve_limit("unknown_bench", None) == rb.DEFAULT_MIN_ENTRIES
+    # Group-aware draw: auto -> on for cross-entry-memory benches, off for QA;
+    # explicit flat/group force it either way.
+    assert rb._resolve_group_aware("swe_contextbench", "auto") is True
+    assert rb._resolve_group_aware("swe_bench_cl", "auto") is True
+    assert rb._resolve_group_aware("longmemeval", "auto") is False
+    assert rb._resolve_group_aware("longmemeval", "group") is True
+    assert rb._resolve_group_aware("swe_contextbench", "flat") is False
+
+
 def test_claudecode_agent_naming_and_validation() -> None:
     from memeval.claudecode.agent import ClaudeCodeAgent
     a = ClaudeCodeAgent(model="claude-haiku-4-5", memory_mode="plugin")
@@ -1183,11 +1229,28 @@ def test_results_ledger_round_trip() -> None:
         for kk in ("recency", "efficiency", "relevancy", "accuracy"):
             assert isinstance(rec["metrics"][kk], float)
         assert rec["n_tasks"] == rr.n_tasks and rec["run_id"] == "t"
+        # Dataset accounting is reported for every run: used / available / limit.
+        assert rec["entries_used"] == rr.n_tasks
+        assert rec["entries_available"] == rr.metadata.get("total_available")
+        assert rec["limit"] is None  # no --limit applied above
         # Appends accumulate; file is valid JSON with a runs[] list.
         append_result(rr, ledger)
         data = load_results(ledger)
         assert len(data["runs"]) == 2 and data["schema"] >= 1
         json.dumps(data)  # serializable
+
+
+def test_results_report_dataset_entries_with_limit() -> None:
+    """With --limit applied, the record reports used<available and the limit value."""
+    from memeval.results import result_record
+    from memeval.harness import run
+    fx = _fixture("longmemeval.json")
+    rr = run(Benchmark.LONGMEMEVAL, EchoModel(), True, path_or_id=fx, limit=1)
+    rec = result_record(rr, run_id="lim")
+    assert rec["entries_used"] == 1
+    assert rec["entries_available"] >= 2  # fixture holds at least 2 entries
+    assert rec["entries_used"] < rec["entries_available"]
+    assert rec["limit"] == 1
 
 
 def test_tracing_is_safe_noop() -> None:

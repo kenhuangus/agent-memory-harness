@@ -14,6 +14,10 @@ Evaluation infrastructure for the **AI Agent Memory Harness**.
 - **Python:** 3.11+ (developed/targeted on 3.13)
 - **Run + read it:** see [`PROTOCOL.md`](PROTOCOL.md) — the reproducible guide
   for running benchmarks, real CODE grading, and reading the hypothesis scoreboard.
+- **Run all 5 locally via the Claude Code CLI** (built-in memory vs our plugin
+  memory, subscription auth, no API key): see
+  [`memeval/claudecode/README.md`](memeval/claudecode/README.md) — per-benchmark
+  commands every developer can run on macOS / Linux / Windows / WSL.
 
 ---
 
