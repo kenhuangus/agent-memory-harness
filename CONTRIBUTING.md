@@ -46,6 +46,15 @@ in your **own** directory; no contract edit required.
 3. Fill the "Affected dependents" table in the PR template.
 4. By **team convention**, loop in all four owners (CODEOWNERS auto-requests them) — a courtesy for contract changes, not a hard gate.
 
+## Architecture decisions (ADRs)
+Load-bearing technical decisions are recorded as **ADRs** under
+[`docs/adrs/`](docs/adrs/) — one file per decision, named `ADR-<domain>-NNN-<slug>.md`
+(domains: `harness`/`storage`/`dreaming`/`eval`, numbered per domain). Write one when
+a choice is load-bearing and not obvious; see
+[`docs/adrs/README.md`](docs/adrs/README.md) for the schema, the decision index, and
+the full when/how. A decision that also changes the frozen contract still follows the
+`[CONTRACT]` process above — the ADR is the *why*, the contract edit is the *what*.
+
 ## Stubs first
 Before building a dependent, make sure the interface stub is on `main`
 (`InMemoryStore`, `EchoModel` are the reference stubs). No dependent merges
