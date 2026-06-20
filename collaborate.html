@@ -141,12 +141,24 @@
 
     <h3>1 · Set up &amp; smoke-test (offline, zero deps)</h3>
 <pre><span class="c"># from the eval/ directory</span>
-pip install -e .
-python tests/test_smoke.py                 <span class="c"># 43 offline checks, stdlib-only</span>
+pip install -e ".[claudecode,hf]"
+python tests/test_smoke.py                 <span class="c"># offline checks, stdlib-only</span>
 python -m memeval.cli run --benchmark longmemeval --model echo \
     --no-memory --path tests/fixtures/longmemeval.json</pre>
 
-    <h3>2 · Run a dataset through the OpenCode memory harness (real code)</h3>
+    <h3>2 · Run the five benchmarks via the Claude Code CLI (built-in vs our plugin memory)</h3>
+    <p>The primary local path — drives the <strong>Claude Code CLI</strong> on your <strong>subscription</strong>
+      (API keys stripped, no API billing), comparing Claude Code's built-in <code>CLAUDE.md</code> memory against
+      our OKF-backed plugin memory. Cross-platform (macOS · Linux · Windows · WSL).</p>
+<pre><span class="c"># from the eval/ directory · subscription auth, no API key</span>
+python -m memeval.claudecode.run_bench --benchmark all --mode all \
+    --model claude-haiku-4-5 --results ../results.json</pre>
+    <p class="note">Each run appends to the aggregate ledger <em>and</em> saves a per-benchmark, versioned file
+      <code>results/{vX.Y}/{bench-name}-{timestamp}.json</code> (<code>vX.Y</code> = the memory-system version,
+      starts <code>v0.1</code>; bump 0.1 per memory change + run). Per-developer guide:
+      <a href="https://github.com/kenhuangus/agent-memory-harness/blob/main/eval/memeval/claudecode/README.md">eval/memeval/claudecode/README.md</a>.</p>
+
+    <h3>3 · Run a dataset through the OpenCode memory harness (real code)</h3>
 <pre><span class="k">from</span> memeval.agent <span class="k">import</span> run_agent, AgentResult
 <span class="k">from</span> memeval.results <span class="k">import</span> append_result
 <span class="k">from</span> memeval.schema <span class="k">import</span> Benchmark
@@ -172,7 +184,7 @@ append_result(rr, <span class="s">"results.json"</span>, run_id=<span class="s">
       a single backend). Memory-off baseline = same code with <code>memory=False</code>. Coding solve-rate needs a
       CODE <code>grader=</code> (apply patch + run tests) — until then CODE accuracy is left ungraded.</p>
 
-    <h3>3 · Log the run so it shows on the Results page</h3>
+    <h3>4 · Log the run so it shows on the Results page</h3>
 <pre><span class="c"># one command: run + append to the ledger the Results page renders</span>
 python -m memeval.results run --benchmark longmemeval --model claude-haiku-4-5 \
     --memory --results ../results.json --out runs/lme_haiku_mem.jsonl
@@ -180,7 +192,7 @@ git add ../results.json &amp;&amp; git commit -m "results: longmemeval haiku+mem
     <p class="note">Then it appears on <a href="results.html">Results</a> after merge. Each captain logs their
       benchmark on their own API key (see the <a href="plan.html#dependencies">plan</a>).</p>
 
-    <h3>4 · Or launch it from GitHub Actions (no local setup)</h3>
+    <h3>5 · Or launch it from GitHub Actions (no local setup)</h3>
     <p>Any collaborator with write access can run a benchmark from the browser:
       <strong>Actions → "Benchmark run" → Run workflow</strong>. Defaults are <strong>free + offline</strong>
       (EchoModel on the bundled fixture, no secrets); choose a real model + dataset (and a budget) for a paid run.</p>
@@ -188,7 +200,7 @@ git add ../results.json &amp;&amp; git commit -m "results: longmemeval haiku+mem
       <li>Inputs: benchmark · model · memory on/off · dataset (blank = fixture) · dev-slice / limit · budget_usd · open-PR.</li>
       <li>It uploads the trajectory + <code>results.json</code> as <strong>artifacts</strong> and (by default) opens a
         <strong>PR</strong> adding the run to the <a href="results.html">Results</a> page — review &amp; merge to publish.</li>
-      <li><code>budget_usd</code> defaults to <strong>$10</strong> per run; set <code>0</code> to disable the cap. echo runs are free and need no key.</li>
+      <li><code>budget_usd</code> defaults to <strong>$200</strong> per run; set <code>0</code> to disable the cap. echo runs are free and need no key.</li>
     </ul>
 
     <div class="card bl4" style="margin-top:1rem">

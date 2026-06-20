@@ -158,6 +158,11 @@ inverted_index.json   <span class="c"># keyword → [file paths]</span></pre>
     <span class="k">return</span> gov</pre>
         <p class="note">Runs asynchronously when the agent is idle; emits a conflict-free state + the per-session
           governance object the next run loads.</p>
+        <p class="note"><strong>Day Dream (in-session)</strong> is fired automatically by the plugin's
+          <code>Stop</code> hook at session end: it reads the session <code>.jsonl</code> logs, tracks
+          <strong>processed-vs-delta</strong> state (sending only unprocessed entries), calls an
+          <strong>OpenRouter</strong> model to decide what to remember, then calls the Orchestrator to save it.
+          <strong>Dream (night)</strong> above is the deep cross-session sweep over the whole store.</p>
       </div>
     </div>
   </div>
@@ -215,6 +220,17 @@ relevancy(i,q) = cos(emb_i, emb_q)</pre>
     <p class="note" style="margin-top:14px">Hold prompts, tools and task order fixed across runs; log every trajectory
       (written / retrieved / used) for reproducibility, and report deltas with a significance test.</p>
     <div class="callout fade-up" style="margin-top:16px">
+      <span class="ic">▶️</span>
+      <div><p style="margin:0"><strong>Execution — local Claude Code CLI.</strong> Benchmarks run through the
+        Claude Code CLI (subscription auth — API keys stripped, no API billing), comparing Claude Code's
+        <strong>built-in</strong> memory vs <strong>our plugin</strong> memory:
+        <code>python -m memeval.claudecode.run_bench --benchmark all --mode all --model claude-haiku-4-5</code>.
+        Each run saves a per-benchmark, versioned file
+        <code>results/{vX.Y}/{bench-name}-{timestamp}.json</code> (<code>vX.Y</code> = the memory-system
+        version, starts <code>v0.1</code>) and appends to the aggregate ledger the
+        <a href="results.html">Results page</a> reads.</p></div>
+    </div>
+    <div class="callout fade-up" style="margin-top:16px">
       <span class="ic">🔀</span>
       <div><p style="margin:0">Runs are <strong>sharded by benchmark captain</strong>, each on a separate API key —
         Keith (SWE-Bench-CL), Ken (LongMemEval), Brent (SWE-ContextBench + ContextBench), Scott B. (MemoryAgentBench). Iterate on a
@@ -232,21 +248,20 @@ relevancy(i,q) = cos(emb_i, emb_q)</pre>
       <h2>Suggested repo layout</h2>
     </div>
 <pre>agent-memory-harness/
-├── index.html              <span class="c"># this site (GitHub Pages)</span>
-├── assets/{css,js,img}/    <span class="c"># style.css · main.js · architecture.svg</span>
-├── harness/
-│   ├── persistence.py      <span class="c"># P1 — write path</span>
-│   ├── orchestrator.py     <span class="c"># P1 — rank · dedup · return</span>
-│   ├── router.py           <span class="c"># P3 — dispatch</span>
-│   ├── stores/
-│   │   ├── markdown_store.py
-│   │   ├── sqlite_store.py
-│   │   └── graph_store.py  <span class="c"># P3 — backends</span>
-│   └── dreaming.py          <span class="c"># P4 — async curation</span>
-├── eval/                   <span class="c"># P2 — Ken's eval infra (built · 35 tests pass)</span>
-│   ├── memeval/            <span class="c"># loaders · metrics · trajectory · cost · models · harness · cli</span>
-│   ├── tests/              <span class="c"># offline smoke tests (stdlib-only)</span>
+├── *.html  assets/{css,js,img}/  <span class="c"># this site (GitHub Pages)</span>
+├── architecture.md · plan.md · prd.md  <span class="c"># docs / contract</span>
+├── eval/                          <span class="c"># the eval harness (Python pkg `memeval`)</span>
+│   ├── memeval/
+│   │   ├── schema.py · protocols.py     <span class="c"># frozen contract</span>
+│   │   ├── harness.py · agent.py · cli.py · results.py
+│   │   ├── loaders/ · metrics.py · cost.py · trajectory.py · models.py  <span class="c"># Ken</span>
+│   │   ├── stores/ · router.py          <span class="c"># backends + dispatch (Brent)</span>
+│   │   ├── dreaming/                    <span class="c"># async curation (Scott B.)</span>
+│   │   ├── opencode/                    <span class="c"># OpenCode memory framework (Keith)</span>
+│   │   └── claudecode/                  <span class="c"># run benchmarks via Claude Code CLI + plugin</span>
+│   ├── tests/                          <span class="c"># offline smoke tests (stdlib-only)</span>
 │   └── pyproject.toml
+├── results/{vX.Y}/                <span class="c"># per-benchmark versioned result files</span>
 └── README.md</pre>
     <p class="center" style="margin-top:24px"><a class="btn btn-primary" href="results.html">See the results template →</a></p>
   </div>
