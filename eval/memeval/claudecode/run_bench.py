@@ -100,6 +100,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = ap.parse_args(argv)
 
     print(describe())   # which CLI was detected (native / WSL / not found)
+    print("auth: Claude Code subscription only — ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN "
+          "are stripped from every claude invocation (no API billing).")
     if detect() is None:
         print("WARNING: runs will fail until 'claude' is installed (native or in WSL). "
               "`npm install -g @anthropic-ai/claude-code`; overrides: $CLAUDE_CLI / $CLAUDE_WSL_DISTRO.")

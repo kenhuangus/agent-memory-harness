@@ -150,7 +150,8 @@ class ClaudeCodeAgent:
         return self._runner(
             prompt, cwd=cwd, model=self.model, mcp_config=mcp_config,
             allowed_tools=allowed_tools, append_system_prompt=system,
-            strict_mcp=strict_mcp, timeout=self.timeout, runtime=self._runtime,
+            strict_mcp=strict_mcp, strip_api_key=True,  # subscription only — never an API key
+            timeout=self.timeout, runtime=self._runtime,
         )
 
     def _effective_runtime(self) -> ClaudeRuntime:

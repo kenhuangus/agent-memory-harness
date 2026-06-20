@@ -764,6 +764,31 @@ def test_claudecode_plugin_mcp_json_uses_wsl_python_and_paths() -> None:
     assert bundle.startswith("/mnt/") or bundle.startswith("/")     # translated to POSIX
 
 
+def test_claudecode_strips_api_key_subscription_only() -> None:
+    # No LLM API key may reach the claude invocation — benchmark runs use the
+    # Claude Code subscription only.
+    import os
+    from memeval.claudecode import cli
+    from memeval.claudecode.platform import ClaudeRuntime
+    os.environ["ANTHROPIC_API_KEY"] = "sk-test"
+    os.environ["ANTHROPIC_AUTH_TOKEN"] = "tok-test"
+    try:
+        env = cli._clean_env(True)
+        assert "ANTHROPIC_API_KEY" not in env and "ANTHROPIC_AUTH_TOKEN" not in env
+        assert cli._clean_env(False) is None     # opt-out keeps the inherited env
+    finally:
+        os.environ.pop("ANTHROPIC_API_KEY", None)
+        os.environ.pop("ANTHROPIC_AUTH_TOKEN", None)
+    # WSL path strips via `env -u` by default
+    wsl = ClaudeRuntime(kind="wsl", exe="/c/claude", distro="Ubuntu")
+    argv, _ = cli.build_argv(wsl, "hi", cwd=r"C:\w")
+    assert "env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN" in " ".join(argv)
+    # explicit opt-out drops the env-strip prefix (the claude exe follows `--`)
+    argv2, _ = cli.build_argv(wsl, "hi", cwd=r"C:\w", strip_api_key=False)
+    assert argv2[argv2.index("--") + 1] == "/c/claude"
+    assert "ANTHROPIC_API_KEY" not in " ".join(argv2)
+
+
 def test_claudecode_agent_naming_and_validation() -> None:
     from memeval.claudecode.agent import ClaudeCodeAgent
     a = ClaudeCodeAgent(model="claude-haiku-4-5", memory_mode="plugin")
