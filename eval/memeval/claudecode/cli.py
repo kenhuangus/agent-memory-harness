@@ -129,8 +129,12 @@ def run_claude(
         append_system_prompt=append_system_prompt, permission_mode=permission_mode,
         strict_mcp=strict_mcp, strip_api_key=strip_api_key,
     )
+    # stdin=DEVNULL: headless `claude -p` reads its prompt from argv, but without a
+    # TTY (e.g. a background process) it waits 3s for stdin and prints a warning
+    # that can mask the real error — close stdin so it proceeds immediately.
     proc = subprocess.run(argv, cwd=sub_cwd, capture_output=True, text=True,
-                          timeout=timeout, env=_clean_env(strip_api_key))
+                          timeout=timeout, env=_clean_env(strip_api_key),
+                          stdin=subprocess.DEVNULL)
     if proc.returncode != 0:
         raise RuntimeError(
             f"claude exited {proc.returncode}: {(proc.stderr or proc.stdout or '').strip()[:400]}"
