@@ -1260,6 +1260,32 @@ def test_results_report_dataset_entries_with_limit() -> None:
     assert rec["limit"] == 1
 
 
+def test_results_per_benchmark_versioned_files() -> None:
+    """Per-benchmark results land at results/v{X.Y}/{bench}-{ts}.json with both runs."""
+    from memeval.results import (
+        normalize_version, run_timestamp, benchmark_results_path,
+        write_benchmark_results, result_record,
+    )
+    from memeval.harness import run
+    # version normalization accepts bare or v-prefixed forms
+    assert normalize_version("0.1") == "v0.1"
+    assert normalize_version("v0.2") == "v0.2"
+    # timestamp is filesystem-safe (no ':')
+    ts = run_timestamp()
+    assert ts.endswith("Z") and ":" not in ts
+    fx = _fixture("longmemeval.json")
+    recs = [result_record(run(Benchmark.LONGMEMEVAL, EchoModel(), m, path_or_id=fx, limit=1),
+                           run_id=f"m{int(m)}") for m in (True, False)]
+    with tempfile.TemporaryDirectory() as tmp:
+        path = write_benchmark_results("longmemeval", recs, version="0.1", timestamp=ts, root=tmp)
+        # path shape: <root>/v0.1/longmemeval-<ts>.json
+        assert path == benchmark_results_path("longmemeval", version="0.1", timestamp=ts, root=tmp)
+        assert path.parent.name == "v0.1" and path.name == f"longmemeval-{ts}.json"
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        assert doc["benchmark"] == "longmemeval" and doc["memory_version"] == "v0.1"
+        assert doc["timestamp"] == ts and len(doc["runs"]) == 2  # both modes in one file
+
+
 def test_tracing_is_safe_noop() -> None:
     """The Langfuse shim never raises (and is a no-op when unconfigured)."""
     from memeval import tracing

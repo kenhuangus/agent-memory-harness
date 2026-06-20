@@ -151,21 +151,38 @@ Other knobs: `--model` (default `claude-haiku-4-5`), `--k` (retrieval depth,
 default 5), `--timeout` (per-task seconds, default 600), `--budget-usd` (hard cap,
 default **$200**; `<=0` = no cap / pure accounting).
 
-## 7. Raw per-run artifacts
+## 7. Where results are written
 
-Pass `--out-dir DIR` to write everything a run produced, so results are
-inspectable and reproducible:
+Each run produces results in three places (all on by default):
+
+**a) Per-benchmark versioned files** — one file per benchmark, holding that
+benchmark's runs (both modes), bucketed by the **memory-system version**:
+
+```
+results/v0.1/<benchmark>-<timestamp>.json     # {schema, memory_version, benchmark, timestamp, runs:[...]}
+```
+
+- Root via `--results-dir` (default `results`; `''` to skip), version bucket via
+  `--results-version` (default `v0.1`, the `memeval.MEMORY_VERSION` constant).
+- **Bump the version by 0.1 whenever you change the memory code/storage and
+  re-run**, so each generation's results live in their own `v{X.Y}/` directory.
+  Edit `MEMORY_VERSION` in `memeval/__init__.py` (or pass `--results-version`).
+- `<timestamp>` is one UTC stamp per sweep (e.g. `20260620T193045Z`), shared by
+  all of that sweep's benchmark files.
+
+**b) Aggregate ledger** (`--results results.json`) — the flat run list the
+GitHub Pages **Results page** and the `summary` scoreboard read.
+
+**c) Raw per-run artifacts** (`--out-dir DIR`, optional) — everything a run
+produced, for debugging/reproducibility:
 
 ```
 DIR/
-  <benchmark>__<mode>.record.json       # the ledger row: metrics, entries_used/available/limit, cost
+  <benchmark>__<mode>.record.json       # one run's row: metrics, entries_used/available/limit, cost
   <benchmark>__<mode>.trajectory.jsonl  # one JSON line per task (retrieve/generate/write steps)
   <mode>/<task_id>/                      # the agent's working dir for that task:
       CLAUDE.md      (builtin) | .mcp.json + memory/ + recall.jsonl  (plugin)
 ```
-
-Without `--out-dir`, only the aggregate ledger (`--results`) is written and
-per-task working dirs go to a temp location.
 
 ## 8. Read the verdict
 
