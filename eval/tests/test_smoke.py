@@ -728,10 +728,12 @@ def test_claudecode_platform_path_translation_and_argv() -> None:
     # Windows -> WSL path translation (drive-letter aware; POSIX passes through).
     assert to_wsl_path(r"C:\Users\x\t") == "/mnt/c/Users/x/t"
     assert to_wsl_path("/home/u/x") == "/home/u/x"
-    # A relative path must resolve to an absolute /mnt/<drive>/... form, never a
-    # bare relative string (which `wsl --cd` rejects with E_INVALIDARG).
+    # A relative path must resolve to an ABSOLUTE posix path, never a bare
+    # relative string (which `wsl --cd` rejects with E_INVALIDARG). On Windows
+    # this is /mnt/<drive>/...; on a POSIX CI host it's /<abs>/... — both start
+    # with "/" and contain no "..".
     rel = to_wsl_path(os.path.join("..", "runs", "out"))
-    assert rel.startswith("/mnt/") and ".." not in rel
+    assert rel.startswith("/") and ".." not in rel and "\\" not in rel
     # native argv runs claude directly in cwd
     nat = ClaudeRuntime(kind="native", exe="claude")
     argv, cwd = build_argv(nat, "hi", cwd="/work", model="claude-haiku-4-5")
