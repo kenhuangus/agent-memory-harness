@@ -162,7 +162,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     if budget_usd is None and "budget_usd" in key_cfg:
         budget_usd = float(key_cfg["budget_usd"])
     if budget_usd is None:
-        budget_usd = DEFAULT_BUDGET_USD  # default $10 cap when nothing supplied
+        budget_usd = DEFAULT_BUDGET_USD  # default cap when nothing supplied
     if budget_usd <= 0:
         budget_usd = None  # explicit opt-out: <=0 means no cap
     if budget_tokens is None and "budget_tokens" in key_cfg:

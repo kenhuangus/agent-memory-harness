@@ -16,7 +16,7 @@ one unit. The cost of a call is therefore::
 What lives here
 ---------------
 PRICING         per-model $/Mtok table (live Anthropic prices, see prd.md §7).
-DEFAULT_BUDGET_USD  default $10 hard cap when no budget is supplied.
+DEFAULT_BUDGET_USD  default $200 hard cap when no budget is supplied.
 price_for       safe lookup with a sensible fallback.
 cost_of         price one (model, tokens_in, tokens_out) call in USD.
 BudgetExceeded  raised by CostTracker.add when a budget is overrun.
@@ -37,10 +37,11 @@ from .schema import ModelConfig
 # Default budget
 # --------------------------------------------------------------------------- #
 #: Default hard USD cap for a run when the caller (CLI / Action / driver) does
-#: not specify one. $10 is enough for a meaningful sweep on the bundled
-#: fixtures while keeping an accidental full-dataset run from running away.
+#: not specify one. $200 headroom lets a full per-benchmark-floor sweep (incl.
+#: the expensive code benches at their group-aware floors) complete without
+#: tripping the cap, while still bounding an accidental runaway full-dataset run.
 #: A value <= 0 is treated by the CLIs as "no cap" (pure accounting).
-DEFAULT_BUDGET_USD: float = 10.0
+DEFAULT_BUDGET_USD: float = 200.0
 
 # --------------------------------------------------------------------------- #
 # Pricing table

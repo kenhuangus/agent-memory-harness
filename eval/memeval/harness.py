@@ -338,6 +338,7 @@ def run(
             "tau": tau,
             "threshold": threshold,
             "total_available": total_available,
+            "limit": limit,
             "source": path_or_id or getattr(loader, "default_source", ""),
         },
     )

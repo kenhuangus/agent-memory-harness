@@ -295,6 +295,7 @@ def run_agent(
     logger: Optional[TrajectoryLogger] = None,
     grader: Optional[Callable[[Task, str], Optional[bool]]] = None,
     config: Optional[ModelConfig] = None,
+    group_aware: bool = False,
     k: int = 5,
     tau: float = 86400.0,
     threshold: float = 0.7,
@@ -333,7 +334,11 @@ def run_agent(
         truncated = truncated or len(tasks) < total_available
     if limit is not None and len(tasks) > limit:
         truncated = True
-        tasks = tasks[:limit]
+        # Group-aware draw (for benchmarks whose memory lives *across* entries in a
+        # group_id sequence): fill the limit with whole groups, largest first, so a
+        # singleton-heavy dataset doesn't yield entries with no priors. Falls back
+        # to a flat prefix when group_aware is off (or there's effectively 1 group).
+        tasks = _select_group_aware(tasks, limit) if group_aware else tasks[:limit]
 
     trajectories: list[Trajectory] = []
     group_stores: dict[str, MemoryStore] = {}
@@ -408,6 +413,8 @@ def run_agent(
             "memory": memory, "k": k, "tau": tau, "threshold": threshold,
             "agent": agent.name, "mode": "agent",
             "total_available": total_available,
+            "limit": limit,
+            "select": "group" if group_aware else "flat",
             "source": path_or_id or getattr(loader, "default_source", ""),
         },
     )
@@ -500,6 +507,36 @@ def _grade(task: Task, prediction: str,
     if task.kind == TaskKind.QA and task.answer is not None:
         return qa_match(prediction, task.answer)
     return None
+
+
+def _select_group_aware(tasks: list[Task], limit: int) -> list[Task]:
+    """Pick ``limit`` tasks by **whole group_id groups, largest first**.
+
+    Memory in the continual-learning benches lives *across* the entries of a
+    ``group_id`` sequence, so a flat prefix of a singleton-heavy dataset yields
+    entries with no priors. Taking the largest groups first maximizes the depth
+    of accumulated priors (the point of a *long*-memory test) and naturally skips
+    singletons. Order within a group is preserved (priors precede dependents); the
+    final group is taken as a prefix to land exactly on ``limit``. Ungrouped tasks
+    are each treated as their own group (so this degrades to a flat prefix when
+    there is effectively one group or all groups are singletons).
+    """
+    groups: dict[str, list[Task]] = {}
+    order: list[str] = []
+    for t in tasks:
+        key = t.group_id or f"\0{t.task_id}"  # ungrouped -> unique singleton key
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(t)
+    # Largest groups first; stable tie-break by first appearance for determinism.
+    ranked = sorted(order, key=lambda key: (-len(groups[key]), order.index(key)))
+    selected: list[Task] = []
+    for key in ranked:
+        if len(selected) >= limit:
+            break
+        selected.extend(groups[key][: limit - len(selected)])
+    return selected
 
 
 def _store_for_task(task: Task, store: Optional[MemoryStore],
