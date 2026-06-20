@@ -1,6 +1,6 @@
 """Eval-first tests for the rule-based router (`memeval.router`). Owner: Brent.
 
-Mirrors the seed routing eval set in `capstone-workspace/ROUTING_EVALS.md`
+Mirrors the seed routing eval set (query -> expected backend); the durable blind set is `test_routing_evals.py`
 (we'll centralize to a JSONL fixture as it grows). Tiers:
 
 * **golden** -> hard assertions: `classify()` MUST pick `expected`.
@@ -26,7 +26,7 @@ from memeval.router import Router
 
 MARKDOWN, GRAPH, VECTORS = "markdown", "graph", "vectors"
 
-# (query, expected) — mirror of ROUTING_EVALS.md.
+# (query, expected) — the seed routing eval set.
 GOLDEN = [
     ("MemoryStore protocol", MARKDOWN),
     ("parse_frontmatter signature", MARKDOWN),
@@ -59,23 +59,23 @@ CONTESTED = [
     "everything that came up when we froze schema.py",
 ]
 
-# Bucket B — contested cases adjudicated by Brent (DECISION_LOG D012). All -> vectors.
+# Bucket B — contested cases adjudicated to vectors (synthesis/topical reads, not structural).
 BUCKET_B = [
-    ("everything we know about `AuthGuard` middleware", VECTORS),  # B1 (a fusion candidate for D008)
+    ("everything we know about `AuthGuard` middleware", VECTORS),  # B1 (a fusion candidate)
     ("compare our chosen retry-backoff strategy to the exponential one we rejected", VECTORS),  # B2: compare = synthesis
     ("where did we note the tradeoff between `Postgres` and `DynamoDB`?", VECTORS),  # B3: drop between..and
     ("compare the markdown store to the sqlite store", VECTORS),  # was seed ⚠, resolved by B2
 ]
 
 # Guard (independent-verifier request): a real graph signal must WIN over an incidental
-# compare/between/about vector signal — the tie-break that keeps D012 from regressing graph.
+# compare/between/about vector signal — the tie-break that keeps these from regressing graph routing.
 COMPETING_SIGNAL_GUARD = [
     ("compare what depends on schema.py", GRAPH),
     ("everything we know about what imports the logger", GRAPH),
 ]
 
 # Regressions from the blind adversarial round (2026-06-19): each FAILED on router
-# v1; the rules were fixed to pass them. See capstone-workspace/ROUTING_EVALS.md.
+# v1; the rules were fixed to pass them. See test_routing_evals.py for the full blind set.
 ADVERSARIAL_FIXED = [
     ("which modules import `TokenBucket`", GRAPH),                       # missing 'import' signal
     ("does anything still import the old auth helper or did the v2 thing replace all of them everywhere", GRAPH),
