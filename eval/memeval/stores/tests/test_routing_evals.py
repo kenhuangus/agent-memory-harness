@@ -11,10 +11,11 @@ Run the regression guard: cd eval && python3 -m unittest memeval.stores.tests.te
 different route (a team adjudication) or accepted a known limitation, `note` records it — those
 disagreements are INTENTIONAL, not regressions. Only `kind == "hard"` cases are graded.
 
-D018 growth set (see `D018_CASES` below): 42 further blind-generated cases, bucketed
-AGREE / GAP / CONTESTED by a synth round (`work/agents/d018-synth/verifier/output.md`).
-They live in a SEPARATE pool so the BLIND_CASES floor and `_EXPECTED_HARD` lock are
-untouched. Only D018 `golden` cases (AGREE, unambiguous, currently agreeing) are
+D018 growth set (see `D018_CASES` below): 44 cases — 42 blind-generated, bucketed
+AGREE / GAP / CONTESTED by a synth round (`work/agents/d018-synth/verifier/output.md`),
+plus 2 hand-authored "D018-harden" regression guards added when the synth-rationale bonus
+was tightened (entity-name relational queries that must stay graph). They live in a
+SEPARATE pool so the BLIND_CASES floor and `_EXPECTED_HARD` lock are untouched. Only D018 `golden` cases (AGREE, unambiguous, currently agreeing) are
 hard-asserted; every GAP + contested case is MEASURED ONLY (printed, never asserted),
 because they intentionally encode current mis-routes / provisional labels for the
 follow-up router work to act on.
@@ -89,7 +90,7 @@ _VALID_LABELS = {"graph", "vectors", "markdown", "none"}
 #   edge / adv.  -> MEASURED ONLY (printed, never asserted) — these carry the current
 #                   mis-routes (GAP) and provisional/contested labels on purpose.
 # `note` carries the follow-up tag so the router PRs can grep these out:
-#   "D018 GAP cheap-fix (router rule)"  -> add a narrow router rule (PR follow-up)
+#   "D018 AGREE (ex-GAP cheap-fix): ..."  -> RESOLVED 2026-06 by narrow router rules; now AGREE
 #   "D018 known-limit: multilingual → PR3 learned classifier"
 #   "⚠ D018 contested (provisional label)"
 #
@@ -97,8 +98,13 @@ _VALID_LABELS = {"graph", "vectors", "markdown", "none"}
 #   `tier` is the FIXTURE GRADING tier (golden=hard-asserted must-pass | edge/adversarial=measured),
 #   re-assigned for grading here; it is NOT a verbatim copy of the synth report's lens-tier.
 D018_CASES = [
-    # -- AGREE (13): classify_now == expected today. Unambiguous single-intent -> golden;
+    # -- AGREE (24): classify_now == expected today. Unambiguous single-intent -> golden;
     #    messier / surface-trap / boundary AGREE cases -> edge. All MEASURED; golden also asserted.
+    #    22 are blind/synth-round cases; the last 2 (D018-harden) are hand-authored guards added
+    #    when the synth-rationale bonus was tightened (see that block below).
+    #    Of the blind set, 9 were GAP:cheap-fix mis-routes, fixed by narrow router rules (see note
+    #    per case) and re-bucketed to AGREE — the clean, positively-recognized ones promoted to
+    #    golden so a future regression FAILS CI; the messy/typo/default-routed ones stay edge.
     ("Why'd we go with `lru_cache` here instead of hand-rolling a cache?", "vectors", "edge", "AGREE", "D018 AGREE"),
     ('Which modules call the function that logs "backend unavailable"?', "graph", "golden", "AGREE", "D018 AGREE"),
     ("What's the `depends_on` value listed for the D018 feature?", "markdown", "golden", "AGREE", "D018 AGREE"),
@@ -114,16 +120,27 @@ D018_CASES = [
     # not genuine multilingual recognition -> measured edge, NOT hard-asserted (multilingual is the D018/PR3 frontier).
     ("¿Por qué elegimos un almacén vectorial en lugar de un grafo para el recuerdo semántico?", "vectors", "edge", "AGREE", "D018 AGREE"),
     ("なぜ再ランク付けを無効にしたのか、その背景を説明して。", "vectors", "edge", "AGREE", "D018 AGREE"),
-    # -- GAP: cheap-fix (9): MIS-ROUTE today; fixable by a narrow router rule. MEASURED ONLY. --
-    ("What's the value of keeping a write-ahead log on the store?", "vectors", "adversarial", "GAP:cheap-fix", "D018 GAP cheap-fix (router rule)"),
-    ("Remind me what we ended up calling the flag that disables dreaming during eval runs.", "markdown", "edge", "GAP:cheap-fix", "D018 GAP cheap-fix (router rule)"),
-    ("Give me the gist of what `RouterConfig` is actually for.", "vectors", "adversarial", "GAP:cheap-fix", "D018 GAP cheap-fix (router rule)"),
-    ("What else touches `RouterConfig` besides the graph→vector cascade?", "graph", "adversarial", "GAP:cheap-fix", "D018 GAP cheap-fix (router rule)"),
-    ("whats teh exact naem of teh env var for the anthropic key? sumthing like ANTHROPIC_...", "markdown", "edge", "GAP:cheap-fix", "D018 GAP cheap-fix (router rule)"),
-    ("ok dumb q — if i bump the embedding model version does anything downstream actually break, like does the reranker or the cache care?", "graph", "edge", "GAP:cheap-fix", "D018 GAP cheap-fix (router rule)"),
-    ("hmm i swear there was a comment somewhere that literally said 'do not call this inside a loop' — where was that again", "markdown", "adversarial", "GAP:cheap-fix", "D018 GAP cheap-fix (router rule)"),
-    ("https://docs.example.internal/router/routing-evals#zero-token-default", "markdown", "adversarial", "GAP:cheap-fix", "D018 GAP cheap-fix (router rule)"),
-    ("why did we decide the memory router should fall back to semantic retrieval when a request is vague, noisy, missing obvious identifiers, missing exact file paths, missing quoted strings, and missing any clear pair of related components? please summarize the rationale and tradeoffs from memory.", "vectors", "adversarial", "GAP:cheap-fix", "D018 GAP cheap-fix (router rule)"),
+    # -- ex-GAP:cheap-fix (9), now AGREE — fixed 2026-06 by narrow router.py rules. --
+    #    golden (5): clean, single-intent, positively recognized (a real signal fires the route).
+    ("Remind me what we ended up calling the flag that disables dreaming during eval runs.", "markdown", "golden", "AGREE", "D018 AGREE (ex-GAP cheap-fix): 'calling' = naming -> literal, not call-graph"),
+    ("Give me the gist of what `RouterConfig` is actually for.", "vectors", "golden", "AGREE", "D018 AGREE (ex-GAP cheap-fix): 'gist' summary intent outweighs the code token"),
+    ("What else touches `RouterConfig` besides the graph→vector cascade?", "graph", "golden", "AGREE", "D018 AGREE (ex-GAP cheap-fix): 'touches' = dependency/relation signal"),
+    ("https://docs.example.internal/router/routing-evals#zero-token-default", "markdown", "golden", "AGREE", "D018 AGREE (ex-GAP cheap-fix): URL/path literal -> markdown"),
+    ("why did we decide the memory router should fall back to semantic retrieval when a request is vague, noisy, missing obvious identifiers, missing exact file paths, missing quoted strings, and missing any clear pair of related components? please summarize the rationale and tradeoffs from memory.", "vectors", "golden", "AGREE", "D018 AGREE (ex-GAP cheap-fix): strong 'summarize the rationale' beats incidental graph meta-words"),
+    #    edge (4): correct now, but messy/typo/default-routed -> measured, NOT hard-asserted.
+    ("What's the value of keeping a write-ahead log on the store?", "vectors", "edge", "AGREE", "D018 AGREE (ex-GAP cheap-fix): 'value of X' no longer forces markdown; routes via semantic default"),
+    ("whats teh exact naem of teh env var for the anthropic key? sumthing like ANTHROPIC_...", "markdown", "edge", "AGREE", "D018 AGREE (ex-GAP cheap-fix): env-var-shaped literal (ANTHROPIC_); full typo-tolerance still PR3"),
+    ("ok dumb q — if i bump the embedding model version does anything downstream actually break, like does the reranker or the cache care?", "graph", "edge", "AGREE", "D018 AGREE (ex-GAP cheap-fix): 'downstream' = impact/dependency signal"),
+    ("hmm i swear there was a comment somewhere that literally said 'do not call this inside a loop' — where was that again", "markdown", "edge", "AGREE", "D018 AGREE (ex-GAP cheap-fix): graph trigger words inside a quoted literal don't fire graph"),
+    # -- D018-harden (2): regression guards for the TIGHTENED synth-rationale bonus (2026-06). --
+    #    Hand-authored (NOT from the synth round): a relational query whose rationale noun is an
+    #    ENTITY governed by a strong graph verb (imports / depend on), under a synth command. The
+    #    broad bonus wrongly flipped these to vectors (+1.0 anywhere both appeared); the tightened
+    #    rule (rationale noun must be the synth command's OBJECT) keeps them GRAPH. Golden so
+    #    re-broadening the bonus FAILS CI — the graph-side twin of case 9 (which locks the vectors
+    #    side: "summarize the rationale and tradeoffs" → vectors).
+    ("summarize what imports the reasoning package", "graph", "golden", "AGREE", "D018-harden: 'reasoning' is the imported ENTITY, not the synth object → graph; guards synth-rationale bonus"),
+    ("summarize the modules that depend on the rationale service", "graph", "golden", "AGREE", "D018-harden: 'rationale' is the depended-on ENTITY, not the synth object → graph; guards synth-rationale bonus"),
     # -- GAP: needs-learning (3): multilingual relation queries; English graph rules miss them. MEASURED ONLY. --
     ("Wovon hängt der `RouterConfig`-Loader ab?", "graph", "adversarial", "GAP:needs-learning", "D018 known-limit: multilingual → PR3 learned classifier"),
     ("哪些模块依赖 embedding_store？", "graph", "adversarial", "GAP:needs-learning", "D018 known-limit: multilingual → PR3 learned classifier"),
@@ -148,7 +165,7 @@ D018_CASES = [
     ("Explique pourquoi `exponential_backoff` est préférable au `fixed_delay` ici.", "vectors", "edge", "CONTESTED", "⚠ D018 contested (provisional label)"),
 ]
 
-_EXPECTED_D018 = 42  # locks the D018 denominator — adding/removing a case must be deliberate
+_EXPECTED_D018 = 44  # locks the D018 denominator — adding/removing a case must be deliberate
 _D018_TIERS = {"golden", "edge", "adversarial"}
 _D018_BUCKETS = {"AGREE", "GAP:cheap-fix", "GAP:needs-learning", "CONTESTED"}
 _D018_LABELS = {"graph", "vectors", "markdown"}
@@ -259,7 +276,7 @@ def _report_d018() -> None:
     golden = [(c, got) for c, got in rows if c[2] == "golden"]
     golden_agree = sum(1 for c, got in golden if got == c[1])
     print()
-    print(f"D018 growth set: {total} new blind cases "
+    print(f"D018 growth set: {total} cases (42 blind + 2 D018-harden guards) "
           f"({len(golden)} golden hard-asserted; GAP + contested MEASURED ONLY).")
     print(f"Router agreement with D018 provisional labels (ALL measured): "
           f"{agree}/{total} = {round(100 * agree / total)}%   "
@@ -272,8 +289,8 @@ def _report_d018() -> None:
             continue
         a = sum(1 for c, got in br if got == c[1])
         print(f"  [{bucket:18}] {a}/{len(br)} agree")
-    print(f"Follow-up backlog committed by this fold: "
-          f"GAP cheap-fix=9, GAP needs-learning=3, contested=17.")
+    print(f"Follow-up backlog: GAP cheap-fix=0 (RESOLVED 2026-06 — 9 router rules, now AGREE), "
+          f"GAP needs-learning=3, contested=17.")
 
 
 if __name__ == "__main__":
