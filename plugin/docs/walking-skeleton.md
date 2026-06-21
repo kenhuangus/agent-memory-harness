@@ -1,124 +1,128 @@
-# Feature: Claude Code plugin — walking skeleton (S0–S2)
+# Feature: Claude Code plugin — recall plugin
 
-**Status:** Done · **Date:** 2026-06-20
+**Status:** Done · **Date:** 2026-06-21
 
 ## What this delivers (before → after)
 
 - **Before:** the only Claude Code memory surface was the benchmark-coupled
   `eval/memeval/claudecode/` harness; there was no standalone, installable memory
-  plugin, no `memory` CLI, no hooks/skills, and no harness-agnostic core.
+  plugin, no `memory-cli`, no hooks/skills, and no harness-agnostic core.
 - **After:** an installable `cookbook-memory` package with a harness-agnostic **core**
-  and a **Claude Code adapter** — `recall`/`remember` as MCP tools, a `memory` CLI,
-  the plugin bundle (plugin.json / .mcp.json / hooks / skills), and a structured
-  events stream — all routed through the Orchestrator seam and fail-open, so it
-  installs and runs in a live session today.
+  and a **Claude Code adapter** — `recall` as an MCP tool, a `memory-cli`, a generic
+  `recall` skill, the plugin bundle, and a structured events stream — with `recall`
+  wired through Brent's Router to the real store backends.
 
 ## Requirements & acceptance criteria
 
-1. **AC1 — Package + CLI (S0):** `cookbook-memory` installs; `memory --help` lists
+1. **AC1 — Package + CLI:** `cookbook-memory` installs; `memory-cli --help` lists
    `mcp`/`query`/`remember`/`stats`/`log`/`reset`; the store/events resolve from
-   `$MEMORY_STORE`. *(test_cli, manual `memory --help`)*
-2. **AC2 — MCP recall/remember (S1):** the MCP server registers `recall(query,k)` and
-   `remember(content,tags)`, both routed through the Orchestrator seam.
-   *(test_adapter, live `list_tools()` → `['recall','remember']`)*
-3. **AC3 — Plugin bundle (S2):** a valid Claude Code plugin bundle ships — well-formed
-   `plugin.json`, `.mcp.json` registering the tools, `hooks.json` wiring the lifecycle
-   events, and `recall`/`remember` skills. *(test_adapter bundle-integrity tests)*
-4. **AC4 — Plugin calls only the Orchestrator:** the core calls the Orchestrator
-   (route·rank·dedup); it never constructs or calls a store, dreaming, or eval. The
-   single import edge to `eval/memeval` is `core/contract.py`. *(code review;
-   grep: no `memeval` import outside contract.py)*
-5. **AC5 — Fail-open (ADR-harness-006):** with no Orchestrator wired, `recall` returns
-   empty and `remember` no-ops + logs; nothing raises into the session.
-   *(test_core fail-open + NullOrchestrator tests; manual CLI run)*
+   `$MEMORY_STORE`. *(test_cli, manual `memory-cli --help`)*
+2. **AC2 — recall MCP tool:** the MCP server registers `recall(query,k)` only, routed
+   through the `MemoryClient`. *(test_adapter, live `list_tools()` → `['recall']`)*
+3. **AC3 — Plugin bundle:** a valid Claude Code plugin bundle ships — well-formed
+   `plugin.json`, `.mcp.json` registering `recall`, `hooks.json` wiring the lifecycle
+   events, and a `recall` skill. *(test_adapter bundle-integrity tests)*
+4. **AC4 — Plugin calls only the engine:** the `MemoryClient` calls the engine (Brent's
+   Router + stores); it never constructs or calls a store directly outside that engine.
+   The single import edge to the engine is `core/contract.py`. *(code review; grep)*
+5. **AC5 — Fail-open (ADR-harness-006):** with no store configured, `recall` returns
+   empty; nothing raises into the session. *(test_core fail-open)*
 6. **AC6 — Events stream (ADR-harness-007):** every recall/remember/error/note appends
-   one span-friendly JSON line under `$MEMORY_STORE`; `memory log`/`stats` read it.
+   one span-friendly JSON line under `$MEMORY_STORE`; `memory-cli log`/`stats` read it.
    *(test_core events tests, test_cli stats/log)*
+7. **AC7 — Real recall:** with `$MEMORY_STORE` set, `recall` returns real hits routed
+   through the Router over the store backends. *(test_core real-recall, test_cli
+   round-trip, manual e2e)*
 
 ## Approach
 
-New top-level `plugin/` directory (sibling of `eval/`), its own `pyproject.toml`
-(package `cookbook_memory`, console scripts `memory` + `memory-hook`, `[mcp]` extra).
+Top-level `plugin/` directory (sibling of `eval/`), its own `pyproject.toml`
+(package `cookbook_memory`, console scripts `memory-cli` + `memory-hook`, `[mcp]`
+extra).
 
-- **`core/`** is harness-agnostic and calls the **Orchestrator** seam only
-  (ADR-harness-001/002, ADR-storage-001): `orchestrator.py` (the `Orchestrator`
-  protocol + fail-open `NullOrchestrator` + `make_orchestrator` resolver),
-  `memory.py` (shared recall/remember + events + fail-open), `events.py` (the events
-  stream), `config.py` (store-by-path), `contract.py` (the only `eval/memeval` import).
+- **`core/`** is harness-agnostic: `client.py` (the `MemoryClient` — recall/remember
+  with events + fail-open, plus the private `_Engine` wiring and the `build_engine`
+  test seam), `events.py` (the events stream), `config.py` (store-by-path),
+  `contract.py` (the only import edge to the engine: Router + stores + contract).
+- **`core/skills/`** holds the canonical Agent-Skills folder (`recall`); `core/install.py`
+  places it into a harness's discovery path.
 - **`adapters/claude_code/`** is the thin Claude Code bundle: `mcp_server.py` (FastMCP
-  `recall`/`remember` → core), `hooks_handler.py` (one fail-open entry point for all
-  lifecycle hooks), and the bundle assets.
-- The real Orchestrator (the storage workstream's route·rank·dedup `MemoryFramework`)
-  drops in behind `core/orchestrator.py::_build_real_orchestrator` with no other
-  plugin change.
+  `recall` → core), `hooks_handler.py` (one fail-open entry point for all lifecycle
+  hooks), and the bundle manifests. No skills live here — `memory-cli install` places
+  the canonical skill into the harness's discovery path (ADR-harness-009).
 
 **Locked decisions (WHY):**
-- *Plugin → Orchestrator only, never a store* — matches the system diagram's
-  conscious path; keeps one waist, lets any backend swap in. (ADR-storage-001)
-- *Top-level `plugin/`, core + adapters, Claude Code first* — the ADR-harness-001
-  target shape; OpenCode/Codex adapters become siblings later.
-- *Single `contract.py` import edge to `eval/memeval`* — so the ADR-eval-001 package
-  extraction is a one-file move, not a rewrite.
-- *Everything fail-open against a Null Orchestrator* — the plugin ships and runs
-  before the storage backend lands (the iter-1/iter-2 ramp). (ADR-harness-006)
+- *Conscious surface is recall-only* — the model reads memory; all memory creation is
+  the Daydreamer's, asynchronously. So the MCP surface is `recall` alone.
+- *Plugin → engine only* — matches the system diagram's conscious path; the engine
+  (Brent's Router + stores) routes and reads the store. The plugin never holds a store
+  directly outside that engine wiring.
+- *Generic by default* — reusable logic and skills live in `core`; only the Claude
+  bundle manifests and hook parsing are harness-specific.
+- *Single `contract.py` import edge* — the contract's source package is swappable by
+  editing one file (ADR-eval-001).
+- *Fail-open* — no store → empty recall; the plugin never breaks a session
+  (ADR-harness-006).
 
 ## Build plan
 
-- [x] Core: contract seam + events stream → AC4, AC6 *(test_core events)*
-- [x] Core: Orchestrator seam (protocol + Null + resolver) → AC4, AC5 *(test_core orchestrator)*
-- [x] Core: shared recall/remember (fail-open) → AC5 *(test_core fail-open)*
-- [x] `memory` CLI (mcp/query/remember/stats/log/reset) → AC1 *(test_cli)*
-- [x] Claude Code MCP server (recall/remember tools) → AC2 *(test_adapter + live list_tools)*
-- [x] Hooks handler (fail-open no-op) + hooks.json → AC3 *(test_adapter)*
-- [x] Plugin bundle (plugin.json/.mcp.json/skills) → AC3 *(test_adapter bundle integrity)*
+- [x] Core: contract seam + events stream → AC4, AC6
+- [x] Core: MemoryClient + engine wiring (build_engine seam) → AC4, AC5, AC7
+- [x] Core: shared recall/remember (fail-open) → AC5
+- [x] Canonical `recall` skill (core) + `memory-cli install` placement → AC3
+- [x] `memory-cli` (mcp/install/query/remember/stats/log/reset) → AC1
+- [x] Claude Code MCP server (recall tool) → AC2
+- [x] Hooks handler (fail-open) + hooks.json → AC3
+- [x] Plugin bundle (plugin.json/.mcp.json) → AC3
 - [x] pyproject + README
 
 ## Quality bars
 
 - **Security / trust boundary:** n/a for this slice — no external model call yet (the
-  Daydreamer's redaction boundary, ADR-harness-005, lands with S4a). The CLI is not an
-  eval back door; the eval drives the plugin only via `claude` (ADR-eval-001).
-- **Non-functional:** the events stream is append-only JSONL, best-effort (an I/O
-  error is swallowed). Fail-open is the operability stance: degraded ≫ broken session.
-- **Observability:** the events stream (ADR-harness-007) records recall/remember/error/
-  note with ids + query, span-friendly for a later Langfuse sink. `memory stats`/`log`
-  expose it.
-- **Simplicity:** no store, no dreaming, no eval logic in the plugin — only the
-  adapter surface + the Orchestrator call.
+  Daydreamer's redaction boundary, ADR-harness-005, is the dreaming workstream's). The
+  CLI is not an eval back door; the eval drives the plugin only via `claude`
+  (ADR-eval-001).
+- **Non-functional:** the events stream is append-only JSONL, best-effort. Fail-open is
+  the operability stance: degraded ≫ broken session.
+- **Observability:** the events stream (ADR-harness-007) records recall/error/note with
+  ids + query, span-friendly for a later Langfuse sink. `memory-cli stats`/`log` expose it.
+- **Simplicity:** no store, dreaming, or eval logic in the plugin — only the adapter
+  surface + the engine (Router) call.
 
 ## Decisions, assumptions & blockers
 
 ### Decisions made
-- **Console scripts `memory` and `memory-hook`** (not `python -m`): hooks.json and
-  .mcp.json invoke names on PATH, robust across the install's interpreter location.
-- **`make_orchestrator` returns `NullOrchestrator` whenever the real backend isn't
-  constructible** (no `$MEMORY_STORE`, or the storage Orchestrator absent) — one
-  fail-open path covers both "not configured" and "not built yet."
-- **`note` events for hook fires** so the no-op hooks are still observable in the
-  stream (proves the wiring without changing the session).
-- **MCP SDK is an optional `[mcp]` extra, lazy-imported**, so the core and CLI install
-  and test with zero third-party deps; `memory mcp` prints a clean install hint if it's
-  missing rather than a traceback.
+- **Conscious surface is recall-only.** The MCP server exposes `recall` only; the
+  `remember` CLI command remains for manual/debug writes by a human.
+- **Console script `memory-cli`** (name-spaced) so the binary does not collide on
+  `$PATH`. The hooks entry point is `memory-hook`.
+- **Skills are one canonical Agent-Skills folder in `core/skills/`** (ADR-harness-009);
+  `memory-cli install --harness <h>` places them into each harness's discovery path
+  (`.claude/skills`, `.agents/skills`, `.opencode/skills`). No skills or symlinks in
+  the bundle — no duplication, harness-specific code stays minimal.
+- **The engine wiring (`_Engine` in `client.py`)** constructs the three backends
+  (vectors/markdown/graph) over `$MEMORY_STORE` and routes via Brent's `Router`;
+  `recall` maps `RetrievedItem` → `Hit`. `remember` writes to the markdown backend.
+- **MCP SDK is an optional `[mcp]` extra, lazy-imported**, so core and CLI install and
+  test with zero third-party deps.
 
 ### Assumptions
-- **Orchestrator interface shape** = `recall(query, *, k, as_of) -> list[Hit]` and
-  `remember(content, *, tags, timestamp) -> id`. This is the plugin's expected seam;
-  the storage workstream's real Orchestrator must match it (or we adapt at
-  `_build_real_orchestrator`). To confirm with Brent.
-- **Store env var is `$MEMORY_STORE`** and the per-project store dir is
-  `${CLAUDE_PROJECT_DIR}/.cookbook-memory` (matches the cross-harness design).
-- **Hook event set** wired = SessionStart / UserPromptSubmit / Stop(async) /
-  PreCompact / PostCompact — the points the later slices need; all no-op for now.
+- **Store env var is `$MEMORY_STORE`**; the per-project store dir is
+  `${CLAUDE_PROJECT_DIR}/.cookbook-memory`.
+- **The headless `claude -p` MCP startup race** is a driver-side concern (the eval
+  harness sends a priming turn). A passive stdio server has no lever over it, so the
+  plugin does not attempt to mitigate it.
 
 ### Deferred / blockers
-- **Real Orchestrator wiring** — `_build_real_orchestrator` raises until the storage
-  workstream exposes its route·rank·dedup Orchestrator; then it's a one-function
-  change. Needs Brent's interface. (Not a blocker for this slice — fail-open by design.)
-- **Daydreamer (S4a)** + night consolidation (S4b) + live injection (S6) — later
-  slices; hooks are stubbed for them now.
+- **Shared route·rank·dedup Orchestrator (`MemoryFramework`)** — the plugin reaches
+  Memory through Brent's `Router` directly via the engine wiring. If a shared
+  Orchestrator is later built in the engine package, the engine wiring in `client.py`
+  constructs it instead of the Router directly — no other plugin file changes.
+- **Daydreamer** (`Stop`/`PreCompact` day pass), night consolidation, and live
+  injection — later slices; hooks are wired (fail-open) for them now.
 
 ### Verification evidence
-- `pytest` → **23 passed** (offline, stdlib + pytest; no MCP SDK, no network).
-- Installed `memory` CLI: remember/query/stats/log/reset all produce correct JSON;
-  events written to `$MEMORY_STORE/events.jsonl`; fail-open returns empty with no crash.
-- With the MCP SDK present, the server registers tools `['recall', 'remember']`.
+- `pytest` → **24 passed** (offline; stdlib + pytest; MCP SDK optional/lazy).
+- Installed `memory-cli`: `remember`→`query` round-trips through the Router; memory
+  persists to `$MEMORY_STORE` (markdown note + SQLite db + events).
+- With the MCP SDK present, the server registers tools `['recall']`.
