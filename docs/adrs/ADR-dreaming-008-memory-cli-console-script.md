@@ -2,19 +2,19 @@
 id: ADR-dreaming-008
 domain: dreaming
 title: memory CLI is a standalone console script in eval/memeval/dreaming/cli.py
-status: Accepted
+status: Superseded
 date: 2026-06-21
 contract: true
 supersedes: none
-superseded_by: none
+superseded_by: ADR-dreaming-016
 owner: Scott B. (P4)
 origin: design session 2026-06-21 (Daydream PR1 gap pass)
 ---
 
 # ADR-dreaming-008: `memory` CLI is a standalone console script in `eval/memeval/dreaming/cli.py`
 
-**Status:** Accepted · **Date:** 2026-06-21 · **Contract:** yes
-**Supersedes:** none · **Superseded by:** none
+**Status:** Superseded · **Date:** 2026-06-21 · **Contract:** yes
+**Supersedes:** none · **Superseded by:** [`ADR-dreaming-016`](ADR-dreaming-016-rename-memory-cli-to-daydream-cli.md)
 
 ## Context
 [`ADR-dreaming-001`](ADR-dreaming-001-daydreaming-stop-fired.md) specifies
