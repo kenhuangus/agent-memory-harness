@@ -49,6 +49,39 @@ DEFAULT_MIN_ENTRIES = 20  # fallback floor for an unlisted benchmark
 # whole groups (largest first) so the limited sample actually carries priors.
 # (The QA benches are 1 group / multi-session per entry, so flat == group there.)
 _GROUP_AWARE = {"swe_bench_cl", "swe_contextbench"}
+# CODE-kind benchmarks: tasks carry a gold patch + FAIL_TO_PASS/PASS_TO_PASS and
+# are graded by *applying the patch and running the tests* (SWE-bench rule), not by
+# QA exact-match. These get a real grader wired in (default: the Docker grader);
+# the QA benches (longmemeval, memoryagentbench) keep grader=None -> exact match.
+_CODE_BENCH = {"swe_bench_cl", "swe_contextbench", "contextbench"}
+
+
+def _make_grader(benchmark: str, args: argparse.Namespace):
+    """Resolve the grader for ``benchmark``.
+
+    QA benches always get ``None`` (exact-match in ``_grade``). CODE benches get
+    the grader named by ``--grader`` (default ``auto`` -> Docker). ``auto``/``none``
+    on a QA bench is ``None``; an explicit non-``auto`` grader is honored for any
+    bench (the grader itself returns ``None`` for non-CODE tasks). Docker grading
+    uses ``on_unavailable='skip'`` so a missing daemon/package leaves CODE tasks
+    ungraded (None) rather than crashing the whole run.
+    """
+    from ..grader import get_grader
+
+    is_code = benchmark in _CODE_BENCH
+    choice = (args.grader or "auto").strip().lower()
+    if choice == "auto":
+        if not is_code:
+            return None
+        choice = "docker"
+    if choice == "none":
+        return None
+    if choice in ("docker", "swebench", "swebench-docker"):
+        return get_grader(
+            "docker", on_unavailable=args.grader_on_unavailable,
+            timeout=args.grader_timeout, run_id=f"memeval-{benchmark}",
+        )
+    return get_grader(choice)
 
 
 def _resolve_path(benchmark: str, path: Optional[str]) -> Optional[str]:
@@ -105,6 +138,7 @@ def _run_one(benchmark: str, mode: str, args: argparse.Namespace,
     cost = CostTracker(budget_usd=args.budget_usd) if args.budget_usd and args.budget_usd > 0 else None
     limit = _resolve_limit(benchmark, args.limit)
     group_aware = _resolve_group_aware(benchmark, args.select)
+    grader = _make_grader(benchmark, args)
     run_id = f"claude-code-{mode}"
     notes = f"Claude Code CLI · memory={mode}"
     # Plugin talks to an MCP server; headless claude's MCP connection degrades under
@@ -133,7 +167,7 @@ def _run_one(benchmark: str, mode: str, args: argparse.Namespace,
             limit=limit, dev_slice=args.dev_slice, group_aware=group_aware,
             path_or_id=_resolve_path(benchmark, args.path),
             cost=cost, k=args.k, seed_sessions=False, logger=logger,  # agent seeds memory itself
-            workers=workers, progress_cb=progress_cb,
+            workers=workers, progress_cb=progress_cb, grader=grader,
         )
     except Exception as exc:  # surface per-(benchmark,mode) failure, keep going
         print(f"FAIL {benchmark:18} {mode:8} {type(exc).__name__}: {str(exc)[:140]}")
@@ -181,6 +215,18 @@ def main(argv: Optional[list[str]] = None) -> int:
                          "server whose headless connection degrades under concurrency, "
                          "so it runs sequentially by default for reliable retrieval.")
     ap.add_argument("--timeout", type=int, default=600)
+    ap.add_argument("--grader", default="auto",
+                    help="CODE-task grader: 'auto' (default) = Docker for CODE "
+                         f"benches {sorted(_CODE_BENCH)}, None for QA; 'docker'/'swebench' "
+                         "= official SWE-bench Docker harness; 'overlap' = cheap "
+                         "gold-patch token-overlap heuristic (NOT real accuracy); "
+                         "'none' = leave CODE ungraded.")
+    ap.add_argument("--grader-on-unavailable", choices=["error", "skip"], default="skip",
+                    help="Docker grader behavior when Docker/swebench is missing: "
+                         "'skip' (default) leaves CODE tasks ungraded (None); "
+                         "'error' aborts the run.")
+    ap.add_argument("--grader-timeout", type=int, default=1800,
+                    help="Per-instance SWE-bench Docker evaluation timeout (seconds).")
     ap.add_argument("--budget-usd", type=float, default=DEFAULT_BUDGET_USD)
     ap.add_argument("--results", default="results.json")
     ap.add_argument("--results-dir", default="results",
