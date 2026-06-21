@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "memory_version": "v0.1",
+  "benchmark": "longmemeval",
+  "timestamp": "20260621T032055Z",
+  "runs": [
+    {
+      "run_id": "claude-code-builtin",
+      "timestamp": "2026-06-21T03:21:54+00:00",
+      "benchmark": "longmemeval",
+      "model": "claude-code:claude-haiku-4-5:builtin",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:builtin+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.0,
+        "relevancy": 0.0,
+        "accuracy": 0.35,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 20,
+        "extra": {}
+      },
+      "n_tasks": 20,
+      "entries_used": 20,
+      "entries_available": 500,
+      "limit": 20,
+      "selection": "flat",
+      "cost_usd": 0.032147,
+      "tokens_in": 307,
+      "tokens_out": 6368,
+      "partial": true,
+      "budget_exceeded": false,
+      "source": "longmemeval_s",
+      "reliability": {
+        "n_errors": 0,
+        "memory_reached": 0,
+        "errors": []
+      },
+      "notes": "Claude Code CLI \u00b7 memory=builtin"
+    },
+    {
+      "run_id": "claude-code-plugin",
+      "timestamp": "2026-06-21T03:34:11+00:00",
+      "benchmark": "longmemeval",
+      "model": "claude-code:claude-haiku-4-5:plugin",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:plugin+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.75,
+        "efficiency": 31.912099791282714,
+        "relevancy": 0.004631030927835051,
+        "accuracy": 0.2,
+        "recency_decayed": 0.20817551359941364,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 20,
+        "extra": {}
+      },
+      "n_tasks": 20,
+      "entries_used": 20,
+      "entries_available": 500,
+      "limit": 20,
+      "selection": "flat",
+      "cost_usd": 0.035989,
+      "tokens_in": 464,
+      "tokens_out": 7105,
+      "partial": true,
+      "budget_exceeded": false,
+      "source": "longmemeval_s",
+      "reliability": {
+        "n_errors": 0,
+        "memory_reached": 15,
+        "errors": []
+      },
+      "notes": "Claude Code CLI \u00b7 memory=plugin"
+    }
+  ]
+}
