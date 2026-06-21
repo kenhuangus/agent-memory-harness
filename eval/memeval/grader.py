@@ -200,12 +200,27 @@ class SWEBenchDockerGrader:
 
         iid = instance_id_of(task)
         pred = build_prediction(task, prediction, model_name=self.model_name)
-        with tempfile.TemporaryDirectory() as tmp:
-            preds_path = Path(tmp) / "predictions.json"
-            preds_path.write_text(json.dumps([pred]), encoding="utf-8")
-            report_path = self._invoke(_re, iid, str(preds_path), tmp)
-            data = json.loads(Path(report_path).read_text(encoding="utf-8"))
-        return data
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                preds_path = Path(tmp) / "predictions.json"
+                preds_path.write_text(json.dumps([pred]), encoding="utf-8")
+                report_path = self._invoke(_re, iid, str(preds_path), tmp)
+                data = json.loads(Path(report_path).read_text(encoding="utf-8"))
+            return data
+        except Exception as exc:  # noqa: BLE001
+            # A dead/unreachable Docker daemon surfaces as docker.errors.DockerException
+            # (often wrapping FileNotFoundError on the socket). Treat any inability to
+            # reach Docker as "unavailable" so on_unavailable='skip' leaves the task
+            # ungraded (None) rather than misreporting it as a failed (False) grade —
+            # the common case being Docker Desktop's WSL integration dropping mid-run.
+            if _is_docker_unavailable(exc):
+                raise _Unavailable(
+                    f"Docker daemon not reachable while grading {iid} "
+                    f"({type(exc).__name__}: {str(exc)[:160]}). Is Docker running with "
+                    "WSL integration enabled? Pass on_unavailable='skip' to leave "
+                    "unreachable-Docker tasks ungraded."
+                ) from exc
+            raise
 
     def _invoke(self, _re: Any, iid: str, preds_path: str, report_dir: str):  # pragma: no cover
         """Call the swebench evaluation entry point across version differences.
@@ -241,6 +256,35 @@ class SWEBenchDockerGrader:
 
 class _Unavailable(Exception):
     """Internal: swebench/Docker not available."""
+
+
+def _is_docker_unavailable(exc: BaseException) -> bool:
+    """True if ``exc`` indicates the Docker daemon can't be reached.
+
+    Covers ``docker.errors.DockerException`` (and ``APIError``) plus the
+    underlying socket errors (``FileNotFoundError`` / ``ConnectionError``) the
+    SDK wraps when the daemon — or, on Windows, Docker Desktop's WSL integration
+    socket — is gone. Matches by class name so we don't hard-depend on the
+    ``docker`` package being importable here.
+    """
+    seen: set[int] = set()
+    cur: Optional[BaseException] = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        name = type(cur).__name__
+        if name in ("DockerException", "APIError", "TLSParameterError"):
+            return True
+        if isinstance(cur, (FileNotFoundError, ConnectionError, ConnectionRefusedError)):
+            msg = str(cur).lower()
+            if "docker" in msg or "/var/run/docker.sock" in msg or "pipe" in msg:
+                return True
+            # docker SDK wraps a bare FileNotFoundError(2) on the socket with no
+            # "docker" text; if it bubbled out of _invoke it's almost surely the
+            # daemon, so treat a bare socket FileNotFoundError as unavailable too.
+            if isinstance(cur, FileNotFoundError):
+                return True
+        cur = cur.__cause__ or cur.__context__
+    return False
 
 
 # --------------------------------------------------------------------------- #
