@@ -148,16 +148,36 @@ def task_span(
     sites are identical on and off the traced path.
     """
     c = _get_client()
-    if c is None:
-        yield NOOP
-        return
-    try:  # pragma: no cover - live only
-        with c.start_as_current_observation(
-            as_type="agent", name=name, input=input, metadata=metadata or {}
-        ) as obs:
-            yield _Span(c, obs)
-    except Exception:
-        yield NOOP
+    span: Any = NOOP
+    cm: Any = None
+    if c is not None:
+        # Open the live observation BEFORE the yield. A contextmanager must
+        # yield exactly once: opening here (rather than wrapping the yield in a
+        # try/except that yields again on failure) means a tracing error falls
+        # back to NOOP without a second yield, and -- critically -- an exception
+        # raised in the *body* (e.g. BudgetExceeded) propagates untouched
+        # instead of being masked by "generator didn't stop after throw()".
+        try:  # pragma: no cover - live only
+            cm = c.start_as_current_observation(
+                as_type="agent", name=name, input=input, metadata=metadata or {}
+            )
+            span = _Span(c, cm.__enter__())
+        except Exception:  # never break a run because tracing failed
+            if cm is not None:
+                try:
+                    cm.__exit__(None, None, None)
+                except Exception:
+                    pass
+            cm = None
+            span = NOOP
+    try:
+        yield span
+    finally:
+        if cm is not None:  # pragma: no cover - live only
+            try:
+                cm.__exit__(None, None, None)
+            except Exception:
+                pass
 
 
 def flush() -> None:
