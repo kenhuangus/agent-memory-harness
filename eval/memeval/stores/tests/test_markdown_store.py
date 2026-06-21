@@ -7,8 +7,8 @@ inverted keyword index on top. These tests pin the behaviors that matter:
 * ``write``/``get``/``all`` round-trip, and persistence is a *conformant OKF bundle*
   on disk that a fresh store autoloads (durability);
 * ``search`` returns ONLY genuine keyword matches (no zero-overlap padding),
-  ranked by the same token-overlap the reference store uses, with ``rank``/``score``
-  /``tokens`` set and ``as_of`` honored;
+  ranked by the same shared Okapi BM25 scorer the reference store uses, with
+  ``rank``/``score``/``tokens`` set and ``as_of`` honored;
 * overwriting an item updates both content and the index (no stale postings).
 
 Stdlib-only; run from ``eval/``:  ``python3 -m unittest memeval.stores.tests.test_markdown_store``
@@ -78,8 +78,7 @@ class MarkdownStoreTests(unittest.TestCase):
         self.assertEqual(len(hits), 1)
         h = hits[0]
         self.assertEqual(h.rank, 0)
-        self.assertGreater(h.score, 0.0)
-        self.assertLessEqual(h.score, 1.0)
+        self.assertGreater(h.score, 0.0)  # BM25 is non-negative & UNBOUNDED (not [0, 1])
         self.assertGreater(h.tokens, 0)  # efficiency metric needs a non-zero token count
 
     def test_returns_only_keyword_matches(self) -> None:

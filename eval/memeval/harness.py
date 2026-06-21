@@ -40,7 +40,9 @@ deterministic per-competency sample for fast dev iteration.
 
 from __future__ import annotations
 
+import math
 import time
+from collections import Counter
 from typing import Any, Callable, Optional
 
 from .cost import BudgetExceeded, CostTracker
@@ -83,15 +85,96 @@ def _tokenize(text: str) -> list[str]:
     return out
 
 
+# Okapi BM25 constants (standard defaults). Baked in deliberately: callers must
+# NOT change the frozen ``search`` signature to tune them -- pass via **kwargs if
+# ever needed (out of scope here).
+BM25_K1: float = 1.5
+BM25_B: float = 0.75
+
+
+def _bm25_scores(
+    query: str,
+    docs: list[tuple[str, str]],
+    *,
+    k1: float = BM25_K1,
+    b: float = BM25_B,
+) -> dict[str, tuple[float, float]]:
+    """Okapi BM25 over ``docs`` (``[(item_id, content), ...]``), stdlib-only.
+
+    Returns ``{item_id: (bm25_score, idf_coverage)}`` for every doc:
+
+    * ``bm25_score`` -- the non-negative, *unbounded* Okapi BM25 relevance of the
+      doc to ``query`` over the supplied corpus. Length enters only through the
+      bounded ``b * |d| / avgdl`` saturation term, so a long gold turn that
+      contains the query terms is no longer crushed the way Jaccard's ``|q ∪ d|``
+      denominator crushed it.
+    * ``idf_coverage`` -- ``sum(idf(t) for t in q_terms ∩ d)``: the SECONDARY
+      tie-break value, favoring a doc that matches the rarer (higher-IDF) query
+      terms. Sort-only; never stored on a :class:`RetrievedItem`.
+
+    Determinism: ``df``/``idf``/``tf`` are pure functions of ``(corpus, query)``;
+    query terms are iterated in ``sorted`` order for both the IDF build and the
+    per-doc summation so floating-point accumulation order is fixed cross-platform.
+
+    IDF form: ``log((N - df + 0.5) / (df + 0.5) + 1.0)`` -- the ``+1.0`` inside
+    the log floors IDF at ``>= 0``, removing BM25's classic negative weight for
+    terms appearing in more than half the corpus. An empty query (no terms)
+    yields ``0.0`` for every doc. ``avgdl <= 0`` degrades the length-norm factor
+    to ``(1 - b)`` (no division by zero).
+    """
+    q_terms = sorted(set(_tokenize(query)))
+    if not q_terms or not docs:
+        return {doc_id: (0.0, 0.0) for doc_id, _ in docs}
+
+    tokenized: list[tuple[str, Counter[str], int]] = []
+    total_len = 0
+    for doc_id, content in docs:
+        toks = _tokenize(content)
+        tf = Counter(toks)
+        tokenized.append((doc_id, tf, len(toks)))
+        total_len += len(toks)
+
+    n = len(tokenized)
+    avgdl = (total_len / n) if n else 0.0
+
+    # df + idf over the sorted query terms (stable accumulation order).
+    idf: dict[str, float] = {}
+    for t in q_terms:
+        df = sum(1 for _id, tf, _dl in tokenized if t in tf)
+        idf[t] = math.log((n - df + 0.5) / (df + 0.5) + 1.0)
+
+    scores: dict[str, tuple[float, float]] = {}
+    for doc_id, tf, dl in tokenized:
+        if avgdl > 0.0:
+            norm = 1.0 - b + b * (dl / avgdl)
+        else:
+            norm = 1.0 - b
+        bm25 = 0.0
+        cover = 0.0
+        for t in q_terms:  # sorted -> deterministic float accumulation
+            f = tf.get(t, 0)
+            if f <= 0:
+                continue
+            it = idf[t]
+            bm25 += it * (f * (k1 + 1.0)) / (f + k1 * norm)
+            cover += it
+        scores[doc_id] = (bm25, cover)
+    return scores
+
+
 class InMemoryStore:
     """Reference :class:`~memeval.protocols.MemoryStore` (standard library).
 
-    Retrieval is bag-of-words overlap (Jaccard-style), scored into ``[0, 1]``:
-    ``score = |q ∩ d| / |q ∪ d|`` over lowercased alnum tokens. Ties break by
-    higher write-time ``relevancy`` then more-recent ``timestamp`` then
-    ``item_id`` (so results are deterministic). ``write`` is idempotent on
-    ``item_id``. ``search`` honors ``as_of`` (no items newer than the query),
-    sets each :class:`RetrievedItem`'s 0-based ``rank`` and ensures the
+    Retrieval is Okapi BM25 (``k1=1.5``, ``b=0.75``) over the ``as_of``-filtered
+    corpus (see :func:`_bm25_scores`). Scores are non-negative and **NOT** bounded
+    to ``[0, 1]`` -- length couples in only through BM25's bounded saturation term,
+    so a long gold turn containing the query terms is no longer crushed the way
+    Jaccard's ``|q ∪ d|`` denominator crushed it, and IDF up-weights the rare,
+    discriminative terms that uniquely identify the gold item. Ties break by higher
+    IDF-weighted query coverage, then write-time ``relevancy``, then more-recent
+    ``timestamp``, then ``item_id`` (so results are fully deterministic). ``write``
+    is idempotent on ``item_id``. ``search`` honors ``as_of`` (no items newer than
+    the query), sets each :class:`RetrievedItem`'s 0-based ``rank`` and ensures the
     underlying ``MemoryItem.tokens`` is populated (estimated if zero) so the
     efficiency metric has a number to divide.
     """
@@ -120,33 +203,33 @@ class InMemoryStore:
         as_of: Optional[float] = None,
         **kwargs: Any,
     ) -> list[RetrievedItem]:
-        """Top-``k`` items by token overlap, best first, with rank+tokens set."""
-        q = set(_tokenize(query))
-        scored: list[tuple[float, MemoryItem]] = []
+        """Top-``k`` items by Okapi BM25, best first, with rank+tokens set."""
+        # Gather the as_of-filtered candidate corpus (no peeking at the future),
+        # then score every candidate with a single BM25 pass over that corpus.
+        candidates: list[MemoryItem] = []
         for item_id in self._order:
             item = self._items[item_id]
             if as_of is not None and item.timestamp > as_of:
-                continue  # no peeking at the future
-            d = set(_tokenize(item.content))
-            if not q and not d:
-                score = 0.0
-            elif not (q | d):
-                score = 0.0
-            else:
-                inter = len(q & d)
-                union = len(q | d)
-                score = inter / union if union else 0.0
-            scored.append((score, item))
+                continue
+            candidates.append(item)
 
-        # Deterministic ordering: score desc, relevancy desc, ts desc, id asc.
-        scored.sort(
-            key=lambda si: (-si[0], -si[1].relevancy, -si[1].timestamp, si[1].item_id)
-        )
+        bm25 = _bm25_scores(query, [(it.item_id, it.content) for it in candidates])
+
+        # Deterministic ordering: BM25 desc, IDF-coverage desc, relevancy desc,
+        # timestamp desc, item_id asc. ``item_id`` (unique) is the final key so
+        # the sort fully orders every tie -- empty query => all scores 0.0, which
+        # leaves the established relevancy/timestamp/id tie-breaks in control.
+        def sort_key(it: MemoryItem) -> tuple[float, float, float, float, str]:
+            score, cover = bm25[it.item_id]
+            return (-score, -cover, -it.relevancy, -it.timestamp, it.item_id)
+
+        candidates.sort(key=sort_key)
 
         results: list[RetrievedItem] = []
-        for rank, (score, item) in enumerate(scored[: max(0, k)]):
+        for rank, item in enumerate(candidates[: max(0, k)]):
             if item.tokens <= 0 and item.content:
                 item.tokens = estimate_tokens(item.content)
+            score = bm25[item.item_id][0]
             results.append(RetrievedItem(item=item, score=score, rank=rank))
         return results
 
@@ -607,6 +690,7 @@ def stratified_dev_slice(
 
 __all__ = [
     "InMemoryStore",
+    "_bm25_scores",
     "run",
     "DEFAULT_TIER_ORDER",
     "cheapest_first",
