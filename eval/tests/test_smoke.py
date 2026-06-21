@@ -548,6 +548,29 @@ def test_trajectory_logger_jsonl_round_trip() -> None:
     assert read[0].steps[0].retrieved[0].is_gold is True
 
 
+def test_run_agent_persists_is_gold_in_log() -> None:
+    """run_agent annotates is_gold BEFORE logging, so the trajectory FILE carries
+    gold flags. Regression: previously only the in-memory metrics pass set them,
+    leaving every logged is_gold False — which silently breaks file-based recall
+    analysis (a retrieved gold item reads as not-gold on disk)."""
+    def _retrieving_agent(task, ctx):
+        ctx.retrieve(task.question, k=100)  # surface the whole seeded store
+        return AgentResult(prediction="x")
+    agent = function_agent(_retrieving_agent)
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "run.jsonl"
+        with TrajectoryLogger(path, append=False) as log:
+            run_agent(Benchmark.MEMORY_AGENT_BENCH, agent, memory=True,
+                      path_or_id=_fixture("memoryagentbench.json"), limit=1,
+                      logger=log)
+        read = read_trajectory_list(path)
+    flags = {ri.item_id: ri.is_gold
+             for t in read for s in t.steps if s.kind == "retrieve"
+             for ri in s.retrieved}
+    assert flags.get("mab_s_move") is True    # the gold session, flagged IN THE FILE
+    assert flags.get("mab_s_intro") is False  # a non-gold session stays unflagged
+
+
 def test_trajectory_fixture_loads() -> None:
     read = read_trajectory_list(_fixture("trajectory.jsonl"))
     assert len(read) == 3
