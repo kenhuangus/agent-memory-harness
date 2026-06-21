@@ -718,7 +718,8 @@ def test_claudecode_agent_plugin_records_retrieval() -> None:
     # pin a native runtime so the bundle path stays local (the fake runner opens it here)
     native = ClaudeRuntime(kind="native", exe="claude", python="python")
     with tempfile.TemporaryDirectory() as tmp:
-        agent = ClaudeCodeAgent(memory_mode="plugin", runner=fake, runtime=native, workdir=tmp)
+        agent = ClaudeCodeAgent(memory_mode="plugin", runner=fake, runtime=native,
+                                workdir=tmp, transport="stdio")
         rr = run_agent(Benchmark.MEMORY_AGENT_BENCH, agent, memory=True,
                        path_or_id=_fixture("memoryagentbench.json"), limit=1,
                        seed_sessions=False)

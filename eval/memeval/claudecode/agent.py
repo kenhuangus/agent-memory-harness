@@ -67,6 +67,46 @@ _BUILTIN_PREFIX = (
     "concisely with just the final answer.\n\n"
 )
 
+# Headless `claude -p` connects an MCP server only ~half the time per invocation, so
+# the plugin retries the turn until a recall is actually logged (proof the tool was
+# reached). At ~50%/try, 5 tries -> ~97% reach memory at least once.
+_PLUGIN_MAX_TRIES = 5
+
+
+def _free_port() -> int:
+    """Pick an OS-assigned free localhost port for a per-task HTTP memory server."""
+    import socket
+
+    s = socket.socket()
+    try:
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
+    finally:
+        s.close()
+
+
+def _wait_port(host: str, port: int, timeout: float = 20.0) -> bool:
+    """Block until ``host:port`` accepts a connection (server ready), or timeout."""
+    import socket
+    import time
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        with socket.socket() as s:
+            s.settimeout(0.5)
+            if s.connect_ex((host, port)) == 0:
+                return True
+        time.sleep(0.2)
+    return False
+
+
+def _count_recalls(log: Path) -> int:
+    """Number of recall ops logged so far (used to detect the agent reached memory)."""
+    try:
+        return sum(1 for rec in MemoryService.read_log(log) if rec.get("op") == "recall")
+    except Exception:
+        return 0
+
 
 class ClaudeCodeAgent:
     """Benchmark agent backed by the Claude Code CLI. Satisfies AgentAdapter."""
@@ -81,6 +121,7 @@ class ClaudeCodeAgent:
         workdir: Optional[str | Path] = None,
         k: int = 5,
         timeout: int = 300,
+        transport: str = "http",
     ) -> None:
         if memory_mode not in _MODES:
             raise ValueError(f"memory_mode must be one of {_MODES}, got {memory_mode!r}")
@@ -88,6 +129,12 @@ class ClaudeCodeAgent:
         self.memory_mode = memory_mode
         self._runner = runner or run_claude
         self._runtime = runtime
+        # Plugin MCP transport. "http" runs a local memory server claude connects to
+        # by URL; combined with retry-until-recall this is reliable in headless mode,
+        # where a freshly stdio-spawned server is dropped ~half the time (a race).
+        # "stdio" keeps the spawn-per-invocation form (used by the offline tests and
+        # as a fallback when claude runs across the Windows/WSL boundary).
+        self.transport = transport
         # Resolve to absolute: claude runs with cwd=run_dir and resolves --mcp-config
         # (and the MCP server resolves its --bundle/--log) against that cwd, so a
         # relative run dir would double the path ("run_dir/run_dir/.mcp.json" -> not
@@ -129,26 +176,28 @@ class ClaudeCodeAgent:
             store.write(MemoryItem.from_session(s))
 
         rt = self._effective_runtime()
-        # Write .mcp.json with the python + path form the detected runtime needs:
-        # under WSL, claude spawns the server inside WSL, so paths must be /mnt/...
-        # and the command a WSL python that has memeval + mcp.
-        wsl = rt.kind == "wsl"
-        bundle_arg = to_wsl_path(bundle) if wsl else str(bundle)
-        log_arg = to_wsl_path(log) if wsl else str(log)
-        mcp_path = run_dir / ".mcp.json"
-        mcp_path.write_text(json.dumps({
-            "mcpServers": {
-                "memeval-memory": {
-                    "command": rt.python,
-                    "args": ["-m", "memeval.claudecode.memory_server",
-                             "--bundle", bundle_arg, "--log", log_arg, "--k", str(self.k)],
-                }
-            }
-        }), encoding="utf-8")
-
         tools = ["mcp__memeval-memory__memory_recall", "mcp__memeval-memory__memory_remember"]
-        res = self._run(prompt, run_dir, _SYS_PLUGIN, mcp_config=mcp_path,
-                        allowed_tools=tools, strict_mcp=True)
+
+        if self.transport == "http" and rt.kind == "native":
+            res = self._run_plugin_http(prompt, run_dir, bundle, log, rt, tools)
+        else:
+            # stdio: spawn-per-invocation. Used by offline tests (fake runner) and as a
+            # fallback when claude runs across the Windows/WSL boundary.
+            wsl = rt.kind == "wsl"
+            bundle_arg = to_wsl_path(bundle) if wsl else str(bundle)
+            log_arg = to_wsl_path(log) if wsl else str(log)
+            mcp_path = run_dir / ".mcp.json"
+            mcp_path.write_text(json.dumps({
+                "mcpServers": {
+                    "memeval-memory": {
+                        "command": rt.python,
+                        "args": ["-m", "memeval.claudecode.memory_server",
+                                 "--bundle", bundle_arg, "--log", log_arg, "--k", str(self.k)],
+                    }
+                }
+            }), encoding="utf-8")
+            res = self._run(prompt, run_dir, _SYS_PLUGIN, mcp_config=mcp_path,
+                            allowed_tools=tools, strict_mcp=True)
 
         # Attribute what the agent retrieved (from the server's log) to the trajectory.
         for rec in MemoryService.read_log(log):
@@ -169,6 +218,51 @@ class ClaudeCodeAgent:
             if hits:
                 ctx.record_retrieve(hits, query=rec.get("query", ""))
         return res
+
+    def _run_plugin_http(self, prompt: str, run_dir: Path, bundle: Path, log: Path,
+                         rt: ClaudeRuntime, tools: list[str]) -> ClaudeResult:
+        """Plugin via an HTTP memory server + retry-until-recall.
+
+        Headless ``claude -p`` drops a freshly-spawned stdio MCP server about half
+        the time (a connection race), so the agent silently answers without memory.
+        We instead run the memory server as a local HTTP service claude connects to
+        by URL, and retry the claude turn until a recall is actually logged (proof
+        the tool was reached). The server stays up across retries, so retries are
+        cheap. Falls back to whatever the last attempt returned if none connect.
+        """
+        import subprocess
+
+        host, port = "127.0.0.1", _free_port()
+        mcp_path = run_dir / ".mcp.json"
+        mcp_path.write_text(json.dumps({
+            "mcpServers": {"memeval-memory": {"type": "http", "url": f"http://{host}:{port}/mcp"}}
+        }), encoding="utf-8")
+
+        srv = subprocess.Popen(
+            [rt.python, "-m", "memeval.claudecode.memory_server",
+             "--transport", "http", "--host", host, "--port", str(port),
+             "--bundle", str(bundle), "--log", str(log), "--k", str(self.k)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        try:
+            if not _wait_port(host, port, timeout=20.0):
+                # server never came up — one stdio-free attempt so we still answer
+                return self._run(prompt, run_dir, _SYS_PLUGIN, mcp_config=mcp_path,
+                                 allowed_tools=tools, strict_mcp=True)
+            res: Optional[ClaudeResult] = None
+            for _ in range(_PLUGIN_MAX_TRIES):
+                before = _count_recalls(log)
+                res = self._run(prompt, run_dir, _SYS_PLUGIN, mcp_config=mcp_path,
+                                allowed_tools=tools, strict_mcp=True)
+                if _count_recalls(log) > before:
+                    break  # the agent reached memory_recall -> MCP connected
+            return res  # type: ignore[return-value]
+        finally:
+            srv.terminate()
+            try:
+                srv.wait(timeout=5)
+            except Exception:
+                srv.kill()
 
     # -- helpers ------------------------------------------------------------ #
     def _run(self, prompt: str, cwd: Path, system: str, *,

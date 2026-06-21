@@ -26,6 +26,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--bundle", required=True, help="OKF bundle dir backing the memory store.")
     ap.add_argument("--log", default=None, help="JSONL retrieval log path (for metric attribution).")
     ap.add_argument("--k", type=int, default=5, help="Default retrieval depth.")
+    ap.add_argument("--transport", choices=["stdio", "http", "sse"], default="stdio",
+                    help="MCP transport. 'http' (streamable-http) or 'sse' run a local "
+                         "server claude connects to by URL — this avoids the stdio "
+                         "startup race that intermittently drops the server in headless "
+                         "`claude -p`. 'stdio' (default) is spawned per invocation.")
+    ap.add_argument("--host", default="127.0.0.1", help="Bind host for http/sse transport.")
+    ap.add_argument("--port", type=int, default=8765, help="Bind port for http/sse transport.")
     args = ap.parse_args(argv)
 
     try:
@@ -41,7 +48,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     store = OKFStore(args.bundle)
     svc = MemoryService(store, log_path=args.log, default_k=args.k)
-    mcp = FastMCP("memeval-memory")
+    mcp = FastMCP("memeval-memory", host=args.host, port=args.port)
 
     @mcp.tool()
     def memory_recall(query: str, k: Optional[int] = None) -> list[dict]:
@@ -53,7 +60,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         """Save a new note to persistent memory. Returns its id."""
         return svc.remember(content, tags=tags)
 
-    mcp.run()  # stdio transport (what Claude Code speaks)
+    if args.transport == "http":
+        mcp.run(transport="streamable-http")  # claude: {"type":"http","url":".../mcp"}
+    elif args.transport == "sse":
+        mcp.run(transport="sse")              # claude: {"type":"sse","url":".../sse"}
+    else:
+        mcp.run()                             # stdio (spawned per claude invocation)
     return 0
 
 

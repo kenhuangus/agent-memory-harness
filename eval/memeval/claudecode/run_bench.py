@@ -107,6 +107,10 @@ def _run_one(benchmark: str, mode: str, args: argparse.Namespace,
     group_aware = _resolve_group_aware(benchmark, args.select)
     run_id = f"claude-code-{mode}"
     notes = f"Claude Code CLI · memory={mode}"
+    # Plugin talks to an MCP server; headless claude's MCP connection degrades under
+    # concurrency, so plugin runs at --plugin-workers (default 1) while builtin/off
+    # (no MCP, just file reads) run at the full --workers.
+    workers = args.plugin_workers if mode == "plugin" else args.workers
 
     # Incremental save: after every task, rewrite this benchmark's result file with
     # the records from already-finished modes plus the current mode's partial run,
@@ -129,7 +133,7 @@ def _run_one(benchmark: str, mode: str, args: argparse.Namespace,
             limit=limit, dev_slice=args.dev_slice, group_aware=group_aware,
             path_or_id=_resolve_path(benchmark, args.path),
             cost=cost, k=args.k, seed_sessions=False, logger=logger,  # agent seeds memory itself
-            workers=args.workers, progress_cb=progress_cb,
+            workers=workers, progress_cb=progress_cb,
         )
     except Exception as exc:  # surface per-(benchmark,mode) failure, keep going
         print(f"FAIL {benchmark:18} {mode:8} {type(exc).__name__}: {str(exc)[:140]}")
@@ -170,8 +174,12 @@ def main(argv: Optional[list[str]] = None) -> int:
                          f"(group for {sorted(_GROUP_AWARE)}).")
     ap.add_argument("--k", type=int, default=5)
     ap.add_argument("--workers", type=int, default=4,
-                    help="Concurrent `claude` CLI processes per (benchmark,mode) run "
+                    help="Concurrent `claude` CLI processes for builtin/off runs "
                          "(task-level parallelism; default 4, 1 = sequential).")
+    ap.add_argument("--plugin-workers", type=int, default=1,
+                    help="Concurrency for PLUGIN runs (default 1). Plugin uses an MCP "
+                         "server whose headless connection degrades under concurrency, "
+                         "so it runs sequentially by default for reliable retrieval.")
     ap.add_argument("--timeout", type=int, default=600)
     ap.add_argument("--budget-usd", type=float, default=DEFAULT_BUDGET_USD)
     ap.add_argument("--results", default="results.json")
