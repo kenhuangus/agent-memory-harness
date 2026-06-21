@@ -484,7 +484,13 @@ def evaluate(case: SemanticCase, store: SqliteVectorStore, *, k: int = K) -> dic
     """Run one case against ``store``; return recall@k / mrr / rank diagnostics."""
     hits = store.search(case.query, k=max(k, 20))  # extra depth for rank diagnostics
     ranked = [h.item_id for h in hits]
-    gold = tuple(g for g in case.gold_item_ids if g in _CORPUS_IDS)
+    # Fail fast: a typo'd gold id must NOT be silently dropped. In the report/CLI path (which runs
+    # independently of the contract test) a missing gold id would otherwise look like a divergence
+    # "miss" (recall@k == 0) — i.e. *fake headroom*. Raise instead so a fixture mistake is loud.
+    missing = tuple(g for g in case.gold_item_ids if g not in _CORPUS_IDS)
+    if missing:
+        raise ValueError(f"{case.name}: unknown gold_item_ids {missing} (not in CORPUS)")
+    gold = case.gold_item_ids
     topk = ranked[:k]
     return {
         "name": case.name, "kind": case.kind, "lens": case.lens,
@@ -562,6 +568,19 @@ class SemanticFixtureContractTests(unittest.TestCase):
         for c in SEMANTIC_CASES:
             if c.kind == CONTROL:
                 self.assertEqual(c.lens, "lexical_control", f"{c.name}: control must use lexical_control lens")
+
+    def test_evaluate_fails_fast_on_unknown_gold(self) -> None:
+        # A typo'd gold id must RAISE (in the report path too), not silently become a fake "miss"
+        # that masquerades as divergence headroom. Locks the fail-fast guard in evaluate().
+        bogus = SemanticCase(name="_bogus", lens="synonym", kind=DIVERGENCE,
+                             query="anything at all", gold_item_ids=("does-not-exist",),
+                             note="not a real case")
+        store = _build_store()
+        try:
+            with self.assertRaises(ValueError):
+                evaluate(bogus, store)
+        finally:
+            store.close()
 
 
 class SemanticHeadroomTests(unittest.TestCase):
