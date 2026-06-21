@@ -17,7 +17,11 @@ efficiency   ``memory_tokens / total_tokens`` overhead per retrieval, averaged
              over tasks. LOWER is better (target < ~0.10).
 relevancy    Mean similarity of retrieved items vs. the query, plus
              precision@k = fraction of retrieved items scoring >= threshold.
-             Higher is better.
+             Higher is better. For the lexical retriever-score path (e.g. the
+             BM25 stores, whose scores are non-negative and *unbounded*, not in
+             ``[0, 1]``) the per-retrieve-step scores are max-normalized to
+             ``[0, 1]`` before the threshold/mean so precision@k stays meaningful;
+             the embedding-cosine path is already in ``[0, 1]`` and is left as-is.
 accuracy     Task success rate (QA normalized match / CODE tests pass), tracked
              memory-on vs. memory-off. Higher is better.
 
@@ -266,14 +270,20 @@ def relevancy(
     For each retrieved item a similarity score is taken as:
 
     * ``cosine(query_emb, item.embedding)`` when ``query_embeddings`` is
-      supplied (keyed by ``task_id``) *and* the item carries an embedding; else
-    * the retriever-provided :attr:`RetrievedItem.score` (cosine in [0,1] by
-      convention).
+      supplied (keyed by ``task_id``) *and* the item carries an embedding (already
+      in ``[0, 1]``; used verbatim); else
+    * the retriever-provided :attr:`RetrievedItem.score`, **max-normalized within
+      its retrieve step**: ``val = ri.score / max(step scores)`` (or ``0.0`` when
+      that max is ``<= 0``). Lexical backends (BM25) return non-negative *unbounded*
+      scores, so without this per-step normalization the ``threshold`` compare
+      would be meaningless (precision would inflate toward ``1.0`` for any run with
+      large-magnitude scores). Normalizing per step puts the top hit of every step
+      at ``1.0`` and keeps the ``threshold`` interpretable.
 
     Then::
 
-        mean_similarity = mean( score_i )                    over all retrieved items
-        precision_at_k  = |{i: score_i >= threshold}| / N    over all retrieved items
+        mean_similarity = mean( val_i )                    over all retrieved items
+        precision_at_k  = |{i: val_i >= threshold}| / N    over all retrieved items
 
     Both are micro-averaged over every retrieved item in every retrieve step of
     every trajectory (so a task that retrieves more items weighs more). Returns
@@ -286,11 +296,21 @@ def relevancy(
         if query_embeddings is not None:
             q_emb = query_embeddings.get(traj.task_id)
         for step in _retrieve_steps(traj):
+            # Split the step's items into the embedding-cosine path (already in
+            # [0, 1], used as-is) and the retriever-score path (max-normalized
+            # within this step so unbounded BM25 scores stay threshold-comparable).
+            retriever_scores: list[float] = []
             for ri in step.retrieved:
                 if q_emb is not None and ri.item.embedding is not None:
                     scores.append(cosine(q_emb, ri.item.embedding))
                 else:
-                    scores.append(ri.score)
+                    retriever_scores.append(ri.score)
+            if retriever_scores:
+                step_max = max(retriever_scores)
+                if step_max > 0.0:
+                    scores.extend(s / step_max for s in retriever_scores)
+                else:
+                    scores.extend(0.0 for _ in retriever_scores)
 
     if not scores:
         return 0.0, 0.0

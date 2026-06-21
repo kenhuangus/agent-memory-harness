@@ -216,10 +216,13 @@ class MemoryItem:
 class RetrievedItem:
     """A MemoryItem returned by ``MemoryStore.search``, plus score and rank.
 
-    ``score`` is the retriever's similarity/relevance score (cosine in [0,1]
-    by convention, but any monotonic score is accepted). ``rank`` is 0-based
-    (0 == top hit). ``is_gold`` is set by the metrics layer when the item's id
-    is in the task's ``gold_memory_ids`` -- it is *not* required at search time.
+    ``score`` is the retriever's similarity/relevance score; any monotonic score
+    is accepted. Embedding backends return cosine in ``[0, 1]`` by convention,
+    while lexical backends (Okapi BM25) return non-negative *unbounded* scores --
+    the relevancy metric max-normalizes the lexical path per retrieve step so the
+    precision threshold stays meaningful. ``rank`` is 0-based (0 == top hit).
+    ``is_gold`` is set by the metrics layer when the item's id is in the task's
+    ``gold_memory_ids`` -- it is *not* required at search time.
     """
 
     item: MemoryItem

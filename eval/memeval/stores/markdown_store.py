@@ -8,10 +8,12 @@ the **inverted keyword index** the architecture specs for fast literal recall
 
 ``search`` returns ONLY items that share at least one token with the query — a
 keyword index answers "what do I literally know that overlaps this query?", so
-zero-overlap items are never padded in. Matches are ranked by the same Jaccard
-token-overlap and tie-breaks the reference store uses (so cross-backend comparisons
-stay fair), with ``rank``/``score``/``tokens`` set and ``as_of`` honored. An empty
-query has no tokens and returns ``[]``.
+zero-overlap items are never padded in. Matches are ranked by the SAME Okapi BM25
+scorer and tie-breaks the reference store uses (the shared
+:func:`memeval.harness._bm25_scores`, so cross-backend comparisons stay fair and
+the two stores can never drift apart), with ``rank``/``score``/``tokens`` set and
+``as_of`` honored. ``score`` is the raw BM25 value (non-negative, unbounded -- NOT
+``[0, 1]``). An empty query has no tokens and returns ``[]``.
 
 Stdlib-only: the tokenizer mirrors ``harness._tokenize`` (kept local so this backend
 carries its own dependencies); a parity test guards against drift.
@@ -22,6 +24,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Optional
 
+from ..harness import _bm25_scores
 from ..okf import OKFStore
 from ..schema import MemoryItem, RetrievedItem
 
@@ -87,9 +90,13 @@ class MarkdownStore:
         """Top-``k`` genuine keyword matches, best-ranked first.
 
         Candidates come from the inverted index (items sharing >=1 query token);
-        each is scored by Jaccard overlap ``|q & d| / |q | d|`` and ordered by
-        score, then write-time ``relevancy``, ``timestamp``, ``item_id`` — matching
-        the reference store. ``as_of`` drops items newer than the query.
+        each is scored by the SAME shared Okapi BM25 scorer the reference store
+        uses (:func:`memeval.harness._bm25_scores`) and ordered by BM25 desc, then
+        IDF-weighted query coverage, then write-time ``relevancy``, ``timestamp``,
+        ``item_id`` — so the two backends rank identical candidate sets identically
+        (the parity test). ``score`` is the raw BM25 value (non-negative,
+        unbounded). ``as_of`` drops items newer than the query. An empty query
+        returns ``[]`` (the keyword-index contract: no tokens, no candidates).
         """
         q = set(_tokenize(query))
         if not q:
@@ -99,22 +106,25 @@ class MarkdownStore:
         for token in q:
             candidate_ids |= self._postings.get(token, set())
 
-        scored: list[tuple[float, MemoryItem]] = []
+        candidates: list[MemoryItem] = []
         for item_id in candidate_ids:
             item = self._okf.get(item_id)
             if item is None:
                 continue
             if as_of is not None and item.timestamp > as_of:
                 continue  # no peeking at the future
-            d = self._item_tokens.get(item_id) or set(_tokenize(item.content))
-            union = len(q | d)
-            score = (len(q & d) / union) if union else 0.0
-            scored.append((score, item))
+            candidates.append(item)
 
-        scored.sort(key=lambda si: (-si[0], -si[1].relevancy, -si[1].timestamp, si[1].item_id))
+        bm25 = _bm25_scores(query, [(it.item_id, it.content) for it in candidates])
+
+        def sort_key(it: MemoryItem) -> tuple[float, float, float, float, str]:
+            score, cover = bm25[it.item_id]
+            return (-score, -cover, -it.relevancy, -it.timestamp, it.item_id)
+
+        candidates.sort(key=sort_key)
         return [
-            RetrievedItem(item=item, score=score, rank=rank)
-            for rank, (score, item) in enumerate(scored[: max(0, k)])
+            RetrievedItem(item=item, score=bm25[item.item_id][0], rank=rank)
+            for rank, item in enumerate(candidates[: max(0, k)])
         ]
 
     def all(self) -> list[MemoryItem]:

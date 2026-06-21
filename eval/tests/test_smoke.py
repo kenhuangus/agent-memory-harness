@@ -143,8 +143,8 @@ def _crafted_trajectory() -> tuple[list[Trajectory], list[Task]]:
         recency         = 1.0          (freshest gold ranked #1)
         recency_decayed = exp(-1)      (dt == tau == 86400s)
         efficiency      = 15 / 120     (memory_tokens / total_tokens)
-        relevancy       = (0.9+0.5)/2  = 0.7   (mean score)
-        precision@k     = 1/2          = 0.5   (only 0.9 >= 0.7)
+        relevancy       = (1.0+0.5/0.9)/2      (mean of per-step max-normed score)
+        precision@k     = 1/2          = 0.5   (only the top hit (1.0) >= 0.7)
         accuracy        = 1.0          (success is True)
     """
     task = Task(
@@ -358,8 +358,10 @@ def test_efficiency_metric() -> None:
 def test_relevancy_metric() -> None:
     trajs, tasks = _crafted_trajectory()
     rel, prec = M.relevancy(trajs, tasks)
-    assert _approx(rel, (0.9 + 0.5) / 2.0), rel
-    assert _approx(prec, 0.5), prec  # only 0.9 >= 0.7 threshold
+    # Retriever scores are max-normalized within the retrieve step: the step max
+    # is 0.9, so 0.9 -> 1.0 and 0.5 -> 0.5/0.9. mean = (1.0 + 0.5/0.9) / 2.
+    assert _approx(rel, (1.0 + 0.5 / 0.9) / 2.0), rel
+    assert _approx(prec, 0.5), prec  # only the top hit (1.0) >= 0.7 threshold
 
 
 def test_relevancy_with_embeddings() -> None:
@@ -415,7 +417,8 @@ def test_compute_metrics_aggregate() -> None:
     assert _approx(m.recency, 1.0)
     assert _approx(m.recency_decayed, math.exp(-1.0))
     assert _approx(m.efficiency, 15.0 / 120.0)
-    assert _approx(m.relevancy, 0.7)
+    # Per-step max-normalized: (1.0 + 0.5/0.9) / 2 (see test_relevancy_metric).
+    assert _approx(m.relevancy, (1.0 + 0.5 / 0.9) / 2.0)
     assert _approx(m.precision_at_k, 0.5)
     assert _approx(m.accuracy, 1.0)
     assert m.n == 1
@@ -1254,6 +1257,136 @@ def test_harness_inmemory_store_satisfies_protocol() -> None:
     assert hits[0].rank == 0
     # tokens flow through RetrievedItem (invariant #1) for the efficiency metric.
     assert hits[0].tokens == hits[0].item.tokens
+
+
+# --------------------------------------------------------------------------- #
+# BM25 scorer -- the gold-recall fix (replaces length-coupled Jaccard)
+# --------------------------------------------------------------------------- #
+def test_bm25_long_gold_outranks_short_noise() -> None:
+    """The exact Jaccard failure mode: a LONG gold turn containing the rare query
+    term must outrank a SHORT generic doc that shares only a common/high-df token.
+
+    Under Jaccard the long gold's huge ``|q ∪ d|`` denominator crushed it below
+    the short doc; under BM25 (IDF up-weights the rare term, length saturates) it
+    wins. This is the load-bearing gold-recall regression guard.
+    """
+    store = InMemoryStore()
+    # "report" is the common high-df token (appears in both). "wittgenstein" is the
+    # rare discriminative term that uniquely identifies the gold turn.
+    long_gold = (
+        "user said in the meeting the quarterly report covers many topics "
+        "including budget timeline staffing and the philosopher wittgenstein "
+        "was mentioned as the favorite author with lots of additional padding "
+        "context filler words here to make this turn genuinely long indeed"
+    )
+    short_noise = "the report is short"
+    store.write(MemoryItem(item_id="noise", content=short_noise, timestamp=1.0))
+    store.write(MemoryItem(item_id="gold", content=long_gold, timestamp=1.0))
+
+    hits = store.search("wittgenstein report", k=5)
+    assert hits[0].item_id == "gold", [h.item_id for h in hits]
+    # And the gold's BM25 score is strictly positive (it matched the rare term).
+    assert hits[0].score > 0.0
+
+
+def test_bm25_score_independent_of_padding() -> None:
+    """Length-normalization guard: padding the gold doc with N extra non-query
+    tokens keeps it ranked #1 over a short doc sharing only a common token.
+
+    (Jaccard's |q ∪ d| made score collapse as padding grew -- BM25 does not.)
+    """
+    base_gold = "the user favorite author is wittgenstein"
+    pad = " ".join(["filler"] * 200)  # 200 extra non-query tokens
+    short_other = "the user wrote a report"  # shares only the common 'user'/'the'
+
+    store = InMemoryStore()
+    store.write(MemoryItem(item_id="gold", content=base_gold + " " + pad, timestamp=1.0))
+    store.write(MemoryItem(item_id="other", content=short_other, timestamp=1.0))
+
+    hits = store.search("wittgenstein author", k=5)
+    assert hits[0].item_id == "gold", [h.item_id for h in hits]
+
+
+def test_bm25_deterministic_across_write_order() -> None:
+    """Two stores ingesting the SAME items in DIFFERENT write order return
+    identical ranking AND identical scores for a multi-term query.
+
+    Guards the sorted-query-term accumulation + df-stability determinism.
+    """
+    rows = [
+        ("a", "alpha beta gamma shared token here", 1.0, 5.0),
+        ("b", "beta shared token plus more shared content", 1.0, 6.0),
+        ("c", "token alone shared", 1.0, 7.0),
+        ("d", "gamma delta epsilon zeta", 1.0, 8.0),
+    ]
+    s1 = InMemoryStore()
+    for item_id, content, rel, ts in rows:
+        s1.write(MemoryItem(item_id=item_id, content=content, relevancy=rel, timestamp=ts))
+    s2 = InMemoryStore()
+    for item_id, content, rel, ts in reversed(rows):  # different write order
+        s2.write(MemoryItem(item_id=item_id, content=content, relevancy=rel, timestamp=ts))
+
+    q = "shared token gamma"
+    h1 = s1.search(q, k=10)
+    h2 = s2.search(q, k=10)
+    assert [h.item_id for h in h1] == [h.item_id for h in h2]
+    assert [h.score for h in h1] == [h.score for h in h2]  # exact float equality
+
+
+def test_bm25_idf_coverage_breaks_ties_toward_rarer_term() -> None:
+    """When two docs tie on BM25 primary score, the one matching the rarer
+    (higher-IDF) query term ranks first via the IDF-coverage secondary key.
+
+    Setup: query has two terms -- ``common`` (in many docs => low IDF) and
+    ``rare`` (in one doc => high IDF). Two candidate docs each match exactly one
+    query term once, with identical length, so their BM25 *per-matched-term*
+    structure is symmetric except for that term's IDF. The rare-term doc wins.
+    """
+    store = InMemoryStore()
+    # Build up df so 'common' is high-df (low IDF) and 'rare' is low-df (high IDF).
+    for i in range(5):
+        store.write(MemoryItem(item_id=f"bg{i}", content=f"common filler{i} extra{i}",
+                               timestamp=1.0, relevancy=0.5))
+    # Two equal-length candidates: one matches 'common', one matches 'rare'.
+    store.write(MemoryItem(item_id="hits_common", content="common alpha beta",
+                           timestamp=1.0, relevancy=0.5))
+    store.write(MemoryItem(item_id="hits_rare", content="rare alpha beta",
+                           timestamp=1.0, relevancy=0.5))
+
+    hits = store.search("common rare", k=20)
+    ids = [h.item_id for h in hits]
+    assert ids.index("hits_rare") < ids.index("hits_common"), ids
+
+
+def test_bm25_empty_query_inmemory_zero_padded() -> None:
+    """InMemoryStore's empty-query contract: returns zero-padded results (NOT [])
+    with every score 0.0 -- distinct from MarkdownStore which returns []."""
+    store = InMemoryStore()
+    store.write(MemoryItem(item_id="a", content="anything at all", timestamp=1.0))
+    store.write(MemoryItem(item_id="b", content="something else", timestamp=2.0))
+    hits = store.search("   ", k=5)  # whitespace-only -> no tokens
+    assert len(hits) == 2  # zero-padded, not empty
+    assert all(h.score == 0.0 for h in hits)
+
+
+def test_relevancy_per_step_max_normalization() -> None:
+    """metrics.relevancy max-normalizes raw BM25-magnitude scores per retrieve
+    step, so precision@k's threshold is meaningful again.
+
+    One step with raw scores 3.2 and 0.4: step max is 3.2, so 3.2 -> 1.0 (>= 0.7,
+    counts) and 0.4 -> 0.125 (< 0.7, does not). precision@k = 1/2 = 0.5; mean is
+    (1.0 + 0.125) / 2.
+    """
+    task = Task(task_id="t", benchmark=Benchmark.LONGMEMEVAL, kind=TaskKind.QA,
+                question="q", gold_memory_ids=["g"])
+    traj = Trajectory(task_id="t", benchmark=Benchmark.LONGMEMEVAL, model="echo")
+    traj.add(TrajectoryStep(step=0, kind="retrieve", timestamp=10.0, retrieved=[
+        RetrievedItem(item=_mk_item("g", 5.0, 1), score=3.2, rank=0),
+        RetrievedItem(item=_mk_item("n", 4.0, 1), score=0.4, rank=1),
+    ]))
+    rel, prec = M.relevancy([traj], [task])
+    assert _approx(prec, 0.5), prec
+    assert _approx(rel, (1.0 + 0.4 / 3.2) / 2.0), rel
 
 
 def test_agent_adapter_protocol() -> None:
