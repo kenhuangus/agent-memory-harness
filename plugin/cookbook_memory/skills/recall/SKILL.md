@@ -10,9 +10,9 @@ description: >-
 
 # Recall from persistent memory
 
-Use the `recall` MCP tool (`mcp__cookbook-memory__recall`) to retrieve relevant
-memories before answering, whenever the task could benefit from something decided or
-learned earlier.
+Use the `recall` memory tool to retrieve relevant memories before answering, whenever
+the task could benefit from something decided or learned earlier. (The tool is
+exposed by the memory plugin's MCP server; the exact tool id is harness-specific.)
 
 - Call `recall(query, k)` with a focused natural-language query describing what you
   need. `k` defaults to 5; raise it when you want broader context.
@@ -22,5 +22,5 @@ learned earlier.
   nothing, proceed without it — memory is supplementary, never required (the system
   is fail-open).
 
-Pair with the `remember` skill: recall what's relevant, then save anything new worth
-keeping.
+The conscious agent is recall-only — saving memories happens automatically in the
+background (the Daydreamer watches the session), so there is no remember tool to call.

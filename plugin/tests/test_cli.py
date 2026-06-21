@@ -1,9 +1,8 @@
-"""Offline tests for the ``memory`` CLI — query/remember/stats/log/reset.
+"""Offline tests for the ``memory-cli`` — query/remember/stats/log/reset.
 
-Drives ``cli.main`` with a temp ``$MEMORY_STORE``. Because no real Orchestrator is
-wired yet, ``remember`` no-ops and ``query`` returns nothing (fail-open) — the test
-asserts the CLI plumbing, JSON output, and the events stream behave, not retrieval
-quality (covered against a fake Orchestrator in test_core).
+Drives ``cli.main`` with a temp ``$MEMORY_STORE`` backed by the real Router over the
+store backends. Asserts the CLI plumbing, JSON output, the events stream, and a real
+remember→query round-trip.
 """
 
 from __future__ import annotations
@@ -23,16 +22,19 @@ def _run(capsys, argv) -> dict:
     return json.loads(out)
 
 
-def test_query_outputs_hits_json(tmp_path, capsys):
+def test_remember_then_query_round_trip(tmp_path, capsys):
+    res = _run(capsys, ["--store", str(tmp_path), "remember", "we chose sqlite", "--tags", "decision"])
+    assert res["stored"] is True
+    assert res["id"]
+    res = _run(capsys, ["--store", str(tmp_path), "query", "sqlite"])
+    assert res["query"] == "sqlite"
+    assert any("sqlite" in h["content"] for h in res["hits"])
+
+
+def test_query_empty_store_returns_no_hits(tmp_path, capsys):
     res = _run(capsys, ["--store", str(tmp_path), "query", "anything"])
     assert res["query"] == "anything"
-    assert res["hits"] == []  # fail-open: no backend wired
-
-
-def test_remember_outputs_id_json(tmp_path, capsys):
-    res = _run(capsys, ["--store", str(tmp_path), "remember", "a fact", "--tags", "x,y"])
-    assert res["stored"] is False  # fail-open: NullOrchestrator
-    assert res["id"] == ""
+    assert res["hits"] == []
 
 
 def test_stats_counts_events(tmp_path, capsys):

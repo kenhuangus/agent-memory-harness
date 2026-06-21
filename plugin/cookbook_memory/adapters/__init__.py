@@ -1,6 +1,6 @@
 """Per-harness adapters over the shared :mod:`cookbook_memory.core`.
 
-Claude Code is the first (and only, for the MVP) adapter. OpenCode and Codex
-adapters drop in here as siblings later — each is thin (config + a few hook shims),
-because the recall/remember/events logic lives once in the core.
+Each adapter is thin — config plus a few hook shims for one coding harness — because
+the recall/remember/events logic lives once in the core. Harness-specific code lives
+only here; everything reusable belongs in the core.
 """

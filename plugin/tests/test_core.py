@@ -1,33 +1,31 @@
-"""Offline tests for the plugin core: recall/remember, events, fail-open.
+"""Offline tests for the plugin core: MemoryClient recall/remember, events, fail-open.
 
-Stdlib + pytest only; no MCP SDK, no real Orchestrator, no network. A fake
-Orchestrator stands in for the storage workstream's real one so the plugin's
-behavior (routing through the seam, emitting events, failing open) is verified in
-isolation.
+Stdlib + pytest only; no MCP SDK, no network. A fake engine is injected via the
+``build_engine`` seam so the client's behavior (events, fail-open) is verified in
+isolation; a separate test exercises the real Router-backed engine over a temp store.
 """
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 import pytest
 
-from cookbook_memory.core import Memory, build_memory
+from cookbook_memory.core import Hit, MemoryClient
+from cookbook_memory.core import client as client_mod
 from cookbook_memory.core.config import Settings
 from cookbook_memory.core.events import EventStream
-from cookbook_memory.core.orchestrator import Hit, NullOrchestrator, make_orchestrator
 
 
-class FakeOrchestrator:
-    """A minimal in-memory Orchestrator for tests (route·rank·dedup stand-in)."""
+class FakeEngine:
+    """A minimal in-memory engine for tests (Router+stores stand-in)."""
 
-    def __init__(self) -> None:
-        self.items: list[tuple[str, str]] = []  # (id, content)
+    def __init__(self, *, boom: bool = False) -> None:
+        self.items: list[tuple[str, str]] = []
         self.n = 0
+        self.boom = boom
 
-    def recall(self, query, *, k=5, as_of=None):
-        # Naive substring relevance, best-first, capped at k.
+    def recall(self, query, *, k, as_of):
+        if self.boom:
+            raise RuntimeError("engine down")
         hits = [
             Hit(id=i, content=c, score=1.0, tokens=len(c.split()), rank=r)
             for r, (i, c) in enumerate(self.items)
@@ -35,103 +33,91 @@ class FakeOrchestrator:
         ]
         return hits[:k]
 
-    def remember(self, content, *, tags=None, timestamp=0.0):
+    def remember(self, content, *, tags, timestamp):
+        if self.boom:
+            raise RuntimeError("engine down")
         self.n += 1
         mem_id = f"mem-{self.n}"
         self.items.append((mem_id, content))
         return mem_id
 
 
-class BoomOrchestrator:
-    """An Orchestrator that always raises — exercises the fail-open path."""
-
-    def recall(self, query, *, k=5, as_of=None):
-        raise RuntimeError("backend down")
-
-    def remember(self, content, *, tags=None, timestamp=0.0):
-        raise RuntimeError("backend down")
-
-
-def _memory(tmp_path: Path, orch) -> Memory:
-    events = EventStream(tmp_path / "events.jsonl")
-    return Memory(orch, events, session_id="s1", default_k=5)
+@pytest.fixture
+def inject_engine(monkeypatch):
+    """Override the build_engine seam to return a chosen fake engine."""
+    def _install(engine):
+        monkeypatch.setattr(client_mod, "build_engine", lambda store_path: engine)
+        return engine
+    return _install
 
 
-def test_remember_then_recall(tmp_path):
-    mem = _memory(tmp_path, FakeOrchestrator())
-    mem_id = mem.remember("we chose sqlite for the store", tags=["decision"])
-    assert mem_id == "mem-1"
-    hits = mem.recall("sqlite")
+def _client(tmp_path, store=True) -> MemoryClient:
+    return MemoryClient(store=str(tmp_path) if store else None, session_id="s1")
+
+
+def test_remember_then_recall(tmp_path, inject_engine):
+    inject_engine(FakeEngine())
+    c = _client(tmp_path)
+    assert c.remember("we chose sqlite for the store", tags=["decision"]) == "mem-1"
+    hits = c.recall("sqlite")
     assert [h.id for h in hits] == ["mem-1"]
     assert hits[0].content.startswith("we chose sqlite")
 
 
-def test_recall_respects_k(tmp_path):
-    orch = FakeOrchestrator()
-    mem = _memory(tmp_path, orch)
+def test_recall_respects_k(tmp_path, inject_engine):
+    inject_engine(FakeEngine())
+    c = _client(tmp_path)
     for i in range(5):
-        mem.remember(f"note about topic {i}")
-    assert len(mem.recall("topic", k=2)) == 2
+        c.remember(f"note about topic {i}")
+    assert len(c.recall("topic", k=2)) == 2
 
 
-def test_events_are_emitted(tmp_path):
-    mem = _memory(tmp_path, FakeOrchestrator())
-    mem.remember("alpha")
-    mem.recall("alpha")
-    events = mem.events.read()
-    ops = [e["op"] for e in events]
-    assert ops == ["remember", "recall"]
+def test_events_are_emitted(tmp_path, inject_engine):
+    inject_engine(FakeEngine())
+    c = _client(tmp_path)
+    c.remember("alpha")
+    c.recall("alpha")
+    events = c.events.read()
+    assert [e["op"] for e in events] == ["remember", "recall"]
     assert events[0]["session_id"] == "s1"
     assert events[1]["ids"] == ["mem-1"]
 
 
-def test_recall_fail_open_returns_empty_and_logs_error(tmp_path):
-    mem = _memory(tmp_path, BoomOrchestrator())
-    assert mem.recall("anything") == []
-    events = mem.events.read()
-    assert events[-1]["op"] == "error"
-    assert events[-1]["meta"]["op_attempted"] == "recall"
+def test_recall_fail_open_returns_empty_and_logs_error(tmp_path, inject_engine):
+    inject_engine(FakeEngine(boom=True))
+    c = _client(tmp_path)
+    assert c.recall("anything") == []
+    assert c.events.read()[-1]["op"] == "error"
+    assert c.events.read()[-1]["meta"]["op_attempted"] == "recall"
 
 
-def test_remember_fail_open_returns_empty_and_logs_error(tmp_path):
-    mem = _memory(tmp_path, BoomOrchestrator())
-    assert mem.remember("anything") == ""
-    events = mem.events.read()
-    assert events[-1]["op"] == "error"
-    assert events[-1]["meta"]["op_attempted"] == "remember"
+def test_remember_fail_open_returns_empty_and_logs_error(tmp_path, inject_engine):
+    inject_engine(FakeEngine(boom=True))
+    c = _client(tmp_path)
+    assert c.remember("anything") == ""
+    assert c.events.read()[-1]["op"] == "error"
+    assert c.events.read()[-1]["meta"]["op_attempted"] == "remember"
 
 
-def test_null_orchestrator_is_fail_open(tmp_path):
-    mem = _memory(tmp_path, NullOrchestrator("test"))
-    assert mem.recall("x") == []
-    assert mem.remember("y") == ""
-    # Null is not an error — it's a clean no-op; recall/remember events still logged.
-    ops = [e["op"] for e in mem.events.read()]
-    assert ops == ["recall", "remember"]
+def test_client_without_store_is_fail_open(monkeypatch):
+    monkeypatch.delenv("MEMORY_STORE", raising=False)
+    c = MemoryClient()
+    assert c.recall("x") == []
+    assert c.remember("y") == ""
 
 
-def test_make_orchestrator_without_store_is_null():
-    orch = make_orchestrator({})
-    assert isinstance(orch, NullOrchestrator)
-
-
-def test_make_orchestrator_with_store_falls_back_to_null_until_backend_lands(tmp_path):
-    # The real Orchestrator isn't wired yet, so even with a store it degrades.
-    orch = make_orchestrator({"MEMORY_STORE": str(tmp_path)})
-    assert isinstance(orch, NullOrchestrator)
+def test_client_with_real_engine_round_trips(tmp_path):
+    # No injection: exercises the real Router-backed engine over a temp store.
+    c = MemoryClient(store=str(tmp_path), session_id="s1")
+    assert c.remember("we chose sqlite for the store", tags=["decision"])
+    hits = c.recall("sqlite")
+    assert any("sqlite" in h.content for h in hits)
 
 
 def test_events_stream_none_path_is_noop():
     stream = EventStream(None)
     stream.emit("recall", query="q")  # must not raise
     assert stream.read() == []
-
-
-def test_build_memory_without_store_is_usable(monkeypatch):
-    monkeypatch.delenv("MEMORY_STORE", raising=False)
-    mem = build_memory()
-    assert mem.recall("anything") == []
-    assert mem.remember("anything") == ""
 
 
 def test_settings_from_env_resolves_events_path(tmp_path, monkeypatch):
