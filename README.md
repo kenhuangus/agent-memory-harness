@@ -74,28 +74,40 @@ Complementary: [LoCoMo](https://arxiv.org/abs/2402.17753), [SWE-bench](https://w
 ## Run the benchmarks (the `eval/` harness)
 
 The evaluation code lives in [`eval/`](eval/) — a stdlib-first Python package
-(`memeval`). You can run all five benchmarks **locally through the Claude Code
-CLI**, comparing Claude Code's **built-in memory** vs **our plugin memory**, on
-your Claude Code **subscription** (no API key, no API billing).
+(`memeval`). You can run each benchmark **on its own**, or all five together,
+**locally through the Claude Code CLI**, comparing Claude Code's **built-in
+memory** vs **our plugin memory**, on your Claude Code **subscription** (no API
+key, no API billing). Installing puts a **`memeval-bench`** command on your PATH.
 
 ```bash
 cd eval
 pip install -e ".[claudecode,hf]"               # harness + MCP memory plugin + dataset loaders
 npm install -g @anthropic-ai/claude-code         # the `claude` CLI (the agent under test)
 
-# 1) offline smoke first (free, no claude, bundled fixtures):
-python -m memeval.claudecode.run_bench --benchmark longmemeval --mode builtin \
-    --path fixtures --limit 2 --results /tmp/cc.json
+memeval-bench --list-benchmarks                  # see the five ids (offline, no claude)
 
-# 2) the full comparison: 5 benchmarks x {builtin, plugin}, per-benchmark entry floors:
-python -m memeval.claudecode.run_bench --benchmark all --mode all \
+# 1) offline smoke first (free, no claude, bundled fixtures):
+memeval-bench --benchmark longmemeval --mode builtin --path fixtures --limit 2 --results /tmp/cc.json
+
+# 2) run ONE benchmark on its own (both memory modes), real data:
+memeval-bench --benchmark memoryagentbench --mode all \
     --model claude-haiku-4-5 --out-dir ../runs/claudecode \
     --results ../runs/claudecode/results.json
 
-# 3) read the verdict (our memory vs Claude Code's built-in memory, per benchmark):
+# 3) or the full comparison: all 5 benchmarks x {builtin, plugin}, per-benchmark entry floors:
+memeval-bench --benchmark all --mode all \
+    --model claude-haiku-4-5 --out-dir ../runs/claudecode \
+    --results ../runs/claudecode/results.json
+
+# 4) read the verdict (our memory vs Claude Code's built-in memory, per benchmark):
 python -m memeval.results summary --path ../runs/claudecode/results.json
 ```
 
+`memeval-bench …` is the installed short form of `python -m memeval.claudecode.run_bench …`
+(use the module form if you didn't `pip install`). Run `memeval-bench --help` for every flag.
+
+- **Run any benchmark separately** — `--benchmark <id>` (one of the five from
+  `--list-benchmarks`) runs just that one; `--benchmark all` runs them in sequence.
 - **Auth is subscription-only** — `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` are
   stripped from every `claude` invocation; runs use your Claude Code OAuth login.
 - **Cross-platform**, auto-detected: macOS · Linux · Windows · Windows→WSL.

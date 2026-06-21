@@ -94,8 +94,12 @@ Repository = "https://github.com/your-org/agent-memory-harness"
 "Benchmark: SWE-Bench-CL" = "https://huggingface.co/datasets/thomasjoshi/swe-bench-cl"
 
 [project.scripts]
-# Console entry point mirroring `python -m memeval.cli`.
+# Console entry point mirroring `python -m memeval.cli` (offline/API-model harness).
 memeval = "memeval.cli:main"
+# Per-developer benchmark runner over the Claude Code CLI (builtin vs plugin memory,
+# subscription auth). `memeval-bench --benchmark longmemeval --mode plugin` is the
+# short form of `python -m memeval.claudecode.run_bench …`.
+memeval-bench = "memeval.claudecode.run_bench:main"
 
 # --------------------------------------------------------------------------- #
 # setuptools packaging
