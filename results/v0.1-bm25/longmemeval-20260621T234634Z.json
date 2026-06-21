@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "memory_version": "v0.1-bm25",
+  "benchmark": "longmemeval",
+  "timestamp": "20260621T234634Z",
+  "runs": [
+    {
+      "run_id": "claude-code-plugin",
+      "timestamp": "2026-06-21T23:52:44+00:00",
+      "benchmark": "longmemeval",
+      "model": "claude-code:claude-haiku-4-5:plugin",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:plugin+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.8421052631578947,
+        "efficiency": 61.91446670748621,
+        "relevancy": 0.5725384050075168,
+        "accuracy": 0.25,
+        "recency_decayed": 0.22895541403618053,
+        "precision_at_k": 0.350253807106599,
+        "accuracy_memory_off": null,
+        "n": 20,
+        "extra": {}
+      },
+      "n_tasks": 20,
+      "entries_used": 20,
+      "entries_available": 500,
+      "limit": 20,
+      "selection": "flat",
+      "cost_usd": 0.040542,
+      "tokens_in": 692,
+      "tokens_out": 7970,
+      "partial": true,
+      "budget_exceeded": false,
+      "source": "longmemeval_s",
+      "reliability": {
+        "n_errors": 0,
+        "memory_reached": 20,
+        "errors": []
+      },
+      "notes": "Claude Code CLI \u00b7 memory=plugin"
+    }
+  ]
+}
