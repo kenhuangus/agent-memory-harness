@@ -241,6 +241,45 @@ class RouterConfig:
 
 
 # --------------------------------------------------------------------------- #
+# Named profile presets (D008 PR2.5) — preset factories over RouterConfig.
+#
+# Two presets ship as PUBLIC, intent-named entry points. ``balanced`` is
+# intentionally NOT a public factory (D016 ruling): it is a profile-matrix
+# reporter ROW only — cascade-on over the stdlib stores — promoted to a named
+# preset later only if the eval data justifies it.
+# --------------------------------------------------------------------------- #
+def speed_profile() -> RouterConfig:
+    """The default ``speed`` profile: today's router, byte-for-byte.
+
+    Rule-based classifier (built internally), offline hashing embedder, cascade
+    OFF — one best-route per query, no fan-out. Identical to ``RouterConfig()``;
+    named so a caller can select it by intent rather than by the bare default.
+    """
+    return RouterConfig()
+
+
+def accuracy_profile(*, classifier: RouterClassifier, embed: Any,
+                     embed_model: Optional[str] = None, k: int = 8) -> RouterConfig:
+    """The ``accuracy`` profile: injected classifier + real embedder, cascade ON.
+
+    The heavy strategies are CALLER-INJECTED (PR3): ``classifier`` is a
+    :class:`RouterClassifier` (e.g. a learned / spaCy classifier) and ``embed`` is
+    a real embedder the vector store is built around. This factory only *builds the
+    config* — it turns the graph→vector cascade on and leaves ``consult2`` at its
+    declared default (no RRF / second-opinion implementation ships here). ``k`` is
+    the profile's retrieval breadth (wider than speed's default 5).
+    """
+    return RouterConfig(
+        profile_name="accuracy",
+        classifier=classifier,
+        cascade=CascadeConfig(enabled=True),
+        embed=embed,
+        embed_model=embed_model,
+        k=k,
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Exact-anchor gate identity helpers (ported from D008 PR1 test_d008_evals).
 # --------------------------------------------------------------------------- #
 _BACKTICK_RE = re.compile(r"`([^`]+)`")
@@ -523,4 +562,7 @@ class Router:
         )
 
 
-__all__ = ["Router", "RouterConfig", "CascadeConfig", "Consult2Config"]
+__all__ = [
+    "Router", "RouterConfig", "CascadeConfig", "Consult2Config",
+    "speed_profile", "accuracy_profile",
+]
