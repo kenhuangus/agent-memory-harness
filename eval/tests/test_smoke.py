@@ -755,6 +755,55 @@ def test_claudecode_platform_path_translation_and_argv() -> None:
     assert "/mnt/c/w/.mcp.json" in argv and "--strict-mcp-config" in argv
 
 
+def test_claudecode_primed_stream_json_argv_and_parse() -> None:
+    # The plugin (MCP) path drives a *priming turn* over stream-json I/O to close
+    # the startup race where `claude -p` generates before the MCP tools register.
+    from memeval.claudecode.platform import ClaudeRuntime
+    from memeval.claudecode import cli
+    # native primed argv: stream-json I/O, NO `-p <prompt>` positional (prompt is
+    # fed via stdin), MCP config + strict flag carried through.
+    nat = ClaudeRuntime(kind="native", exe="claude")
+    argv, cwd = cli.build_argv_primed(nat, cwd="/work", model="claude-haiku-4-5",
+                                      mcp_config="/work/.mcp.json", strict_mcp=True)
+    assert argv[:2] == ["claude", "-p"] and cwd == "/work"
+    assert "--input-format" in argv and "stream-json" in argv
+    assert argv[argv.index("--output-format") + 1] == "stream-json"
+    assert "/work/.mcp.json" in argv and "--strict-mcp-config" in argv
+    # the prompt must NOT appear as a positional (it goes to stdin)
+    assert "hi" not in argv
+    # WSL primed argv wraps with `wsl -d <distro> --cd ... -- env -u ... claude -p ...`
+    wsl = ClaudeRuntime(kind="wsl", exe="/home/k/.local/bin/claude", distro="Ubuntu")
+    wargv, wcwd = cli.build_argv_primed(wsl, cwd=r"C:\w", mcp_config=r"C:\w\.mcp.json",
+                                        strict_mcp=True)
+    assert wargv[0] == "wsl" and wcwd is None and "/mnt/c/w/.mcp.json" in wargv
+    assert "--input-format" in wargv and "stream-json" in wargv
+
+    # stdin serialization: priming turn first, then the real prompt, each a JSON
+    # `user` event on its own line.
+    import json as _json
+    stream = cli._stream_json_input([cli._PRIME_MESSAGE, "what is the secret?"])
+    lines = [l for l in stream.splitlines() if l.strip()]
+    assert len(lines) == 2
+    first = _json.loads(lines[0]); second = _json.loads(lines[1])
+    assert first["type"] == "user" and first["message"]["content"] == cli._PRIME_MESSAGE
+    assert second["message"]["content"] == "what is the secret?"
+
+    # parser returns the LAST result event (the real answer, not the priming reply)
+    # and sums usage across turns.
+    out = "\n".join([
+        _json.dumps({"type": "system", "subtype": "init"}),
+        _json.dumps({"type": "result", "result": "READY",
+                     "usage": {"input_tokens": 5, "output_tokens": 1}}),
+        _json.dumps({"type": "assistant", "message": {"content": "x"}}),
+        _json.dumps({"type": "result", "result": "the secret is MAUVE-42",
+                     "usage": {"input_tokens": 30, "output_tokens": 7},
+                     "total_cost_usd": 0.01, "num_turns": 1}),
+    ])
+    res = cli._parse_stream_json(out)
+    assert res.text == "the secret is MAUVE-42"      # last result, not "READY"
+    assert res.tokens_in == 35 and res.tokens_out == 8   # summed across turns
+
+
 def test_claudecode_plugin_mcp_json_uses_wsl_python_and_paths() -> None:
     # Under a WSL runtime the .mcp.json must use the WSL python + /mnt paths so the
     # server claude spawns inside WSL can find memeval and the bundle.
