@@ -45,15 +45,17 @@ _TOKEN = 1.0
 _SHORT = 1.5
 
 # Relationship / traversal / dependency / impact intent -> graph.
-# Note: "called" (naming) is intentionally NOT here (it's literal); only "call(s|ing)"
-# (the call-graph sense) is. "using" was dropped — too broad ("by using X" != depends).
+# Note: "called"/"calling" (naming) are intentionally NOT here (they're literal); only the
+# third-person "call(s)" (the call-graph sense) is. "using" was dropped — too broad
+# ("by using X" != depends). "touch(es)" (what else touches X) and "downstream" (impact /
+# fan-out) are dependency/impact signals alongside the existing "what breaks"/"affect".
 _GRAPH_RE = re.compile(
     r"\bdepends?\s+on\b|\bdepend(?:s|ency|encies)?\b"
-    r"|\bcall(?:s|ing)?\b|\buses?\b|\bused\s+by\b|\bimport(?:s|ed|ing)?\b"
+    r"|\bcalls?\b|\buses?\b|\bused\s+by\b|\bimport(?:s|ed|ing)?\b"
     r"|\bconnect(?:s|ed|ion)?\s+to\b|\bconnected\b"
-    r"|\brelate[sd]?\b|\brelationship\b"
+    r"|\brelate[sd]?\b|\brelationship\b|\btouch(?:es|ed|ing)?\b"
     r"|\bconflicts?\s+with\b|\bcontradicts?\b"
-    r"|\blinked?\s+to\b"
+    r"|\blinked?\s+to\b|\bdownstream\b"
     r"|\brenam(?:e|es|ed|ing)\b|\bimpact(?:s|ed)?\b|\baffect(?:s|ed)?\b|\bwhat\s+breaks?\b",
     re.I,
 )
@@ -61,9 +63,10 @@ _GRAPH_RE = re.compile(
 # structural but usually mean "synthesize this for me", so they live in _VECTOR_RE now.
 
 # Conceptual / rationale / synthesis intent -> vectors. Overrides surface code tokens.
+# "gist" ("give me the gist of X" / "the gist of what X is for") is a summary ask.
 _VECTOR_RE = re.compile(
     r"\bwhy\b|\bhow\s+come\b|\breason(?:ing|s|ed)?\b|\brationale\b"
-    r"|\bsummar(?:y|ies|ize|ise)\b|\bexplain\b|\boverview\b"
+    r"|\bsummar(?:y|ies|ize|ise)\b|\bexplain\b|\boverview\b|\bgist\b"
     r"|\btrade[\s-]?offs?\b|\bdecid(?:e|ed|es|ing)\b|\bdecision\b"
     r"|\bchose\b|\bchoose\b|\bchoosing\b|\bthoughts?\s+on\b|\bapproach\b"
     r"|\bcompar(?:e|es|ed|ing)\b|\bcomparisons?\b|\beverything\b.{0,20}\babout\b"
@@ -71,24 +74,54 @@ _VECTOR_RE = re.compile(
     re.I,
 )
 
-# Literal-lookup intent -> markdown, even inside a question. "called" = naming
-# ("what is X called", "the flag called Y"), a literal/keyword ask, not a call-graph.
+# Literal-lookup intent -> markdown, even inside a question. "called"/"calling" = naming
+# ("what is X called", "what we ended up calling X"), a literal/keyword ask, not a
+# call-graph. "value of" was dropped — "the value of doing X" is benefit/rationale, not a
+# literal field value; a real value lookup still routes here via its code token.
 _LITERAL_RE = re.compile(
-    r"\b(?:exact\s+)?name\s+(?:of|for)\b|\bvalue\s+of\b|\bsignature\b"
-    r"|\bdefinition\s+of\b|\bdefined\b|\bspelling\b|\bfile\b|\bcalled\b",
+    r"\b(?:exact\s+)?name\s+(?:of|for)\b|\bsignature\b"
+    r"|\bdefinition\s+of\b|\bdefined\b|\bspelling\b|\bfile\b|\bcalled\b|\bcalling\b",
     re.I,
 )
 
 # Code-shaped tokens -> markdown (case-sensitive on purpose). Modest weight, capped.
+# URL / rooted-path / env-var literals are markdown signals too: a user pasting a URL,
+# a "/a/b/c" path, or an "ANTHROPIC_"-shaped env-var name wants the literal string.
 _CODE_RE = re.compile(
     r"`[^`]+`"                                       # backticked span
+    r"|https?://\S+"                                  # URL literal
+    r"|/\w[\w.#-]*(?:/[\w.#-]+)+"                      # rooted multi-segment path /a/b
     r"|[A-Za-z_][\w./-]*\.(?:py|md|json|txt|ya?ml)\b"  # filename.ext
     r"|[a-z]+_[a-z0-9_]+"                             # snake_case
     r"|[a-z]+[A-Z]\w*"                                # camelCase / internal cap
     r"|\b[A-Z][A-Z0-9]{2,}(?:_[A-Z0-9]+)*\b"          # ALL_CAPS / CONSTANTS
+    r"|\b[A-Z][A-Z0-9]*_[A-Z0-9_]*"                   # env-var-shaped, incl. trailing _ (ANTHROPIC_)
     r"|\b\w+\(\)"                                     # func()
 )
 _QUOTED_RE = re.compile(r"[\"'][^\"']+[\"']")
+# Backticked / quoted spans are literals the user wants found verbatim — a graph/vector/
+# literal trigger word INSIDE one must not fire intent (it still counts as a markdown
+# code/quote token). Intent regexes match the literal-stripped text; tokens, the full query.
+_LITERAL_SPAN_RE = re.compile(r"`[^`]+`|[\"'][^\"']+[\"']")
+# A definitive "synthesize the rationale" ask = an explicit summary COMMAND whose DIRECT
+# OBJECT is an abstract rationale noun ("summarize the rationale", "explain the tradeoffs").
+# This must tip a tie toward vectors, past incidental graph / markdown meta-words
+# ("related"/"file") that are mere objects of the question (not relations).
+#
+# The noun must be the command's object — only articles / determiners may sit between them.
+# That keeps the bonus OFF a relational query that merely NAMES such a noun as an ENTITY:
+# "summarize what imports the reasoning package" / "...the modules that depend on the
+# rationale service" are graph asks (a strong relational verb governs the noun), so the noun
+# is not the synth command's object and the bonus stays silent. A genuine "summarize the
+# rationale of how X depends on Y" still fires (rationale IS the object).
+_SYNTH_RATIONALE_RE = re.compile(
+    r"\b(?:summar(?:y|ies|ize|ise)|explain|overview|gist)\b"
+    r"(?:\s+(?:the|a|an|our|its|their|your|my|this|that|these|those"
+    r"|all|whole|full|entire|key|main|overall|general))*"
+    r"\s+(?:rationale|trade[\s-]?offs?|reasoning)\b",
+    re.I,
+)
+_SYNTH_RATIONALE_BONUS = 1.0
 _QUESTION_RE = re.compile(
     r"^\s*(?:what|which|where|who|whose|when|how|is|are|do|does|can|could|should)\b", re.I
 )
@@ -102,12 +135,22 @@ _FALLBACK = (VECTORS, MARKDOWN, GRAPH)
 def _score(query: str) -> dict[str, float]:
     """Per-backend signal score for ``query`` (higher = stronger fit)."""
     scores = {GRAPH: 0.0, VECTORS: 0.0, MARKDOWN: 0.0}
-    if _GRAPH_RE.search(query):
+    # Match INTENT on the literal-stripped text so a trigger word quoted/backticked as a
+    # literal ("...said 'do not call this inside a loop'") does not fire its backend.
+    intent = _LITERAL_SPAN_RE.sub(" ", query)
+    if _GRAPH_RE.search(intent):
         scores[GRAPH] += _STRONG
-    if _VECTOR_RE.search(query):
+    if _VECTOR_RE.search(intent):
         scores[VECTORS] += _STRONG
-    if _LITERAL_RE.search(query):
+    if _LITERAL_RE.search(intent):
         scores[MARKDOWN] += _STRONG
+    if _SYNTH_RATIONALE_RE.search(intent):
+        # "summarize the rationale and tradeoffs" — a definitive synthesis ask whose OBJECT is
+        # the rationale itself; tip a tie away from incidental graph/markdown meta-words toward
+        # vectors. A relational query that only NAMES a rationale noun as an entity ("summarize
+        # what imports the reasoning package") does NOT match here and keeps its graph route.
+        scores[VECTORS] += _SYNTH_RATIONALE_BONUS
+    # Code/quote tokens are scored on the FULL query (the literal the user named still counts).
     code_hits = len(_CODE_RE.findall(query)) + len(_QUOTED_RE.findall(query))
     if code_hits:
         scores[MARKDOWN] += min(2.0, float(code_hits)) * _TOKEN
@@ -115,7 +158,7 @@ def _score(query: str) -> dict[str, float]:
     # Count word-like tokens (not raw split) so empty / whitespace / punctuation-only
     # inputs score nothing here and fall to the semantic default instead of markdown.
     words = re.findall(r"[A-Za-z0-9]+", query)
-    if 1 <= len(words) <= 3 and not _QUESTION_RE.search(query) and not _GRAPH_RE.search(query):
+    if 1 <= len(words) <= 3 and not _QUESTION_RE.search(query) and not _GRAPH_RE.search(intent):
         scores[MARKDOWN] += _SHORT
     return scores
 
