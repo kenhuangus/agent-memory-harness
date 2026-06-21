@@ -17,7 +17,11 @@ from pathlib import Path
 
 from memeval.protocols import MemoryStore
 from memeval.schema import MemoryItem
-from memeval.stores.sqlite_store import SqliteVectorStore
+from memeval.stores.sqlite_store import (
+    SqliteVectorStore,
+    _HashingEmbedder,
+    _embedder_accepts_input_type,
+)
 
 
 def _mk(item_id: str, content: str, *, timestamp: float = 0.0,
@@ -134,6 +138,88 @@ class SqliteVectorStoreTests(unittest.TestCase):
         s.write(_mk("a", "configuration"))
         self.assertEqual(s.search("", k=5), [])
         self.assertEqual(s.search("   ", k=5), [])
+
+
+class EmbedSeamInputTypeTests(unittest.TestCase):
+    """The store-internal query/document ``input_type`` seam (backward-compatible).
+
+    The store passes ``input_type`` ('document' on write, 'query' on search) only to
+    embedders whose signature accepts it; the offline hashing default accepts-and-
+    ignores it, and a legacy one-arg ``text -> vector`` embedder is called positionally
+    exactly as before. None of this is part of the frozen ``MemoryStore`` contract.
+    """
+
+    def test_accepts_input_type_detection(self) -> None:
+        # hashing default + kwarg-aware callables -> True
+        self.assertTrue(_embedder_accepts_input_type(_HashingEmbedder()))
+
+        def kw(text, *, input_type=None):
+            return [0.0]
+        self.assertTrue(_embedder_accepts_input_type(kw))
+
+        def varkw(text, **kwargs):
+            return [0.0]
+        self.assertTrue(_embedder_accepts_input_type(varkw))
+
+        # legacy one-arg callable -> False (called positionally)
+        def one_arg(text):
+            return [0.0]
+        self.assertFalse(_embedder_accepts_input_type(one_arg))
+
+    def test_hashing_embedder_accepts_and_ignores_input_type(self) -> None:
+        emb = _HashingEmbedder()
+        base = emb("configuration settings")
+        self.assertEqual(emb("configuration settings", input_type="document"), base)
+        self.assertEqual(emb("configuration settings", input_type="query"), base)
+
+    def test_kwarg_aware_embedder_receives_document_and_query(self) -> None:
+        seen: list = []
+
+        def recording(text, *, input_type=None):
+            seen.append(input_type)
+            return [1.0, 0.0] if "alpha" in (text or "").lower() else [0.0, 1.0]
+
+        s = SqliteVectorStore(":memory:", embed=recording)
+        s.write(_mk("a", "alpha one"))
+        s.search("alpha query", k=1)
+        self.assertEqual(seen, ["document", "query"])
+
+    def test_legacy_one_arg_embedder_not_passed_input_type(self) -> None:
+        # A strict one-arg embedder that rejects any kwarg must still work: the store
+        # must call it positionally, never with input_type=.
+        def strict_one_arg(text):
+            return [1.0, 0.0] if "alpha" in (text or "").lower() else [0.0, 1.0]
+
+        s = SqliteVectorStore(":memory:", embed=strict_one_arg)
+        s.write(_mk("a", "alpha one"))   # would TypeError if input_type were passed
+        self.assertEqual(s.search("alpha", k=1)[0].item_id, "a")
+
+    def test_sole_positional_named_input_type_is_called_positionally(self) -> None:
+        # An embedder whose SOLE positional param is (coincidentally) named
+        # ``input_type`` is a legacy one-arg ``text -> vector`` callable, NOT the
+        # query/document seam: classifying it as accepting would make the store call
+        # embed(text, input_type=text) and collide on that single parameter. It must be
+        # detected False and called positionally with the text.
+        seen: list = []
+
+        def embed(input_type):  # sole positional; the name is a red herring
+            seen.append(input_type)
+            return [1.0, 0.0] if "alpha" in (input_type or "").lower() else [0.0, 1.0]
+
+        self.assertFalse(_embedder_accepts_input_type(embed))
+        s = SqliteVectorStore(":memory:", embed=embed)
+        s.write(_mk("a", "alpha one"))   # must NOT raise TypeError on write
+        self.assertEqual(s.search("alpha", k=1)[0].item_id, "a")
+        # the param received the TEXT positionally, never input_type='document'/'query'
+        self.assertEqual(seen, ["alpha one", "alpha"])
+
+    def test_second_positional_or_keyword_input_type_still_accepted(self) -> None:
+        # Conversely, ``def embed(text, input_type=None)`` (input_type is the SECOND
+        # positional-or-keyword param) stays accepted: embed(text, input_type=...) is
+        # unambiguous there, so this currently-correct shape must remain True.
+        def embed(text, input_type=None):
+            return [0.0]
+        self.assertTrue(_embedder_accepts_input_type(embed))
 
 
 if __name__ == "__main__":

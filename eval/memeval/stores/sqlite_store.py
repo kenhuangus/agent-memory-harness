@@ -6,14 +6,24 @@ cosine. This keeps the offline/test path zero-dependency.
 
 The paid-path upgrade changes nothing about the ``MemoryStore`` contract: inject a
 real dense embedder via ``SqliteVectorStore(embed=...)`` (Voyage ``voyage-3-large`` /
-``bge-m3``, PRD §7.1) and later swap brute-force for an ANN index (HNSW/FAISS).
-Offline similarity is fuzzy/lexical (char-n-grams catch morphology the keyword store
-can't); true dense semantics arrive with the real embedder.
+``bge-m3``, PRD §7.1; see :mod:`memeval.stores.embedders`) and later swap brute-force
+for an ANN index (HNSW/FAISS). Offline similarity is fuzzy/lexical (char-n-grams catch
+morphology the keyword store can't); true dense semantics arrive with the real embedder.
+
+Query/document asymmetry (store-internal seam): a real embedder (e.g. Voyage) embeds a
+stored item and a search query differently — ``input_type="document"`` vs ``"query"`` —
+a retrieval-quality win. The store carries that distinction through the embed seam:
+:meth:`write` embeds with ``"document"``, :meth:`search` with ``"query"``. This is
+*store-internal* (NOT part of the frozen ``MemoryStore`` contract) and fully
+backward-compatible: an embedder is only passed ``input_type`` when its signature
+accepts it, so the offline default and any legacy one-arg ``text -> vector`` embedder
+behave exactly as before.
 """
 
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import math
 import sqlite3
@@ -21,7 +31,47 @@ from typing import Any, Callable, Optional
 
 from ..schema import MemoryItem, RetrievedItem
 
-Embedder = Callable[[str], list]
+# A ``text -> vector`` callable. It MAY optionally accept a keyword-only ``input_type``
+# ('document' | 'query') so a query/document-aware embedder (e.g. Voyage) can carry the
+# asymmetry; the store passes ``input_type`` only when the embedder's signature accepts
+# it (see ``_embedder_accepts_input_type``) and otherwise calls the legacy one-arg form,
+# so older injected embedders keep working unchanged.
+Embedder = Callable[..., list]
+
+
+def _embedder_accepts_input_type(embed: Embedder) -> bool:
+    """True if ``embed`` can be called as ``embed(text, input_type=...)``, else False.
+
+    Lets the store pass ``input_type`` to query/document-aware embedders (the offline
+    hashing default, :class:`memeval.stores.embedders.MockEmbedder`,
+    :class:`~memeval.stores.embedders.VoyageEmbedder`) while staying backward-compatible
+    with the original one-arg ``text -> vector`` seam — a legacy single-arg callable
+    (or any object whose signature can't be read) is simply called positionally.
+
+    A ``**kwargs`` param always qualifies. A param literally named ``input_type``
+    qualifies only when it is *keyword-addressable alongside a leading text positional*:
+    keyword-only, or positional-or-keyword that is **not** the first positional. A sole
+    or leading positional named ``input_type`` is the embedder's *text* argument, not the
+    seam — classifying it as accepting would make the store call ``embed(text,
+    input_type=text)`` and collide on that one parameter (TypeError on write).
+    """
+    try:
+        params = inspect.signature(embed).parameters
+    except (TypeError, ValueError):  # builtins / C callables without a readable signature
+        return False
+    seen_positional = False
+    for p in params.values():
+        if p.kind is p.VAR_KEYWORD:
+            return True
+        if p.name == "input_type":
+            if p.kind is p.KEYWORD_ONLY:
+                return True
+            if p.kind is p.POSITIONAL_OR_KEYWORD and seen_positional:
+                return True
+            # else: POSITIONAL_ONLY, or the leading positional -> the text arg, not the seam.
+        if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD):
+            seen_positional = True
+    return False
 
 
 class _HashingEmbedder:
@@ -30,12 +80,16 @@ class _HashingEmbedder:
     Hashes each character n-gram to a signed bucket in a fixed-dim vector and
     L2-normalizes. Gives fuzzy/morphological similarity with no model or dependency.
     Real dense embeddings are injected via ``SqliteVectorStore(embed=...)``.
+
+    Accepts (and ignores) an optional ``input_type`` so it satisfies the same embed
+    seam as the query/document-aware embedders: the offline path is identical whether
+    or not the store passes ``input_type``.
     """
 
     def __init__(self, dim: int = 256, n: int = 3) -> None:
         self.dim, self.n = dim, n
 
-    def __call__(self, text: str) -> list:
+    def __call__(self, text: str, *, input_type: Optional[str] = None) -> list:
         vec = [0.0] * self.dim
         s = (text or "").strip().lower()
         grams = [s[i : i + self.n] for i in range(len(s) - self.n + 1)]
@@ -73,6 +127,11 @@ class SqliteVectorStore:
     ``embed_model`` is a label only (real-model loading is a paid-path concern).
     An empty / no-signal query returns ``[]`` (consistent with ``MarkdownStore``).
     ``MemoryItem.embedding`` is not persisted (the vector lives in its own column).
+
+    The embed seam carries Voyage's query/document asymmetry: stored items embed with
+    ``input_type="document"``, the search query with ``input_type="query"``. The store
+    passes ``input_type`` only to embedders whose signature accepts it, so a legacy
+    one-arg embedder (and the offline default) behave exactly as before.
     """
 
     def __init__(self, path: str = ":memory:", *, embed: Optional[Embedder] = None,
@@ -80,6 +139,8 @@ class SqliteVectorStore:
         self.path = str(path)
         self.embed_model = embed_model
         self._embed = embed or _HashingEmbedder(dim)
+        # Detected once: does this embedder want the query/document ``input_type`` kwarg?
+        self._embed_accepts_input_type = _embedder_accepts_input_type(self._embed)
         self._conn = sqlite3.connect(self.path)
         self._conn.row_factory = sqlite3.Row  # access columns by name, not fragile indices
         self._conn.execute(
@@ -89,6 +150,17 @@ class SqliteVectorStore:
             "metadata TEXT, vector TEXT)"
         )
         self._conn.commit()
+
+    def _embed_text(self, text: str, input_type: str) -> list:
+        """Embed ``text``, passing ``input_type`` only if the embedder accepts it.
+
+        Query/document asymmetry without breaking the legacy one-arg seam: a
+        query/document-aware embedder gets ``input_type`` ('document' | 'query'); a
+        legacy ``text -> vector`` callable is called positionally as before.
+        """
+        if self._embed_accepts_input_type:
+            return self._embed(text, input_type=input_type)
+        return self._embed(text)
 
     # -- MemoryStore protocol ----------------------------------------------
     def write(self, item: MemoryItem) -> None:
@@ -102,7 +174,7 @@ class SqliteVectorStore:
             (item.item_id, item.content, item.timestamp, item.relevancy,
              item.session_id, item.source, json.dumps(list(item.tags)),
              tokens, item.version, json.dumps(item.metadata or {}),
-             json.dumps(self._embed(item.content))),
+             json.dumps(self._embed_text(item.content, "document"))),
         )
         self._conn.commit()
 
@@ -120,7 +192,7 @@ class SqliteVectorStore:
         an ANN index. Ranking ties break by relevancy, timestamp, id — matching the
         other backends, so cross-backend comparisons stay fair.
         """
-        q = self._embed(query)
+        q = self._embed_text(query, "query")
         if not any(q):  # empty / sub-n-gram query -> no signal -> no results (cf. MarkdownStore)
             return []
         rows = self._conn.execute(f"SELECT {_ITEM_COLS}, vector FROM items").fetchall()
