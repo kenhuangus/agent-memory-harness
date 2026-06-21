@@ -66,7 +66,7 @@ from typing import Any, NewType
 #: ``--strict`` enforces it. At runtime, this is a plain ``str``.
 RedactedText = NewType("RedactedText", str)
 
-__all__ = ["RedactedText", "redact"]
+__all__ = ["RedactedText", "redact", "redact_with_counts"]
 
 _logger = logging.getLogger(__name__)
 _plugins_lock = threading.Lock()
@@ -152,25 +152,28 @@ def _get_plugins() -> list[Any]:
         return _plugins_cache
 
 
-def redact(text: str) -> RedactedText:
-    """Redact secrets from ``text`` and return a ``RedactedText`` wrapper.
+def redact_with_counts(text: str) -> tuple[RedactedText, dict[str, int]]:
+    """Redact secrets from ``text`` and return the wrapper plus per-``secret_type`` span counts.
 
-    For each line, drives every plugin in the curated module-level list via
-    ``analyze_line(filename="<daydream>", line=..., line_number=...)`` and
-    replaces every detected ``secret_value`` span with
-    ``[REDACTED:<secret_type>]``. Preserves line structure verbatim.
+    Behaves exactly like :func:`redact` (same plugin set, same line-by-line
+    ``analyze_line`` drive, same ``[REDACTED:<secret_type>]`` marker, same
+    fail-open semantics) and additionally returns a ``dict`` mapping each
+    detector's ``secret_type`` to the number of distinct spans that detector
+    matched in this text. Clean input yields an empty dict (never
+    zero-valued keys). The engine consumes the dict to emit
+    ``redaction.chunk`` events (one per non-zero entry) per ADR-005.
 
-    Fail-open: per-plugin exceptions are logged (WARNING) and skipped. The
-    function never raises for any ``str`` input — except ``ImportError`` at
-    first call when ``detect-secrets`` is not installed (loud rather than
-    silently shipping unredacted prompts).
+    Fail-open: per-plugin exceptions are logged (WARNING) and skipped.
+    ``KeyboardInterrupt`` / ``SystemExit`` propagate. The first call may
+    raise ``ImportError`` if ``detect-secrets`` is not installed.
     """
     if not text:
-        return RedactedText("")
+        return RedactedText(""), {}
 
     plugins = _get_plugins()
     lines = text.splitlines(keepends=True)
     out: list[str] = []
+    counts: dict[str, int] = {}
     for lineno, line in enumerate(lines, start=1):
         redacted = line
         for plugin in plugins:
@@ -197,7 +200,13 @@ def redact(text: str) -> RedactedText:
                 stype = getattr(secret, "type", None) or plugin.__class__.__name__
                 if not value:
                     continue
+                counts[stype] = counts.get(stype, 0) + 1
                 marker = f"[REDACTED:{stype}]"
                 redacted = redacted.replace(value, marker)
         out.append(redacted)
-    return RedactedText("".join(out))
+    return RedactedText("".join(out)), counts
+
+
+def redact(text: str) -> RedactedText:
+    """Redact secrets from ``text`` and return a ``RedactedText`` wrapper."""
+    return redact_with_counts(text)[0]

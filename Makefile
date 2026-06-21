@@ -14,12 +14,18 @@ install-dev:
 typecheck:
 	# strict-typecheck scope: production dreaming code only — the redaction
 	# module (ADR-dreaming-010), llm.py (ADR-dreaming-006), events.py
-	# (ADR-dreaming-009). Tests + worker.py are intentionally outside
-	# --strict scope (test code is less type-strict by convention).
+	# (ADR-dreaming-009), plus the PR4 engine modules (engine.py + _state.py
+	# + _extract.py + prompts.py per plan-v2 §3). Tests + worker.py are
+	# intentionally outside --strict scope (test code is less type-strict
+	# by convention).
 	cd eval && python -m mypy --strict \
 	    memeval/dreaming/redaction/ \
 	    memeval/dreaming/llm.py \
-	    memeval/dreaming/events.py
+	    memeval/dreaming/events.py \
+	    memeval/dreaming/engine.py \
+	    memeval/dreaming/_state.py \
+	    memeval/dreaming/_extract.py \
+	    memeval/dreaming/prompts.py
 
 test:
 	cd eval && python -m pytest
