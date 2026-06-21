@@ -132,14 +132,20 @@ def run_claude(
     # stdin=DEVNULL: headless `claude -p` reads its prompt from argv, but without a
     # TTY (e.g. a background process) it waits 3s for stdin and prints a warning
     # that can mask the real error — close stdin so it proceeds immediately.
-    proc = subprocess.run(argv, cwd=sub_cwd, capture_output=True, text=True,
-                          timeout=timeout, env=_clean_env(strip_api_key),
-                          stdin=subprocess.DEVNULL)
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"claude exited {proc.returncode}: {(proc.stderr or proc.stdout or '').strip()[:400]}"
-        )
-    return _parse(proc.stdout)
+    # Retry transient MCP-config read failures: under WSL the .mcp.json lives on the
+    # /mnt/c DrvFs mount, which intermittently fails the stat/read ("MCP config file
+    # not found") before any model turn — so a retry is cheap and usually succeeds.
+    for attempt in range(3):
+        proc = subprocess.run(argv, cwd=sub_cwd, capture_output=True, text=True,
+                              timeout=timeout, env=_clean_env(strip_api_key),
+                              stdin=subprocess.DEVNULL)
+        if proc.returncode == 0:
+            return _parse(proc.stdout)
+        err = (proc.stderr or proc.stdout or "").strip()
+        if "MCP config" in err and attempt < 2:
+            continue  # transient DrvFs read miss — retry
+        raise RuntimeError(f"claude exited {proc.returncode}: {err[:400]}")
+    return _parse(proc.stdout)  # unreachable, keeps type-checkers happy
 
 
 def _parse(stdout: str) -> ClaudeResult:

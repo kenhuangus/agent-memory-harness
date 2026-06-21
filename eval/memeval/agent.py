@@ -371,6 +371,13 @@ def run_agent(
             except BudgetExceeded:
                 budget_hit = True
                 break
+            except Exception as exc:  # noqa: BLE001 - one task must not abort the run
+                # A single task's failure (e.g. a flaky CLI/MCP call or a per-task
+                # timeout) is recorded as a miss so the rest of the run still
+                # produces metrics + a result file, instead of aborting everything.
+                print(f"  task {task.task_id} failed ({type(exc).__name__}): "
+                      f"{str(exc)[:160]}", flush=True)
+                result = ""
             pred, forced_success = _coerce_result(result)
             tspan.update(output=pred)
 
