@@ -45,25 +45,27 @@ _PLUGIN_PREFIX = (
     "context, then answer concisely with just the final answer.\n\n"
 )
 
-# Builtin mode loads the prior sessions via CLAUDE.md. A no-memory baseline cannot
-# exceed the model's context window, so when the history is larger than what fits
-# we truncate to the most recent sessions — exactly how a real agent without a
-# retrieval memory copes with a history longer than its window (lossily). This is
-# the honest builtin baseline; plugin mode instead retrieves over the *full*
-# history, and the accuracy gap is the value of memory. (Sending the whole
-# 200k+-token history in one shot just 400s, which no real system does.)
-_CONTEXT_WINDOW = {"claude-haiku-4-5": 200_000}
-_DEFAULT_WINDOW = 200_000
-# Claude Code injects a large built-in system prompt + tool definitions (~75k
-# tokens observed) and reserves room for output (~32k); keep a conservative
-# reserve so the loaded CLAUDE.md plus that overhead stays inside the window.
-_CC_OVERHEAD_TOKENS = 120_000
-
-
-def _claude_md_budget(model: str) -> int:
-    """Token budget for the builtin CLAUDE.md given the model's context window."""
-    window = _CONTEXT_WINDOW.get(model, _DEFAULT_WINDOW)
-    return max(20_000, window - _CC_OVERHEAD_TOKENS)
+# Builtin mode = Claude Code's OWN memory/context mechanism. The real one is not
+# "dump the whole history into the context window" (a 200k+-token CLAUDE.md just
+# 400s) — it is agentic retrieval: the prior history is written as files in the
+# working dir and Claude Code uses its native tools (Grep/Glob/Read) to search and
+# read only what it needs, plus its own context compaction. So we lay the history
+# out as sessions/*.md and let Claude Code retrieve over the FULL history itself.
+# Plugin mode instead retrieves through our MCP memory tools over the same full
+# history — so the comparison is Claude Code's native memory vs our framework, both
+# with complete information (no truncation, no artificial window cap).
+_SYS_BUILTIN = (
+    "Earlier conversation history for this project is stored as files under the "
+    "sessions/ directory. Search and read those files (e.g. grep for keywords from "
+    "the question) to find what you need, then answer concisely with just the final answer."
+)
+# In headless -p mode the model follows a tool instruction in the USER prompt more
+# reliably than one only in the system prompt, so builtin mode prepends this too.
+_BUILTIN_PREFIX = (
+    "Earlier conversation history is in files under the sessions/ directory. Search/read "
+    "them (grep for keywords from the question) to find what you need, then answer "
+    "concisely with just the final answer.\n\n"
+)
 
 
 class ClaudeCodeAgent:
@@ -101,8 +103,9 @@ class ClaudeCodeAgent:
         prompt = _build_prompt(task)
 
         if self.memory_mode == "builtin":
-            _write_claude_md(run_dir, task, budget_tokens=_claude_md_budget(self.model))
-            res = self._run(prompt, run_dir, _SYS_PLAIN, mcp_config=None, allowed_tools=None)
+            _write_session_files(run_dir, task)
+            res = self._run(_BUILTIN_PREFIX + prompt, run_dir, _SYS_BUILTIN,
+                            mcp_config=None, allowed_tools=None)
         elif self.memory_mode == "plugin":
             res = self._solve_plugin(task, ctx, _PLUGIN_PREFIX + prompt, run_dir)
         else:  # off
@@ -194,48 +197,46 @@ def _build_prompt(task: Task) -> str:
     return "\n".join(parts)
 
 
-def _write_claude_md(run_dir: Path, task: Task, *, budget_tokens: Optional[int] = None) -> None:
-    """Render the task's prior sessions as Claude Code's built-in memory file.
+def _write_session_files(run_dir: Path, task: Task) -> None:
+    """Lay the task's prior sessions out as files for Claude Code's native memory.
 
-    When ``budget_tokens`` is set and the full history would exceed it, keep only
-    the most recent sessions that fit — the realistic behavior of a no-memory
-    agent whose history is larger than its context window (it truncates, lossily).
+    Writes one Markdown file per session under ``sessions/`` plus a small
+    ``CLAUDE.md`` pointer. Claude Code then uses its own tools (Grep/Glob/Read) to
+    search and read only what it needs — its real context/memory mechanism — over
+    the *full* history, with no truncation. (Contrast: dumping every session into
+    one CLAUDE.md overflows the context window and just 400s.)
     """
     from datetime import datetime, timezone
-    from ..models import estimate_tokens_words
 
-    header = ["# Memory", "",
-              "Earlier context you should use to answer questions in this project:", ""]
+    sess_dir = run_dir / "sessions"
+    sess_dir.mkdir(parents=True, exist_ok=True)
+    # Clear any stale files from a previous run reusing this dir.
+    for old in sess_dir.glob("*.md"):
+        try:
+            old.unlink()
+        except OSError:
+            pass
 
-    def _block(s: Any) -> str:
+    for i, s in enumerate(task.sessions):
         when = ""
         if s.timestamp:
             try:
-                when = " — " + datetime.fromtimestamp(s.timestamp, tz=timezone.utc).date().isoformat()
+                when = datetime.fromtimestamp(s.timestamp, tz=timezone.utc).date().isoformat()
             except Exception:
                 when = ""
-        return f"## {s.session_id}{when}\n{s.content.strip()}\n"
+        safe_id = "".join(c if (c.isalnum() or c in "-_") else "_" for c in str(s.session_id))[:60]
+        fname = f"session_{i:04d}_{safe_id}.md"
+        head = f"# Session {s.session_id}" + (f" ({when})" if when else "")
+        (sess_dir / fname).write_text(f"{head}\n\n{s.content.strip()}\n", encoding="utf-8")
 
-    blocks = [_block(s) for s in task.sessions]
-    omitted = 0
-    if budget_tokens is not None and blocks:
-        used = estimate_tokens_words("\n".join(header))
-        kept_rev: list[str] = []
-        for blk in reversed(blocks):  # most-recent first
-            t = estimate_tokens_words(blk)
-            if kept_rev and used + t > budget_tokens:
-                omitted = len(blocks) - len(kept_rev)
-                break
-            used += t
-            kept_rev.append(blk)
-        blocks = list(reversed(kept_rev))
-
-    lines = list(header)
-    if omitted:
-        lines.append(f"_(Note: {omitted} earlier session(s) omitted — the full history "
-                     f"exceeds the context window; only the most recent are shown.)_\n")
-    lines.extend(blocks)
-    (run_dir / "CLAUDE.md").write_text("\n".join(lines), encoding="utf-8")
+    (run_dir / "CLAUDE.md").write_text(
+        "# Project memory\n\n"
+        "Earlier conversation history for this project is stored as Markdown files "
+        "under the `sessions/` directory (one file per session, named by order and id). "
+        "To answer a question about earlier context, search those files (grep for "
+        "keywords) and read the relevant ones before answering.\n",
+        encoding="utf-8",
+    )
 
 
 __all__ = ["ClaudeCodeAgent", "MemoryMode"]

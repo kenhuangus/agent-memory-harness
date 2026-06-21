@@ -662,8 +662,10 @@ def test_claudecode_memory_service_recall_remember_and_log() -> None:
         assert any(r["op"] == "remember" and r["id"] == rid for r in recs)
 
 
-def test_claudecode_agent_builtin_writes_claude_md() -> None:
-    # builtin mode = Claude Code's own memory: the run dir gets a CLAUDE.md, no MCP.
+def test_claudecode_agent_builtin_writes_session_files() -> None:
+    # builtin mode = Claude Code's OWN memory: the prior history is laid out as files
+    # under sessions/ (Claude Code retrieves over them with its native Grep/Read
+    # tools), with a small CLAUDE.md pointer and no MCP — no whole-history dump.
     from memeval.claudecode.agent import ClaudeCodeAgent
     from memeval.claudecode.cli import ClaudeResult
     seen: dict = {}
@@ -671,6 +673,10 @@ def test_claudecode_agent_builtin_writes_claude_md() -> None:
     def fake(prompt, *, cwd, mcp_config=None, **kw):
         cm = Path(cwd) / "CLAUDE.md"
         seen["claude_md"] = cm.read_text(encoding="utf-8") if cm.exists() else None
+        sess = Path(cwd) / "sessions"
+        files = sorted(sess.glob("*.md")) if sess.exists() else []
+        seen["n_session_files"] = len(files)
+        seen["session_text"] = "\n".join(f.read_text(encoding="utf-8") for f in files)
         seen["mcp"] = mcp_config
         return ClaudeResult(text="Berlin", tokens_in=12, tokens_out=2)
 
@@ -680,8 +686,10 @@ def test_claudecode_agent_builtin_writes_claude_md() -> None:
                        path_or_id=_fixture("memoryagentbench.json"), limit=1,
                        seed_sessions=False)
     assert rr.n_tasks == 1
-    assert seen["claude_md"] and "Memory" in seen["claude_md"]   # sessions seeded to CLAUDE.md
-    assert seen["mcp"] is None                                    # builtin uses no MCP
+    assert seen["claude_md"] and "sessions/" in seen["claude_md"]  # small pointer, not a dump
+    assert seen["n_session_files"] == 2                            # history laid out as files
+    assert seen["session_text"].strip()                            # files carry the content
+    assert seen["mcp"] is None                                     # builtin uses no MCP
     assert rr.metrics.accuracy == 1.0                             # "Berlin" matches the gold
 
 
