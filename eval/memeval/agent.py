@@ -351,6 +351,10 @@ def run_agent(
     # lock) with the partial RunResult-so-far, so a crash still leaves results.
     trajectories_by_idx: dict[int, Trajectory] = {}
     group_stores: dict[str, MemoryStore] = {}
+    # Document per-task failures so a run completes and records WHY tasks missed
+    # (our memory layer is a work-in-progress, so memory/server errors are expected
+    # and must be recovered-from and reported, not allowed to abort the run).
+    errors: list[dict] = []
     budget_hit = False
     _lock = threading.Lock()
     _stop = threading.Event()
@@ -379,6 +383,14 @@ def run_agent(
                 "select": "group" if group_aware else "flat",
                 "workers": workers,
                 "source": path_or_id or getattr(loader, "default_source", ""),
+                # Failure documentation (memory layer is WIP): how many ran tasks
+                # errored, the first few error notes, and — for memory runs — how
+                # many tasks actually reached memory (a 'retrieve' step happened).
+                "n_errors": len(errors),
+                "errors": list(errors[:25]),
+                "memory_reached": sum(
+                    1 for t in trajs if any(s.kind == "retrieve" for s in t.steps)
+                ),
             },
         )
 
@@ -387,6 +399,7 @@ def run_agent(
         idx, task = item
         if _stop.is_set():
             return
+        err_note: Optional[dict] = None  # set on any non-budget failure -> documented
         query_time = _task_query_time(task)
         step_ts = query_time if query_time is not None else 0.0
         traj = Trajectory(
@@ -414,6 +427,8 @@ def run_agent(
                 except Exception as exc:  # noqa: BLE001 - one task must not abort the run
                     print(f"  task {task.task_id} failed ({type(exc).__name__}): "
                           f"{str(exc)[:160]}", flush=True)
+                    err_note = {"task_id": task.task_id, "stage": "solve",
+                                "error": f"{type(exc).__name__}: {str(exc)[:200]}"}
                     result = ""
                 pred, forced_success = _coerce_result(result)
                 tspan.update(output=pred)
@@ -426,6 +441,8 @@ def run_agent(
             except Exception as exc:  # noqa: BLE001 - grading failure -> count as a miss
                 print(f"  task {task.task_id} grade failed ({type(exc).__name__}): "
                       f"{str(exc)[:120]}", flush=True)
+                err_note = {"task_id": task.task_id, "stage": "grade",
+                            "error": f"{type(exc).__name__}: {str(exc)[:200]}"}
                 traj.success = False
         except BudgetExceeded:
             with _lock:
@@ -435,11 +452,15 @@ def run_agent(
         except Exception as exc:  # noqa: BLE001 - any other failure -> count as a miss
             print(f"  task {task.task_id} errored ({type(exc).__name__}): "
                   f"{str(exc)[:160]}", flush=True)
+            err_note = {"task_id": task.task_id, "stage": "task",
+                        "error": f"{type(exc).__name__}: {str(exc)[:200]}"}
             traj.prediction = ""
             traj.success = False
         traj.ended_at = clock()
         with _lock:
             trajectories_by_idx[idx] = traj
+            if err_note is not None:
+                errors.append(err_note)
             if logger is not None:
                 logger.log(traj)
             if progress_cb is not None:
