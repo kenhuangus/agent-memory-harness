@@ -55,6 +55,15 @@ PRICING: dict[str, dict[str, float]] = {
     "claude-sonnet-4-6": {"in": 3.00, "out": 15.00},  # Sonnet 4.6
     "claude-opus-4-8": {"in": 5.00, "out": 25.00},    # Opus 4.8
     "echo": {"in": 0.0, "out": 0.0},                  # offline adapter: free
+    # OpenRouter models -- subconscious-side (Daydream + Dreaming) per
+    # ADR-dreaming-004. Closes halliday Finding #6: without these entries,
+    # Daydream spend silently reports as $0 and the PRD <~10% memory-token
+    # overhead is uncheckable. Re-verify pricing via OpenRouter /api/v1/models
+    # before a large paid run -- OpenRouter rotates pricing periodically.
+    "inclusionai/ling-2.6-flash": {"in": 0.01, "out": 0.03},   # v1 default
+    "deepseek/deepseek-v4-flash": {"in": 0.09, "out": 0.18},   # trade-up target
+    "xiaomi/mimo-v2.5": {"in": 0.14, "out": 0.28},
+    "deepseek/deepseek-v4-pro": {"in": 0.435, "out": 0.87},
 }
 
 #: Fallback price used when a model id is unknown to :data:`PRICING`. Zero so an

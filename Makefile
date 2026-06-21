@@ -12,9 +12,14 @@ install-dev:
 	pip install -e 'eval[daydream,dev]'
 
 typecheck:
-	# v1 strict-typecheck scope is the redaction module per ADR-dreaming-010.
-	# Expand to all of memeval/dreaming/ once worker.py + tests/ are typed.
-	cd eval && python -m mypy --strict memeval/dreaming/redaction/
+	# strict-typecheck scope: production dreaming code only — the redaction
+	# module (ADR-dreaming-010), llm.py (ADR-dreaming-006), events.py
+	# (ADR-dreaming-009). Tests + worker.py are intentionally outside
+	# --strict scope (test code is less type-strict by convention).
+	cd eval && python -m mypy --strict \
+	    memeval/dreaming/redaction/ \
+	    memeval/dreaming/llm.py \
+	    memeval/dreaming/events.py
 
 test:
 	cd eval && python -m pytest

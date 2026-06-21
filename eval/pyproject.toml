@@ -73,7 +73,9 @@ claudecode = ["mcp>=1.0"]
 # v1 Daydream inline secret redaction (memeval.dreaming.redaction). Pinned to
 # the spike-validated version per ADR-dreaming-005; upgrades follow the
 # checklist in that ADR (regression test + custom plugin compatibility).
-daydream = ["detect-secrets==1.5.0"]
+# httpx is the HTTP transport for OpenRouterClient (ADR-dreaming-006 +
+# ADR-dreaming-012); lazy-imported inside complete() per architecture.md §3.
+daydream = ["detect-secrets==1.5.0", "httpx>=0.27"]
 
 # Convenience: everything needed for real (online, paid) runs.
 full = [
