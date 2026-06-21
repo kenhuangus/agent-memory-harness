@@ -52,6 +52,8 @@ the move).
 | [ADR-dreaming-007](ADR-dreaming-007-stop-hook-driven-turn-cursor.md) | Daydream turn = user prompt + Claude response(s) + Stop hook; cursor → EOF per invocation (v1, Stop-hook-only) | Accepted | no |
 | [ADR-dreaming-008](ADR-dreaming-008-memory-cli-console-script.md) | `memory` CLI is a standalone console script in `eval/memeval/dreaming/cli.py` | Accepted | **yes** |
 | [ADR-dreaming-009](ADR-dreaming-009-events-shim.md) | Daydream events shim = no-op + local `daydream-events.jsonl` diary until ADR-harness-007 ships | Accepted | no |
+| [ADR-dreaming-010](ADR-dreaming-010-redactedtext-newtype.md) | `RedactedText` NewType structurally enforces the redaction trust boundary (mypy-checked, updates ADR-006's `complete()` signature) | Accepted | **yes** |
+| [ADR-dreaming-011](ADR-dreaming-011-expanded-redaction-scope.md) | Expanded redaction scope — DB/URL-credential detectors + explicit out-of-scope policy + FP/FN audit file (amends ADR-005) | Accepted | **yes** |
 | [ADR-harness-003](ADR-harness-003-log-extraction-chunking.md) | `dream` log-extraction chunking = one turn = one chunk + prior-summary overlap | Accepted | no |
 | [ADR-harness-004](ADR-harness-004-dream-state-sidecar.md) | `dream` state = on-disk JSON sidecar (cursor + last_summary + recent_memory_ids) | Accepted | no |
 | [ADR-harness-005](ADR-harness-005-log-adapter-redaction.md) | The log adapter redacts secrets before any model call | Accepted | no |
