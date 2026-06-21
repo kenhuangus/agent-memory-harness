@@ -208,6 +208,38 @@ def test_module_docstring_lists_pii_oos() -> None:
     assert "PII" in doc, "module docstring missing 'PII' out-of-scope entry"
 
 
+def test_no_unjustified_redactedtext_casts() -> None:
+    """§78: bypass-cast `RedactedText("...")` is allowed only in the redact()
+    return statement and in `tests/` (with `# REASON: <text>` justification).
+
+    Production source under `redaction/` that constructs RedactedText
+    directly (outside redact()'s return) is a deliberate bypass of the trust
+    boundary — must carry an inline `# REASON: <text>` comment, otherwise this
+    test fails.
+    """
+    cast_re = re.compile(r"\bRedactedText\(")
+    reason_re = re.compile(r"#\s*REASON:\s*\S")
+    offenders: list[str] = []
+    for path in _python_files():
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if not cast_re.search(line):
+                continue
+            # Allowed: the single return line in redact() body.
+            if "return RedactedText" in line:
+                continue
+            # Allowed: NewType definition itself.
+            if "NewType" in line:
+                continue
+            # Allowed: line carries a # REASON: justification.
+            if reason_re.search(line):
+                continue
+            offenders.append(
+                f"{path.relative_to(REPO_ROOT)}:{lineno}: bypass-cast without "
+                f"# REASON: justification — {line.strip()!r}"
+            )
+    assert not offenders, "Unjustified RedactedText casts:\n" + "\n".join(offenders)
+
+
 def test_readme_lists_out_of_scope_categories() -> None:
     """§95: README also documents the three out-of-scope categories
     (discoverable both ways per ADR-011 §Consequences)."""
