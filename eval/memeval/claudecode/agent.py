@@ -45,6 +45,26 @@ _PLUGIN_PREFIX = (
     "context, then answer concisely with just the final answer.\n\n"
 )
 
+# Builtin mode loads the prior sessions via CLAUDE.md. A no-memory baseline cannot
+# exceed the model's context window, so when the history is larger than what fits
+# we truncate to the most recent sessions — exactly how a real agent without a
+# retrieval memory copes with a history longer than its window (lossily). This is
+# the honest builtin baseline; plugin mode instead retrieves over the *full*
+# history, and the accuracy gap is the value of memory. (Sending the whole
+# 200k+-token history in one shot just 400s, which no real system does.)
+_CONTEXT_WINDOW = {"claude-haiku-4-5": 200_000}
+_DEFAULT_WINDOW = 200_000
+# Claude Code injects a large built-in system prompt + tool definitions (~75k
+# tokens observed) and reserves room for output (~32k); keep a conservative
+# reserve so the loaded CLAUDE.md plus that overhead stays inside the window.
+_CC_OVERHEAD_TOKENS = 120_000
+
+
+def _claude_md_budget(model: str) -> int:
+    """Token budget for the builtin CLAUDE.md given the model's context window."""
+    window = _CONTEXT_WINDOW.get(model, _DEFAULT_WINDOW)
+    return max(20_000, window - _CC_OVERHEAD_TOKENS)
+
 
 class ClaudeCodeAgent:
     """Benchmark agent backed by the Claude Code CLI. Satisfies AgentAdapter."""
@@ -81,7 +101,7 @@ class ClaudeCodeAgent:
         prompt = _build_prompt(task)
 
         if self.memory_mode == "builtin":
-            _write_claude_md(run_dir, task)
+            _write_claude_md(run_dir, task, budget_tokens=_claude_md_budget(self.model))
             res = self._run(prompt, run_dir, _SYS_PLAIN, mcp_config=None, allowed_tools=None)
         elif self.memory_mode == "plugin":
             res = self._solve_plugin(task, ctx, _PLUGIN_PREFIX + prompt, run_dir)
@@ -174,22 +194,47 @@ def _build_prompt(task: Task) -> str:
     return "\n".join(parts)
 
 
-def _write_claude_md(run_dir: Path, task: Task) -> None:
-    """Render the task's prior sessions as Claude Code's built-in memory file."""
-    from datetime import datetime, timezone
+def _write_claude_md(run_dir: Path, task: Task, *, budget_tokens: Optional[int] = None) -> None:
+    """Render the task's prior sessions as Claude Code's built-in memory file.
 
-    lines = ["# Memory", "",
-             "Earlier context you should use to answer questions in this project:", ""]
-    for s in task.sessions:
+    When ``budget_tokens`` is set and the full history would exceed it, keep only
+    the most recent sessions that fit — the realistic behavior of a no-memory
+    agent whose history is larger than its context window (it truncates, lossily).
+    """
+    from datetime import datetime, timezone
+    from ..models import estimate_tokens_words
+
+    header = ["# Memory", "",
+              "Earlier context you should use to answer questions in this project:", ""]
+
+    def _block(s: Any) -> str:
         when = ""
         if s.timestamp:
             try:
                 when = " — " + datetime.fromtimestamp(s.timestamp, tz=timezone.utc).date().isoformat()
             except Exception:
                 when = ""
-        lines.append(f"## {s.session_id}{when}")
-        lines.append(s.content.strip())
-        lines.append("")
+        return f"## {s.session_id}{when}\n{s.content.strip()}\n"
+
+    blocks = [_block(s) for s in task.sessions]
+    omitted = 0
+    if budget_tokens is not None and blocks:
+        used = estimate_tokens_words("\n".join(header))
+        kept_rev: list[str] = []
+        for blk in reversed(blocks):  # most-recent first
+            t = estimate_tokens_words(blk)
+            if kept_rev and used + t > budget_tokens:
+                omitted = len(blocks) - len(kept_rev)
+                break
+            used += t
+            kept_rev.append(blk)
+        blocks = list(reversed(kept_rev))
+
+    lines = list(header)
+    if omitted:
+        lines.append(f"_(Note: {omitted} earlier session(s) omitted — the full history "
+                     f"exceeds the context window; only the most recent are shown.)_\n")
+    lines.extend(blocks)
     (run_dir / "CLAUDE.md").write_text("\n".join(lines), encoding="utf-8")
 
 
