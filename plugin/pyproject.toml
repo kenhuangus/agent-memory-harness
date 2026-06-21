@@ -1,0 +1,59 @@
+# Cookbook Memory — the persistent-memory plugin (harness-agnostic core + adapters).
+#
+# Distinct from `agent-memory-eval` (the eval engine in ../eval): this is the
+# installable memory plugin a developer adds to their coding agent. It depends on the
+# eval package for now only to reach the FROZEN contract (schema/protocols) via a
+# single seam (cookbook_memory/core/contract.py); when that contract becomes a
+# standalone package (ADR-eval-001), this dependency narrows to it.
+#
+# The core is standard-library only at import; the MCP server needs the `mcp` SDK
+# (the `[mcp]` extra), lazy-imported so the rest of the plugin installs without it.
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cookbook-memory"
+version = "0.1.0"
+description = "Persistent memory for coding agents — a Claude Code plugin (MCP + hooks + skills) over a harness-agnostic core."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Cookbook Memory team" }]
+keywords = ["memory", "agent-memory", "mcp", "claude-code", "recall", "remember"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: MIT License",
+]
+
+# Reaches the frozen contract (schema/protocols) until it is its own package.
+dependencies = ["agent-memory-eval"]
+
+[project.optional-dependencies]
+# The MCP stdio server (the model's recall/remember tools).
+mcp = ["mcp>=1.0"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+# The human / ops surface: `memory mcp|query|remember|stats|log|reset`.
+memory = "cookbook_memory.cli:main"
+# The Claude Code hooks entry point, wired from hooks.json.
+memory-hook = "cookbook_memory.adapters.claude_code.hooks_handler:main"
+
+[project.urls]
+Homepage = "https://github.com/kenhuangus/agent-memory-harness"
+
+[tool.setuptools.packages.find]
+include = ["cookbook_memory*"]
+exclude = ["tests*"]
+
+[tool.setuptools.package-data]
+# Ship the Claude Code plugin bundle assets inside the wheel.
+"cookbook_memory.adapters.claude_code" = [
+    ".claude-plugin/*.json",
+    ".mcp.json",
+    "hooks/*.json",
+    "skills/*/SKILL.md",
+]
