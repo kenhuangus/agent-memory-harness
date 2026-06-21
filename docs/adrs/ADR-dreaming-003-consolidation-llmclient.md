@@ -2,19 +2,19 @@
 id: ADR-dreaming-003
 domain: dreaming
 title: Subconscious model — swappable LLMClient, OpenRouter-first
-status: Accepted
+status: Superseded
 date: 2026-06-19
 contract: true
 supersedes: none
-superseded_by: none
+superseded_by: ADR-dreaming-006
 owner: Scott B. (P4) — engine; Keith (P1) — client interface
 origin: docs/harnesses/05-plugin-mvp-plan.md (ADR-P6)
 ---
 
 # ADR-dreaming-003: Subconscious model — swappable `LLMClient`, OpenRouter-first
 
-**Status:** Accepted · **Date:** 2026-06-19 · **Contract:** yes
-**Supersedes:** none · **Superseded by:** none
+**Status:** Superseded · **Date:** 2026-06-19 · **Contract:** yes
+**Supersedes:** none · **Superseded by:** [`ADR-dreaming-006`](ADR-dreaming-006-llmclient-completion-dataclass.md)
 
 ## Context
 The board labels the subconscious's model "Not frontier"; the meeting left "local vs

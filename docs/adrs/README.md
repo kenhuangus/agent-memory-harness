@@ -45,7 +45,20 @@ the move).
 | [ADR-harness-002](ADR-harness-002-recall-remember-mcp-tools.md) | `recall`/`remember` are MCP tools that call the Orchestrator | Accepted | **yes** |
 | [ADR-dreaming-001](ADR-dreaming-001-daydreaming-stop-fired.md) | Daydreaming = in-session capture, auto `Stop`/`PreCompact`-fired (day scope) — its own entrypoint | Accepted | **yes** |
 | [ADR-dreaming-002](ADR-dreaming-002-dreaming-consolidation-cli.md) | Dreaming = whole-store consolidation via `memory dream --all` CLI (night scope) — its own entrypoint | Accepted | **yes** |
-| [ADR-dreaming-003](ADR-dreaming-003-consolidation-llmclient.md) | Subconscious model = swappable `LLMClient`, OpenRouter-first (shared helper) | Accepted | **yes** |
+| [ADR-dreaming-003](ADR-dreaming-003-consolidation-llmclient.md) | Subconscious model = swappable `LLMClient`, OpenRouter-first (shared helper) | Superseded by [ADR-dreaming-006](ADR-dreaming-006-llmclient-completion-dataclass.md) | **yes** |
+| [ADR-dreaming-004](ADR-dreaming-004-default-subconscious-model.md) | Default subconscious model = `inclusionai/ling-2.6-flash` via OpenRouter | Accepted | no |
+| [ADR-dreaming-005](ADR-dreaming-005-v1-inline-redaction.md) | v1 Daydream inlines log reading + secret redaction (Claude-only, `detect-secrets` structured detectors + custom plugins) | Accepted | **yes** |
+| [ADR-dreaming-006](ADR-dreaming-006-llmclient-completion-dataclass.md) | `LLMClient.complete()` returns a `Completion` dataclass with token counts (replaces ADR-003's signature) | Accepted | **yes** |
+| [ADR-dreaming-007](ADR-dreaming-007-stop-hook-driven-turn-cursor.md) | Daydream turn = user prompt + Claude response(s) + Stop hook; cursor → EOF per invocation (v1, Stop-hook-only) | Accepted | no |
+| [ADR-dreaming-008](ADR-dreaming-008-memory-cli-console-script.md) | `memory` CLI is a standalone console script in `eval/memeval/dreaming/cli.py` | Superseded by [ADR-dreaming-016](ADR-dreaming-016-rename-memory-cli-to-daydream-cli.md) | **yes** |
+| [ADR-dreaming-009](ADR-dreaming-009-events-shim.md) | Daydream events shim = no-op + local `daydream-events.jsonl` diary until ADR-harness-007 ships | Accepted | no |
+| [ADR-dreaming-010](ADR-dreaming-010-redactedtext-newtype.md) | `RedactedText` NewType structurally enforces the redaction trust boundary (mypy-checked, updates ADR-006's `complete()` signature) | Accepted | **yes** |
+| [ADR-dreaming-011](ADR-dreaming-011-expanded-redaction-scope.md) | Expanded redaction scope — DB/URL-credential detectors + explicit out-of-scope policy + FP/FN audit file (amends ADR-005) | Accepted | **yes** |
+| [ADR-dreaming-012](ADR-dreaming-012-openrouter-missing-key-failopen.md) | `OpenRouterClient` missing-API-key = no-op `Completion` + `llm_unavailable` event + no cursor advance | Accepted | **yes** |
+| [ADR-dreaming-013](ADR-dreaming-013-cursor-advance-ordering.md) | Cursor-advance ordering — memories-then-cursor, atomic sidecar write, no advance on exception | Accepted | **yes** |
+| [ADR-dreaming-014](ADR-dreaming-014-concurrent-daydream-flock.md) | Concurrent Daydream invocations — `flock` per `session_id` + idempotent exit-0 | Accepted | **yes** |
+| [ADR-dreaming-015](ADR-dreaming-015-filesystem-state-management.md) | Per-session filesystem state — Python `<basedir>` resolution + uniform 30-day retention TTL + throttled sweeper-on-invocation | Accepted | **yes** |
+| [ADR-dreaming-016](ADR-dreaming-016-rename-memory-cli-to-daydream-cli.md) | Console script renamed `memory` → `daydream-cli` to eliminate PATH-collision risk (supersedes ADR-008) | Accepted | **yes** |
 | [ADR-harness-003](ADR-harness-003-log-extraction-chunking.md) | `dream` log-extraction chunking = one turn = one chunk + prior-summary overlap | Accepted | no |
 | [ADR-harness-004](ADR-harness-004-dream-state-sidecar.md) | `dream` state = on-disk JSON sidecar (cursor + last_summary + recent_memory_ids) | Accepted | no |
 | [ADR-harness-005](ADR-harness-005-log-adapter-redaction.md) | The log adapter redacts secrets before any model call | Accepted | no |
