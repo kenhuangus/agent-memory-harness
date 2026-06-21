@@ -2,19 +2,19 @@
 id: ADR-harness-002
 domain: harness
 title: recall/remember are MCP tools through the Orchestrator
-status: Accepted
+status: Superseded
 date: 2026-06-19
 contract: true
 supersedes: none
-superseded_by: none
+superseded_by: ADR-harness-008
 owner: Keith (P1)
 origin: docs/harnesses/05-plugin-mvp-plan.md (ADR-P4)
 ---
 
 # ADR-harness-002: `recall`/`remember` are MCP tools through the Orchestrator
 
-**Status:** Accepted · **Date:** 2026-06-19 · **Contract:** yes
-**Supersedes:** none · **Superseded by:** none
+**Status:** Superseded · **Date:** 2026-06-19 · **Contract:** yes
+**Supersedes:** none · **Superseded by:** [ADR-harness-008](ADR-harness-008-recall-only-conscious-surface.md)
 
 ## Context
 The model needs native, in-loop memory. MCP is the only path to model-callable
