@@ -82,6 +82,16 @@ def result_record(
         "partial": rr.partial,
         "budget_exceeded": rr.budget_exceeded,
         "source": rr.metadata.get("source", ""),
+        # Reliability/robustness documentation. The memory layer is a WIP, so a run
+        # is expected to recover from per-task errors and report them here rather
+        # than abort. n_errors/errors = tasks that failed (with reason); for memory
+        # runs, memory_reached = tasks that actually retrieved (proof the memory
+        # path worked), so memory_reached < n_tasks flags silent memory misses.
+        "reliability": {
+            "n_errors": rr.metadata.get("n_errors", 0),
+            "memory_reached": rr.metadata.get("memory_reached", 0),
+            "errors": rr.metadata.get("errors", []),
+        },
         "notes": notes,
     }
     if extra:

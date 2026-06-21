@@ -78,12 +78,13 @@ def _resolve_group_aware(benchmark: str, select: str) -> bool:
     return benchmark in _GROUP_AWARE  # auto
 
 
-def _run_one(benchmark: str, mode: str, args: argparse.Namespace) -> Optional[dict]:
+def _run_one(benchmark: str, mode: str, args: argparse.Namespace,
+             *, stamp: str = "", completed_recs: Optional[list] = None) -> Optional[dict]:
     import json
     import os
     from ..agent import run_agent
     from ..cost import CostTracker
-    from ..results import append_result, result_record
+    from ..results import append_result, result_record, write_benchmark_results
     from ..trajectory import TrajectoryLogger
 
     # With --out-dir, each run is self-contained under it: the agent's working dir
@@ -104,12 +105,35 @@ def _run_one(benchmark: str, mode: str, args: argparse.Namespace) -> Optional[di
     cost = CostTracker(budget_usd=args.budget_usd) if args.budget_usd and args.budget_usd > 0 else None
     limit = _resolve_limit(benchmark, args.limit)
     group_aware = _resolve_group_aware(benchmark, args.select)
+    run_id = f"claude-code-{mode}"
+    notes = f"Claude Code CLI · memory={mode}"
+    # Plugin talks to an MCP server; headless claude's MCP connection degrades under
+    # concurrency, so plugin runs at --plugin-workers (default 1) while builtin/off
+    # (no MCP, just file reads) run at the full --workers.
+    workers = args.plugin_workers if mode == "plugin" else args.workers
+
+    # Incremental save: after every task, rewrite this benchmark's result file with
+    # the records from already-finished modes plus the current mode's partial run,
+    # so a crash mid-run still leaves a valid results/v{X.Y}/{bench}-{stamp}.json.
+    prior_recs = list(completed_recs or [])
+    progress_cb = None
+    if args.results_dir and stamp:
+        def progress_cb(partial_rr: Any) -> None:
+            prec = result_record(partial_rr, run_id=run_id, notes=notes)
+            write_benchmark_results(benchmark, prior_recs + [prec],
+                                    version=args.results_version, timestamp=stamp,
+                                    root=args.results_dir)
+            if rec_path:
+                with open(rec_path, "w", encoding="utf-8") as fh:
+                    json.dump(prec, fh, indent=2)
+
     try:
         rr = run_agent(
             Benchmark.from_str(benchmark), agent, memory=(mode != "off"),
             limit=limit, dev_slice=args.dev_slice, group_aware=group_aware,
             path_or_id=_resolve_path(benchmark, args.path),
             cost=cost, k=args.k, seed_sessions=False, logger=logger,  # agent seeds memory itself
+            workers=workers, progress_cb=progress_cb,
         )
     except Exception as exc:  # surface per-(benchmark,mode) failure, keep going
         print(f"FAIL {benchmark:18} {mode:8} {type(exc).__name__}: {str(exc)[:140]}")
@@ -117,12 +141,10 @@ def _run_one(benchmark: str, mode: str, args: argparse.Namespace) -> Optional[di
     finally:
         if logger is not None:
             logger.close()
-    rec = append_result(rr, args.results, run_id=f"claude-code-{mode}",
-                        notes=f"Claude Code CLI · memory={mode}")
+    rec = append_result(rr, args.results, run_id=run_id, notes=notes)
     if rec_path:
         with open(rec_path, "w", encoding="utf-8") as fh:
-            json.dump(result_record(rr, run_id=f"claude-code-{mode}",
-                                    notes=f"Claude Code CLI · memory={mode}"), fh, indent=2)
+            json.dump(result_record(rr, run_id=run_id, notes=notes), fh, indent=2)
     m = rr.metrics
     avail = rr.metadata.get("total_available")
     lim = rr.metadata.get("limit")
@@ -151,6 +173,13 @@ def main(argv: Optional[list[str]] = None) -> int:
                          "'flat' = first-N, 'auto' = per-benchmark default "
                          f"(group for {sorted(_GROUP_AWARE)}).")
     ap.add_argument("--k", type=int, default=5)
+    ap.add_argument("--workers", type=int, default=4,
+                    help="Concurrent `claude` CLI processes for builtin/off runs "
+                         "(task-level parallelism; default 4, 1 = sequential).")
+    ap.add_argument("--plugin-workers", type=int, default=1,
+                    help="Concurrency for PLUGIN runs (default 1). Plugin uses an MCP "
+                         "server whose headless connection degrades under concurrency, "
+                         "so it runs sequentially by default for reliable retrieval.")
     ap.add_argument("--timeout", type=int, default=600)
     ap.add_argument("--budget-usd", type=float, default=DEFAULT_BUDGET_USD)
     ap.add_argument("--results", default="results.json")
@@ -185,7 +214,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     for b in benches:
         recs = []
         for mode in modes:
-            rec = _run_one(b, mode, args)
+            rec = _run_one(b, mode, args, stamp=stamp, completed_recs=recs)
             if rec is not None:
                 n_ok += 1
                 recs.append(rec)
