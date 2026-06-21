@@ -354,8 +354,11 @@ def _build_code_prompt(task: Task) -> str:
     return "\n".join(parts)
 
 
-# A line that opens a markdown code fence, optionally tagged ```diff / ```patch.
-_FENCE_OPEN_RE = re.compile(r"^\s*```+\s*(?:diff|patch)?\s*$", re.IGNORECASE)
+# A line that opens a markdown code fence, with any optional language tag
+# (```diff / ```patch / ```python / bare ```). Accepting any tag — not just
+# diff/patch — means a diff wrapped in a mislabeled fence is still bounded by
+# the fence body rather than leaking the closing fence + trailing prose.
+_FENCE_OPEN_RE = re.compile(r"^\s*```+\s*\w*\s*$", re.IGNORECASE)
 # A line that closes a markdown code fence (bare backticks).
 _FENCE_CLOSE_RE = re.compile(r"^\s*```+\s*$")
 

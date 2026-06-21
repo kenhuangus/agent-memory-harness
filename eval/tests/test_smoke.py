@@ -1441,6 +1441,13 @@ def test_extract_diff_strips_fences() -> None:
     out2 = _extract_diff(bare)
     assert out2.startswith("diff --git a/f.py b/f.py")
     assert "```" not in out2
+    # a MISLABELED language tag (```python around a diff) is still bounded by the
+    # fence body, so the closing fence and any trailing prose never leak through.
+    mislabeled = "```python\n" + inner + "```\nLet me know if this helps!\n"
+    out3 = _extract_diff(mislabeled)
+    assert out3.startswith("diff --git a/f.py b/f.py")
+    assert "```" not in out3
+    assert "Let me know" not in out3
 
 
 def test_extract_diff_drops_prose_before_and_after() -> None:
