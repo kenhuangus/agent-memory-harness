@@ -88,7 +88,11 @@ class ClaudeCodeAgent:
         self.memory_mode = memory_mode
         self._runner = runner or run_claude
         self._runtime = runtime
-        self._root = Path(workdir) if workdir else None
+        # Resolve to absolute: claude runs with cwd=run_dir and resolves --mcp-config
+        # (and the MCP server resolves its --bundle/--log) against that cwd, so a
+        # relative run dir would double the path ("run_dir/run_dir/.mcp.json" -> not
+        # found) and every plugin task would fail. Absolute paths are cwd-independent.
+        self._root = Path(workdir).resolve() if workdir else None
         self.k = k
         self.timeout = timeout
         self.name = f"claude-code:{model}:{memory_mode}"
