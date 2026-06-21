@@ -23,8 +23,10 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+import re
+
 from ..cost import price_for
-from ..schema import MemoryItem, RetrievedItem, Task
+from ..schema import MemoryItem, RetrievedItem, Task, TaskKind
 from .cli import ClaudeResult, run_claude, run_claude_primed
 from .platform import ClaudeRuntime, detect, to_wsl_path
 from .service import MemoryService
@@ -38,6 +40,13 @@ _SYS_PLUGIN = (
     "notes, and answer concisely with just the final answer."
 )
 _SYS_PLAIN = "Answer concisely with just the final answer."
+# CODE tasks: the model must emit a patch, not prose. _extract_diff() defends
+# against the common case where it adds commentary or fences anyway.
+_SYS_CODE = (
+    "You are an automated software-engineering agent. Output ONLY a unified diff "
+    "in git format that resolves the issue. Begin directly with 'diff --git'. Do "
+    "NOT include any explanation, commentary, or markdown code fences."
+)
 # In headless -p mode the model follows a tool instruction in the USER prompt far
 # more reliably than one only in the system prompt, so plugin mode prepends this.
 _PLUGIN_PREFIX = (
@@ -155,6 +164,19 @@ class ClaudeCodeAgent:
     def solve(self, task: Task, ctx: Any, **_: Any) -> str:
         run_dir = self._task_dir(task)
         run_dir.mkdir(parents=True, exist_ok=True)
+
+        # CODE tasks need a unified diff, not a QA answer. Branch BEFORE the
+        # memory_mode dispatch and run a single plain turn that asks for a diff,
+        # then return the robustly-extracted diff (or '' for non-diff output).
+        # QA tasks fall through to the EXACT untouched path below — byte-identical.
+        if task.kind == TaskKind.CODE:
+            code_prompt = _build_code_prompt(task)
+            res = self._run(code_prompt, run_dir, _SYS_CODE,
+                            mcp_config=None, allowed_tools=None)
+            ctx.record_generate(res.text, res.tokens_in, res.tokens_out,
+                                model_name=self.model)
+            return _extract_diff(res.text)
+
         prompt = _build_prompt(task)
 
         if self.memory_mode == "builtin":
@@ -314,6 +336,130 @@ def _build_prompt(task: Task) -> str:
     if task.choices:
         parts.append("Choices: " + " | ".join(task.choices))
     return "\n".join(parts)
+
+
+def _build_code_prompt(task: Task) -> str:
+    """Build the user prompt for a CODE task: the issue text, the repo/base-commit
+    context that exists on the Task (no checkout is provided), and a strict
+    instruction to respond with ONLY a unified diff. Pure / offline-testable."""
+    parts = [(task.question or "").strip()]
+    if task.repo:
+        parts.append(f"Repository: {task.repo}")
+    if task.base_commit:
+        parts.append(f"Base commit: {task.base_commit}")
+    parts.append(
+        "Respond with ONLY a unified diff (git 'diff --git' format) that fixes "
+        "the issue. No prose, no code fences."
+    )
+    return "\n".join(parts)
+
+
+# A line that opens a markdown code fence, with any optional language tag
+# (```diff / ```patch / ```python / bare ```). Accepting any tag — not just
+# diff/patch — means a diff wrapped in a mislabeled fence is still bounded by
+# the fence body rather than leaking the closing fence + trailing prose.
+_FENCE_OPEN_RE = re.compile(r"^\s*```+\s*\w*\s*$", re.IGNORECASE)
+# A line that closes a markdown code fence (bare backticks).
+_FENCE_CLOSE_RE = re.compile(r"^\s*```+\s*$")
+
+# Prefixes that mark a line as part of a unified/git diff (used to tell a real
+# diff continuation from trailing prose after a blank line).
+_DIFF_PREFIXES = (
+    "diff --git ", "index ", "--- ", "+++ ", "@@ ", "+", "-", " ", "\\",
+    "old mode ", "new mode ", "new file mode ", "deleted file mode ",
+    "similarity index ", "rename from ", "rename to ", "copy from ", "copy to ",
+    "Binary files ", "GIT binary patch",
+)
+
+
+def _is_diff_line(line: str) -> bool:
+    """True if ``line`` looks like part of a unified/git diff body."""
+    return any(line.startswith(p) for p in _DIFF_PREFIXES)
+
+
+def _extract_diff(text: str) -> str:
+    """Turn arbitrary model output into a clean unified-diff string, or ''.
+
+    Pure, deterministic, stdlib-only (so it is fully offline-testable). Steps:
+
+    1. Empty / whitespace input -> ''.
+    2. If a fenced code block (```diff / ```patch / bare ```) is present, take the
+       body of the FIRST such block (handles the common case where the model adds
+       fences despite the instruction not to). An unclosed fence -> everything
+       after the opening line.
+    3. Otherwise operate on the raw text.
+    4. Anchor on the first line starting with 'diff --git ' (preferred). If none,
+       fall back to the first '--- ' line, but ONLY when a later '+++ ' or '@@ '
+       line also exists (so prose dashes are not mistaken for a diff). Slice from
+       the anchor onward, dropping any leading prose.
+    5. Trim trailing non-diff prose: when there is no fence to bound the diff, stop
+       at the first blank line that is NOT followed by more diff content (so
+       'diff...\\n\\nLet me know if this helps.' keeps only the diff). Then drop a
+       stray closing fence and trailing blank lines, and ensure exactly one
+       trailing newline (git apply is whitespace-sensitive at EOF).
+    6. No diff marker anywhere -> '' (an honest empty patch, never prose).
+    """
+    if not text or not text.strip():
+        return ""
+
+    lines = text.splitlines()
+
+    # (2) Prefer the first fenced block's body, if any fence opens.
+    body_lines = lines
+    fenced = False
+    for i, line in enumerate(lines):
+        if _FENCE_OPEN_RE.match(line):
+            inner: list[str] = []
+            for inner_line in lines[i + 1:]:
+                if _FENCE_CLOSE_RE.match(inner_line):
+                    break  # closing fence -> stop
+                inner.append(inner_line)
+            body_lines = inner
+            fenced = True
+            break
+
+    # (4) Anchor on the first diff marker within the chosen body.
+    start = None
+    for idx, line in enumerate(body_lines):
+        if line.startswith("diff --git "):
+            start = idx
+            break
+    if start is None:
+        for idx, line in enumerate(body_lines):
+            if line.startswith("--- "):
+                rest = body_lines[idx + 1:]
+                if any(r.startswith("+++ ") or r.startswith("@@ ") for r in rest):
+                    start = idx
+                    break
+
+    if start is None:
+        return ""  # (6) no diff -> honest empty patch
+
+    diff_lines = list(body_lines[start:])
+
+    # (5) When the diff is not bounded by a fence, trim trailing prose: stop at the
+    # first blank line that is not followed by more diff content. A fence already
+    # bounds the body, so this step is skipped for fenced input.
+    if not fenced:
+        end = len(diff_lines)
+        for j in range(len(diff_lines)):
+            if diff_lines[j].strip():
+                continue
+            # blank line — keep it only if a later line still looks like a diff.
+            if any(_is_diff_line(later) for later in diff_lines[j + 1:]):
+                continue
+            end = j
+            break
+        diff_lines = diff_lines[:end]
+
+    # Strip a leaked trailing closing fence, then trailing blank lines.
+    while diff_lines and _FENCE_CLOSE_RE.match(diff_lines[-1]):
+        diff_lines.pop()
+    while diff_lines and not diff_lines[-1].strip():
+        diff_lines.pop()
+    if not diff_lines:
+        return ""
+    return "\n".join(diff_lines) + "\n"
 
 
 def _write_session_files(run_dir: Path, task: Task) -> None:

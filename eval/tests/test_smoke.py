@@ -1400,6 +1400,213 @@ def test_harness_run_with_budget_partial() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# ClaudeCodeAgent CODE-task diff emission (offline; no claude, no docker, no net)
+# --------------------------------------------------------------------------- #
+def test_extract_diff_plain_passthrough() -> None:
+    # Output that already IS a clean git diff comes back essentially unchanged,
+    # anchored at 'diff --git', with the hunk body preserved + a trailing newline.
+    from memeval.claudecode.agent import _extract_diff
+    diff = (
+        "diff --git a/f.py b/f.py\n"
+        "--- a/f.py\n"
+        "+++ b/f.py\n"
+        "@@ -1 +1 @@\n"
+        "-old\n"
+        "+new"
+    )
+    out = _extract_diff(diff)
+    assert out.startswith("diff --git a/f.py b/f.py")
+    assert "@@ -1 +1 @@" in out and "-old" in out and "+new" in out
+    assert out.endswith("\n")            # git apply wants a final newline
+
+
+def test_extract_diff_strips_fences() -> None:
+    # A ```diff ... ``` fence (and a bare ``` ... ``` fence) yields the inner diff
+    # with NO backtick fence lines left in the output.
+    from memeval.claudecode.agent import _extract_diff
+    inner = (
+        "diff --git a/f.py b/f.py\n"
+        "--- a/f.py\n"
+        "+++ b/f.py\n"
+        "@@ -1 +1 @@\n"
+        "-old\n"
+        "+new\n"
+    )
+    fenced = "```diff\n" + inner + "```\n"
+    out = _extract_diff(fenced)
+    assert out.startswith("diff --git a/f.py b/f.py")
+    assert "```" not in out
+    # bare fence (no language tag) is handled the same way
+    bare = "```\n" + inner + "```"
+    out2 = _extract_diff(bare)
+    assert out2.startswith("diff --git a/f.py b/f.py")
+    assert "```" not in out2
+    # a MISLABELED language tag (```python around a diff) is still bounded by the
+    # fence body, so the closing fence and any trailing prose never leak through.
+    mislabeled = "```python\n" + inner + "```\nLet me know if this helps!\n"
+    out3 = _extract_diff(mislabeled)
+    assert out3.startswith("diff --git a/f.py b/f.py")
+    assert "```" not in out3
+    assert "Let me know" not in out3
+
+
+def test_extract_diff_drops_prose_before_and_after() -> None:
+    # Leading commentary and a trailing "anything else?" note are both stripped;
+    # only the diff survives.
+    from memeval.claudecode.agent import _extract_diff
+    text = (
+        "Here is the fix:\n"
+        "\n"
+        "diff --git a/f.py b/f.py\n"
+        "--- a/f.py\n"
+        "+++ b/f.py\n"
+        "@@ -1 +1 @@\n"
+        "-old\n"
+        "+new\n"
+        "\n"
+        "Let me know if this helps."
+    )
+    out = _extract_diff(text)
+    assert out.startswith("diff --git a/f.py b/f.py")
+    assert "Here is the fix" not in out      # leading prose dropped
+    assert "Let me know" not in out          # trailing prose dropped
+    assert "+new" in out
+
+
+def test_extract_diff_multiple_files_preserved() -> None:
+    # Two consecutive 'diff --git' sections (two files) both survive.
+    from memeval.claudecode.agent import _extract_diff
+    text = (
+        "diff --git a/one.py b/one.py\n"
+        "--- a/one.py\n"
+        "+++ b/one.py\n"
+        "@@ -1 +1 @@\n"
+        "-a\n"
+        "+b\n"
+        "diff --git a/two.py b/two.py\n"
+        "--- a/two.py\n"
+        "+++ b/two.py\n"
+        "@@ -1 +1 @@\n"
+        "-c\n"
+        "+d\n"
+    )
+    out = _extract_diff(text)
+    assert out.startswith("diff --git a/one.py b/one.py")
+    assert out.count("diff --git ") == 2     # both file sections preserved
+
+
+def test_extract_diff_empty_and_no_diff_returns_empty() -> None:
+    # Empty / whitespace / pure-prose (refusal) input never yields prose — it
+    # yields '' so the grader records an honest empty patch, never a git-apply of
+    # free text.
+    from memeval.claudecode.agent import _extract_diff
+    assert _extract_diff("") == ""
+    assert _extract_diff("   \n \t\n ") == ""
+    assert _extract_diff("I cannot solve this issue.") == ""
+
+
+def test_extract_diff_bare_unified_diff_fallback() -> None:
+    # A plain unified diff lacking the 'diff --git' header is recognized via the
+    # '--- ' + ('+++ '|'@@ ') fallback; a lone '--- ' prose line is NOT.
+    from memeval.claudecode.agent import _extract_diff
+    bare = "--- a/f.py\n+++ b/f.py\n@@ -1 +1 @@\n-a\n+b\n"
+    out = _extract_diff(bare)
+    assert out.startswith("--- a/f.py")
+    assert "@@ -1 +1 @@" in out and "+b" in out
+    # a dash line that is NOT a diff yields '' (no following +++/@@).
+    assert _extract_diff("--- not a diff, just a list item") == ""
+
+
+def test_build_code_prompt_includes_repo_and_instruction() -> None:
+    # _build_code_prompt surfaces the issue text, repo/base-commit context (when
+    # present), and the strict diff-only instruction; missing fields don't crash.
+    from memeval.claudecode.agent import _build_code_prompt
+    t = Task(
+        task_id="c1", benchmark=Benchmark.SWE_CONTEXTBENCH, kind=TaskKind.CODE,
+        question="Fix the crash on empty input.",
+        repo="example/repo", base_commit="deadbeef",
+    )
+    p = _build_code_prompt(t)
+    assert "Fix the crash on empty input." in p
+    assert "Repository: example/repo" in p
+    assert "Base commit: deadbeef" in p
+    assert "unified diff" in p
+    # No repo/base_commit -> those lines omitted, but question + instruction stay.
+    t2 = Task(task_id="c2", benchmark=Benchmark.SWE_CONTEXTBENCH, kind=TaskKind.CODE,
+              question="Only a question here.")
+    p2 = _build_code_prompt(t2)
+    assert "Only a question here." in p2
+    assert "Repository:" not in p2 and "Base commit:" not in p2
+    assert "unified diff" in p2
+
+
+def test_claudecode_solve_code_emits_extracted_diff() -> None:
+    # End-to-end via run_agent: a CODE benchmark + a fake runner returning prose-
+    # wrapped fenced diff. The graded prediction must be the EXTRACTED diff (starts
+    # with 'diff --git', no fences), and the runner must be asked for a diff.
+    from memeval.claudecode.agent import ClaudeCodeAgent, _SYS_CODE
+    from memeval.claudecode.cli import ClaudeResult
+    seen: dict = {}
+
+    def fake(prompt, *, cwd, mcp_config=None, allowed_tools=None,
+             append_system_prompt=None, **kw):
+        seen["prompt"] = prompt
+        seen["system"] = append_system_prompt
+        seen["mcp"] = mcp_config
+        seen["tools"] = allowed_tools
+        return ClaudeResult(
+            text=(
+                "Sure!\n"
+                "```diff\n"
+                "diff --git a/f.py b/f.py\n"
+                "--- a/f.py\n"
+                "+++ b/f.py\n"
+                "@@ -1 +1 @@\n"
+                "-old\n"
+                "+new\n"
+                "```"
+            ),
+            tokens_in=30, tokens_out=8,
+        )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        agent = ClaudeCodeAgent(memory_mode="off", runner=fake, workdir=tmp)
+        rr = run_agent(Benchmark.SWE_CONTEXTBENCH, agent, memory=False,
+                       path_or_id=_fixture("swe_contextbench.json"), limit=1,
+                       seed_sessions=False)
+    assert rr.n_tasks == 1
+    pred = rr.trajectories[0].prediction
+    assert pred.startswith("diff --git a/f.py b/f.py")   # EXTRACTED, not the prose
+    assert "```" not in pred and "Sure!" not in pred      # fences/prose stripped
+    assert seen["system"] == _SYS_CODE                    # CODE system prompt used
+    assert "unified diff" in seen["prompt"]               # prompt requests a diff
+    assert seen["mcp"] is None and seen["tools"] is None  # plain turn, no MCP
+
+
+def test_claudecode_solve_qa_unchanged() -> None:
+    # Regression guard: a QA benchmark takes the EXACT existing path — verbatim
+    # res.text prediction (NOT diff-extracted) and the plain QA system prompt.
+    # Proves _SYS_CODE / _extract_diff are never reached for QA.
+    from memeval.claudecode.agent import ClaudeCodeAgent, _SYS_PLAIN
+    from memeval.claudecode.cli import ClaudeResult
+    seen: dict = {}
+
+    def fake(prompt, *, cwd, mcp_config=None, allowed_tools=None,
+             append_system_prompt=None, **kw):
+        seen["system"] = append_system_prompt
+        return ClaudeResult(text="Berlin", tokens_in=12, tokens_out=2)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        agent = ClaudeCodeAgent(memory_mode="off", runner=fake, workdir=tmp)
+        rr = run_agent(Benchmark.MEMORY_AGENT_BENCH, agent, memory=False,
+                       path_or_id=_fixture("memoryagentbench.json"), limit=1,
+                       seed_sessions=False)
+    assert rr.n_tasks == 1
+    assert rr.trajectories[0].prediction == "Berlin"     # verbatim, NOT a diff
+    assert seen["system"] == _SYS_PLAIN                   # QA path untouched
+
+
+# --------------------------------------------------------------------------- #
 # Built-in runner (no pytest required)
 # --------------------------------------------------------------------------- #
 def _all_tests() -> list:
