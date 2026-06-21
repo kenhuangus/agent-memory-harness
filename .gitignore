@@ -32,3 +32,14 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+*.swo
+
+# Daydream local state (per ADR-dreaming-009)
+*.daydream-events.jsonl
+
+# Daydream FP/FN audit (per ADR-dreaming-011 — contains pre-redaction text;
+# MUST never be committed)
+*.redact-audit.jsonl
+
+# Daydream sidecar state (per ADR-harness-004)
+*.daydream-state.json

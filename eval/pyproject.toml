@@ -88,6 +88,10 @@ full = [
 # under `python tests/test_smoke.py` too. This group is for `python -m pytest`.
 dev = [
     "pytest>=8.0",
+    # mypy enforces the RedactedText NewType (ADR-dreaming-010). Pin compatible
+    # range; the negative-typecheck regression test (criterion #74 in the
+    # PR1 redaction rubric) is brittle to mypy version drift.
+    "mypy>=1.10,<2.0",
 ]
 
 [project.urls]
@@ -138,3 +142,21 @@ line-length = 100
 python_version = "3.11"
 warn_unused_ignores = true
 ignore_missing_imports = true   # heavy deps (anthropic, datasets, ...) are optional
+# Transitively-imported modules outside the strict-checked target are not yet
+# fully typed (loaders, cost, models, etc.). Follow imports for resolution but
+# suppress their errors so the dreaming/ strict target reports only its own
+# issues. Remove this once the rest of memeval is type-clean.
+follow_imports = "silent"
+
+# Don't apply strict checks to the existing pre-typed-era dreaming code or to
+# tests; v1 strict-typecheck scope is dreaming/redaction/ per ADR-dreaming-010.
+[[tool.mypy.overrides]]
+module = [
+    "memeval.dreaming.tests.*",
+    "memeval.dreaming.worker",
+    "memeval.dreaming.__init__",
+]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_decorators = false
+warn_return_any = false
