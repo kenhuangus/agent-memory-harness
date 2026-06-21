@@ -1,11 +1,20 @@
 """Run a benchmark (or all five) through the Claude Code CLI and log results.
 
+Installed as the ``memeval-bench`` console command (after ``pip install -e``), so a
+developer can run any benchmark on its own through their own Claude Code CLI::
+
+    memeval-bench --benchmark longmemeval --mode plugin --limit 20 --results out.json
+    memeval-bench --list-benchmarks          # show the five ids (no claude needed)
+
+The equivalent module form works without installing the entry point::
+
     python -m memeval.claudecode.run_bench --benchmark longmemeval --mode plugin \
         --model claude-haiku-4-5 --limit 20 --results ../results.json
 
-``--mode`` is off | builtin | plugin | all (all runs the three for comparison).
-Reuses the standard harness (cost/budget, trajectory, metrics, results ledger),
-so these runs show up on the Results page / scoreboard next to the API runs.
+``--mode`` is off | builtin | plugin | all (all runs builtin+plugin for comparison).
+``--benchmark`` is one of the five ids (run it on its own) or ``all``. Reuses the
+standard harness (cost/budget, trajectory, metrics, results ledger), so these runs
+show up on the Results page / scoreboard next to the API runs.
 """
 
 from __future__ import annotations
@@ -190,9 +199,31 @@ def _run_one(benchmark: str, mode: str, args: argparse.Namespace,
     return rec
 
 
+def _benchmark_table() -> str:
+    """One line per benchmark: id, kind (QA/CODE), default floor, draw — for --list."""
+    rows = ["available benchmarks (run any one on its own with --benchmark <id>):"]
+    for b in _ALL_BENCH:
+        kind = "CODE" if b in _CODE_BENCH else "QA"
+        draw = "group" if b in _GROUP_AWARE else "flat"
+        floor = DEFAULT_FLOORS.get(b, DEFAULT_MIN_ENTRIES)
+        rows.append(f"  {b:<18} {kind:<4} floor={floor:<3} draw={draw}")
+    rows.append("  all                run every benchmark in sequence")
+    rows.append("modes: builtin (Claude Code's own memory) | plugin (our MCP memory) | "
+                "off (baseline) | all (builtin+plugin)")
+    return "\n".join(rows)
+
+
 def main(argv: Optional[list[str]] = None) -> int:
-    ap = argparse.ArgumentParser(prog="memeval.claudecode.run_bench")
-    ap.add_argument("--benchmark", default="all", help="one of the five, or 'all'.")
+    ap = argparse.ArgumentParser(
+        prog="memeval-bench",
+        description="Run a memory benchmark (or all five) through your Claude Code CLI, "
+                    "comparing Claude Code's built-in memory vs our plugin memory. "
+                    "Subscription auth only (no API key).",
+    )
+    ap.add_argument("--list-benchmarks", action="store_true",
+                    help="List the available benchmark ids (with kind/floor/draw) and exit. "
+                         "Works offline — no claude or dataset needed.")
+    ap.add_argument("--benchmark", default="all", help="one of the five ids, or 'all'.")
     ap.add_argument("--mode", default="all", help="builtin | plugin | all (all = builtin+plugin).")
     ap.add_argument("--model", default="claude-haiku-4-5")
     ap.add_argument("--path", default=None, help="local fixture/dataset path, or 'fixtures' (blank = real source).")
@@ -240,6 +271,18 @@ def main(argv: Optional[list[str]] = None) -> int:
                     help="Write per-run raw artifacts here (trajectory JSONL, record JSON, "
                          "and the agent working dir with CLAUDE.md/.mcp.json/recall.jsonl/memory).")
     args = ap.parse_args(argv)
+
+    # --list-benchmarks is a pure-offline discovery aid: print and exit before we
+    # probe for the claude CLI or touch any dataset.
+    if args.list_benchmarks:
+        print(_benchmark_table())
+        return 0
+
+    # Validate the benchmark id up front so a single-benchmark run fails fast with a
+    # helpful message instead of deep inside the loader.
+    if args.benchmark != "all" and args.benchmark not in _ALL_BENCH:
+        ap.error(f"unknown --benchmark {args.benchmark!r}; choose one of "
+                 f"{_ALL_BENCH} or 'all' (see --list-benchmarks).")
 
     print(describe())   # which CLI was detected (native / WSL / not found)
     print("auth: Claude Code subscription only — ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN "

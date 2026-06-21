@@ -22,8 +22,14 @@ cd eval
 pip install -e ".[claudecode]"                # memeval + MCP SDK (the plugin server)
 pip install -e ".[hf]"                         # datasets — needed to pull the REAL benchmark data
 npm install -g @anthropic-ai/claude-code       # the `claude` CLI (the agent under test)
-python -m memeval.claudecode.run_bench --help  # prints the detected CLI + auth banner
+memeval-bench --help                           # prints the detected CLI + auth banner
+memeval-bench --list-benchmarks                # the five ids you can run on their own
 ```
+
+Installing puts a **`memeval-bench`** command on your PATH — the short form of
+`python -m memeval.claudecode.run_bench`. The two are interchangeable; use the
+module form if you're running from a checkout without installing. Every example
+below works with either.
 
 The CODE benchmarks (`swe_contextbench`, `swe_bench_cl`, `contextbench`) only
 score **accuracy** when the SWE-bench Docker grader is available — add
@@ -65,21 +71,27 @@ price table), not a charge.
 cd eval
 
 # Offline smoke first (free, no claude, bundled fixtures) — proves the wiring:
-python -m memeval.claudecode.run_bench --benchmark longmemeval --mode builtin \
+memeval-bench --benchmark longmemeval --mode builtin \
     --path fixtures --limit 2 --results /tmp/cc.json
 
-# The full comparison: all 5 benchmarks × {builtin, plugin}, real data,
+# Run ONE benchmark on its own (both memory modes), real data:
+memeval-bench --benchmark memoryagentbench --mode all \
+    --model claude-haiku-4-5 --out-dir runs/claudecode --results runs/claudecode/results.json
+
+# Or the full comparison: all 5 benchmarks × {builtin, plugin}, real data,
 # per-benchmark entry floors, $200 cap, raw artifacts written under runs/:
-python -m memeval.claudecode.run_bench --benchmark all --mode all \
+memeval-bench --benchmark all --mode all \
     --model claude-haiku-4-5 --out-dir runs/claudecode --results runs/claudecode/results.json
 ```
 
 ## 5. Run each benchmark
 
-Run from the `eval/` directory. Each command below runs **one** benchmark with
-both memory modes (`--mode all` = builtin + plugin). Drop `--mode all` for a
-single mode (e.g. `--mode plugin`). Entry counts default to each benchmark's
-[long-memory floor](#6-how-many-entries); override with `--limit N`.
+Run from the `eval/` directory. Each command below runs **one** benchmark on its
+own with both memory modes (`--mode all` = builtin + plugin). Drop `--mode all`
+for a single mode (e.g. `--mode plugin`). Entry counts default to each benchmark's
+[long-memory floor](#6-how-many-entries); override with `--limit N`. List the ids
+anytime with `memeval-bench --list-benchmarks`. (`memeval-bench` is the installed
+short form of `python -m memeval.claudecode.run_bench` — use either.)
 
 **MemoryAgentBench** — QA; one long shared context, many questions (accurate
 retrieval, test-time learning, conflict resolution). Real source `ai-hyz/MemoryAgentBench`.

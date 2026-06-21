@@ -646,6 +646,30 @@ def test_okf_store_is_a_memorystore() -> None:
 # --------------------------------------------------------------------------- #
 # Claude Code pipeline -- run benchmarks via the CLI with built-in / plugin memory
 # --------------------------------------------------------------------------- #
+def test_claudecode_run_bench_list_and_validate() -> None:
+    """`memeval-bench --list-benchmarks` and bad-id validation work fully offline."""
+    import contextlib
+    import io
+    from memeval.claudecode import run_bench
+
+    # --list-benchmarks: exit 0, names every benchmark, no claude/dataset touched.
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = run_bench.main(["--list-benchmarks"])
+    assert rc == 0
+    out = buf.getvalue()
+    for b in run_bench._ALL_BENCH:
+        assert b in out
+
+    # an unknown --benchmark fails fast (argparse error -> SystemExit 2).
+    try:
+        run_bench.main(["--benchmark", "nope", "--mode", "plugin"])
+        raised = None
+    except SystemExit as exc:
+        raised = exc.code
+    assert raised == 2
+
+
 def test_claudecode_memory_service_recall_remember_and_log() -> None:
     from memeval.okf import OKFStore
     from memeval.claudecode.service import MemoryService
