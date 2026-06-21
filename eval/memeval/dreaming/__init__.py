@@ -17,11 +17,14 @@ from __future__ import annotations
 
 from typing import Any
 
-__all__ = ["dream", "DreamingWorker"]
+__all__ = ["dream", "DreamingWorker", "daydream"]
 
 
 def __getattr__(name: str) -> Any:  # lazy re-export
     if name in ("dream", "DreamingWorker"):
         from . import worker
         return getattr(worker, name)
+    if name == "daydream":
+        from . import engine
+        return engine.daydream
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

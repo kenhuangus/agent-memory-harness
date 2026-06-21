@@ -1,0 +1,485 @@
+"""Per-session Daydream state — sidecar I/O, flock, TTL sweep, current-session touch.
+
+This module is the filesystem-state layer of the Daydream engine. Public surface
+is consumed by :mod:`memeval.dreaming.engine`; nothing here is intended for
+callers outside the dreaming package.
+
+Pinned ADRs:
+- ADR-dreaming-013 (cursor-advance ordering — sidecar is the last persistent op).
+- ADR-dreaming-014 (per-session flock; ``fcntl.flock`` is the chosen primitive).
+- ADR-dreaming-015 (filesystem state management — basedir resolution + TTL sweep).
+- ADR-harness-004 (sidecar shape + per-session path convention).
+- ADR-harness-006 (fail-open everywhere except ``resolve_basedir``).
+
+Heavy deps are stdlib-only here; no third-party imports.
+"""
+
+from __future__ import annotations
+
+import fcntl
+import hashlib
+import json
+import logging
+import os
+import time
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Iterator, Mapping, TypedDict
+
+from memeval.dreaming.events import diary_path_for, emit
+from memeval.dreaming.redaction._audit import audit_path_for, write_audit_record
+
+__all__ = [
+    "MAX_AUDIT_LINES_PER_FILE",
+    "RECENT_MEMORY_CAP",
+    "SidecarState",
+    "_LockHeld",
+    "_per_session_lock",
+    "_sanity_check_cursor",
+    "_touch_current_session_files",
+    "_write_audit_fail_open",
+    "_write_sidecar_atomic",
+    "audit_path",
+    "load_sidecar",
+    "lock_path",
+    "resolve_basedir",
+    "sidecar_path",
+    "sweep_old_state",
+]
+
+_logger = logging.getLogger(__name__)
+
+RECENT_MEMORY_CAP: int = 50
+"""Maximum number of recent ``MemoryItem.item_id`` values retained in the sidecar."""
+
+MAX_AUDIT_LINES_PER_FILE: int | None = None
+"""Forward-defense seam for ADR-011 audit-file rotation. ``None`` disables rotation."""
+
+_SECONDS_PER_DAY: int = 86400
+_SECONDS_PER_MINUTE: int = 60
+_LAST_SWEPT_MARKER: str = ".last-swept"
+_DREAM_SUBDIR: str = "dream"
+
+
+# --------------------------------------------------------------------------- #
+# Sidecar state shape
+# --------------------------------------------------------------------------- #
+class SidecarState(TypedDict):
+    """Persistent per-session Daydream state — see ADR-harness-004 + ADR-dreaming-013."""
+
+    cursor: int
+    last_summary: str | None
+    recent_memory_ids: list[str]
+    first_bytes_hash: str | None
+
+
+def _default_state() -> SidecarState:
+    """Return the canonical empty sidecar state used on missing/corrupt files."""
+    return SidecarState(
+        cursor=0,
+        last_summary=None,
+        recent_memory_ids=[],
+        first_bytes_hash=None,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Path helpers
+# --------------------------------------------------------------------------- #
+def resolve_basedir() -> Path:
+    """Resolve the Daydream basedir from ``$MEMORY_STORE`` per ADR-015 §1.
+
+    Reads ``os.environ["MEMORY_STORE"]`` (raises ``KeyError`` if unset),
+    resolves symlinks via ``.resolve()``, raises ``FileNotFoundError`` if
+    the path does not exist, raises ``ValueError`` if it points to a
+    directory rather than a file, and returns the file's parent directory.
+
+    These are the ONLY non-fail-open exits in PR4 — the engine deliberately
+    does not swallow them. The PR5 plugin shim is responsible for handling
+    these at the harness boundary.
+    """
+    raw = os.environ["MEMORY_STORE"]
+    resolved = Path(raw).resolve()
+    if not resolved.exists():
+        raise FileNotFoundError(
+            f"MEMORY_STORE points to a non-existent path: {resolved}"
+        )
+    if resolved.is_dir():
+        raise ValueError(
+            f"MEMORY_STORE must point to a file, got a directory: {resolved}"
+        )
+    return resolved.parent
+
+
+def sidecar_path(basedir: Path, session_id: str) -> Path:
+    """Return ``<basedir>/dream/<session_id>.json`` per ADR-harness-004."""
+    return basedir / _DREAM_SUBDIR / f"{session_id}.json"
+
+
+def lock_path(basedir: Path, session_id: str) -> Path:
+    """Return ``<basedir>/dream/<session_id>.lock`` per ADR-dreaming-014."""
+    return basedir / _DREAM_SUBDIR / f"{session_id}.lock"
+
+
+def audit_path(basedir: Path, session_id: str) -> Path:
+    """Return ``<basedir>/dream/<session_id>.redact-audit.jsonl`` per ADR-011."""
+    return audit_path_for(basedir, session_id)
+
+
+# --------------------------------------------------------------------------- #
+# Sidecar I/O
+# --------------------------------------------------------------------------- #
+def load_sidecar(path: Path) -> SidecarState:
+    """Load a sidecar; return defaults on missing or corrupt files.
+
+    On ``FileNotFoundError`` the canonical empty state is returned without
+    side-effects. On ``json.JSONDecodeError`` a ``sidecar_corrupt`` event is
+    emitted (per ADR-harness-006 fail-open + ADR-013's "cursor must remain
+    valid"); the same defaults are returned. Missing keys in an otherwise
+    well-formed JSON object are padded with defaults for forward-compat
+    with sidecars written by older versions.
+    """
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return _default_state()
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        emit("sidecar_corrupt", path=str(path))
+        return _default_state()
+
+    if not isinstance(parsed, dict):
+        emit("sidecar_corrupt", path=str(path))
+        return _default_state()
+
+    defaults = _default_state()
+    cursor_val = parsed.get("cursor", defaults["cursor"])
+    cursor = int(cursor_val) if isinstance(cursor_val, int) else defaults["cursor"]
+
+    last_summary_val = parsed.get("last_summary", defaults["last_summary"])
+    last_summary = (
+        last_summary_val
+        if (last_summary_val is None or isinstance(last_summary_val, str))
+        else defaults["last_summary"]
+    )
+
+    recent_val = parsed.get("recent_memory_ids", defaults["recent_memory_ids"])
+    recent_memory_ids: list[str] = (
+        [str(x) for x in recent_val]
+        if isinstance(recent_val, list)
+        else list(defaults["recent_memory_ids"])
+    )
+
+    fbh_val = parsed.get("first_bytes_hash", defaults["first_bytes_hash"])
+    first_bytes_hash = (
+        fbh_val
+        if (fbh_val is None or isinstance(fbh_val, str))
+        else defaults["first_bytes_hash"]
+    )
+
+    return SidecarState(
+        cursor=cursor,
+        last_summary=last_summary,
+        recent_memory_ids=recent_memory_ids,
+        first_bytes_hash=first_bytes_hash,
+    )
+
+
+def _write_sidecar_atomic(path: Path, state: SidecarState) -> None:
+    """Atomically write the sidecar via ``tmp.replace(path)`` per ADR-013 step 8.
+
+    Writes to ``path.with_suffix(path.suffix + ".tmp")`` first, then renames
+    over the destination. A crash between the tmp-write and the replace
+    leaves the original file intact. The destination is never opened in
+    ``"w"`` mode directly.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    capped_state: SidecarState = SidecarState(
+        cursor=state["cursor"],
+        last_summary=state["last_summary"],
+        recent_memory_ids=list(state["recent_memory_ids"])[:RECENT_MEMORY_CAP],
+        first_bytes_hash=state["first_bytes_hash"],
+    )
+    tmp.write_text(json.dumps(capped_state), encoding="utf-8")
+    tmp.replace(path)
+
+
+# --------------------------------------------------------------------------- #
+# Cursor sanity check — ADR-013 §Decision "Cursor sanity check"
+# --------------------------------------------------------------------------- #
+def _sanity_check_cursor(cursor: int, log_path: Path) -> int:
+    """Reset the cursor to 0 if it exceeds the current log size (rotation case).
+
+    When ``cursor > log_path.stat().st_size`` the log was likely truncated or
+    rotated; we emit ``cursor_reset`` so the reprocess is visible and return
+    ``0``. Otherwise the cursor is returned unchanged. ``FileNotFoundError``
+    from a missing log is propagated for the engine to handle at its boundary.
+    """
+    file_size = log_path.stat().st_size
+    if cursor > file_size:
+        emit(
+            "cursor_reset",
+            reason="rotation_or_truncation",
+            old_cursor=cursor,
+            file_size=file_size,
+        )
+        return 0
+    return cursor
+
+
+# --------------------------------------------------------------------------- #
+# Per-session flock — ADR-014
+# --------------------------------------------------------------------------- #
+class _LockHeld(Exception):
+    """Raised by :func:`_per_session_lock` when another process holds the lock."""
+
+
+@contextmanager
+def _per_session_lock(basedir: Path, session_id: str) -> Iterator[None]:
+    """Acquire a non-blocking exclusive advisory lock on the per-session lock file.
+
+    Uses ``fcntl.flock(fd, LOCK_EX | LOCK_NB)`` per ADR-014 (pinned over
+    ``fcntl.lockf`` per halliday F3 — flock is fd-bound and releases on
+    process death). On contention (``BlockingIOError``) emits
+    ``concurrent_daydream_skipped`` and raises :class:`_LockHeld`; the
+    engine catches this and exits 0 (idempotent skip).
+
+    The lock is released in a ``finally`` block via ``LOCK_UN`` so it
+    drops on both normal exit AND exception paths. Callers must not hold
+    the context across multiple engine invocations — PR5's plugin shim
+    invokes ``daydream()`` once per Stop hook fire, which honors this.
+    """
+    target = lock_path(basedir, session_id)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(target), os.O_WRONLY | os.O_CREAT, 0o600)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            emit("concurrent_daydream_skipped", session_id=session_id)
+            raise _LockHeld(str(exc)) from exc
+        try:
+            yield
+        finally:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            except OSError as exc:
+                _logger.warning(
+                    "flock LOCK_UN failed for session %s: %s", session_id, exc
+                )
+    finally:
+        try:
+            os.close(fd)
+        except OSError as exc:
+            _logger.warning(
+                "lock fd close failed for session %s: %s", session_id, exc
+            )
+
+
+# --------------------------------------------------------------------------- #
+# Current-session touch — halliday F5 (must run BEFORE sweep)
+# --------------------------------------------------------------------------- #
+def _touch_current_session_files(basedir: Path, session_id: str) -> None:
+    """Fresh-mtime the current session's state files so a peer sweep can't unlink them.
+
+    Touches the four per-session artifacts — sidecar, lock, diary, audit —
+    individually via ``os.utime``. Per-file ``FileNotFoundError`` is
+    swallowed silently (first invocation of a session has none of these
+    yet). Other ``OSError`` subclasses are logged at WARNING and skipped;
+    the function never raises (fail-open per ADR-harness-006).
+    """
+    candidates = [
+        sidecar_path(basedir, session_id),
+        lock_path(basedir, session_id),
+        diary_path_for(basedir, session_id),
+        audit_path(basedir, session_id),
+    ]
+    for candidate in candidates:
+        try:
+            os.utime(candidate, None)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            _logger.warning(
+                "touch failed for %s (session=%s): %s", candidate, session_id, exc
+            )
+
+
+# --------------------------------------------------------------------------- #
+# Audit-write fail-open wrapper — halliday F13
+# --------------------------------------------------------------------------- #
+def _write_audit_fail_open(
+    path: Path,
+    *,
+    chunk_id: int,
+    pre: str,
+    post: str,
+    detected: Mapping[str, int],
+) -> None:
+    """Call :func:`write_audit_record`; swallow any exception per ADR-005 fail-open.
+
+    F10 contract: callers MAY write the same ``chunk_id`` multiple times.
+    The append-only diary will contain one row per retry. Downstream
+    FP/FN analyzers MUST dedup by ``chunk_id`` (semantics: latest wins,
+    OR all rows kept and aggregated — consumer's choice). The engine
+    retries the same chunk when an LLM call empty-returns or
+    ``extract_memories`` fails parse, both of which leave the cursor
+    un-advanced per ADR-013.
+    """
+    try:
+        write_audit_record(
+            path,
+            chunk_id=chunk_id,
+            pre=pre,
+            post=post,
+            detected=detected,
+        )
+    except Exception as exc:
+        _logger.warning(
+            "audit write failed for chunk_id=%s path=%s: %s", chunk_id, path, exc
+        )
+
+
+# --------------------------------------------------------------------------- #
+# TTL sweep — ADR-015 §2 + §3 + §4
+# --------------------------------------------------------------------------- #
+_SWEEP_PATTERNS: tuple[str, ...] = (
+    "*.json",
+    "*.daydream-events.jsonl",
+    "*.redact-audit.jsonl",
+    "*.lock",
+)
+
+
+def _read_ttl_days(default: int) -> int:
+    """Return the TTL in days, honoring ``DREAM_RETENTION_DAYS`` override."""
+    override = os.environ.get("DREAM_RETENTION_DAYS")
+    if override is None:
+        return default
+    try:
+        return int(override)
+    except ValueError:
+        _logger.warning(
+            "DREAM_RETENTION_DAYS=%r is not an integer; using default %d",
+            override,
+            default,
+        )
+        return default
+
+
+def _read_throttle_min(default: int) -> int:
+    """Return the throttle window in minutes, honoring ``DREAM_SWEEP_INTERVAL_MIN``."""
+    override = os.environ.get("DREAM_SWEEP_INTERVAL_MIN")
+    if override is None:
+        return default
+    try:
+        return int(override)
+    except ValueError:
+        _logger.warning(
+            "DREAM_SWEEP_INTERVAL_MIN=%r is not an integer; using default %d",
+            override,
+            default,
+        )
+        return default
+
+
+def _update_last_swept_marker(marker: Path, now: float) -> None:
+    """Atomically update the ``.last-swept`` marker mtime via ``os.replace``.
+
+    Writes a tmp sibling and replaces; protects against the
+    two-concurrent-writes tear identified by halliday F6.
+    """
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    tmp = marker.with_suffix(marker.suffix + ".tmp")
+    tmp.write_text(str(now), encoding="utf-8")
+    os.replace(tmp, marker)
+
+
+def sweep_old_state(
+    basedir: Path,
+    *,
+    ttl_days: int = 30,
+    throttle_min: int = 60,
+) -> int:
+    """Delete state files older than ``ttl_days`` in ``basedir/dream/`` (throttled).
+
+    Throttled via a ``.last-swept`` marker file: a call within
+    ``throttle_min`` minutes of the prior real sweep is a no-op that
+    emits ``sweep_skipped(reason="throttled")``. Otherwise iterates the
+    four file-class patterns (``*.json``, ``*.daydream-events.jsonl``,
+    ``*.redact-audit.jsonl``, ``*.lock``), unlinks any whose mtime is
+    older than the TTL, emits ``state_file_pruned`` per deleted file,
+    updates the marker atomically via ``os.replace``, and emits a
+    ``sweep_completed`` summary.
+
+    Defaults are env-overridable: ``DREAM_RETENTION_DAYS`` (int days),
+    ``DREAM_SWEEP_INTERVAL_MIN`` (int minutes). Fail-open per ADR-015
+    §Tradeoffs: a per-file unlink failure logs and continues sweeping
+    the remaining files; the engine ignores any exception that escapes.
+    Returns the integer count of files deleted.
+    """
+    effective_ttl_days = _read_ttl_days(ttl_days)
+    effective_throttle_min = _read_throttle_min(throttle_min)
+
+    dream_dir = basedir / _DREAM_SUBDIR
+    marker = dream_dir / _LAST_SWEPT_MARKER
+    now = time.time()
+
+    if marker.exists():
+        try:
+            last_swept = marker.stat().st_mtime
+        except OSError as exc:
+            _logger.warning("could not stat last-swept marker %s: %s", marker, exc)
+            last_swept = 0.0
+        if now - last_swept < effective_throttle_min * _SECONDS_PER_MINUTE:
+            emit("sweep_skipped", reason="throttled")
+            return 0
+
+    if not dream_dir.is_dir():
+        _update_last_swept_marker(marker, now)
+        emit("sweep_completed", count=0, duration_s=0.0)
+        return 0
+
+    cutoff = now - effective_ttl_days * _SECONDS_PER_DAY
+    started = time.time()
+    deleted = 0
+
+    seen: set[Path] = set()
+    for pattern in _SWEEP_PATTERNS:
+        for candidate in dream_dir.glob(pattern):
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            if candidate.name == _LAST_SWEPT_MARKER:
+                continue
+            try:
+                mtime = candidate.stat().st_mtime
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                _logger.warning("stat failed for %s: %s", candidate, exc)
+                continue
+            if mtime >= cutoff:
+                continue
+            try:
+                candidate.unlink()
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                _logger.warning("unlink failed for %s: %s", candidate, exc)
+                continue
+            deleted += 1
+            emit("state_file_pruned", path=str(candidate), reason="ttl_expired")
+
+    _update_last_swept_marker(marker, now)
+    duration_s = time.time() - started
+    emit("sweep_completed", count=deleted, duration_s=duration_s)
+    return deleted
+
+
+def _first_bytes_hash(data: bytes) -> str:
+    """Return ``sha256(data).hexdigest()`` — convenience for the engine's F8 seam."""
+    return hashlib.sha256(data).hexdigest()
