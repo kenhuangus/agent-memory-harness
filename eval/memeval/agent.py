@@ -45,6 +45,7 @@ How OpenCode plugs in (architecture A)::
 
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional, Protocol, Union, runtime_checkable
@@ -296,6 +297,8 @@ def run_agent(
     grader: Optional[Callable[[Task, str], Optional[bool]]] = None,
     config: Optional[ModelConfig] = None,
     group_aware: bool = False,
+    workers: int = 1,
+    progress_cb: Optional[Callable[["RunResult"], None]] = None,
     k: int = 5,
     tau: float = 86400.0,
     threshold: float = 0.7,
@@ -340,84 +343,136 @@ def run_agent(
         # to a flat prefix when group_aware is off (or there's effectively 1 group).
         tasks = _select_group_aware(tasks, limit) if group_aware else tasks[:limit]
 
-    trajectories: list[Trajectory] = []
+    # Each task is independent (the Claude Code agent seeds a per-task memory
+    # bundle), so tasks can run concurrently — `workers` controls how many
+    # `claude` CLI processes run at once. Trajectories are keyed by task index
+    # and reassembled in order, so metrics stay aligned with `tasks` regardless
+    # of completion order. `progress_cb` is invoked after every task (under a
+    # lock) with the partial RunResult-so-far, so a crash still leaves results.
+    trajectories_by_idx: dict[int, Trajectory] = {}
     group_stores: dict[str, MemoryStore] = {}
     budget_hit = False
+    _lock = threading.Lock()
+    _stop = threading.Event()
 
-    for task in tasks:
-        active_store = _store_for_task(task, store, group_stores)
+    def _assemble(*, partial_override: Optional[bool] = None) -> RunResult:
+        """Build a RunResult from the trajectories collected so far (ordered)."""
+        idxs = sorted(trajectories_by_idx)
+        trajs = [trajectories_by_idx[i] for i in idxs]
+        ran = [tasks[i] for i in idxs]
+        m = compute_metrics(trajs, ran, tau=tau, threshold=threshold)
+        part = truncated or budget_hit or len(trajs) < total_available
+        return RunResult(
+            benchmark=bench, config=cfg, metrics=m, trajectories=trajs,
+            n_tasks=len(trajs),
+            cost_usd=cost.spent_usd if cost is not None else 0.0,
+            tokens_in=sum(s.tokens_in for t in trajs for s in t.steps),
+            tokens_out=sum(s.tokens_out for t in trajs for s in t.steps),
+            budget_exceeded=budget_hit,
+            partial=part if partial_override is None else partial_override,
+            started_at=started_at, ended_at=clock(),
+            metadata={
+                "memory": memory, "k": k, "tau": tau, "threshold": threshold,
+                "agent": agent.name, "mode": "agent",
+                "total_available": total_available,
+                "limit": limit,
+                "select": "group" if group_aware else "flat",
+                "workers": workers,
+                "source": path_or_id or getattr(loader, "default_source", ""),
+            },
+        )
+
+    def _do_task(item: tuple[int, "Task"]) -> None:
+        nonlocal budget_hit
+        idx, task = item
+        if _stop.is_set():
+            return
         query_time = _task_query_time(task)
         step_ts = query_time if query_time is not None else 0.0
-
         traj = Trajectory(
             task_id=task.task_id, benchmark=task.benchmark, model=agent.name,
             memory_on=memory, started_at=clock(),
         )
-        if memory and seed_sessions:
-            for sess in task.sessions:
-                active_store.write(MemoryItem.from_session(sess))
-
-        with tracing.task_span(
-            task.task_id, input=task.question,
-            metadata={"benchmark": bench.value, "memory": memory, "agent": agent.name},
-        ) as tspan:
-            ctx = AgentContext(
-                task=task, store=active_store, model=_agent_model(agent),
-                memory_on=memory, trajectory=traj, cost=cost, k=k,
-                as_of=query_time, step_ts=step_ts, tracer=tspan,
-            )
+        try:
+            active_store = _store_for_task(task, store, group_stores)
+            if memory and seed_sessions:
+                for sess in task.sessions:
+                    active_store.write(MemoryItem.from_session(sess))
+            with tracing.task_span(
+                task.task_id, input=task.question,
+                metadata={"benchmark": bench.value, "memory": memory, "agent": agent.name},
+            ) as tspan:
+                ctx = AgentContext(
+                    task=task, store=active_store, model=_agent_model(agent),
+                    memory_on=memory, trajectory=traj, cost=cost, k=k,
+                    as_of=query_time, step_ts=step_ts, tracer=tspan,
+                )
+                try:
+                    result = agent.solve(task, ctx)
+                except BudgetExceeded:
+                    raise  # propagate to the outer handler -> stop the run
+                except Exception as exc:  # noqa: BLE001 - one task must not abort the run
+                    print(f"  task {task.task_id} failed ({type(exc).__name__}): "
+                          f"{str(exc)[:160]}", flush=True)
+                    result = ""
+                pred, forced_success = _coerce_result(result)
+                tspan.update(output=pred)
+            traj.prediction = pred
             try:
-                result = agent.solve(task, ctx)
-            except BudgetExceeded:
+                traj.success = (
+                    forced_success if forced_success is not None
+                    else _grade(task, pred, grader)
+                )
+            except Exception as exc:  # noqa: BLE001 - grading failure -> count as a miss
+                print(f"  task {task.task_id} grade failed ({type(exc).__name__}): "
+                      f"{str(exc)[:120]}", flush=True)
+                traj.success = False
+        except BudgetExceeded:
+            with _lock:
                 budget_hit = True
-                break
-            pred, forced_success = _coerce_result(result)
-            tspan.update(output=pred)
-
-        traj.prediction = pred
-        traj.success = (
-            forced_success if forced_success is not None
-            else _grade(task, pred, grader)
-        )
+            _stop.set()
+            return
+        except Exception as exc:  # noqa: BLE001 - any other failure -> count as a miss
+            print(f"  task {task.task_id} errored ({type(exc).__name__}): "
+                  f"{str(exc)[:160]}", flush=True)
+            traj.prediction = ""
+            traj.success = False
         traj.ended_at = clock()
-        trajectories.append(traj)
-        if logger is not None:
-            logger.log(traj)
+        with _lock:
+            trajectories_by_idx[idx] = traj
+            if logger is not None:
+                logger.log(traj)
+            if progress_cb is not None:
+                try:  # an incremental save must never break the run
+                    progress_cb(_assemble(partial_override=True))
+                except Exception:  # noqa: BLE001
+                    pass
 
-    ended_at = clock()
-    metrics: Metrics = compute_metrics(
-        trajectories, tasks[: len(trajectories)], tau=tau, threshold=threshold
-    )
-    tokens_in = sum(s.tokens_in for t in trajectories for s in t.steps)
-    tokens_out = sum(s.tokens_out for t in trajectories for s in t.steps)
-    partial = truncated or budget_hit or len(trajectories) < total_available
+    items = list(enumerate(tasks))
+    if workers and workers > 1 and len(items) > 1:
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            list(ex.map(_do_task, items))
+    else:
+        for it in items:
+            if _stop.is_set():
+                break
+            _do_task(it)
+
+    result_rr = _assemble()
 
     # Mirror the aggregate metrics into Langfuse as run-level scores (no-op offline).
     with tracing.task_span(
         f"run:{bench.value}:{cfg.label}",
-        metadata={"cost_usd": cost.spent_usd if cost is not None else 0.0,
-                  "n_tasks": len(trajectories), "partial": partial},
+        metadata={"cost_usd": result_rr.cost_usd,
+                  "n_tasks": result_rr.n_tasks, "partial": result_rr.partial},
     ) as rspan:
         for _m in ("recency", "efficiency", "relevancy", "accuracy"):
-            rspan.score(_m, getattr(metrics, _m))
+            rspan.score(_m, getattr(result_rr.metrics, _m))
     tracing.flush()
 
-    return RunResult(
-        benchmark=bench, config=cfg, metrics=metrics, trajectories=trajectories,
-        n_tasks=len(trajectories),
-        cost_usd=cost.spent_usd if cost is not None else 0.0,
-        tokens_in=tokens_in, tokens_out=tokens_out,
-        budget_exceeded=budget_hit, partial=partial,
-        started_at=started_at, ended_at=ended_at,
-        metadata={
-            "memory": memory, "k": k, "tau": tau, "threshold": threshold,
-            "agent": agent.name, "mode": "agent",
-            "total_available": total_available,
-            "limit": limit,
-            "select": "group" if group_aware else "flat",
-            "source": path_or_id or getattr(loader, "default_source", ""),
-        },
-    )
+    return result_rr
 
 
 # --------------------------------------------------------------------------- #
