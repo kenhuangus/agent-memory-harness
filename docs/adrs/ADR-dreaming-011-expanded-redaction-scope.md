@@ -153,19 +153,47 @@ keeps secrets out of OpenRouter keeps them out of git.
       secret_type = "URL-Embedded Credential"
       denylist = [re.compile(r"[?&](access_token|api_key|auth|token|secret|password)=[^&\s]{6,}")]
   ```
-- **Policy — out-of-scope list** is documented at the top of
-  `eval/memeval/dreaming/redaction/__init__.py` (module docstring) AND
-  in the v1 README, so it's discoverable both ways.
+- **Policy — out-of-scope list** is documented in two specific places
+  so it's discoverable both ways:
+  1. The module docstring at the top of
+     `eval/memeval/dreaming/redaction/__init__.py`.
+  2. The component-scoped README at
+     `eval/memeval/dreaming/redaction/README.md` (created by the PR1
+     scaffold; was undecided when this ADR was first written, now
+     pinned to the component-scoped path so consumers see it next to
+     the code).
 - **Policy — audit file path:**
-  `${MEMORY_STORE%/*}/dream/<session_id>.redact-audit.jsonl`. Resolution
-  per [`ADR-harness-004`](ADR-harness-004-dream-state-sidecar.md) (paired
-  with halliday's finding #9 follow-up).
+  - **Conceptual shape:** `<basedir>/dream/<session_id>.redact-audit.jsonl`
+    where `<basedir>` is derived from `$MEMORY_STORE`.
+  - **Concrete Python resolution** (the path callers compute):
+    ```python
+    basedir = Path(os.environ["MEMORY_STORE"]).resolve().parent
+    audit_path = basedir / "dream" / f"{session_id}.redact-audit.jsonl"
+    ```
+    Equivalent to the shell expression `${MEMORY_STORE%/*}/dream/...`
+    when `MEMORY_STORE` points to a file (the v1 assumption per
+    [`ADR-harness-004`](ADR-harness-004-dream-state-sidecar.md)).
+  - The exact env-var resolution rules (file vs directory, trailing
+    slash, etc.) are halliday Finding #9 — queued for a successor ADR
+    in the dreaming domain; until then, PR1 ships path *composition*
+    only with `basedir` supplied by the caller, per rubric criterion
+    104.
 - **Policy — gitignore:** `*.redact-audit.jsonl` pattern added to the
-  repo's `.gitignore` alongside `*.daydream-events.jsonl`.
+  repo's `.gitignore` alongside `*.daydream-events.jsonl`. Verified by
+  `test_gitignore_contains_redact_audit_pattern` and
+  `test_gitignore_pattern_actually_ignores_audit_at_root` (the actual
+  `git check-ignore` invocation) in
+  `eval/memeval/dreaming/tests/test_redaction_gitignore.py`.
 - **Policy — local-only invariant:** the audit file is never read by
-  any LLM call, never transmitted, never logged remotely. Tested by a
-  regression test asserting no I/O outside the local fs touches its
-  contents.
+  any LLM call, never transmitted, never logged remotely. Verified by
+  two regression tests in
+  `eval/memeval/dreaming/tests/test_redaction_audit.py`:
+  - `test_audit_writer_makes_no_network_connect` — monkeypatches
+    `socket.socket.connect` to raise; asserts a write completes
+    without triggering any network connect.
+  - `test_audit_writer_writes_only_to_supplied_path` — monkeypatches
+    `builtins.open` to record write-mode opens; asserts the writer
+    opens only the caller-supplied target path for write/append.
 - **Policy — retention:** same TTL as
   [`ADR-dreaming-009`](ADR-dreaming-009-events-shim.md)'s events diary
   (TBD).

@@ -204,7 +204,7 @@ The audit file is local-only, gitignored, and contains pre-redaction (potentiall
 
 ## S. Gitignore (ADR-011 §Consequences "Policy — gitignore")
 
-- [ ] 110. The repo root `.gitignore` file exists at `/Users/nerd/Git/agent-memory-harness/.gitignore` (path is repo-relative `.gitignore`) — ADR-011 §Consequences "Policy — gitignore" — `test_repo_gitignore_exists`. NOTE: the file does not exist on disk as of this rubric's writing; PR1 creates it.
+- [ ] 110. The repo root `.gitignore` file exists (repo-relative path: `.gitignore`) — ADR-011 §Consequences "Policy — gitignore" — `test_repo_gitignore_exists`. NOTE: the file does not exist on disk as of this rubric's writing; PR1 creates it.
 - [ ] 111. `.gitignore` contains the literal line `*.redact-audit.jsonl` — ADR-011 §Consequences "Policy — gitignore" ("`*.redact-audit.jsonl` pattern added") — `test_gitignore_contains_redact_audit_pattern` (reads `.gitignore`; asserts the pattern appears as an exact line — not as a substring of a comment).
 - [ ] 112. The pattern actually causes git to ignore a created `<x>.redact-audit.jsonl` file at the repo root AND at a nested path — ADR-011 §Consequences — `test_gitignore_pattern_actually_ignores` (uses `git check-ignore` via subprocess on two synthetic paths; asserts both are ignored).
 
