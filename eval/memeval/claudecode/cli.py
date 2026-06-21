@@ -103,6 +103,91 @@ def build_argv(
     return [runtime.exe, "-p", prompt, *flags], str(cwd)
 
 
+def _flags_primed(
+    *, model: Optional[str], mcp_config: Optional[str], allowed_tools: Optional[list[str]],
+    append_system_prompt: Optional[str], permission_mode: str, strict_mcp: bool,
+) -> list[str]:
+    """Flags for the primed (stream-json) path: same as :func:`_flags` but using
+    stream-json I/O so a priming turn can precede the real prompt in one session."""
+    flags = [
+        "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
+        "--permission-mode", permission_mode,
+    ]
+    if model:
+        flags += ["--model", model]
+    if mcp_config:
+        flags += ["--mcp-config", mcp_config]
+        if strict_mcp:
+            flags += ["--strict-mcp-config"]
+    if allowed_tools:
+        flags += ["--allowedTools", ",".join(allowed_tools)]
+    if append_system_prompt:
+        flags += ["--append-system-prompt", append_system_prompt]
+    return flags
+
+
+def build_argv_primed(
+    runtime: ClaudeRuntime, *, cwd: str | Path,
+    model: Optional[str] = None, mcp_config: Optional[str | Path] = None,
+    allowed_tools: Optional[list[str]] = None, append_system_prompt: Optional[str] = None,
+    permission_mode: str = "bypassPermissions", strict_mcp: bool = False,
+    strip_api_key: bool = True,
+) -> tuple[list[str], Optional[str]]:
+    """(argv, cwd) for a primed run. The prompt is fed via stdin (stream-json), so
+    unlike :func:`build_argv` no ``-p <prompt>`` positional is included."""
+    if runtime.kind == "wsl":
+        mcp = to_wsl_path(mcp_config) if mcp_config else None
+        flags = _flags_primed(model=model, mcp_config=mcp, allowed_tools=allowed_tools,
+                              append_system_prompt=append_system_prompt,
+                              permission_mode=permission_mode, strict_mcp=strict_mcp)
+        prefix: list[str] = []
+        if strip_api_key:
+            prefix = ["env"] + [a for v in _API_KEY_VARS for a in ("-u", v)]
+        argv = ["wsl", "-d", runtime.distro or "Ubuntu", "--cd", to_wsl_path(cwd),
+                "--", *prefix, runtime.exe, "-p", *flags]
+        return argv, None
+    flags = _flags_primed(model=model, mcp_config=(str(mcp_config) if mcp_config else None),
+                          allowed_tools=allowed_tools, append_system_prompt=append_system_prompt,
+                          permission_mode=permission_mode, strict_mcp=strict_mcp)
+    return [runtime.exe, "-p", *flags], str(cwd)
+
+
+def run_claude_primed(
+    prompt: str, *, cwd: str | Path, model: Optional[str] = None,
+    mcp_config: Optional[str | Path] = None, allowed_tools: Optional[list[str]] = None,
+    append_system_prompt: Optional[str] = None, permission_mode: str = "bypassPermissions",
+    strict_mcp: bool = False, strip_api_key: bool = True, timeout: int = 300,
+    runtime: Optional[ClaudeRuntime] = None,
+) -> ClaudeResult:
+    """Run one headless turn with a *priming turn* first, over stream-json I/O.
+
+    Sends two user messages in a single session: a trivial priming message, then
+    the real ``prompt``. The priming turn gives Claude Code's async MCP connection
+    a full turn to finish registering tools before the model generates the real
+    answer — eliminating the startup race that drops ``memory_recall`` on ~half of
+    plain ``claude -p`` invocations. Returns the LAST result event (the real
+    answer). Used by the plugin (MCP) path; the plain text path is unchanged.
+    """
+    rt = require_runtime(runtime)
+    argv, sub_cwd = build_argv_primed(
+        rt, cwd=cwd, model=model, mcp_config=mcp_config, allowed_tools=allowed_tools,
+        append_system_prompt=append_system_prompt, permission_mode=permission_mode,
+        strict_mcp=strict_mcp, strip_api_key=strip_api_key,
+    )
+    stdin_data = _stream_json_input([_PRIME_MESSAGE, prompt])
+    for attempt in range(3):
+        proc = subprocess.run(argv, cwd=sub_cwd, capture_output=True, text=True,
+                              timeout=timeout, env=_clean_env(strip_api_key),
+                              input=stdin_data)
+        if proc.returncode == 0:
+            return _parse_stream_json(proc.stdout)
+        err = (proc.stderr or proc.stdout or "").strip()
+        if "MCP config" in err and attempt < 2:
+            continue  # transient DrvFs read miss — retry
+        raise RuntimeError(f"claude (primed) exited {proc.returncode}: {err[:400]}")
+    return _parse_stream_json(proc.stdout)
+
+
 def _clean_env(strip_api_key: bool) -> Optional[dict]:
     """Subprocess env with API-key vars removed (so WSLENV can't forward them and
     a native CLI can't read them). ``None`` keeps the inherited env."""
@@ -148,6 +233,62 @@ def run_claude(
     return _parse(proc.stdout)  # unreachable, keeps type-checkers happy
 
 
+#: Minimal priming turn sent before the real prompt on the plugin (MCP) path. Its
+#: only job is to give Claude Code's *async* MCP connection a full turn to finish
+#: registering tools before the model generates the answer to the real question —
+#: closing the startup race where ``claude -p`` begins generating before
+#: ``memory_recall`` is available (~40-65% first-try without it, ~100% with it).
+_PRIME_MESSAGE = (
+    "Reply with the single word READY. This is an internal setup turn — "
+    "do not call any tools and do not answer anything else yet."
+)
+
+
+def _stream_json_input(messages: list[str]) -> str:
+    """Serialize user turns as newline-delimited stream-json input for ``claude -p``."""
+    lines = [
+        json.dumps({"type": "user", "message": {"role": "user", "content": m}})
+        for m in messages
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _parse_stream_json(stdout: str) -> ClaudeResult:
+    """Parse ``--output-format stream-json`` (one JSON object per line).
+
+    Returns the LAST ``result`` event — with a priming turn first, that is the
+    answer to the real prompt, not the priming reply. Usage/cost are summed across
+    result events so multi-turn token accounting stays correct.
+    """
+    last: dict[str, Any] = {}
+    tin = tout = turns = 0
+    cost = 0.0
+    for line in (stdout or "").splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            ev = json.loads(line)
+        except Exception:
+            continue
+        if not isinstance(ev, dict) or ev.get("type") != "result":
+            continue
+        last = ev
+        usage = ev.get("usage") or {}
+        tin += int(usage.get("input_tokens", usage.get("prompt_tokens", 0)) or 0)
+        tout += int(usage.get("output_tokens", usage.get("completion_tokens", 0)) or 0)
+        cost += float(ev.get("total_cost_usd", ev.get("cost_usd", 0.0)) or 0.0)
+        turns += int(ev.get("num_turns", 0) or 0)
+    text = ""
+    for key in ("result", "text", "response", "content"):
+        v = last.get(key)
+        if isinstance(v, str) and v:
+            text = v
+            break
+    return ClaudeResult(text=text, tokens_in=tin, tokens_out=tout,
+                        cost_usd=cost, num_turns=turns, raw=last)
+
+
 def _parse(stdout: str) -> ClaudeResult:
     """Parse the ``--output-format json`` envelope; tolerant of schema variation."""
     data: dict[str, Any] = {}
@@ -178,4 +319,4 @@ def _parse(stdout: str) -> ClaudeResult:
 
 
 __all__ = ["ClaudeResult", "ClaudeNotInstalled", "find_claude", "require_runtime",
-           "build_argv", "run_claude"]
+           "build_argv", "run_claude", "build_argv_primed", "run_claude_primed"]
