@@ -54,6 +54,9 @@ the move).
 | [ADR-dreaming-009](ADR-dreaming-009-events-shim.md) | Daydream events shim = no-op + local `daydream-events.jsonl` diary until ADR-harness-007 ships | Accepted | no |
 | [ADR-dreaming-010](ADR-dreaming-010-redactedtext-newtype.md) | `RedactedText` NewType structurally enforces the redaction trust boundary (mypy-checked, updates ADR-006's `complete()` signature) | Accepted | **yes** |
 | [ADR-dreaming-011](ADR-dreaming-011-expanded-redaction-scope.md) | Expanded redaction scope — DB/URL-credential detectors + explicit out-of-scope policy + FP/FN audit file (amends ADR-005) | Accepted | **yes** |
+| [ADR-dreaming-012](ADR-dreaming-012-openrouter-missing-key-failopen.md) | `OpenRouterClient` missing-API-key = no-op `Completion` + `llm_unavailable` event + no cursor advance | Accepted | **yes** |
+| [ADR-dreaming-013](ADR-dreaming-013-cursor-advance-ordering.md) | Cursor-advance ordering — memories-then-cursor, atomic sidecar write, no advance on exception | Accepted | **yes** |
+| [ADR-dreaming-014](ADR-dreaming-014-concurrent-daydream-flock.md) | Concurrent Daydream invocations — `flock` per `session_id` + idempotent exit-0 | Accepted | **yes** |
 | [ADR-harness-003](ADR-harness-003-log-extraction-chunking.md) | `dream` log-extraction chunking = one turn = one chunk + prior-summary overlap | Accepted | no |
 | [ADR-harness-004](ADR-harness-004-dream-state-sidecar.md) | `dream` state = on-disk JSON sidecar (cursor + last_summary + recent_memory_ids) | Accepted | no |
 | [ADR-harness-005](ADR-harness-005-log-adapter-redaction.md) | The log adapter redacts secrets before any model call | Accepted | no |
