@@ -59,10 +59,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import TYPE_CHECKING, Any, NewType
-
-if TYPE_CHECKING:  # pragma: no cover
-    pass
+from typing import Any, NewType
 
 #: Structural marker that a string has been routed through ``redact()``.
 #: ``LLMClient.complete()`` (PR2) accepts only ``RedactedText``; mypy
