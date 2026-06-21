@@ -45,9 +45,13 @@ the move).
 | [ADR-harness-002](ADR-harness-002-recall-remember-mcp-tools.md) | `recall`/`remember` are MCP tools that call the Orchestrator | Accepted | **yes** |
 | [ADR-dreaming-001](ADR-dreaming-001-daydreaming-stop-fired.md) | Daydreaming = in-session capture, auto `Stop`/`PreCompact`-fired (day scope) — its own entrypoint | Accepted | **yes** |
 | [ADR-dreaming-002](ADR-dreaming-002-dreaming-consolidation-cli.md) | Dreaming = whole-store consolidation via `memory dream --all` CLI (night scope) — its own entrypoint | Accepted | **yes** |
-| [ADR-dreaming-003](ADR-dreaming-003-consolidation-llmclient.md) | Subconscious model = swappable `LLMClient`, OpenRouter-first (shared helper) | Accepted | **yes** |
+| [ADR-dreaming-003](ADR-dreaming-003-consolidation-llmclient.md) | Subconscious model = swappable `LLMClient`, OpenRouter-first (shared helper) | Superseded by [ADR-dreaming-006](ADR-dreaming-006-llmclient-completion-dataclass.md) | **yes** |
 | [ADR-dreaming-004](ADR-dreaming-004-default-subconscious-model.md) | Default subconscious model = `inclusionai/ling-2.6-flash` via OpenRouter | Accepted | no |
 | [ADR-dreaming-005](ADR-dreaming-005-v1-inline-redaction.md) | v1 Daydream inlines log reading + secret redaction (Claude-only, `detect-secrets` structured detectors + custom plugins) | Accepted | **yes** |
+| [ADR-dreaming-006](ADR-dreaming-006-llmclient-completion-dataclass.md) | `LLMClient.complete()` returns a `Completion` dataclass with token counts (replaces ADR-003's signature) | Accepted | **yes** |
+| [ADR-dreaming-007](ADR-dreaming-007-stop-hook-driven-turn-cursor.md) | Daydream turn = user prompt + Claude response(s) + Stop hook; cursor → EOF per invocation (v1, Stop-hook-only) | Accepted | no |
+| [ADR-dreaming-008](ADR-dreaming-008-memory-cli-console-script.md) | `memory` CLI is a standalone console script in `eval/memeval/dreaming/cli.py` | Accepted | **yes** |
+| [ADR-dreaming-009](ADR-dreaming-009-events-shim.md) | Daydream events shim = no-op + local `daydream-events.jsonl` diary until ADR-harness-007 ships | Accepted | no |
 | [ADR-harness-003](ADR-harness-003-log-extraction-chunking.md) | `dream` log-extraction chunking = one turn = one chunk + prior-summary overlap | Accepted | no |
 | [ADR-harness-004](ADR-harness-004-dream-state-sidecar.md) | `dream` state = on-disk JSON sidecar (cursor + last_summary + recent_memory_ids) | Accepted | no |
 | [ADR-harness-005](ADR-harness-005-log-adapter-redaction.md) | The log adapter redacts secrets before any model call | Accepted | no |
