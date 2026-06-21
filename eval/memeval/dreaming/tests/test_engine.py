@@ -1483,6 +1483,7 @@ def test_engine_import_does_not_load_httpx_criterion_171() -> None:
         ],
         capture_output=True,
         text=True,
+        timeout=15,  # prevent suite hang if the subprocess stalls (CodeRabbit PR #42)
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "OK" in result.stdout
@@ -1519,7 +1520,10 @@ def test_halliday_findings_have_coverage_criterion_172() -> None:
     rubric_path = Path(__file__).parent / "PR4_ENGINE_RUBRIC.md"
     text = rubric_path.read_text(encoding="utf-8")
     for f_num, where in _HALLIDAY_TO_RUBRIC.items():
-        assert f"({f_num})" in text or f_num in text, (
+        # Use word-boundary regex so e.g. "F1" doesn't match within "F10"
+        # (CodeRabbit PR #42 finding — the loose `f_num in text` substring
+        # check was passing vacuously for the F1-F9 range).
+        assert re.search(rf"\b{re.escape(f_num)}\b", text), (
             f"halliday {f_num} not mentioned in rubric"
         )
         if "N-A" not in where:

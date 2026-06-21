@@ -48,6 +48,7 @@ from memeval.dreaming._state import (
     audit_path,
     load_sidecar,
     resolve_basedir,
+    safe_session_stem,
     sidecar_path,
     sweep_old_state,
 )
@@ -85,6 +86,12 @@ def daydream(
     cursor.
     """
     effective_basedir = basedir if basedir is not None else resolve_basedir()
+    # Path-safety: rebind session_id to its safe stem so every downstream
+    # filesystem-path-deriving call (sidecar/lock/audit/diary) stays inside
+    # <basedir>/dream/. Idempotent for safe inputs. CodeRabbit PR #42
+    # finding (path-traversal vector via session_id) — engine-wide guard.
+    session_id = safe_session_stem(session_id)
+
     _touch_current_session_files(effective_basedir, session_id)
 
     try:
@@ -94,16 +101,20 @@ def daydream(
 
     effective_id_gen: Callable[[], str] = id_gen if id_gen is not None else _default_id_gen
 
-    if client is None:
-        from memeval.dreaming.llm import make_client
-
-        effective_client: LLMClient = make_client()
-    else:
-        effective_client = client
-
     with event_context(session_id=session_id, basedir=effective_basedir):
         cursor: int = 0
         try:
+            # Lazy client construction lives INSIDE the fail-open boundary so
+            # a misconfigured DREAM_PROVIDER (or any make_client failure) is
+            # caught by the ``except Exception`` below rather than escaping
+            # the engine. CodeRabbit PR #42 finding — fail-open contract fix.
+            if client is None:
+                from memeval.dreaming.llm import make_client
+
+                effective_client: LLMClient = make_client()
+            else:
+                effective_client = client
+
             with _per_session_lock(effective_basedir, session_id):
                 sidecar_target = sidecar_path(effective_basedir, session_id)
                 state = load_sidecar(sidecar_target)

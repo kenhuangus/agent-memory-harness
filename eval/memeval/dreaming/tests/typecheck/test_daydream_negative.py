@@ -29,29 +29,40 @@ FIXTURES = Path(__file__).parent / "fixtures"
 _BAD = FIXTURES / "_bad_daydream.py"
 
 
-def _have_mypy() -> bool:
-    """Return True iff mypy is importable or on PATH."""
-    if shutil.which("mypy"):
-        return True
+def _mypy_cmd() -> list[str] | None:
+    """Return the command prefix for mypy, or None when unavailable.
+
+    CodeRabbit PR #42 finding: the prior ``_have_mypy()`` returned True if
+    mypy was importable OR on PATH, but ``_run_mypy`` always invoked
+    ``python -m mypy`` (importable-only). In an env where mypy is on PATH
+    but not importable, tests would fail instead of skip. Returning the
+    actual command lets the test use whichever invocation is available.
+    """
+    path_cmd = shutil.which("mypy")
+    if path_cmd:
+        return [path_cmd]
     try:
         import mypy  # noqa: F401
-        return True
     except ImportError:
-        return False
+        return None
+    return [sys.executable, "-m", "mypy"]
 
 
+_MYPY_CMD = _mypy_cmd()
 pytestmark = pytest.mark.skipif(
-    not _have_mypy(),
+    _MYPY_CMD is None,
     reason="mypy not installed — install with `pip install -e eval[dev]`",
 )
 
 
 def _run_mypy(target: Path) -> subprocess.CompletedProcess[str]:
     """Invoke `mypy --strict` on `target` and capture stdout+stderr."""
+    assert _MYPY_CMD is not None  # skipif guarantees this
     return subprocess.run(
-        [sys.executable, "-m", "mypy", "--strict", str(target)],
+        [*_MYPY_CMD, "--strict", str(target)],
         capture_output=True,
         text=True,
+        timeout=60,
     )
 
 

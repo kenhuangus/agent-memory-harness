@@ -503,6 +503,13 @@ class TestPerSessionLock:
         finally:
             release_event.set()
             proc.join(timeout=10)
+            # CodeRabbit PR #42 — terminate + assert exit on stuck child so a
+            # hung subprocess doesn't leak into later tests holding the lock.
+            if proc.is_alive():
+                proc.terminate()
+                proc.join(timeout=5)
+                pytest.fail("lock-holder subprocess did not exit cleanly")
+            assert proc.exitcode == 0, f"lock holder exited {proc.exitcode}"
 
     def test_per_session_lock_emits_before_raising(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -563,6 +570,12 @@ class TestPerSessionLock:
         )
         proc.start()
         proc.join(timeout=10)
+        # CodeRabbit PR #42 — terminate stuck child to avoid lock leak.
+        if proc.is_alive():
+            proc.terminate()
+            proc.join(timeout=5)
+            pytest.fail("take-lock subprocess did not exit cleanly")
+        assert proc.exitcode == 0, f"take-lock subprocess exited {proc.exitcode}"
         assert success.is_set()
 
     def test_per_session_lock_creates_parent_dir(self, tmp_path: Path) -> None:
@@ -592,6 +605,11 @@ class TestPerSessionLock:
         proc.start()
         assert ready.wait(timeout=10)
         proc.join(timeout=10)
+        # CodeRabbit PR #42 — terminate stuck child to avoid lock leak.
+        if proc.is_alive():
+            proc.terminate()
+            proc.join(timeout=5)
+            pytest.fail("take-and-exit subprocess did not exit cleanly")
         # Parent now acquires — POSIX flock released on process death.
         with _per_session_lock(basedir, "sess_dead"):
             pass

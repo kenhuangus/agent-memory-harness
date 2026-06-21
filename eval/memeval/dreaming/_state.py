@@ -21,7 +21,9 @@ import hashlib
 import json
 import logging
 import os
+import re
 import time
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, Mapping, TypedDict
@@ -43,6 +45,7 @@ __all__ = [
     "load_sidecar",
     "lock_path",
     "resolve_basedir",
+    "safe_session_stem",
     "sidecar_path",
     "sweep_old_state",
 ]
@@ -111,19 +114,53 @@ def resolve_basedir() -> Path:
     return resolved.parent
 
 
+_SAFE_SESSION_ID = re.compile(r"^[A-Za-z0-9_.-]+$")
+"""Path-safe session_id pattern. Anything that doesn't match is hashed (see
+:func:`safe_session_stem`) before being used as a filesystem stem — prevents
+the path-traversal vector flagged by CodeRabbit on PR #42 (e.g., a
+``session_id`` containing ``/`` or ``..`` would otherwise escape
+``<basedir>/dream/``)."""
+
+
+def safe_session_stem(session_id: str) -> str:
+    """Return a filesystem-safe stem for ``session_id``.
+
+    A session_id matching :data:`_SAFE_SESSION_ID` is returned unchanged.
+    Otherwise (path separators, ``..``, control bytes, empty, etc.) it is
+    replaced by ``"sess_" + sha256(session_id)[:16]`` so all per-session
+    state artifacts stay inside ``<basedir>/dream/``.
+
+    Idempotent: passing an already-safe stem returns it unchanged.
+    """
+    if session_id and session_id not in {".", ".."} and _SAFE_SESSION_ID.fullmatch(session_id):
+        return session_id
+    return "sess_" + hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:16]
+
+
 def sidecar_path(basedir: Path, session_id: str) -> Path:
-    """Return ``<basedir>/dream/<session_id>.json`` per ADR-harness-004."""
-    return basedir / _DREAM_SUBDIR / f"{session_id}.json"
+    """Return ``<basedir>/dream/<session_id>.json`` per ADR-harness-004.
+
+    ``session_id`` is sanitized via :func:`safe_session_stem` so a malicious
+    value containing path separators cannot escape ``<basedir>/dream/``.
+    """
+    return basedir / _DREAM_SUBDIR / f"{safe_session_stem(session_id)}.json"
 
 
 def lock_path(basedir: Path, session_id: str) -> Path:
-    """Return ``<basedir>/dream/<session_id>.lock`` per ADR-dreaming-014."""
-    return basedir / _DREAM_SUBDIR / f"{session_id}.lock"
+    """Return ``<basedir>/dream/<session_id>.lock`` per ADR-dreaming-014.
+
+    ``session_id`` is sanitized via :func:`safe_session_stem`.
+    """
+    return basedir / _DREAM_SUBDIR / f"{safe_session_stem(session_id)}.lock"
 
 
 def audit_path(basedir: Path, session_id: str) -> Path:
-    """Return ``<basedir>/dream/<session_id>.redact-audit.jsonl`` per ADR-011."""
-    return audit_path_for(basedir, session_id)
+    """Return ``<basedir>/dream/<session_id>.redact-audit.jsonl`` per ADR-011.
+
+    ``session_id`` is sanitized via :func:`safe_session_stem` before being
+    passed to :func:`audit_path_for`.
+    """
+    return audit_path_for(basedir, safe_session_stem(session_id))
 
 
 # --------------------------------------------------------------------------- #
@@ -143,6 +180,12 @@ def load_sidecar(path: Path) -> SidecarState:
         raw = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return _default_state()
+    except UnicodeDecodeError:
+        # Non-UTF-8 bytes — treat as corrupt. CodeRabbit PR #42 finding:
+        # without this, load_sidecar raises and the engine would fail
+        # repeatedly without resetting state.
+        emit("sidecar_corrupt", path=str(path), reason="invalid_utf8")
+        return _default_state()
 
     try:
         parsed = json.loads(raw)
@@ -156,7 +199,15 @@ def load_sidecar(path: Path) -> SidecarState:
 
     defaults = _default_state()
     cursor_val = parsed.get("cursor", defaults["cursor"])
-    cursor = int(cursor_val) if isinstance(cursor_val, int) else defaults["cursor"]
+    # Cursor must be a non-negative int. A negative cursor from a corrupt
+    # sidecar would otherwise reach fp.seek() and silently mis-read the log.
+    # CodeRabbit PR #42 finding — guard with type AND range check.
+    if type(cursor_val) is int and cursor_val >= 0:
+        cursor = cursor_val
+    else:
+        if cursor_val != defaults["cursor"]:
+            emit("sidecar_corrupt", path=str(path), field="cursor", value=repr(cursor_val))
+        cursor = defaults["cursor"]
 
     last_summary_val = parsed.get("last_summary", defaults["last_summary"])
     last_summary = (
@@ -355,12 +406,18 @@ _SWEEP_PATTERNS: tuple[str, ...] = (
 
 
 def _read_ttl_days(default: int) -> int:
-    """Return the TTL in days, honoring ``DREAM_RETENTION_DAYS`` override."""
+    """Return the TTL in days, honoring ``DREAM_RETENTION_DAYS`` override.
+
+    A negative value would make ``cutoff`` a future timestamp, so every file
+    becomes sweep-eligible — including the current-session files
+    :func:`_touch_current_session_files` just refreshed. CodeRabbit PR #42
+    finding: bounds-check after parse and fall back to the default.
+    """
     override = os.environ.get("DREAM_RETENTION_DAYS")
     if override is None:
         return default
     try:
-        return int(override)
+        value = int(override)
     except ValueError:
         _logger.warning(
             "DREAM_RETENTION_DAYS=%r is not an integer; using default %d",
@@ -368,15 +425,28 @@ def _read_ttl_days(default: int) -> int:
             default,
         )
         return default
+    if value < 0:
+        _logger.warning(
+            "DREAM_RETENTION_DAYS=%r is negative; using default %d",
+            override,
+            default,
+        )
+        return default
+    return value
 
 
 def _read_throttle_min(default: int) -> int:
-    """Return the throttle window in minutes, honoring ``DREAM_SWEEP_INTERVAL_MIN``."""
+    """Return the throttle window in minutes, honoring ``DREAM_SWEEP_INTERVAL_MIN``.
+
+    Negative throttle would cause the sweeper to skip every invocation (it
+    can never have been "long enough" ago). CodeRabbit PR #42 finding:
+    bounds-check after parse.
+    """
     override = os.environ.get("DREAM_SWEEP_INTERVAL_MIN")
     if override is None:
         return default
     try:
-        return int(override)
+        value = int(override)
     except ValueError:
         _logger.warning(
             "DREAM_SWEEP_INTERVAL_MIN=%r is not an integer; using default %d",
@@ -384,6 +454,14 @@ def _read_throttle_min(default: int) -> int:
             default,
         )
         return default
+    if value < 0:
+        _logger.warning(
+            "DREAM_SWEEP_INTERVAL_MIN=%r is negative; using default %d",
+            override,
+            default,
+        )
+        return default
+    return value
 
 
 def _update_last_swept_marker(marker: Path, now: float) -> None:
@@ -393,9 +471,19 @@ def _update_last_swept_marker(marker: Path, now: float) -> None:
     two-concurrent-writes tear identified by halliday F6.
     """
     marker.parent.mkdir(parents=True, exist_ok=True)
-    tmp = marker.with_suffix(marker.suffix + ".tmp")
-    tmp.write_text(str(now), encoding="utf-8")
-    os.replace(tmp, marker)
+    # Unique temp filename per writer prevents the concurrent-sweepers race
+    # CodeRabbit PR #42 flagged: with a shared ``.last-swept.tmp``, one
+    # sweeper's ``os.replace`` can clobber the other mid-flow. PID + uuid
+    # makes each writer's temp file disjoint.
+    tmp = marker.parent / f"{marker.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+    try:
+        tmp.write_text(str(now), encoding="utf-8")
+        os.replace(tmp, marker)
+    finally:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def sweep_old_state(
