@@ -53,7 +53,7 @@ from typing import Any, Callable, Optional, Protocol, Union, runtime_checkable
 from .cost import BudgetExceeded, CostTracker
 from .harness import InMemoryStore, stratified_dev_slice
 from .loaders import get_loader
-from .metrics import compute_metrics, qa_match
+from .metrics import _annotate_gold, compute_metrics, qa_match
 from .models import EchoModel, estimate_tokens_words
 from . import tracing
 from .protocols import MemoryStore, ModelAdapter
@@ -457,6 +457,12 @@ def run_agent(
             traj.prediction = ""
             traj.success = False
         traj.ended_at = clock()
+        # Annotate gold-ness BEFORE the trajectory is stored/logged so the
+        # persisted JSONL carries is_gold (the metrics pass runs later and only
+        # mutates in-memory copies, leaving the logged file's flags all False —
+        # which silently breaks any file-based retrieval analysis). Idempotent
+        # with the later metrics annotation.
+        _annotate_gold(traj, set(task.gold_memory_ids))
         with _lock:
             trajectories_by_idx[idx] = traj
             if err_note is not None:
