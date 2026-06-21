@@ -1,0 +1,114 @@
+{
+  "schema": 1,
+  "memory_version": "v0.1",
+  "benchmark": "contextbench",
+  "timestamp": "20260621T033412Z",
+  "runs": [
+    {
+      "run_id": "claude-code-builtin",
+      "timestamp": "2026-06-21T03:56:28+00:00",
+      "benchmark": "contextbench",
+      "model": "claude-code:claude-haiku-4-5:builtin",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:builtin+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.0,
+        "relevancy": 0.0,
+        "accuracy": 0.0,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 20,
+        "extra": {}
+      },
+      "n_tasks": 20,
+      "entries_used": 20,
+      "entries_available": 1136,
+      "limit": 20,
+      "selection": "flat",
+      "cost_usd": 0.574169,
+      "tokens_in": 929,
+      "tokens_out": 114648,
+      "partial": true,
+      "budget_exceeded": false,
+      "source": "Contextbench/ContextBench",
+      "reliability": {
+        "n_errors": 3,
+        "memory_reached": 0,
+        "errors": [
+          {
+            "task_id": "SWE-Bench-Verified__python__maintenance__bugfix__958ed1fd",
+            "stage": "solve",
+            "error": "TimeoutExpired: Command '['/home/kenhu/.local/bin/claude', '-p', 'Earlier conversation history is in files under the sessions/ directory. Search/read them (grep for keywords from the question) to find what you need, "
+          },
+          {
+            "task_id": "SWE-Bench-Verified__python__maintenance__bugfix__88e3486b",
+            "stage": "solve",
+            "error": "TimeoutExpired: Command '['/home/kenhu/.local/bin/claude', '-p', 'Earlier conversation history is in files under the sessions/ directory. Search/read them (grep for keywords from the question) to find what you need, "
+          },
+          {
+            "task_id": "SWE-Bench-Verified__python__maintenance__bugfix__bd3d7a3d",
+            "stage": "solve",
+            "error": "TimeoutExpired: Command '['/home/kenhu/.local/bin/claude', '-p', 'Earlier conversation history is in files under the sessions/ directory. Search/read them (grep for keywords from the question) to find what you need, "
+          }
+        ]
+      },
+      "notes": "Claude Code CLI \u00b7 memory=builtin"
+    },
+    {
+      "run_id": "claude-code-plugin",
+      "timestamp": "2026-06-21T06:06:05+00:00",
+      "benchmark": "contextbench",
+      "model": "claude-code:claude-haiku-4-5:plugin",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:plugin+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 1.0,
+        "efficiency": 0.5338566571088996,
+        "relevancy": 0.04224946031746032,
+        "accuracy": 0.0,
+        "recency_decayed": 1.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 20,
+        "extra": {}
+      },
+      "n_tasks": 20,
+      "entries_used": 20,
+      "entries_available": 1136,
+      "limit": 20,
+      "selection": "flat",
+      "cost_usd": 0.386552,
+      "tokens_in": 992,
+      "tokens_out": 77112,
+      "partial": true,
+      "budget_exceeded": false,
+      "source": "Contextbench/ContextBench",
+      "reliability": {
+        "n_errors": 3,
+        "memory_reached": 15,
+        "errors": [
+          {
+            "task_id": "SWE-Bench-Verified__python__maintenance__bugfix__3185b834",
+            "stage": "solve",
+            "error": "TimeoutExpired: Command '['/home/kenhu/.local/bin/claude', '-p', 'First call the memory_recall tool with the question to retrieve relevant prior context, then answer concisely with just the final answer.\\n\\nInconsist"
+          },
+          {
+            "task_id": "SWE-Bench-Verified__python__maintenance__bugfix__93721db4",
+            "stage": "solve",
+            "error": "TimeoutExpired: Command '['/home/kenhu/.local/bin/claude', '-p', 'First call the memory_recall tool with the question to retrieve relevant prior context, then answer concisely with just the final answer.\\n\\nQuery syn"
+          },
+          {
+            "task_id": "SWE-Bench-Verified__python__maintenance__bugfix__b2cb9f4b",
+            "stage": "solve",
+            "error": "TimeoutExpired: Command '['/home/kenhu/.local/bin/claude', '-p', \"First call the memory_recall tool with the question to retrieve relevant prior context, then answer concisely with just the final answer.\\n\\nFix parse"
+          }
+        ]
+      },
+      "notes": "Claude Code CLI \u00b7 memory=plugin"
+    }
+  ]
+}

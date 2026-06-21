@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "memory_version": "v0.1",
+  "benchmark": "swe_contextbench",
+  "timestamp": "20260621T070305Z",
+  "runs": [
+    {
+      "run_id": "claude-code-builtin",
+      "timestamp": "2026-06-21T07:06:24+00:00",
+      "benchmark": "swe_contextbench",
+      "model": "claude-code:claude-haiku-4-5:builtin",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:builtin+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.0,
+        "relevancy": 0.0,
+        "accuracy": 0.0,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 3,
+        "extra": {}
+      },
+      "n_tasks": 3,
+      "entries_used": 3,
+      "entries_available": 1476,
+      "limit": 3,
+      "selection": "group",
+      "cost_usd": 0.041756,
+      "tokens_in": 191,
+      "tokens_out": 8313,
+      "partial": true,
+      "budget_exceeded": false,
+      "source": "jiayuanz3/SWEContextBench",
+      "reliability": {
+        "n_errors": 0,
+        "memory_reached": 0,
+        "errors": []
+      },
+      "notes": "Claude Code CLI \u00b7 memory=builtin"
+    },
+    {
+      "run_id": "claude-code-plugin",
+      "timestamp": "2026-06-21T07:19:56+00:00",
+      "benchmark": "swe_contextbench",
+      "model": "claude-code:claude-haiku-4-5:plugin",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:plugin+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 1.4952167797407068,
+        "relevancy": 0.0142013,
+        "accuracy": 0.0,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 3,
+        "extra": {}
+      },
+      "n_tasks": 3,
+      "entries_used": 3,
+      "entries_available": 1476,
+      "limit": 3,
+      "selection": "group",
+      "cost_usd": 0.020909,
+      "tokens_in": 154,
+      "tokens_out": 4151,
+      "partial": true,
+      "budget_exceeded": false,
+      "source": "jiayuanz3/SWEContextBench",
+      "reliability": {
+        "n_errors": 0,
+        "memory_reached": 3,
+        "errors": []
+      },
+      "notes": "Claude Code CLI \u00b7 memory=plugin"
+    }
+  ]
+}

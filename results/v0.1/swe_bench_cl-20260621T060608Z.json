@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "memory_version": "v0.1",
+  "benchmark": "swe_bench_cl",
+  "timestamp": "20260621T060608Z",
+  "runs": [
+    {
+      "run_id": "claude-code-builtin",
+      "timestamp": "2026-06-21T06:13:27+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "claude-code:claude-haiku-4-5:builtin",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:builtin+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.0,
+        "relevancy": 0.0,
+        "accuracy": 0.0,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 8,
+        "extra": {}
+      },
+      "n_tasks": 8,
+      "entries_used": 8,
+      "entries_available": 273,
+      "limit": 8,
+      "selection": "group",
+      "cost_usd": 0.195714,
+      "tokens_in": 419,
+      "tokens_out": 39059,
+      "partial": true,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 0,
+        "memory_reached": 0,
+        "errors": []
+      },
+      "notes": "Claude Code CLI \u00b7 memory=builtin"
+    },
+    {
+      "run_id": "claude-code-plugin",
+      "timestamp": "2026-06-21T07:03:05+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "claude-code:claude-haiku-4-5:plugin",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:plugin+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 1.0,
+        "efficiency": 0.842431133394861,
+        "relevancy": 0.014823423076923078,
+        "accuracy": 0.0,
+        "recency_decayed": 1.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 8,
+        "extra": {}
+      },
+      "n_tasks": 8,
+      "entries_used": 8,
+      "entries_available": 273,
+      "limit": 8,
+      "selection": "group",
+      "cost_usd": 0.239579,
+      "tokens_in": 444,
+      "tokens_out": 47827,
+      "partial": true,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 0,
+        "memory_reached": 7,
+        "errors": []
+      },
+      "notes": "Claude Code CLI \u00b7 memory=plugin"
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "memory_version": "v0.1",
+  "benchmark": "memoryagentbench",
+  "timestamp": "20260621T030443Z",
+  "runs": [
+    {
+      "run_id": "claude-code-builtin",
+      "timestamp": "2026-06-21T03:05:42+00:00",
+      "benchmark": "memoryagentbench",
+      "model": "claude-code:claude-haiku-4-5:builtin",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:builtin+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.0,
+        "relevancy": 0.0,
+        "accuracy": 0.75,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 20,
+        "extra": {}
+      },
+      "n_tasks": 20,
+      "entries_used": 20,
+      "entries_available": 3671,
+      "limit": 20,
+      "selection": "flat",
+      "cost_usd": 0.043912,
+      "tokens_in": 252,
+      "tokens_out": 8732,
+      "partial": true,
+      "budget_exceeded": false,
+      "source": "ai-hyz/MemoryAgentBench",
+      "reliability": {
+        "n_errors": 0,
+        "memory_reached": 0,
+        "errors": []
+      },
+      "notes": "Claude Code CLI \u00b7 memory=builtin"
+    },
+    {
+      "run_id": "claude-code-plugin",
+      "timestamp": "2026-06-21T03:20:54+00:00",
+      "benchmark": "memoryagentbench",
+      "model": "claude-code:claude-haiku-4-5:plugin",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:plugin+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 301.569021796515,
+        "relevancy": 0.00026606666666666666,
+        "accuracy": 0.4,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 20,
+        "extra": {}
+      },
+      "n_tasks": 20,
+      "entries_used": 20,
+      "entries_available": 3671,
+      "limit": 20,
+      "selection": "flat",
+      "cost_usd": 0.056005,
+      "tokens_in": 445,
+      "tokens_out": 11112,
+      "partial": true,
+      "budget_exceeded": false,
+      "source": "ai-hyz/MemoryAgentBench",
+      "reliability": {
+        "n_errors": 0,
+        "memory_reached": 13,
+        "errors": []
+      },
+      "notes": "Claude Code CLI \u00b7 memory=plugin"
+    }
+  ]
+}
