@@ -10,6 +10,25 @@ Each benchmark was run in two memory modes through the Claude Code CLI:
 
 The raw per-benchmark records are the JSON files in this directory. This page is the honest read of them.
 
+## Correction (2026-06-21): the LongMemEval plugin gap is NOT recall
+
+An earlier diagnosis claimed the plugin "retrieved gold 0/15" and lost on **recall**. That was a
+**measurement artifact**: `RetrievedItem.is_gold` was annotated only on in-memory trajectories and
+never persisted, so the logged JSONL read all-`False` (fixed in [#46](https://github.com/kenhuangus/agent-memory-harness/pull/46)). The recorded `recency = 0.75`
+already proved gold *was* retrieved. Re-checking the LongMemEval plugin run against the dataset's
+gold ids and the full haystack:
+
+- **Gold was actually retrieved in ~12/15 reached tasks** (raw id-match) — recall was never the bottleneck.
+- Failure breakdown of the 20-task plugin run: 1 recall miss · 3 answer-not-in-content · **9 gold retrieved + answer present but the model still answered wrong** · 0 grading errors · ~4 correct.
+- So the dominant gap is **long-context answer extraction**: retrieved items are *whole sessions* (3k–9k chars), and the answer, though present, is buried in noise. Builtin wins because `grep` hands the model small, targeted matched lines.
+
+**Implications for the BM25 change ([#43](https://github.com/kenhuangus/agent-memory-harness/pull/43)):** it is still a genuine improvement — it re-ranks gold off the
+~0.007 Jaccard tie-floor to the top (offline replay: gold recall@5 12/15 → 15/15) and repairs the
+relevancy metric — but it helps **ranking**, not recall, and won't by itself close the extraction
+gap. The next lever is **turn-level chunking** (small, targeted memory items instead of whole
+sessions). A live plugin re-run on the BM25 code (results under `results/v0.1-bm25/`) measures how
+much ranking alone moves accuracy.
+
 ## Headline (the two discriminative QA benchmarks)
 
 | Benchmark | builtin acc | plugin acc (raw) | plugin memory-reach | plugin acc, memory-reached only |
