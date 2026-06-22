@@ -142,6 +142,11 @@ class SqliteVectorStore:
         # Detected once: does this embedder want the query/document ``input_type`` kwarg?
         self._embed_accepts_input_type = _embedder_accepts_input_type(self._embed)
         self._conn = sqlite3.connect(self.path)
+        # WAL journal mode (ADR-P2: mandatory) so concurrent cross-process writers/readers over one
+        # file-backed $MEMORY_STORE don't block — e.g. MCP recall-path writes alongside the
+        # Daydreamer. Harmless no-op for the in-memory default (PRAGMA returns 'memory', not 'wal');
+        # it only takes effect for a file-backed DB, which is the path the plugin/harness uses.
+        self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.row_factory = sqlite3.Row  # access columns by name, not fragile indices
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS items ("
