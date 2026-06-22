@@ -8,7 +8,7 @@ this eval; the link-stripped differential below keeps every case graph-caused, n
 
 As of **Step 1**, the ``GraphStore`` is **typed + directional**: each OKF link is typed from its anchor
 (via :mod:`memeval.stores.relations`) and ``search`` resolves the query's ``(relation, direction)`` intent,
-traversing only matching edges (still seeds by Jaccard token overlap; still depth-2 BFS). So the
+traversing only matching edges (still seeds by Jaccard token overlap; BFS to a configurable depth, default 2). So the
 discrimination slices below now **pass** (the headroom-to-victory flip); the reach/seed slices remain
 headroom for later primitives.
 
@@ -27,8 +27,10 @@ Four slices (the typed-edge headroom Step 1 must recover; all link-differential-
   traverses only the query's matching ``(relation, direction)`` edges, so it retrieves the gold and
   EXCLUDES the wrong-direction/wrong-relation distractor (asserted: ``recall_with==1`` and ``not
   leak_with``). Pre-Step-1 the distractor leaked — the headroom this slice pinned.
-* **multi_hop** — REACH: a depth<=2 probe IS reached *with* links (traversal works) while the depth-3 gold
-  is MISSED (beyond ``_MAX_DEPTH``) — asserted: gold recall==0, probe reached with-links-only.
+* **multi_hop** — REACH: under the **depth-2 default** a depth<=2 probe IS reached *with* links (traversal
+  works) while the depth-3 gold is MISSED (beyond ``_MAX_DEPTH``) — asserted: gold recall==0, probe reached
+  with-links-only. A **``max_depth=3`` store RECOVERS the depth-3 gold** (links-only) — the
+  configurable-depth victory (``test_deep_config_recovers_multihop_gold``).
 * **untyped_fallback** — CONTROL: a direct 1-hop neighbor reachable ONLY via its link; the store retrieves
   it *with* links and not *without* (asserted: recall 1 with links, <1 without). Proves the harness can
   detect graph-retrieval success — a real graph control, not a lexical hit.
@@ -37,10 +39,11 @@ Four slices (the typed-edge headroom Step 1 must recover; all link-differential-
 an EMBEDDER-seeding headroom, not a typed-edge one, and can't be shown by the link differential. It
 belongs with the captained embedder work.)
 
-**Status / forward use.** Step 1 (typed/directional edges) landed → the discrimination slices now PASS.
-Still headroom: **multi_hop** needs **deeper / path-aware traversal** (raising ``_MAX_DEPTH`` or a path
-query) — a separate primitive from typed edges; and **semantic_seed** (dropped here) needs embedder
-seeding — a third, independent primitive. Those flip to victory only when their respective work lands.
+**Status / forward use.** Step 1 (typed/directional edges) landed → the discrimination slices PASS, and
+**multi_hop** now flips to victory under a configurable ``GraphStore(max_depth=...)`` knob: the depth-2
+DEFAULT still misses the depth-3 gold (the preserved reach headroom), while a ``max_depth=3`` store recovers
+it (links-only). **semantic_seed** (dropped here) still needs embedder seeding — a separate, independent
+primitive that flips to victory only when the captained embedder work lands.
 
 Reproduce the report: cd eval && python3 -m memeval.stores.tests.test_graph_retrieval_evals
 Run the guard:        cd eval && python3 -m unittest memeval.stores.tests.test_graph_retrieval_evals
@@ -162,8 +165,8 @@ def _mk(it: "GraphItem", *, strip_links: bool = False) -> MemoryItem:
                       metadata={"okf_title": it.item_id, "okf_links": links})
 
 
-def _build_graph(*, strip_links: bool = False) -> GraphStore:
-    g = GraphStore()
+def _build_graph(*, strip_links: bool = False, max_depth: int = 2) -> GraphStore:
+    g = GraphStore(max_depth=max_depth)
     for it in CORPUS:
         g.write(_mk(it, strip_links=strip_links))
     return g
@@ -287,11 +290,30 @@ class GraphLinkDifferentialTests(unittest.TestCase):
                 self.assertFalse(r["probe_without"],
                                  f"{c.name}: probe reached without links — lexical, not traversal")
 
+    def test_deep_config_recovers_multihop_gold(self) -> None:
+        # Configurable-depth (option B): the depth-2 DEFAULT still MISSES the depth-3 gold (the reach
+        # headroom test_multihop_reaches_probe_not_deep_gold pins), but a max_depth=3 store RECOVERS it —
+        # and ONLY via links (link-stripped, the chain is gone, so it stays graph-caused, not lexical).
+        # This is the headroom->victory flip for multi_hop, gated on the new GraphStore(max_depth=...) knob:
+        # RED until search honors max_depth (today GraphStore swallows the kwarg into self.config -> depth-2).
+        g3, g3n = _build_graph(max_depth=3), _build_graph(max_depth=3, strip_links=True)
+        for c in CASES:
+            if c.slice in REACH_SLICES:
+                shallow_top = _top_ids(_build_graph(max_depth=2), c.query)
+                deep = evaluate(c, g3, g3n)
+                for gid in c.gold_ids:
+                    self.assertNotIn(gid, shallow_top,
+                                     f"{c.name}: depth-2 default must still MISS the depth-3 gold {gid}")
+                self.assertEqual(deep["recall_with"], 1.0,
+                                 f"{c.name}: max_depth=3 store must RECOVER the depth-3 gold via links")
+                self.assertLess(deep["recall_without"], 1.0,
+                                f"{c.name}: deep gold reachable WITHOUT links — lexical, not traversal")
+
 
 def _report() -> None:
     gl, gn = _build_graph(), _build_graph(strip_links=True)
     print(f"GRAPH-RETRIEVAL EVAL — {len(CASES)} cases over a {len(CORPUS)}-node corpus (K={K}). "
-          f"Store = typed/directional (Step 1); depth-2 BFS; Jaccard seed.\n")
+          f"Store = typed/directional (Step 1); depth-2 BFS (default; configurable max_depth); Jaccard seed.\n")
     print(f"{'slice':<24} {'case':<22} {'rec_w':>6} {'rec_n':>6} {'leak_w':>7} {'probe_w':>8}")
     print("-" * 76)
     for c in CASES:
@@ -300,7 +322,8 @@ def _report() -> None:
               f"{len(r['leak_with']):>7} {len(r['probe_with']):>8}")
     print("\nEvery row CHANGES when links are stripped (the anti-theater differential), proving results are "
           "GRAPH-caused, not lexical. Step 1 typed/directional edges: discrimination now retrieves the gold "
-          "with leak_w=0 (was leaking). multi_hop stays headroom (depth-2 limit) until deeper traversal lands.")
+          "with leak_w=0 (was leaking). multi_hop shows headroom in THIS default-depth report; a max_depth=3 "
+          "store recovers the depth-3 gold (test_deep_config_recovers_multihop_gold).")
 
 
 if __name__ == "__main__":
