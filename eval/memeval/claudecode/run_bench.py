@@ -58,39 +58,41 @@ DEFAULT_MIN_ENTRIES = 20  # fallback floor for an unlisted benchmark
 # whole groups (largest first) so the limited sample actually carries priors.
 # (The QA benches are 1 group / multi-session per entry, so flat == group there.)
 _GROUP_AWARE = {"swe_bench_cl", "swe_contextbench"}
-# CODE-kind benchmarks: tasks carry a gold patch + FAIL_TO_PASS/PASS_TO_PASS and
-# are graded by *applying the patch and running the tests* (SWE-bench rule), not by
-# QA exact-match. These get a real grader wired in (default: the Docker grader);
-# the QA benches (longmemeval, memoryagentbench) keep grader=None -> exact match.
+# CODE-kind benchmarks: tasks carry a gold patch + FAIL_TO_PASS/PASS_TO_PASS.
+# The two SWE benches are graded by *applying the patch and running the tests*
+# (SWE-bench rule) via the host-local LocalExecGrader (best-effort, ungraded None
+# when the env can't be built). contextbench is RETRIEVAL-only: it is scored by its
+# native retrieval metric (recall/precision/F1 over gold spans) from the recorded
+# retrieve steps, so it needs grader=None (no test execution). The QA benches
+# (longmemeval, memoryagentbench) keep grader=None -> exact match.
 _CODE_BENCH = {"swe_bench_cl", "swe_contextbench", "contextbench"}
+# CODE benches graded by local test execution (a subset of _CODE_BENCH).
+_LOCAL_EXEC_BENCH = {"swe_bench_cl", "swe_contextbench"}
 
 
 def _make_grader(benchmark: str, args: argparse.Namespace):
     """Resolve the grader for ``benchmark``.
 
-    QA benches always get ``None`` (exact-match in ``_grade``). CODE benches get
-    the grader named by ``--grader`` (default ``auto`` -> Docker). ``auto``/``none``
-    on a QA bench is ``None``; an explicit non-``auto`` grader is honored for any
-    bench (the grader itself returns ``None`` for non-CODE tasks). Docker grading
-    uses ``on_unavailable='skip'`` so a missing daemon/package leaves CODE tasks
-    ungraded (None) rather than crashing the whole run.
+    ``auto`` (default): QA benches and contextbench get ``None`` (exact-match /
+    native retrieval metric — no test execution); the two SWE benches get the
+    host-local :class:`LocalExecGrader`. ``none`` -> ``None``; ``local`` ->
+    LocalExecGrader for any bench; ``overlap`` -> the cheap heuristic. The grader
+    itself returns ``None`` for non-CODE tasks, so an explicit choice is safe on a
+    QA bench. LocalExecGrader degrades to ``None`` (ungraded) when the env can't be
+    built, so a missing toolchain leaves CODE tasks ungraded rather than crashing.
     """
     from ..grader import get_grader
 
-    is_code = benchmark in _CODE_BENCH
     choice = (args.grader or "auto").strip().lower()
     if choice == "auto":
-        if not is_code:
-            return None
-        choice = "docker"
+        if benchmark in _LOCAL_EXEC_BENCH:
+            return get_grader("local", timeout=args.grader_timeout)
+        return None  # QA benches + contextbench (retrieval-only): native metric
     if choice == "none":
         return None
-    if choice in ("docker", "swebench", "swebench-docker"):
-        return get_grader(
-            "docker", on_unavailable=args.grader_on_unavailable,
-            timeout=args.grader_timeout, run_id=f"memeval-{benchmark}",
-        )
-    return get_grader(choice)
+    if choice in ("local", "localexec", "local-exec"):
+        return get_grader("local", timeout=args.grader_timeout)
+    return get_grader(choice)  # overlap (or any other registered name)
 
 
 def _resolve_path(benchmark: str, path: Optional[str]) -> Optional[str]:
@@ -143,7 +145,8 @@ def _run_one(benchmark: str, mode: str, args: argparse.Namespace,
         logger = TrajectoryLogger(traj_path, append=False)
 
     agent = ClaudeCodeAgent(model=args.model, memory_mode=mode, k=args.k,
-                            timeout=args.timeout, workdir=workdir)
+                            timeout=args.timeout, workdir=workdir,
+                            code_mode=args.code_mode)
     cost = CostTracker(budget_usd=args.budget_usd) if args.budget_usd and args.budget_usd > 0 else None
     limit = _resolve_limit(benchmark, args.limit)
     group_aware = _resolve_group_aware(benchmark, args.select)
@@ -248,18 +251,21 @@ def main(argv: Optional[list[str]] = None) -> int:
                          "server whose headless connection degrades under concurrency, "
                          "so it runs sequentially by default for reliable retrieval.")
     ap.add_argument("--timeout", type=int, default=600)
+    ap.add_argument("--code-mode", choices=["blind", "agentic"], default="agentic",
+                    help="How CODE tasks are solved: 'agentic' (default) drives "
+                         "claude as a real coding agent in a working checkout (it "
+                         "edits files + runs tests; `git diff` is the prediction); "
+                         "'blind' asks for a unified diff in one turn (no checkout).")
     ap.add_argument("--grader", default="auto",
-                    help="CODE-task grader: 'auto' (default) = Docker for CODE "
-                         f"benches {sorted(_CODE_BENCH)}, None for QA; 'docker'/'swebench' "
-                         "= official SWE-bench Docker harness; 'overlap' = cheap "
-                         "gold-patch token-overlap heuristic (NOT real accuracy); "
-                         "'none' = leave CODE ungraded.")
-    ap.add_argument("--grader-on-unavailable", choices=["error", "skip"], default="skip",
-                    help="Docker grader behavior when Docker/swebench is missing: "
-                         "'skip' (default) leaves CODE tasks ungraded (None); "
-                         "'error' aborts the run.")
+                    help="CODE-task grader: 'auto' (default) = local test execution "
+                         f"for {sorted(_LOCAL_EXEC_BENCH)}, None for QA and contextbench "
+                         "(retrieval-only, scored by its native metric); 'local' = "
+                         "host-local per-task venv exec (best-effort; ungraded None "
+                         "when the env can't be built); 'overlap' = cheap gold-patch "
+                         "token-overlap heuristic (NOT real accuracy); 'none' = leave "
+                         "CODE ungraded.")
     ap.add_argument("--grader-timeout", type=int, default=1800,
-                    help="Per-instance SWE-bench Docker evaluation timeout (seconds).")
+                    help="Per-task local test-execution timeout (seconds).")
     ap.add_argument("--budget-usd", type=float, default=DEFAULT_BUDGET_USD)
     ap.add_argument("--results", default="results.json")
     ap.add_argument("--results-dir", default="results",

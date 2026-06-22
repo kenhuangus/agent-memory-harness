@@ -67,11 +67,13 @@ a win.
 | SWE-Bench-CL | 0.00 | 0.00 | — |
 | SWE-ContextBench | 0.00 | 0.00 | — |
 
-These are SWE-Bench-Verified **code** tasks: scoring requires applying a **unified diff** patch
-and running the repo's tests. The SWE-bench Docker grader is now wired in (PR #32), but the agent
-currently emits **prose**, not a diff, so every code task grades to `False`/ungraded. **The 0.00s
-here are a harness limitation, not a memory result.** Real code numbers need the agent to emit
-diffs (tracked follow-up).
+These are SWE-Bench-Verified **code** tasks: scoring requires applying a patch and running the
+repo's tests. CODE now runs as a real coding agent (`--code-mode agentic`) graded by host-local
+test execution (`LocalExecGrader`), retired the prior approach where the agent emitted prose
+instead of a diff. **The 0.00s here are from that earlier cycle, not a memory result.** Note the
+local-exec grader is host-dependent and partial-coverage (it reports `None`/ungraded when a repo's
+env can't be built), so it is not comparable to a containerized SWE-bench leaderboard — see
+`docs/adrs/ADR-eval-002-docker-free-code-grading.md`.
 
 ## What changed this cycle (engineering)
 
@@ -80,8 +82,9 @@ diffs (tracked follow-up).
   plugin numbers above are dragged down by those blind-answer tasks). A priming turn over
   stream-json closes the race: **first-try recall 40% → 100%** (20/20 needle test; every completed
   re-run task reached memory). A clean QA re-run on the fixed code is pending a stable WSL VM.
-- **Docker grader wired (PR #32).** `SWEBenchDockerGrader` auto-selected for CODE benches; proven
-  gold-patch → resolved, empty-patch → not-resolved in a real container.
+- **CODE grader (PR #32, since superseded).** A container-based grader was wired for CODE benches at
+  the time. It has since been **removed** in favor of a Docker-free host-local `LocalExecGrader` plus
+  an agentic coding loop (ADR-eval-002); CODE grading no longer needs Docker or any extra package.
 - **Runner hardened (PR #26).** Parallel CLI processes, incremental per-task result saves, and a
   `reliability` block in every record documenting failures + `memory_reached`.
 - **`memeval-bench` CLI (PR #33).** Run any benchmark on its own: `memeval-bench --benchmark longmemeval --mode plugin`.

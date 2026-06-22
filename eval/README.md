@@ -43,7 +43,7 @@ memeval/
   cli.py           # python -m memeval.cli run ...
   results.py       # results-ledger IO + `summary`/`show`/`run` subcommands (Results page reads this)
   aggregate.py     # hypothesis scoreboard (Haiku+mem vs Opus-no-mem; win criterion)
-  grader.py        # CODE grading (SWEBenchDockerGrader); QA benches use exact-match
+  grader.py        # CODE grading (LocalExecGrader: host test execution); QA benches use exact-match
   okf.py           # OKFStore — the Open Knowledge Format memory store backend
   router.py        # Brent's query router (route · rank · dedup) over the store backends
   loaders/         # registry + one loader per benchmark (local=stdlib, remote=lazy datasets)
@@ -85,7 +85,6 @@ Optional extras, added only when you need a live/remote capability:
 | `anthropic`      | `anthropic`                                | `AnthropicAdapter` (real Claude calls)                |
 | `hf`             | `datasets`                                 | loaders' remote download path (HuggingFace)           |
 | `embeddings`     | `numpy`                                     | embedding-based relevancy / vector retrieval          |
-| `swebench`       | `swebench`                                 | real CODE grading (`SWEBenchDockerGrader`; needs Docker) |
 | `langfuse`       | `langfuse`                                 | optional Langfuse tracing mirror (`memeval.tracing`)  |
 | `claudecode`     | `mcp`                                       | run benchmarks via the Claude Code CLI + memory server (`memeval.claudecode.*`) |
 | `daydream`       | `detect-secrets`, `httpx`                  | Daydream secret redaction + OpenRouter client (`memeval.dreaming`) |

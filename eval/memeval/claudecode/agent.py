@@ -28,6 +28,8 @@ import re
 
 from ..cost import price_for
 from ..schema import MemoryItem, RetrievedItem, Task, TaskKind
+from . import checkout as _checkout
+from .checkout import CheckoutError, GitRunner, capture_diff, prepare_checkout
 from .cli import ClaudeResult, run_claude, run_claude_primed
 from .platform import ClaudeRuntime, detect, to_wsl_path
 from .service import MemoryService
@@ -53,6 +55,23 @@ _SYS_CODE = (
     "You are an automated software-engineering agent. Output ONLY a unified diff "
     "in git format that resolves the issue. Begin directly with 'diff --git'. Do "
     "NOT include any explanation, commentary, or markdown code fences."
+)
+# AGENTIC CODE mode: claude runs as a real coding agent in a working checkout —
+# it reads the code with native tools, EDITS files directly, runs tests, and stops
+# when the fix passes. The harness captures `git diff` as the prediction and grades
+# it (LocalExecGrader), so the model must NOT print a diff or self-grade.
+_SYS_CODE_AGENT = (
+    "You are a software engineer working in a real checkout of the repository. "
+    "Read the code with your tools, make the necessary edits to source files to "
+    "resolve the issue, and run the project's tests to validate your change. "
+    "Edit files directly — do NOT print a diff and do NOT paste patches into your "
+    "reply. When the fix is complete and tests pass, stop."
+)
+# Headless follows a USER-prompt instruction more reliably than a system one, so
+# the agentic CODE turn prepends this (mirrors _BUILTIN_PREFIX / _PLUGIN_PREFIX).
+_CODE_AGENT_PREFIX = (
+    "Edit the source files in this checkout directly to fix the issue, then run the "
+    "tests to confirm. Do NOT output a diff or paste a patch — just make the edits.\n\n"
 )
 # In headless -p mode the model follows a tool instruction in the USER prompt far
 # more reliably than one only in the system prompt, so plugin mode prepends this.
@@ -171,12 +190,24 @@ class ClaudeCodeAgent:
         k: int = 5,
         timeout: int = 300,
         transport: str = "http",
+        code_mode: str = "blind",
+        git_runner: Optional[GitRunner] = None,
     ) -> None:
         if memory_mode not in _MODES:
             raise ValueError(f"memory_mode must be one of {_MODES}, got {memory_mode!r}")
+        if code_mode not in ("blind", "agentic"):
+            raise ValueError(f"code_mode must be 'blind' or 'agentic', got {code_mode!r}")
         self.model = model
         self.memory_mode = memory_mode
+        # CODE-task strategy: "blind" = one turn that asks for a diff (no checkout);
+        # "agentic" = claude edits a real checkout, `git diff` is the prediction,
+        # the harness grades it. QA is unaffected by this switch.
+        self.code_mode = code_mode
         self._runner = runner or run_claude
+        # Injectable git seam for the agentic CODE path (mirrors the `runner`
+        # injection). Defaults to the real subprocess git; offline tests inject a
+        # fake that materializes the checkout + diff without network/git.
+        self._git_runner = git_runner or _checkout._subprocess_git
         self._runtime = runtime
         # Plugin MCP transport. "http" runs a local memory server claude connects to
         # by URL; combined with retry-until-recall this is reliable in headless mode,
@@ -199,15 +230,20 @@ class ClaudeCodeAgent:
         self.price_out = price["out"]
 
     # -- AgentAdapter ------------------------------------------------------- #
-    def solve(self, task: Task, ctx: Any, **_: Any) -> str:
+    def solve(self, task: Task, ctx: Any, **_: Any) -> Any:
         run_dir = self._task_dir(task)
         run_dir.mkdir(parents=True, exist_ok=True)
 
-        # CODE tasks need a unified diff, not a QA answer. Branch BEFORE the
-        # memory_mode dispatch and run a single plain turn that asks for a diff,
-        # then return the robustly-extracted diff (or '' for non-diff output).
-        # QA tasks fall through to the EXACT untouched path below — byte-identical.
+        # CODE tasks need a code change, not a QA answer. Branch BEFORE the
+        # memory_mode dispatch.
+        #   agentic — claude edits a real checkout; `git diff` is the prediction
+        #             and the harness (LocalExecGrader) owns the verdict.
+        #   blind   — one plain turn asking for a diff, returned as a bare string
+        #             (byte-identical to the prior behavior).
+        # QA tasks fall through to the EXACT untouched path below.
         if task.kind == TaskKind.CODE:
+            if self.code_mode == "agentic":
+                return self._solve_code_agentic(task, ctx, run_dir)
             code_prompt = _build_code_prompt(task)
             res = self._run(code_prompt, run_dir, _SYS_CODE,
                             mcp_config=None, allowed_tools=None)
@@ -232,7 +268,11 @@ class ClaudeCodeAgent:
         return res.text
 
     # -- plugin mode (our memory) ------------------------------------------ #
-    def _solve_plugin(self, task: Task, ctx: Any, prompt: str, run_dir: Path) -> ClaudeResult:
+    def _seed_plugin_store_okf(self, run_dir: Path, task: Task) -> tuple[Path, Path, list[str]]:
+        """Seed an OKF-backed store from the task's sessions for plugin MCP mode.
+
+        Returns ``(bundle, log, tools)``. Pure seed step extracted so BOTH the QA
+        plugin path and the agentic CODE path can reuse it (no behavior change)."""
         from ..okf import OKFStore  # local import: keeps package import light
 
         bundle = run_dir / "memory"
@@ -240,32 +280,15 @@ class ClaudeCodeAgent:
         store = OKFStore(bundle)
         for s in task.sessions:
             store.write(MemoryItem.from_session(s))
-
-        rt = self._effective_runtime()
         tools = ["mcp__memeval-memory__memory_recall", "mcp__memeval-memory__memory_remember"]
+        return bundle, log, tools
 
-        if self.transport == "http" and rt.kind == "native":
-            res = self._run_plugin_http(prompt, run_dir, bundle, log, rt, tools)
-        else:
-            # stdio: spawn-per-invocation. Used by offline tests (fake runner) and as a
-            # fallback when claude runs across the Windows/WSL boundary.
-            wsl = rt.kind == "wsl"
-            bundle_arg = to_wsl_path(bundle) if wsl else str(bundle)
-            log_arg = to_wsl_path(log) if wsl else str(log)
-            mcp_path = run_dir / ".mcp.json"
-            mcp_path.write_text(json.dumps({
-                "mcpServers": {
-                    "memeval-memory": {
-                        "command": rt.python,
-                        "args": ["-m", "memeval.claudecode.memory_server",
-                                 "--bundle", bundle_arg, "--log", log_arg, "--k", str(self.k)],
-                    }
-                }
-            }), encoding="utf-8")
-            res = self._run(prompt, run_dir, _SYS_PLUGIN, mcp_config=mcp_path,
-                            allowed_tools=tools, strict_mcp=True)
+    def _attribute_plugin_recalls(self, log: Path, ctx: Any) -> None:
+        """Attribute every recall in the server's log to the trajectory.
 
-        # Attribute what the agent retrieved (from the server's log) to the trajectory.
+        Extracted from ``_solve_plugin`` so the agentic CODE path can record the
+        same retrieve steps (closes the "CODE bypasses memory" gap). No behavior
+        change — same logic, same RetrievedItem shape."""
         for rec in MemoryService.read_log(log):
             if rec.get("op") != "recall":
                 continue
@@ -283,7 +306,124 @@ class ClaudeCodeAgent:
             ]
             if hits:
                 ctx.record_retrieve(hits, query=rec.get("query", ""))
+
+    def _solve_plugin(self, task: Task, ctx: Any, prompt: str, run_dir: Path) -> ClaudeResult:
+        bundle, log, tools = self._seed_plugin_store_okf(run_dir, task)
+
+        rt = self._effective_runtime()
+
+        if self.transport == "http" and rt.kind == "native":
+            res = self._run_plugin_http(prompt, run_dir, bundle, log, rt, tools)
+        else:
+            # stdio: spawn-per-invocation. Used by offline tests (fake runner) and as a
+            # fallback when claude runs across the Windows/WSL boundary.
+            mcp_path = self._write_plugin_stdio_mcp(run_dir, bundle, log, rt)
+            res = self._run(prompt, run_dir, _SYS_PLUGIN, mcp_config=mcp_path,
+                            allowed_tools=tools, strict_mcp=True)
+
+        # Attribute what the agent retrieved (from the server's log) to the trajectory.
+        self._attribute_plugin_recalls(log, ctx)
         return res
+
+    def _write_plugin_stdio_mcp(self, run_dir: Path, bundle: Path, log: Path,
+                                rt: ClaudeRuntime) -> Path:
+        """Write the stdio ``.mcp.json`` pointing at the spawn-per-invocation memory
+        server (WSL-path-aware). Extracted so the CODE path reuses identical wiring."""
+        wsl = rt.kind == "wsl"
+        bundle_arg = to_wsl_path(bundle) if wsl else str(bundle)
+        log_arg = to_wsl_path(log) if wsl else str(log)
+        mcp_path = run_dir / ".mcp.json"
+        mcp_path.write_text(json.dumps({
+            "mcpServers": {
+                "memeval-memory": {
+                    "command": rt.python,
+                    "args": ["-m", "memeval.claudecode.memory_server",
+                             "--bundle", bundle_arg, "--log", log_arg, "--k", str(self.k)],
+                }
+            }
+        }), encoding="utf-8")
+        return mcp_path
+
+    # -- agentic CODE mode (real checkout; harness grades) ------------------ #
+    def _solve_code_agentic(self, task: Task, ctx: Any, run_dir: Path) -> Any:
+        """Drive ``claude`` as a real coding agent in a working checkout.
+
+        Steps: (1) materialize a checkout of ``task.repo`` @ ``base_commit``;
+        (2) wire memory per ``self.memory_mode`` so CODE finally records ``retrieve``
+        steps (reusing the existing builtin/plugin seeding + attribution — the
+        memory mechanism is untouched); (3) run claude in the checkout with the full
+        native toolset (Read/Edit/Bash) so it edits files directly; (4) capture
+        ``git diff`` as the prediction; (5) return an :class:`AgentResult` with
+        ``success=None`` so the HARNESS grader — never the model — owns the verdict.
+
+        Never crashes the run: a checkout failure leaves the task ungraded
+        (``success=None``) with an empty prediction.
+        """
+        from ..agent import AgentResult  # local import: avoids any import-order coupling
+
+        checkout = run_dir / "repo"
+        try:
+            prepare_checkout(task.repo or "", task.base_commit, checkout,
+                             git_runner=self._git_runner, timeout=self.timeout)
+        except CheckoutError as exc:
+            ctx.note(f"checkout failed: {str(exc)[:200]}")
+            return AgentResult(prediction="", patch="", success=None)
+
+        # (2) memory wiring + (3) the coding turn, both keyed on memory_mode. Each
+        # branch reuses the existing seed + recall-attribution; the agentic prompt
+        # asks claude to EDIT files (not print a diff).
+        base_prompt = _build_code_agent_prompt(task)
+        res = self._run_code_agent_turn(task, ctx, base_prompt, run_dir, checkout)
+
+        # (4) the captured diff IS the prediction.
+        diff = capture_diff(checkout, base_commit=task.base_commit,
+                            git_runner=self._git_runner)
+
+        ctx.record_generate(res.text, res.tokens_in, res.tokens_out,
+                            model_name=self.model)
+        # (5) success=None -> the harness grader decides. NEVER self-grade.
+        return AgentResult(prediction=diff, patch=diff, success=None)
+
+    def _run_code_agent_turn(self, task: Task, ctx: Any, base_prompt: str,
+                             run_dir: Path, checkout: Path) -> ClaudeResult:
+        """Run the coding turn in ``checkout`` with memory wired per ``memory_mode``.
+
+        Full native toolset (``allowed_tools=None`` -> ``--allowedTools`` omitted)
+        and ``permission_mode="acceptEdits"`` so the agent reads/edits/runs against
+        real files. Reuses the existing seeding + recall attribution so CODE records
+        ``retrieve`` steps; the memory mechanism itself is unchanged."""
+        mode = self.memory_mode
+        if mode == "builtin":
+            # Lay the history out as files in the CHECKOUT so the agent greps them.
+            _write_session_files(checkout, task)
+            return self._run(_BUILTIN_PREFIX + base_prompt, checkout, _SYS_CODE_AGENT,
+                             mcp_config=None, allowed_tools=None,
+                             permission_mode="acceptEdits")
+        if mode == "plugin":
+            bundle, log, tools = self._seed_plugin_store_okf(run_dir, task)
+            rt = self._effective_runtime()
+            mcp_path = self._write_plugin_stdio_mcp(checkout, bundle, log, rt)
+            res = self._run(_PLUGIN_PREFIX + base_prompt, checkout, _SYS_CODE_AGENT,
+                            mcp_config=mcp_path, allowed_tools=None, strict_mcp=True,
+                            permission_mode="acceptEdits")
+            self._attribute_plugin_recalls(log, ctx)
+            return res
+        if mode == "plugin-real":
+            plugin_env = self._ensure_real_plugin()
+            store_dir = checkout / ".cookbook-memory"
+            store_dir.mkdir(parents=True, exist_ok=True)
+            self._seed_plugin_store(task, store_dir, plugin_env)
+            extra_env = {**plugin_env, "CLAUDE_PROJECT_DIR": str(checkout)}
+            events = store_dir / "events.jsonl"
+            res = self._run(_PLUGIN_REAL_PREFIX + base_prompt, checkout, _SYS_CODE_AGENT,
+                            mcp_config=None, allowed_tools=None,
+                            permission_mode="acceptEdits", extra_env=extra_env)
+            self._attribute_real_recall(events, ctx)
+            return res
+        # off: no seeding, no memory.
+        return self._run(_CODE_AGENT_PREFIX + base_prompt, checkout, _SYS_CODE_AGENT,
+                         mcp_config=None, allowed_tools=None,
+                         permission_mode="acceptEdits")
 
     def _run_plugin_http(self, prompt: str, run_dir: Path, bundle: Path, log: Path,
                          rt: ClaudeRuntime, tools: list[str]) -> ClaudeResult:
@@ -431,12 +571,17 @@ class ClaudeCodeAgent:
     # -- helpers ------------------------------------------------------------ #
     def _run(self, prompt: str, cwd: Path, system: str, *,
              mcp_config: Optional[Path], allowed_tools: Optional[list[str]],
-             strict_mcp: bool = False) -> ClaudeResult:
+             strict_mcp: bool = False, permission_mode: str = "bypassPermissions",
+             extra_env: Optional[dict[str, str]] = None) -> ClaudeResult:
+        # permission_mode/extra_env default to the prior behavior so QA/blind call
+        # sites are unchanged; the agentic CODE path passes acceptEdits (+ plugin
+        # env). The offline fake runners take **kw, so they swallow the new kwargs.
         return self._runner(
             prompt, cwd=cwd, model=self.model, mcp_config=mcp_config,
             allowed_tools=allowed_tools, append_system_prompt=system,
             strict_mcp=strict_mcp, strip_api_key=True,  # subscription only — never an API key
             timeout=self.timeout, runtime=self._runtime,
+            permission_mode=permission_mode, extra_env=extra_env,
         )
 
     def _run_primed(self, prompt: str, cwd: Path, system: str, *,
@@ -494,6 +639,23 @@ def _build_code_prompt(task: Task) -> str:
     parts.append(
         "Respond with ONLY a unified diff (git 'diff --git' format) that fixes "
         "the issue. No prose, no code fences."
+    )
+    return "\n".join(parts)
+
+
+def _build_code_agent_prompt(task: Task) -> str:
+    """Build the user prompt for the AGENTIC CODE path: the issue text plus the
+    repo/base context, with an instruction to EDIT files in the checkout (the
+    opposite of the blind path's "output a diff"). Pure / offline-testable."""
+    parts = [(task.question or "").strip()]
+    if task.repo:
+        parts.append(f"Repository: {task.repo}")
+    if task.base_commit:
+        parts.append(f"Base commit: {task.base_commit}")
+    parts.append(
+        "You are in a working checkout of this repository. Edit the source files "
+        "directly to fix the issue and run the tests to validate. Do NOT output a "
+        "diff or paste a patch."
     )
     return "\n".join(parts)
 

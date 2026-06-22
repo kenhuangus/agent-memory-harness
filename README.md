@@ -123,8 +123,9 @@ python -m memeval.results summary --path ../runs/claudecode/results.json
   memory) | `plugin` (our in-harness OKF-backed MCP memory) | `plugin-real` (the shipping
   `plugin/cookbook_memory` package installed via a real `claude plugin install` and driven
   as a black box) | `all`. `--mode all` runs **builtin + plugin only** — name `off` and
-  `plugin-real` explicitly. CODE benchmarks need the SWE-bench Docker grader
-  (`pip install -e ".[swebench]"`) to score accuracy.
+  `plugin-real` explicitly. CODE tasks run as a real coding agent
+  (`--code-mode agentic`, default) and are graded on the host by local test
+  execution — **no Docker, no extra install** (see `eval/PROTOCOL.md` §5).
 
 Full guides: the per-developer, per-benchmark runbook is
 [`eval/memeval/claudecode/README.md`](eval/memeval/claudecode/README.md); the

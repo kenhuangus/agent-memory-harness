@@ -20,13 +20,14 @@ pip install -e .                 # offline core — stdlib only, zero required d
 pip install -e ".[anthropic]"    # real Claude models (AnthropicAdapter)
 pip install -e ".[hf]"           # remote dataset download (HuggingFace datasets)
 pip install -e ".[embeddings]"   # numpy — embedding-based relevancy / vector store
-pip install -e ".[swebench]"     # real CODE scoring (also needs a Docker daemon)
 pip install -e ".[full]"         # everything for a real (paid, online) run
 ```
 
+Real CODE scoring needs **no extra install**: `LocalExecGrader` runs the project's
+tests on the host (a per-task venv, best-effort) — see §6.
+
 The **offline path imports no third-party package**. Everything heavy
-(`anthropic`, `datasets`, `numpy`, `swebench`) is lazy-imported only on the path
-that needs it.
+(`anthropic`, `datasets`, `numpy`) is lazy-imported only on the path that needs it.
 
 ## 2. The experiment grid
 
@@ -88,15 +89,17 @@ loader against its live source (network; tiny limits):
 MEMEVAL_LIVE=1 python -m pytest tests/test_smoke.py -k live
 ```
 
-## 5. CODE grading (SWE-ContextBench, SWE-Bench-CL, ContextBench)
+## 5. CODE grading (SWE-ContextBench, SWE-Bench-CL)
 
-QA tasks grade by normalized exact match automatically. CODE tasks need the
-patch applied and tests run — choose a grader:
+QA tasks grade by normalized exact match automatically. The two SWE CODE
+benchmarks need the patch applied and tests run; ContextBench is **retrieval-only**
+(scored by its native recall/precision/F1 over gold spans — no test execution).
+Choose a grader:
 
 ```bash
-# real score: official SWE-bench harness in per-task Docker containers
+# real score: host-local test execution (no Docker, no extra install)
 python -m memeval.results run --benchmark swe_bench_cl --model claude-haiku-4-5 \
-    --memory --grader swebench --results ../results.json
+    --memory --grader local --results ../results.json
 
 # offline heuristic (smoke only — token overlap vs the gold patch, NOT tests)
 python -m memeval.results run --benchmark swe_bench_cl --model echo --no-memory \
@@ -105,27 +108,21 @@ python -m memeval.results run --benchmark swe_bench_cl --model echo --no-memory 
 
 **Resolved rule (SWE-bench standard):** a task passes iff **every `FAIL_TO_PASS`
 test passes AND every `PASS_TO_PASS` test still passes** after the patch applies.
-`--grader swebench` needs `[swebench]` + Docker; add `--grader-skip-unavailable`
-to leave tasks ungraded (instead of erroring) where Docker is absent. Without a
-grader, CODE accuracy stays `None` (ungraded) so it never inflates the score.
 
-> **Windows note:** `swebench` is **Linux-only** (it imports `resource`) and the
-> harness runs Linux Docker containers, so CODE grading must run from **WSL**,
-> not the Windows-host Python. The offline path and QA grading run fine on
-> Windows. On this machine a ready WSL env exists:
->
-> ```bash
-> # one-time: a WSL venv with memeval + swebench (Docker Desktop WSL integration on)
-> python3 -m venv ~/.venvs/swebench
-> ~/.venvs/swebench/bin/pip install -e /mnt/c/Users/kenhu/agent-memory-harness/eval "swebench>=4.0"
->
-> # run CODE grading from WSL (Docker reachable; pulls per-instance images — slow)
-> wsl -d Ubuntu -- ~/.venvs/swebench/bin/python -m memeval.results run \
->     --benchmark swe_bench_cl --model claude-haiku-4-5 --memory \
->     --grader swebench --results /mnt/c/Users/kenhu/agent-memory-harness/results.json
-> ```
->
-> First grade per instance pulls/builds a multi-GB image; budget time + disk.
+`--grader local` (`LocalExecGrader`) provisions a fresh checkout at `base_commit`,
+applies the agent's prediction, then applies the **gold `test_patch`** (the harness
+applies tests, never the agent — the trust boundary), builds a per-task venv
+best-effort, and runs the named tests. It **degrades to `None` (UNGRADED)** whenever
+the environment can't be built or the checkout/patch can't be set up — never a fake
+`False`, never a crash. Without a grader, CODE accuracy stays `None` (ungraded) so
+it never inflates the score.
+
+> **Honesty / comparability caveat:** local-exec is **host-dependent**,
+> partial-coverage, and **NOT** comparable to a containerized SWE-bench
+> leaderboard. Many multilingual SWE-ContextBench instances are un-gradeable on a
+> single host and return `None`. The `success=None` trust boundary (the harness,
+> not the model, applies the gold tests) is what keeps the reported numbers honest.
+> See `docs/adrs/ADR-eval-002-docker-free-code-grading.md`.
 
 ## 6. The four metrics
 
@@ -184,7 +181,7 @@ See [`../collaborate.html`](../collaborate.html).
 
 1. Note the row's `model`, `memory`, `source`, and `run_id` in `results.json`.
 2. Re-run with the same `--benchmark`, model, and `--memory/--no-memory`
-   (and `--grader swebench` for CODE).
+   (and `--grader local` for the SWE CODE benches).
 3. Offline/echo runs reproduce exactly; live-model runs reproduce metric logic
    deterministically given identical model outputs (set the same model + `k`).
 

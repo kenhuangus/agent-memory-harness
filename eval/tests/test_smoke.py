@@ -1119,13 +1119,19 @@ def test_grader_overlap_offline() -> None:
     assert G.overlap_grader(qa, "a") is None
 
 
-def test_grader_registry_and_unavailable_skip() -> None:
+def test_grader_registry_and_local() -> None:
     from memeval import grader as G
+    # 'none' -> always-None grader (leave CODE ungraded).
     assert G.get_grader("none")(_code_task(), "x") is None
-    # swebench grader with skip policy returns None when Docker/swebench absent
-    # (this environment has neither) instead of raising.
-    g = G.get_grader("swebench", on_unavailable="skip")
-    assert g(_code_task(patch="p"), "some patch") is None
+    # 'local' -> a LocalExecGrader instance.
+    g = G.get_grader("local")
+    assert isinstance(g, G.LocalExecGrader)
+    # LocalExecGrader returns None for QA tasks (not its concern).
+    qa = Task(task_id="q", benchmark=Benchmark.LONGMEMEVAL, kind=TaskKind.QA,
+              question="?", answer="a")
+    assert g(qa, "a") is None
+    # Empty prediction on a CODE task -> False (a real miss, no patch produced).
+    assert g(_code_task(patch="p"), "") is False
     # Unknown grader name is a clear error.
     try:
         G.get_grader("bogus")
@@ -1135,13 +1141,13 @@ def test_grader_registry_and_unavailable_skip() -> None:
 
 
 def test_run_agent_grading_exception_is_ungraded_not_a_miss() -> None:
-    """When the GRADER itself raises (e.g. Docker/swebench unavailable under
-    on_unavailable='error'), the task is recorded UNGRADED (success=None), not a
-    counted CODE failure. metrics.accuracy then excludes it from the denominator
-    rather than dishonestly depressing the resolved rate.
+    """When the GRADER itself raises (e.g. the local test environment could not be
+    built), the task is recorded UNGRADED (success=None), not a counted CODE
+    failure. metrics.accuracy then excludes it from the denominator rather than
+    dishonestly depressing the resolved rate.
     """
     def _raising_grader(task, prediction):
-        raise RuntimeError("SWE-bench grading requires Docker (unavailable)")
+        raise RuntimeError("local test environment could not be built")
 
     fx = _fixture("swe_contextbench.json")
     rr = run_agent(Benchmark.SWE_CONTEXTBENCH, EchoAgent(), memory=False,
