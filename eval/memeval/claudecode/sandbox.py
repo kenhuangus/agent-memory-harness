@@ -100,6 +100,61 @@ def is_logged_in(config_dir: Optional[Path] = None) -> bool:
     return False
 
 
+#: The Claude Code marketplace + plugin name the cookbook-memory bundle declares.
+PLUGIN_MARKETPLACE = "cookbook-memory"
+PLUGIN_NAME = "cookbook-memory"
+
+
+def install_plugin_bundle(
+    bundle_dir: str | Path, *, config_dir: Optional[Path] = None,
+    claude_exe: Optional[str] = None, timeout: int = 120,
+) -> None:
+    """Install a built Claude Code plugin bundle into the sandbox, the native way.
+
+    Runs the same commands a user runs — ``claude plugin marketplace add <bundle>``
+    then ``claude plugin install <name> --scope user`` — with ``CLAUDE_CONFIG_DIR``
+    pointed at the sandbox, so the plugin lands in the sandbox (not the host
+    ``~/.claude``). Idempotent: the marketplace is removed first so a rebuilt bundle
+    replaces a stale install on re-run. This consumes the plugin's own release build
+    (:func:`cookbook_memory.adapters.claude_code.build.build_bundle`); it owns no
+    bundling logic itself.
+
+    Raises ``RuntimeError`` if the install fails (so a broken plugin fails the run
+    loudly rather than silently benchmarking no-memory)."""
+    import subprocess
+
+    d = (config_dir or default_config_dir()).resolve()
+    exe = claude_exe or _find_claude_exe()
+    env = {**os.environ, "CLAUDE_CONFIG_DIR": str(d)}
+
+    def _run(args: list[str], *, check: bool) -> subprocess.CompletedProcess:
+        return subprocess.run([exe, "plugin", *args], env=env, timeout=timeout,
+                              capture_output=True, text=True, check=False)
+
+    # Best-effort clean slate (ignore failures: nothing installed yet on first run).
+    _run(["uninstall", PLUGIN_NAME], check=False)
+    _run(["marketplace", "remove", PLUGIN_MARKETPLACE], check=False)
+
+    add = _run(["marketplace", "add", str(Path(bundle_dir).resolve())], check=False)
+    if add.returncode != 0:
+        raise RuntimeError(f"claude plugin marketplace add failed: "
+                           f"{(add.stderr or add.stdout)[:400]}")
+    inst = _run(["install", f"{PLUGIN_NAME}@{PLUGIN_MARKETPLACE}", "--scope", "user"],
+                check=False)
+    if inst.returncode != 0:
+        raise RuntimeError(f"claude plugin install failed: "
+                           f"{(inst.stderr or inst.stdout)[:400]}")
+
+
+def _find_claude_exe() -> str:
+    """Resolve the ``claude`` executable (native or WSL) via the platform detector."""
+    from .platform import detect
+    rt = detect()
+    if rt is None:
+        raise RuntimeError("claude CLI not found (native or WSL); cannot install plugin")
+    return rt.exe
+
+
 def build(config_dir: Optional[Path] = None, *, overwrite: bool = False) -> Path:
     """Create (or refresh) the sandbox config dir and return its path.
 

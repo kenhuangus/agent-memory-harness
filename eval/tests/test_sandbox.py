@@ -160,5 +160,56 @@ class WslEnvPrefix(unittest.TestCase):
             self.assertEqual(cli._wsl_env_prefix(strip_api_key=False), [])
 
 
+class InstallPluginBundle(unittest.TestCase):
+    """The eval consumer: native `claude plugin` install into the sandbox.
+
+    No real claude — subprocess.run is faked to capture the argv sequence + env."""
+
+    def _capture(self, returncodes=None):
+        import subprocess
+        calls = []
+        rcs = list(returncodes or [])
+
+        def fake_run(argv, **kw):
+            calls.append((argv, kw.get("env", {})))
+            rc = rcs.pop(0) if rcs else 0
+            return subprocess.CompletedProcess(argv, rc, stdout="", stderr="")
+        return calls, fake_run
+
+    def test_native_install_sequence_and_config_dir(self) -> None:
+        import subprocess
+        calls, fake = self._capture()
+        orig = subprocess.run
+        try:
+            subprocess.run = fake
+            sandbox.install_plugin_bundle(
+                "/tmp/bundle", config_dir=Path("/tmp/sbx"), claude_exe="claude")
+        finally:
+            subprocess.run = orig
+        verbs = [tuple(a[2:4]) for a, _ in calls]  # (subcmd, arg) after [exe, "plugin"]
+        # idempotent clean slate, then add + install
+        self.assertEqual(verbs[0], ("uninstall", sandbox.PLUGIN_NAME))
+        self.assertEqual(verbs[1], ("marketplace", "remove"))
+        self.assertEqual(verbs[2], ("marketplace", "add"))
+        self.assertEqual(calls[3][0][2:4], ["install", f"{sandbox.PLUGIN_NAME}@{sandbox.PLUGIN_MARKETPLACE}"])
+        # every call points CLAUDE_CONFIG_DIR at the (resolved) sandbox
+        expected = str(Path("/tmp/sbx").resolve())
+        for _, env in calls:
+            self.assertEqual(env.get("CLAUDE_CONFIG_DIR"), expected)
+
+    def test_raises_when_install_fails(self) -> None:
+        import subprocess
+        # rc sequence: uninstall(ok), mkt remove(ok), mkt add(ok), install(FAIL=1)
+        calls, fake = self._capture(returncodes=[0, 0, 0, 1])
+        orig = subprocess.run
+        try:
+            subprocess.run = fake
+            with self.assertRaises(RuntimeError):
+                sandbox.install_plugin_bundle(
+                    "/tmp/bundle", config_dir=Path("/tmp/sbx"), claude_exe="claude")
+        finally:
+            subprocess.run = orig
+
+
 if __name__ == "__main__":
     unittest.main()
