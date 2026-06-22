@@ -1107,6 +1107,72 @@ def test_grader_resolved_from_report_rule() -> None:
     assert G.resolved_from_report(summ, "not__there-9") is None
 
 
+def test_grader_django_parse_docstring_and_selector_filter() -> None:
+    """The django runtests parser must survive verbosity=2 docstring formatting
+    (the ``... ok`` lands on the docstring line, not the method line) and the
+    selector filter must drop leaked docstrings from PASS_TO_PASS.
+
+    Regression for django__django-9296: a test WITH a docstring printed as two
+    lines was misclassified as a failure, and the leaked docstring selector
+    ``"Paginator.get_page() with an empty object_list."`` triggered a phantom
+    ``ERROR: ... _FailedTest`` that flipped the whole run to FAILED.
+    """
+    from memeval import grader as G
+
+    # --- is_django_selector: accept real labels, reject prose/docstrings. ---
+    assert G.is_django_selector("test_get_page (pagination.tests.PaginationTests)")
+    assert G.is_django_selector("pagination.tests.PaginationTests.test_get_page")
+    assert G.is_django_selector("pagination.tests")
+    # Leaked docstring (the exact 9296 contaminant) and other prose -> rejected.
+    assert not G.is_django_selector("Paginator.get_page() with an empty object_list.")
+    assert not G.is_django_selector("A paginator page acts like a standard sequence.")
+    assert not G.is_django_selector("")
+
+    # --- _parse_django on canned verbosity=2 output (docstring two-line form). ---
+    # test_no_doc has no docstring (one line); test_get_page has a docstring whose
+    # "... ok" is on the SECOND line and never repeats the method name. A pre-fix
+    # parser marked test_get_page as a failure.
+    stderr = (
+        "test_no_doc (pagination.tests.PaginationTests.test_no_doc) ... ok\n"
+        "test_get_page (pagination.tests.PaginationTests.test_get_page)\n"
+        "Paginator.get_page() returns a valid page even with invalid page ... ok\n"
+        "----------------------------------------------------------------------\n"
+        "Ran 2 tests in 0.001s\n"
+        "\n"
+        "OK\n"
+    )
+    f2p = ["test_no_doc (pagination.tests.PaginationTests)"]
+    p2p = ["test_get_page (pagination.tests.PaginationTests)"]
+    status = G._parse_django("", stderr, f2p, p2p)
+    assert status["FAIL_TO_PASS"]["success"] == f2p
+    assert status["FAIL_TO_PASS"]["failure"] == []
+    assert status["PASS_TO_PASS"]["success"] == p2p
+    assert status["PASS_TO_PASS"]["failure"] == []
+    iid = "django__django-9296"
+    assert G.resolved_from_report({iid: {"tests_status": status}}, iid) is True
+
+    # --- A genuine FAIL: banner must still classify that test as a failure. ---
+    fail_err = (
+        "test_get_page (pagination.tests.PaginationTests.test_get_page)\n"
+        "Paginator.get_page() returns a valid page ... FAIL\n"
+        "======================================================================\n"
+        "FAIL: test_get_page (pagination.tests.PaginationTests.test_get_page)\n"
+        "----------------------------------------------------------------------\n"
+        "AssertionError: ...\n"
+        "Ran 1 test in 0.001s\n"
+        "FAILED (failures=1)\n"
+    )
+    bad = G._parse_django("", fail_err, [], p2p)
+    assert bad["PASS_TO_PASS"]["failure"] == p2p
+    assert bad["PASS_TO_PASS"]["success"] == []
+
+    # --- A selector that never ran (not in output) -> failure (honest default). ---
+    never = G._parse_django("", "OK\n",
+                            ["test_absent (pagination.tests.PaginationTests)"], [])
+    assert never["FAIL_TO_PASS"]["failure"] == \
+        ["test_absent (pagination.tests.PaginationTests)"]
+
+
 def test_grader_overlap_offline() -> None:
     from memeval import grader as G
     gold = "diff --git a/f.py b/f.py\n+    return x + 1"
