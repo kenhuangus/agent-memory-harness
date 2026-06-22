@@ -614,12 +614,17 @@ class _GraphVectorCascade:
     # -- MemoryStore protocol ----------------------------------------------
     def search(self, query: str, *, k: int = 5, as_of: Optional[float] = None,
                **kwargs: Any) -> list[RetrievedItem]:
-        """Graph→vector cascade retrieval for ``query`` (gate + projection)."""
-        graph_hits = self._graph.search(query, k=k, as_of=as_of)
+        """Graph→vector cascade retrieval for ``query`` (gate + projection).
+
+        Backend-specific ``**kwargs`` (the ``MemoryStore.search`` seam) are forwarded to both
+        underlying stores so a routed read through the cascade honors them exactly as a direct
+        single-backend read does (e.g. a ``RouterStore`` over a cascade-enabled profile).
+        """
+        graph_hits = self._graph.search(query, k=k, as_of=as_of, **kwargs)
         gate = self._gate(query, graph_hits, as_of)
         if gate.decision == ACCEPT:
             return self._project(graph_hits)
-        return self._vector.search(query, k=k, as_of=as_of)
+        return self._vector.search(query, k=k, as_of=as_of, **kwargs)
 
     def get(self, item_id: str) -> Optional[MemoryItem]:
         """Prefer the vector store's copy, then the graph's."""
@@ -891,7 +896,79 @@ class Router:
         return None
 
 
+class RouterStore:
+    """A :class:`~memeval.protocols.MemoryStore` facade over a :class:`Router` — makes routed
+    write-routing LIVE (D025).
+
+    The Router owns *where* to store and read, but it is NOT itself a store: :meth:`Router.write`
+    returns a :class:`WriteReceipt` (not ``None``), :meth:`Router.route` returns a *backend* (not
+    results), and the Router has no ``get`` / ``all``. So nothing that expects a ``MemoryStore`` — the
+    plugin ``_Engine``, the harness ``MemoryFramework``, the #63 native eval ``store=`` seam — can use
+    the Router's dedup + multi-index write path; every such write goes direct to a single backend and
+    write-routing/dedup stay dead code. ``RouterStore`` adapts the Router to the four-method protocol so
+    those seams drive routed writes and reads unchanged. Purely additive: the Router contract is
+    untouched; this only re-shapes it.
+
+    Semantics:
+      * ``write(item)`` -> :meth:`Router.write` (dedup -> route_write -> fan to every policy backend),
+        discarding the receipt to honor the ``-> None`` protocol. The receipt is kept on
+        :attr:`last_receipt` for callers (e.g. an integration test) that want the fan-out/merge result.
+      * ``search`` routes per call: ``route(query).search(query, k=, as_of=)`` — the routed read,
+        preserving ``as_of`` no-future-peeking and any backend kwargs.
+      * ``get`` / ``all`` union the registered backends, de-duplicating by ``item_id`` first-seen in
+        backend priority order (``base_all`` writes the same item to several backends, so the fan-out
+        copies must collapse on read). Markdown (the literal source-of-truth base, D001) is scanned
+        first so its revision wins ties.
+    """
+
+    #: get/all scan + de-dup order (markdown base first — the literal source of truth).
+    _READ_ORDER = (MARKDOWN, VECTORS, GRAPH)
+
+    def __init__(self, router: Router) -> None:
+        self._router = router
+        self.last_receipt: Optional[WriteReceipt] = None
+
+    def write(self, item: MemoryItem) -> None:
+        """Persist ``item`` through the Router (dedup + write-routing); discard the receipt."""
+        self.last_receipt = self._router.write(item)
+
+    def get(self, item_id: str) -> Optional[MemoryItem]:
+        """Return the item from the first backend (priority order) that has it, else ``None``."""
+        for name in self._ordered_backend_names():
+            store = self._router.backends.get(name)
+            if store is not None:
+                found = store.get(item_id)
+                if found is not None:
+                    return found
+        return None
+
+    def search(self, query: str, *, k: int = 5, as_of: Optional[float] = None,
+               **kwargs: Any) -> list[RetrievedItem]:
+        """Route ``query`` to its backend and return that backend's top-``k`` (routed read)."""
+        return self._router.route(query).search(query, k=k, as_of=as_of, **kwargs)
+
+    def all(self) -> list[MemoryItem]:
+        """Every stored item across backends, de-duplicated by ``item_id`` (collapses fan-out copies)."""
+        seen: set[str] = set()
+        out: list[MemoryItem] = []
+        for name in self._ordered_backend_names():
+            store = self._router.backends.get(name)
+            if store is None:
+                continue
+            for item in store.all():
+                if item.item_id not in seen:
+                    seen.add(item.item_id)
+                    out.append(item)
+        return out
+
+    def _ordered_backend_names(self) -> list[str]:
+        """Registered backend names in read priority (``_READ_ORDER`` first, then any extras)."""
+        names = [n for n in self._READ_ORDER if n in self._router.backends]
+        names += [n for n in self._router.backends if n not in names]
+        return names
+
+
 __all__ = [
-    "Router", "RouterConfig", "CascadeConfig", "Consult2Config", "WriteReceipt",
+    "Router", "RouterStore", "RouterConfig", "CascadeConfig", "Consult2Config", "WriteReceipt",
     "speed_profile", "accuracy_profile",
 ]
