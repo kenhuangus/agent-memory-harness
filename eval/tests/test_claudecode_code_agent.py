@@ -96,15 +96,33 @@ def _make_fake_git(*, diff: str = _FIXED_DIFF, apply_ok: bool = True,
     return _fake_git
 
 
+#: Tool names the plugin CODE turn is allowed to allowlist (the memory MCP tools
+#: from `_seed_plugin_store_okf`). The non-plugin agentic CODE paths
+#: (off / builtin / plugin-real) must still pass the full native toolset
+#: (`allowed_tools=None`); only the plugin path may pass this memory tools list.
+_MEMORY_TOOLS = (
+    "mcp__memeval-memory__memory_recall",
+    "mcp__memeval-memory__memory_remember",
+)
+
+
 def _make_fake_claude(*, edited_flag: dict, edit: bool = True):
     """A fake claude runner that simulates the agent editing files in the checkout
     (writing the fixed orm.py) and flips ``edited_flag``. Asserts the agentic
-    invariants: acceptEdits/bypass permission + full toolset (allowed_tools None)."""
+    invariants: acceptEdits/bypass permission + a sanctioned toolset (either the
+    full native toolset — ``allowed_tools=None`` for off/builtin/plugin-real — or,
+    for the plugin path, ONLY the memory MCP tools)."""
 
     def _fake_claude(prompt, *, cwd, permission_mode="bypassPermissions",
                      allowed_tools=None, append_system_prompt=None, **kw) -> ClaudeResult:
         assert permission_mode in ("acceptEdits", "bypassPermissions"), permission_mode
-        assert allowed_tools is None, "agentic CODE must use the full native toolset"
+        # off/builtin/plugin-real CODE must use the full native toolset (None); the
+        # plugin CODE turn may allowlist ONLY the memory MCP tools. Anything else is
+        # a wiring bug.
+        assert allowed_tools is None or set(allowed_tools) <= set(_MEMORY_TOOLS), (
+            "agentic CODE must use the full native toolset, except the plugin turn "
+            f"which may allowlist only the memory tools; got {allowed_tools!r}"
+        )
         if edit:
             (Path(cwd) / "orm.py").write_text("def filter_empty():\n    return []\n",
                                               encoding="utf-8")
@@ -353,18 +371,27 @@ def test_run_bench_code_mode_default_agentic() -> None:
 # Test E — memory wired into the agentic CODE loop (plugin mode records retrieve)
 # --------------------------------------------------------------------------- #
 def test_agentic_code_plugin_records_retrieval() -> None:
-    # plugin-mode agentic CODE: the fake claude calls the configured memory server
-    # (reading the .mcp.json written into the CHECKOUT) and the agent attributes the
+    # plugin-mode agentic CODE: the turn is driven through the primed + retry-until-
+    # recall path (mirroring _run_plugin_http). The fake claude calls the configured
+    # memory server (reading the .mcp.json written into the CHECKOUT) so the recall
+    # log gains a recall op, the loop sees it and stops, and the agent attributes the
     # recall to the CODE trajectory — closing the "CODE bypasses memory" gap.
+    # NOTE: under the injected fake runner, _run_primed falls back to a plain call
+    # (priming only engages when self._runner is run_claude), so this also verifies
+    # the fallback still reaches memory.
     import json as _json
     from memeval.okf import OKFStore
     from memeval.claudecode.service import MemoryService
 
     flag: dict = {}
+    calls: dict = {"n": 0, "tools": None, "permission": None}
     git = _make_fake_git(edited_flag=flag)
 
     def fake(prompt, *, cwd, mcp_config=None, allowed_tools=None, strict_mcp=False,
              permission_mode="bypassPermissions", **kw):
+        calls["n"] += 1
+        calls["tools"] = allowed_tools
+        calls["permission"] = permission_mode
         # Edit the checkout (so a diff is produced) ...
         (Path(cwd) / "orm.py").write_text("def filter_empty():\n    return []\n",
                                           encoding="utf-8")
@@ -387,8 +414,78 @@ def test_agentic_code_plugin_records_retrieval() -> None:
                        path_or_id=_fixture("swe_contextbench.json"), limit=2,
                        seed_sessions=False, grader=grader)
     kinds = [s.kind for t in rr.trajectories for s in t.steps]
-    assert "retrieve" in kinds      # CODE loop now exercises memory
+    assert "retrieve" in kinds      # CODE loop now exercises memory (primed+retry)
     assert "generate" in kinds
+    # The plugin CODE turn must allowlist the memory MCP tools and keep acceptEdits.
+    assert calls["tools"] == list(_MEMORY_TOOLS)
+    assert calls["permission"] == "acceptEdits"
+    # Recall fired on the first try, so the retry loop stops after one call per task
+    # (2 tasks -> exactly 2 runner invocations, no wasteful retries).
+    assert calls["n"] == 2
+
+
+def test_agentic_code_plugin_real_records_retrieval() -> None:
+    # plugin-real-mode agentic CODE = the SHIPPING plugin (cookbook-memory) as a
+    # black box. The fake CLI stands in for the installed plugin: it edits the
+    # checkout (so a diff is produced) AND writes a recall event (with meta.hits) to
+    # the plugin's OWN events stream under ${CLAUDE_PROJECT_DIR}/.cookbook-memory —
+    # exactly as the cookbook-memory MCP server would. The agent now drives this turn
+    # through the primed + retry-until-recall loop (mirroring the QA plugin-real
+    # path) and attributes the retrieval to the CODE trajectory from meta.hits.
+    #
+    # Stdlib-only: plugin-real seeds through `memory-cli` (a subprocess that no-ops
+    # when the plugin isn't installed) and uses a fake runner, so no `cookbook_memory`
+    # import and no real `claude`. Under the fake runner _ensure_real_plugin returns
+    # {} and seeding no-ops, and _run_primed falls back to a plain call (priming only
+    # engages when self._runner is run_claude) — so this also verifies the fallback
+    # still reaches the plugin's recall.
+    import json as _json
+
+    flag: dict = {}
+    calls: dict = {"n": 0, "tools": "UNSET", "permission": None}
+    git = _make_fake_git(edited_flag=flag)
+
+    def fake(prompt, *, cwd, permission_mode="bypassPermissions", allowed_tools=None,
+             **kw):
+        calls["n"] += 1
+        calls["tools"] = allowed_tools
+        calls["permission"] = permission_mode
+        # Edit the checkout (so a diff is produced) ...
+        (Path(cwd) / "orm.py").write_text("def filter_empty():\n    return []\n",
+                                          encoding="utf-8")
+        flag["edited"] = True
+        # ... and simulate the installed plugin's MCP server logging a recall to its
+        # own events stream under the checkout's .cookbook-memory dir.
+        store = Path(cwd) / ".cookbook-memory"
+        store.mkdir(parents=True, exist_ok=True)
+        ev = {
+            "ts": 1.0, "op": "recall", "ids": ["m1"], "query": prompt,
+            "meta": {"hits": [{"id": "m1", "content": "return [] not None",
+                               "score": 0.9, "rank": 0, "tokens": 4, "timestamp": 1.0}]},
+        }
+        # Append so multiple tasks accumulate; the loop counts events per task.
+        with open(store / "events.jsonl", "a", encoding="utf-8") as fh:
+            fh.write(_json.dumps(ev) + "\n")
+        return ClaudeResult(text="done", tokens_in=20, tokens_out=4)
+
+    grader = G.LocalExecGrader(runner=_make_fake_cmd(), git_runner=git)
+    with tempfile.TemporaryDirectory() as tmp:
+        agent = ClaudeCodeAgent(memory_mode="plugin-real", code_mode="agentic",
+                                runner=fake, git_runner=git, runtime=_NATIVE,
+                                workdir=tmp)
+        rr = run_agent(Benchmark.SWE_CONTEXTBENCH, agent, memory=True,
+                       path_or_id=_fixture("swe_contextbench.json"), limit=2,
+                       seed_sessions=False, grader=grader)
+    kinds = [s.kind for t in rr.trajectories for s in t.steps]
+    assert "retrieve" in kinds      # CODE loop now exercises the SHIPPING plugin
+    assert "generate" in kinds
+    # plugin-real keeps the FULL native toolset (None) — the shipping plugin supplies
+    # its own MCP tools — and keeps acceptEdits so the agent can edit files.
+    assert calls["tools"] is None
+    assert calls["permission"] == "acceptEdits"
+    # Recall fired on the first try, so the retry loop stops after one call per task
+    # (2 tasks -> exactly 2 runner invocations, no wasteful retries).
+    assert calls["n"] == 2
 
 
 # --------------------------------------------------------------------------- #

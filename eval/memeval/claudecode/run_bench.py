@@ -11,7 +11,9 @@ The equivalent module form works without installing the entry point::
     python -m memeval.claudecode.run_bench --benchmark longmemeval --mode plugin \
         --model claude-haiku-4-5 --limit 20 --results ../results.json
 
-``--mode`` is off | builtin | plugin | all (all runs builtin+plugin for comparison).
+``--mode`` is off | builtin | plugin | plugin-real | all (all runs builtin+plugin-real
+for comparison: Claude Code's native memory vs Keith's shipping cookbook-memory
+plugin; the OKF ``plugin`` simulation is explicit opt-in only).
 ``--benchmark`` is one of the five ids (run it on its own) or ``all``. Reuses the
 standard harness (cost/budget, trajectory, metrics, results ledger), so these runs
 show up on the Results page / scoreboard next to the API runs.
@@ -31,9 +33,13 @@ from .agent import ClaudeCodeAgent
 from .platform import describe, detect
 
 _ALL_BENCH = ["memoryagentbench", "longmemeval", "swe_contextbench", "swe_bench_cl", "contextbench"]
-# The comparison that matters: Claude Code's built-in memory vs our plugin memory.
-# (`off` is still accepted as an explicit --mode, but it's not part of `all`.)
-_MODES = ["builtin", "plugin"]
+# The comparison that matters: Claude Code's built-in memory (builtin) vs Keith's
+# SHIPPING plugin (plugin-real = plugin/cookbook_memory, the real product). The OKF
+# `plugin` is a harness SIMULATION of our MCP memory and stays selectable only via an
+# explicit `--mode plugin` — it is deliberately NOT in the default `all`, so the
+# simulation is never benchmarked by accident in place of the shipping plugin.
+# (`off` and `plugin` are still accepted as explicit --mode values, just not in `all`.)
+_MODES = ["builtin", "plugin-real"]
 # Per-benchmark long-memory floors (entries per (benchmark, mode) on a bare run).
 # Tuned to each dataset's real structure (measured via tools/probe_group_sizes.py):
 #   longmemeval       500 tasks, 1 group, ~50 sessions/task  -> memory is *within*
@@ -213,9 +219,10 @@ def _benchmark_table() -> str:
         floor = DEFAULT_FLOORS.get(b, DEFAULT_MIN_ENTRIES)
         rows.append(f"  {b:<18} {kind:<4} floor={floor:<3} draw={draw}")
     rows.append("  all                run every benchmark in sequence")
-    rows.append("modes: builtin (Claude Code's own memory) | plugin (our MCP memory, "
-                "harness-wired) | plugin-real (the shipping cookbook-memory plugin, "
-                "natively installed — black box) | off (baseline) | all (builtin+plugin)")
+    rows.append("modes: builtin (Claude Code's native memory) | plugin-real (Keith's "
+                "shipping cookbook_memory plugin — the REAL product, natively installed, "
+                "black box) | plugin (OKF/MCP harness SIMULATION — explicit opt-in only, "
+                "NOT in 'all') | off (baseline) | all (builtin+plugin-real)")
     return "\n".join(rows)
 
 
@@ -244,7 +251,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(
         prog="memeval-bench",
         description="Run a memory benchmark (or all five) through your Claude Code CLI, "
-                    "comparing Claude Code's built-in memory vs our plugin memory. "
+                    "comparing Claude Code's built-in memory (builtin) vs Keith's "
+                    "shipping cookbook_memory plugin (plugin-real, the real product). "
+                    "The OKF `plugin` harness simulation is explicit opt-in only. "
                     "Subscription auth only (no API key).",
     )
     ap.add_argument("--list-benchmarks", action="store_true",
@@ -252,7 +261,10 @@ def main(argv: Optional[list[str]] = None) -> int:
                          "Works offline — no claude or dataset needed.")
     ap.add_argument("--benchmark", default="all", help="one of the five ids, or 'all'.")
     ap.add_argument("--mode", default="all",
-                    help="builtin | plugin | plugin-real | off | all (all = builtin+plugin).")
+                    help="builtin (Claude Code native) | plugin-real (Keith's shipping "
+                         "cookbook_memory plugin, the real product) | plugin (OKF/MCP "
+                         "harness simulation — explicit opt-in only) | off (baseline) | "
+                         "all (= builtin+plugin-real).")
     ap.add_argument("--model", default="claude-haiku-4-5")
     ap.add_argument("--path", default=None, help="local fixture/dataset path, or 'fixtures' (blank = real source).")
     ap.add_argument("--limit", type=int, default=None,

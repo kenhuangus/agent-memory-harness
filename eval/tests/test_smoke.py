@@ -1975,6 +1975,49 @@ def test_plugin_real_openrouter_advisory_is_nonfatal() -> None:
             os.environ["OPENROUTER_API_KEY"] = saved
 
 
+def test_run_bench_default_modes_are_builtin_and_plugin_real() -> None:
+    """The default `all` comparison is Claude Code native (builtin) vs Keith's
+    SHIPPING plugin (plugin-real). The OKF `plugin` simulation must NOT be in `all`
+    (it stays explicit opt-in), so it is never benchmarked by accident in place of
+    the real product."""
+    import tempfile
+    from pathlib import Path
+    from memeval.claudecode import run_bench
+
+    # The canonical "all" set.
+    assert run_bench._MODES == ["builtin", "plugin-real"]
+    assert "plugin" not in run_bench._MODES
+
+    # `--mode all` (the default) expands to exactly those modes. Stub _run_one so
+    # main() captures the swept modes without running a real benchmark.
+    swept: list[str] = []
+    orig = run_bench._run_one
+
+    def _stub(benchmark, mode, args, **kw):
+        swept.append(mode)
+        return None
+
+    run_bench._run_one = _stub  # type: ignore[assignment]
+    try:
+        run_bench.main(["--benchmark", "swe_contextbench", "--results-dir", "",
+                        "--results",
+                        str(Path(tempfile.gettempdir()) / "memeval-rb-modes.json")])
+    finally:
+        run_bench._run_one = orig  # type: ignore[assignment]
+    assert swept == ["builtin", "plugin-real"]
+
+    # The OKF simulation remains selectable as an EXPLICIT single mode.
+    swept.clear()
+    run_bench._run_one = _stub  # type: ignore[assignment]
+    try:
+        run_bench.main(["--benchmark", "swe_contextbench", "--mode", "plugin",
+                        "--results-dir", "", "--results",
+                        str(Path(tempfile.gettempdir()) / "memeval-rb-modes.json")])
+    finally:
+        run_bench._run_one = orig  # type: ignore[assignment]
+    assert swept == ["plugin"]
+
+
 # --------------------------------------------------------------------------- #
 # Built-in runner (no pytest required)
 # --------------------------------------------------------------------------- #
