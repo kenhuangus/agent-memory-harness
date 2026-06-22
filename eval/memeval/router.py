@@ -27,9 +27,11 @@ the cascade on, a GRAPH-classified query routes to a retrieval-only
 
 from __future__ import annotations
 
+import inspect
+import math
 import re
 from dataclasses import dataclass, field
-from typing import Any, Optional, Protocol, runtime_checkable
+from typing import Any, Callable, Optional, Protocol, runtime_checkable
 
 from .protocols import MemoryStore
 from .schema import MemoryItem, RetrievedItem
@@ -223,6 +225,169 @@ class RuleBasedClassifier:
                     choice = name
                     break
         return ClassificationResult(choice=choice, scores=scores, margin=margin)
+
+
+# --------------------------------------------------------------------------- #
+# Semantic exemplar classifier (D016 accuracy profile / PR3b-2) — learned-style seam.
+#
+# Routes by MEANING, not lexical rules: embeds a small set of per-backend EXEMPLAR queries
+# (the routing taxonomy) and the live query with the SAME injected encoder, then routes to the
+# backend whose exemplars the query sits closest to (cosine). Slots behind the RouterClassifier
+# seam (accuracy_profile) with NO [CONTRACT] change and never touches the default/speed (rule)
+# path. The encoder is INJECTED (any text->vector callable, e.g. VoyageEmbedder) — paid at call
+# time, never imported here. Offline char-n-gram encoders are LEXICAL, so the semantic win is
+# demonstrable only with a real embedder (the captained D021 bake-off), never in CI — preserving
+# the zero-dependency offline guarantee.
+#
+# EXEMPLARS are deliberately GENERIC (multi-domain, non-project) so routing a real query tests
+# intent-generalization, not entity memorization. Authored by a blind multi-lens workflow; two
+# graph items were de-leaked after an overlap check (a cross-lingual near-copy of the French GAP
+# case + a near-duplicate of an English eval phrasing). See DECISION_LOG D021.
+# --------------------------------------------------------------------------- #
+DEFAULT_ROUTING_EXEMPLARS: dict[str, tuple] = {
+    MARKDOWN: (
+        "What exact value did we set the maximum retry attempts to in the payment retry config?",
+        "Give me the full signature of the validateJwt() function, including its parameters and return type.",
+        "Quote the error message the file upload handler throws when the MIME type isn't allowed.",
+        "Which port does the cache service listen on in the staging environment?",
+        "What header name does the rate limiter use to return the remaining-quota count?",
+        "Paste the exact regex we use to validate phone numbers in the signup form.",
+        "What's the name of the environment variable that holds the webhook signing secret?",
+        "What did we set the connection pool size to for the analytics database replica?",
+        "Tell me the exact cron expression for the nightly invoice reconciliation job.",
+        "What's the default session token TTL, in seconds?",
+    ),
+    GRAPH: (
+        "What services depend on the authentication API?",
+        "Which background jobs call the payment processor?",
+        "Do the new firewall rules conflict with the VPN configuration?",  # de-leaked (was cache/rate-limiter ~ French GAP)
+        "Show me everything the checkout flow connects to.",
+        "What upstream systems feed data into the search indexer?",
+        "What other components pull in the email-sending library?",  # de-leaked (was 'which modules import' ~ eval phrasing)
+        "How is the notification service wired to the message queue?",
+        "If I change the user schema, what else breaks?",
+        "Trace the call chain from the API gateway down to the inventory service.",
+        "Which deployments depend on the shared config package?",
+    ),
+    VECTORS: (
+        "Why did we end up choosing one message broker over another for the event pipeline?",
+        "Give me a high-level summary of how our authentication flow works.",
+        "What's the general thinking behind using optimistic locking instead of pessimistic locking here?",
+        "Explain the tradeoffs of caching at the CDN edge versus in the application layer.",
+        "What should I look at next to improve checkout reliability?",
+        "What was the reasoning for splitting the monolith into separate billing and inventory services?",
+        "Can you describe our philosophy around retries and idempotency?",
+        "Remind me why we decided not to support offline writes in the mobile app.",
+        "Summarize the main considerations when picking a rate limiting strategy for the public API.",
+        "Broadly, how do we think about consistency versus availability in our data stores?",
+    ),
+}
+
+
+def _cosine_sim(a, b) -> float:
+    """Cosine similarity of two equal-length vectors (0.0 if either is degenerate)."""
+    if len(a) != len(b):
+        raise ValueError(f"embedding dim mismatch: {len(a)} != {len(b)}")
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(x * x for x in b))
+    return dot / (na * nb) if na and nb else 0.0
+
+
+def _encoder_accepts_input_type(embed: Callable) -> bool:
+    """True if ``embed`` accepts a keyword ``input_type`` (query/document asymmetry).
+
+    Mirrors the store's embed seam (``sqlite_store._embedder_accepts_input_type``) so the
+    classifier embeds exemplars as ``"document"`` and the query as ``"query"`` for a
+    query/document-aware encoder (e.g. Voyage), while a legacy one-arg ``text -> vector``
+    callable is still called positionally. A ``**kwargs`` param qualifies; a param named
+    ``input_type`` qualifies only when it is keyword-addressable alongside a leading text
+    positional (so a sole/leading positional named ``input_type`` is treated as the text arg).
+    """
+    try:
+        params = inspect.signature(embed).parameters
+    except (TypeError, ValueError):  # builtins / C callables without a readable signature
+        return False
+    seen_positional = False
+    for p in params.values():
+        if p.kind is p.VAR_KEYWORD:
+            return True
+        if p.name == "input_type":
+            if p.kind is p.KEYWORD_ONLY:
+                return True
+            if p.kind is p.POSITIONAL_OR_KEYWORD and seen_positional:
+                return True
+        if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD):
+            seen_positional = True
+    return False
+
+
+class SemanticRouterClassifier:
+    """A semantic, exemplar-based :class:`RouterClassifier` (D016 accuracy profile / PR3b-2).
+
+    Embeds per-backend EXEMPLAR queries and the live query with the injected ``embed`` encoder,
+    then routes to the backend whose exemplars the query is closest to (cosine, aggregated per
+    backend by ``agg`` = ``"max"`` or ``"mean"``). ``margin`` is the top-two gap; ``details``
+    carries the per-backend nearest exemplar (observability, like :meth:`Router.explain`).
+
+    The encoder is injected (any ``text -> vector`` callable) and paid at call time, never
+    imported here. Exemplars embed as ``input_type="document"`` and the query as ``"query"`` when
+    the encoder accepts it (Voyage's asymmetry), else the legacy one-arg call. An empty query
+    routes to the semantic default (mirrors :class:`RuleBasedClassifier`'s no-signal behavior).
+    """
+
+    name = "semantic-exemplar"
+
+    def __init__(self, embed: Callable, *, exemplars: Optional[dict] = None,
+                 priority: tuple = _PRIORITY, default_backend: str = VECTORS,
+                 agg: str = "max") -> None:
+        if agg not in ("max", "mean"):
+            raise ValueError(f"agg must be 'max' or 'mean', got {agg!r}")
+        src = exemplars if exemplars is not None else DEFAULT_ROUTING_EXEMPLARS
+        self._exemplars = {b: tuple(qs) for b, qs in src.items()}
+        if not self._exemplars or any(not qs for qs in self._exemplars.values()):
+            raise ValueError("every backend needs >=1 exemplar")
+        self._embed = embed
+        self._priority = tuple(priority)
+        self._default = default_backend
+        self._agg = agg
+        self._accepts_input_type = _encoder_accepts_input_type(embed)
+        # Embed every exemplar once (as a document). For a real encoder this is the only batch of
+        # calls at construction; for offline/mock encoders it is instant.
+        self._vecs = {b: [self._embed_text(q, "document") for q in qs]
+                      for b, qs in self._exemplars.items()}
+
+    def _embed_text(self, text: str, input_type: str) -> list:
+        if self._accepts_input_type:
+            return self._embed(text, input_type=input_type)
+        return self._embed(text)
+
+    def classify(self, query: str) -> ClassificationResult:
+        q = (query or "").strip()
+        scores = {b: 0.0 for b in self._exemplars}
+        if not q:
+            return ClassificationResult(choice=self._default, scores=scores, margin=0.0,
+                                        details={"classifier": self.name, "reason": "empty_query"})
+        qv = self._embed_text(q, "query")
+        nearest: dict = {}
+        for b, vecs in self._vecs.items():
+            sims = [_cosine_sim(qv, v) for v in vecs]
+            best_i = max(range(len(sims)), key=sims.__getitem__)
+            scores[b] = (sum(sims) / len(sims)) if self._agg == "mean" else sims[best_i]
+            nearest[b] = self._exemplars[b][best_i]
+        ordered = sorted(scores.values(), reverse=True)
+        margin = ordered[0] - ordered[1] if len(ordered) > 1 else ordered[0]
+        best = ordered[0]
+        # tie-break by priority (matches RuleBasedClassifier); exact float ties are rare but
+        # deterministic, and for a clean argmax only the winner equals ``best``.
+        choice = next((b for b in self._priority if scores.get(b) == best),
+                      max(scores, key=lambda b: scores[b]))
+        return ClassificationResult(
+            choice=choice, scores=scores, margin=margin,
+            details={"classifier": self.name, "agg": self._agg,
+                     "encoder": getattr(self._embed, "model", type(self._embed).__name__),
+                     "nearest_exemplar": nearest},
+        )
 
 
 # --------------------------------------------------------------------------- #
