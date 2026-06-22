@@ -31,7 +31,7 @@ def test_hook_handle_is_noop_and_logs_note(tmp_path):
 
 def test_hook_main_exits_zero_on_bad_stdin(monkeypatch):
     monkeypatch.setattr("sys.stdin", io.StringIO("not json"))
-    monkeypatch.setattr("sys.argv", ["memory-hook", "Stop"])
+    monkeypatch.setattr("sys.argv", ["hooks_handler", "Stop"])
     assert hooks_handler.main() == 0  # fail-open: never break the session
 
 
@@ -51,8 +51,12 @@ def test_plugin_json_is_valid():
 def test_mcp_json_points_at_memory_server():
     data = json.loads((BUNDLE / ".mcp.json").read_text())
     server = data["mcpServers"]["cookbook-memory"]
-    assert server["command"] == "memory-cli"
-    assert server["args"] == ["mcp"]
+    # Invoked by module (`python3 -m cookbook_memory mcp`), not by the `memory-cli`
+    # console script: module-run resolves the package via the interpreter's sys.path,
+    # so it works wherever cookbook_memory is importable — no requirement that the
+    # console script be on $PATH. (Production-install fix.)
+    assert server["command"] == "python3"
+    assert server["args"] == ["-m", "cookbook_memory", "mcp"]
     assert "MEMORY_STORE" in server["env"]
 
 
@@ -63,7 +67,11 @@ def test_hooks_json_wires_lifecycle_events():
         assert evt in hooks, f"missing hook: {evt}"
     stop = hooks["Stop"][0]["hooks"][0]
     assert stop.get("async") is True
-    assert stop["command"].startswith("memory-hook")
+    # Hooks are invoked by module too (see test_mcp_json_points_at_memory_server),
+    # so they resolve without the `memory-hook` console script on $PATH.
+    assert stop["command"] == (
+        "python3 -m cookbook_memory.adapters.claude_code.hooks_handler Stop"
+    )
 
 
 def test_committed_adapter_has_no_skills_dir():
@@ -119,3 +127,68 @@ def test_validate_bundle_rejects_missing_skill(tmp_path):
     shutil.rmtree(out / "skills")
     with pytest.raises(build.BundleError):
         build.validate_bundle(out)
+
+
+# --- committed release bundle: drift guard (ADR-harness-010) ----------------- #
+
+#: The release bundle that ships from git (committed, per ADR-harness-010), pointed at
+#: by the repo-root `.claude-plugin/marketplace.json` via a git-subdir source.
+COMMITTED_BUNDLE = (
+    Path(__file__).resolve().parents[1] / "marketplace" / "cookbook-memory"
+)
+
+
+def test_committed_release_bundle_matches_fresh_build(tmp_path):
+    # ADR-harness-010 commits the materialized bundle so the plugin installs from git
+    # with no clone — which means the committed copy can drift from the canonical skill
+    # if someone edits the skill/manifests and forgets to rebuild. This asserts the
+    # committed bundle is byte-identical to a fresh `build_bundle`, so the canonical
+    # skill stays the single source of truth in practice, not just on paper. On
+    # failure: re-run `python -m cookbook_memory build-bundle --out marketplace/cookbook-memory`
+    # and commit the result.
+    from cookbook_memory.adapters.claude_code.build import build_bundle
+
+    assert COMMITTED_BUNDLE.is_dir(), (
+        f"committed release bundle missing: {COMMITTED_BUNDLE} — "
+        "run `python -m cookbook_memory build-bundle --out marketplace/cookbook-memory`"
+    )
+    fresh = build_bundle(tmp_path / "fresh")
+
+    def rel_files(root: Path) -> dict[str, bytes]:
+        return {
+            str(p.relative_to(root)): p.read_bytes()
+            for p in sorted(root.rglob("*"))
+            if p.is_file()
+        }
+
+    committed = rel_files(COMMITTED_BUNDLE)
+    built = rel_files(fresh)
+    assert set(committed) == set(built), (
+        "committed bundle file set differs from a fresh build "
+        f"(only-committed={set(committed) - set(built)}, "
+        f"only-built={set(built) - set(committed)}) — rebuild and commit"
+    )
+    drifted = [name for name in committed if committed[name] != built[name]]
+    assert not drifted, (
+        f"committed bundle content drifted from a fresh build: {drifted} — "
+        "rebuild with `python -m cookbook_memory build-bundle --out marketplace/cookbook-memory` and commit"
+    )
+
+
+def test_root_marketplace_manifest_points_at_committed_bundle():
+    # The repo-root marketplace manifest is what `claude plugin marketplace add <repo>`
+    # reads; assert it declares the plugin and its git-subdir path matches where the
+    # committed bundle actually lives (ADR-harness-010).
+    repo_root = Path(__file__).resolve().parents[2]
+    manifest = repo_root / ".claude-plugin" / "marketplace.json"
+    assert manifest.is_file(), f"missing root marketplace manifest: {manifest}"
+    data = json.loads(manifest.read_text())
+    plugins = {p["name"]: p for p in data["plugins"]}
+    assert "cookbook-memory" in plugins
+    src = plugins["cookbook-memory"]["source"]
+    assert src["source"] == "git-subdir"
+    declared = repo_root / src["path"]
+    assert declared.resolve() == COMMITTED_BUNDLE.resolve(), (
+        f"manifest path {src['path']} does not point at the committed bundle "
+        f"{COMMITTED_BUNDLE}"
+    )

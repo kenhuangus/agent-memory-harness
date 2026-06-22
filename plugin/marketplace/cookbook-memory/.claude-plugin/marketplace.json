@@ -1,0 +1,11 @@
+{
+  "name": "cookbook-memory",
+  "owner": { "name": "Cookbook Memory team" },
+  "plugins": [
+    {
+      "name": "cookbook-memory",
+      "source": "./",
+      "description": "Persistent memory for Claude Code (recall / remember), routed through the Orchestrator."
+    }
+  ]
+}

@@ -29,7 +29,15 @@ classifiers = [
 ]
 
 # Reaches the frozen contract (schema/protocols) until it is its own package.
-dependencies = ["agent-memory-eval"]
+# A git+URL so a from-source install (`pip install --user "cookbook-memory @
+# git+…#subdirectory=plugin"`) resolves the contract WITHOUT the repo or a package
+# index — the install story for shipping the plugin (see README "Install"). Note:
+# direct-URL deps are allowed for a direct-URL/source install but are rejected by
+# PyPI on upload — intentional, since this project ships from git, not PyPI. When
+# the contract becomes its own published package (ADR-eval-001), narrow this to it.
+dependencies = [
+    "agent-memory-eval @ git+https://github.com/kenhuangus/agent-memory-harness.git#subdirectory=eval",
+]
 
 [project.optional-dependencies]
 # The MCP stdio server (the model's recall/remember tools).

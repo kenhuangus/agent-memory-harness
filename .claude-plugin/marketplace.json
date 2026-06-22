@@ -1,0 +1,19 @@
+{
+  "name": "cookbook-memory",
+  "owner": { "name": "Cookbook Memory team" },
+  "metadata": {
+    "description": "Persistent memory for coding agents — install the Cookbook Memory plugin (recall skill + MCP tool + lifecycle hooks) into Claude Code straight from this repo, no clone required."
+  },
+  "plugins": [
+    {
+      "name": "cookbook-memory",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/kenhuangus/agent-memory-harness.git",
+        "path": "plugin/marketplace/cookbook-memory",
+        "ref": "main"
+      },
+      "description": "Persistent memory for Claude Code (recall skill + MCP tool + fail-open lifecycle hooks), routed through the memory engine. Requires the cookbook-memory Python package on the host (pip install --user from this repo) so the bundle's `python3 -m cookbook_memory` entry points resolve."
+    }
+  ]
+}
