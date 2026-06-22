@@ -439,10 +439,10 @@ def run_agent(
                     else _grade(task, pred, grader)
                 )
             except Exception as exc:  # noqa: BLE001 - grading raised -> UNGRADED, not a miss
-                # A grader exception (e.g. Docker/swebench unavailable under
-                # on_unavailable='error') means "could not grade", NOT "graded
-                # as fail". Record None so metrics.accuracy excludes it from the
-                # denominator rather than dishonestly counting a CODE failure.
+                # A grader exception (e.g. the local test environment could not be
+                # built) means "could not grade", NOT "graded as fail". Record None
+                # so metrics.accuracy excludes it from the denominator rather than
+                # dishonestly counting a CODE failure.
                 print(f"  task {task.task_id} grade failed ({type(exc).__name__}): "
                       f"{str(exc)[:120]}", flush=True)
                 err_note = {"task_id": task.task_id, "stage": "grade",

@@ -64,16 +64,22 @@ not the offline path.
   injected, so swapping providers does not touch benchmark or harness code.
 
 ### 7.2 Real CODE scoring (patch-apply / test-run) per benchmark
-- **Default: the official SWE-bench Docker harness**
-  (`swebench.harness.run_evaluation`). A task PASSES only when **every
-  `FAIL_TO_PASS` test now passes AND every `PASS_TO_PASS` test still passes**
-  after the model's patch is applied in the per-task container.
-- Cloud option: `sb-cli` runs the same evaluation on hosted infra when local
-  Docker is unavailable (CI).
-- Wiring: exposed as a per-benchmark `grader` for the coding benchmarks
-  (`swe_contextbench`, `swe_bench_cl`, `contextbench`). The offline default
-  grader stays string/overlap-based so the zero-dependency path keeps working;
-  the Docker grader is opt-in for paid/production runs.
+- **Default: host-local test execution (`LocalExecGrader`), no container runtime.**
+  CODE is solved by the Claude Code CLI acting as a genuine coding agent in a working
+  checkout (`--code-mode agentic` — real checkout, edit, run tests); the
+  harness captures `git diff` as the prediction, applies the **gold `test_patch`**
+  itself (never the agent — the trust boundary), and runs the project's tests in a
+  per-task venv. A task PASSES only when **every `FAIL_TO_PASS` test now passes AND
+  every `PASS_TO_PASS` test still passes** (SWE-bench resolved rule).
+- **Honesty rule:** the grader reports `None` (UNGRADED, excluded from accuracy)
+  whenever the env can't be built — never a fake `False`. Local-exec is
+  host-dependent and partial-coverage, so it is NOT comparable to a containerized
+  leaderboard. The container runtime and the external grading package are removed
+  entirely (see `docs/adrs/ADR-eval-002`).
+- Wiring: exposed as a per-benchmark `grader` for the SWE coding benchmarks
+  (`swe_contextbench`, `swe_bench_cl`). `contextbench` is retrieval-only (native
+  recall/precision/F1 over gold spans, no test execution). The offline path stays
+  string/overlap-based so the zero-dependency guarantee holds.
 
 ### 7.3 Live pricing for the cost tracker
 Confirmed against the Anthropic price list (USD per **million** tokens) and

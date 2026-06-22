@@ -208,9 +208,8 @@ def _cli(argv: Optional[list[str]] = None) -> int:
         help=f"Hard USD cap for this run (default ${DEFAULT_BUDGET_USD:.0f}; <=0 means no cap).",
     )
     r.add_argument("--grader", default=None,
-                   help="CODE grader: swebench (Docker), overlap (offline heuristic), or none.")
-    r.add_argument("--grader-skip-unavailable", action="store_true",
-                   help="With --grader swebench: leave tasks ungraded if Docker/swebench is absent (else error).")
+                   help="CODE grader: local (host test execution, best-effort), "
+                        "overlap (offline heuristic), or none.")
     r.add_argument("--out", default=None, help="Optional per-task trajectory JSONL.")
     r.add_argument("--results", default=DEFAULT_PATH, help="Ledger path (default ./results.json).")
     r.add_argument("--run-id", default="")
@@ -273,10 +272,7 @@ def _cli(argv: Optional[list[str]] = None) -> int:
     grader = None
     if args.grader:
         from . import grader as grader_mod
-        gkwargs: dict[str, Any] = {}
-        if args.grader.strip().lower() in ("swebench", "docker", "swebench-docker"):
-            gkwargs["on_unavailable"] = "skip" if args.grader_skip_unavailable else "error"
-        grader = grader_mod.get_grader(args.grader, **gkwargs)
+        grader = grader_mod.get_grader(args.grader)
 
     logger = None
     if args.out:

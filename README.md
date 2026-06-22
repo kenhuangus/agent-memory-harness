@@ -75,7 +75,7 @@ straight to GitHub Pages.
 - **SWE-Bench-CL** — [paper](https://arxiv.org/abs/2507.00014) · [code](https://github.com/thomasjoshi/agents-never-forget)
 - **ContextBench** (in-task retrieval quality) — [paper](https://arxiv.org/abs/2602.05892) · [dataset](https://huggingface.co/datasets/Contextbench/ContextBench) · [code](https://github.com/EuniAI/ContextBench)
 
-Complementary: [LoCoMo](https://arxiv.org/abs/2402.17753), [SWE-bench](https://www.swebench.com).
+Complementary: [LoCoMo](https://arxiv.org/abs/2402.17753), [SWE-bench Verified](https://huggingface.co/datasets/princeton-nlp/SWE-bench_Verified).
 
 **Dataset schemas & sample records:** see [`benchmark-schema-sampledata.md`](benchmark-schema-sampledata.md) for each benchmark's source JSON schema, a truncated example record, and how it maps to the harness `Task` shape.
 
@@ -123,8 +123,11 @@ python -m memeval.results summary --path ../runs/claudecode/results.json
   memory) | `plugin` (our in-harness OKF-backed MCP memory) | `plugin-real` (the shipping
   `plugin/cookbook_memory` package installed via a real `claude plugin install` and driven
   as a black box) | `all`. `--mode all` runs **builtin + plugin only** — name `off` and
-  `plugin-real` explicitly. CODE benchmarks need the SWE-bench Docker grader
-  (`pip install -e ".[swebench]"`) to score accuracy.
+  `plugin-real` explicitly. CODE tasks are solved by the Claude Code CLI acting
+  as a real coding agent (`--code-mode agentic`, default — genuine checkout, edit,
+  run tests) and graded on the host by local test execution (`LocalExecGrader`),
+  or by retrieval metrics for ContextBench — **no extra install** (see
+  `eval/PROTOCOL.md` §5).
 
 Full guides: the per-developer, per-benchmark runbook is
 [`eval/memeval/claudecode/README.md`](eval/memeval/claudecode/README.md); the

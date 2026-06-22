@@ -57,9 +57,12 @@ hf = ["datasets>=2.19.0"]
 # Embedding-based relevancy / vector stores (optional; offline path is numpy-free).
 embeddings = ["numpy>=1.26"]
 
-# Real CODE scoring: the official SWE-bench harness (also needs a Docker daemon).
-# Used by memeval.grader.SWEBenchDockerGrader; the offline path never imports it.
-swebench = ["swebench>=2.1.0"]
+# Real CODE scoring runs on the host with no extra dependency: memeval.grader.
+# The Claude Code CLI acts as a genuine coding agent (real checkout, edit, run
+# tests) and LocalExecGrader applies the agent's patch + the gold tests in a
+# fresh checkout, then runs the project's tests in a per-task venv (best-effort;
+# ungraded when the env can't be built). No containers, no extra grading package
+# — see ADR-eval-002.
 
 # Langfuse Cloud tracing (memeval.tracing). Lazy + no-op unless keys are set, so
 # the offline path never imports it.

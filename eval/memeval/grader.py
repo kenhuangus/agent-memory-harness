@@ -1,46 +1,47 @@
 """CODE-task grading — owner: Ken. Real patch-apply / test-run scoring.
 
 The harness grades QA by normalized exact match (``metrics.qa_match``), but CODE
-benchmarks (SWE-ContextBench, SWE-Bench-CL, ContextBench) need the model's patch
-*applied in the repo* and the tests *run*. This module provides graders that slot
-into ``harness.run(grader=...)`` / ``agent.run_agent(grader=...)`` — each a
+benchmarks (SWE-ContextBench, SWE-Bench-CL) need the model's patch *applied in a
+fresh checkout* and the tests *run*. This module provides graders that slot into
+``harness.run(grader=...)`` / ``agent.run_agent(grader=...)`` — each a
 ``Callable[[Task, str], Optional[bool]]`` returning ``True`` (resolved),
 ``False`` (not resolved), or ``None`` (could not grade).
 
 Graders
 -------
-* :class:`SWEBenchDockerGrader` — the **default for production CODE runs**. Wraps
-  the official SWE-bench evaluation harness (per-task containers). A task is
-  RESOLVED iff **every ``FAIL_TO_PASS`` test passes AND every ``PASS_TO_PASS``
-  test still passes** after the patch is applied — the standard SWE-bench rule.
-  Requires Docker + the optional ``swebench`` package (``pip install
-  memeval[swebench]``); degrades per ``on_unavailable`` when either is missing.
+* :class:`LocalExecGrader` — the **default for CODE runs**. In a fresh, throwaway
+  checkout of the task's repo at ``base_commit``, it applies the agent's
+  prediction, then applies the GOLD ``test_patch`` (the harness applies tests —
+  never the agent — so the model can't fake passing tests), builds a per-task
+  venv best-effort, runs ``FAIL_TO_PASS`` + ``PASS_TO_PASS``, and decides RESOLVED
+  by the standard SWE-bench rule (every ``FAIL_TO_PASS`` passes AND every
+  ``PASS_TO_PASS`` still passes). It degrades to ``None`` (UNGRADED) whenever the
+  environment can't be built or the checkout/patch can't be set up — it never
+  returns ``False`` or crashes on an environment problem. Host-dependent and
+  partial-coverage; NOT leaderboard-comparable (see ADR-eval-002).
 * :func:`overlap_grader` — a cheap, dependency-free heuristic (token overlap of
   the prediction against the gold patch) for smoke tests / offline iteration.
   **Not** a substitute for real test execution; never report it as accuracy.
 
 The pure pieces — :func:`build_prediction`, :func:`instance_id_of`,
-:func:`resolved_from_report` — carry the SWE-bench contract and are unit-tested
-without Docker. The container invocation is isolated in
-:meth:`SWEBenchDockerGrader._evaluate`.
+:func:`resolved_from_report`, :func:`_parse_pytest` — carry the SWE-bench
+contract and are unit-tested without any real venv. The command/git invocation is
+behind injectable runners so the offline tests drive the whole flow with no real
+git, venv, or network.
 """
 
 from __future__ import annotations
 
-import json
+from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from .schema import Task, TaskKind
-
-#: Default SWE-bench dataset whose Docker images back the instances. The coding
-#: benchmarks derive from SWE-bench Verified, so its instance ids/images apply.
-DEFAULT_DATASET = "princeton-nlp/SWE-bench_Verified"
 
 Grader = Callable[[Task, str], Optional[bool]]
 
 
 # --------------------------------------------------------------------------- #
-# Pure helpers (no Docker, unit-tested)
+# Pure helpers (no execution, unit-tested)
 # --------------------------------------------------------------------------- #
 def instance_id_of(task: Task) -> str:
     """The SWE-bench instance id for ``task`` (metadata wins, else task_id)."""
@@ -67,7 +68,7 @@ def resolved_from_report(report: dict, instance_id: str) -> Optional[bool]:
 
     Robust across report shapes:
 
-    * **Summary report** (swebench >= 2.x ``make_run_report`` output) — has
+    * **Summary report** (a ``make_run_report``-style summary) — has
       ``resolved_ids`` / ``unresolved_ids`` / ``error_ids`` lists. Resolved iff
       the id is in ``resolved_ids``; ``False`` if it's in any not-resolved list;
       ``None`` if absent (not evaluated).
@@ -111,6 +112,41 @@ def resolved_from_report(report: dict, instance_id: str) -> Optional[bool]:
     return _all_pass("FAIL_TO_PASS") and _all_pass("PASS_TO_PASS")
 
 
+def _parse_pytest(stdout: str, fail_to_pass: list[str],
+                  pass_to_pass: list[str]) -> dict:
+    """Parse pytest output into a ``tests_status`` dict for ``resolved_from_report``.
+
+    Pure + stdlib-only (unit-testable). For each named selector in
+    ``fail_to_pass`` / ``pass_to_pass``, classify it as success/failure by scanning
+    pytest's ``<nodeid> PASSED`` / ``FAILED`` lines (either order:
+    ``test_x.py::t PASSED`` or ``PASSED test_x.py::t``). A selector pytest never
+    reported on (collection error, not found) counts as a failure — it did not
+    pass, which the SWE-bench resolved rule treats as not-resolved.
+    """
+    out = stdout or ""
+
+    def _passed(selector: str) -> bool:
+        # A line mentioning this selector marked PASSED, and not also FAILED.
+        for line in out.splitlines():
+            if selector not in line:
+                continue
+            up = line.upper()
+            if "PASSED" in up or " PASS" in up or up.strip().startswith("PASS"):
+                if "FAILED" not in up and "ERROR" not in up:
+                    return True
+        return False
+
+    def _group(selectors: list[str]) -> dict:
+        success = [s for s in selectors if _passed(s)]
+        failure = [s for s in selectors if s not in success]
+        return {"success": success, "failure": failure}
+
+    return {
+        "FAIL_TO_PASS": _group(list(fail_to_pass or [])),
+        "PASS_TO_PASS": _group(list(pass_to_pass or [])),
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Cheap offline grader
 # --------------------------------------------------------------------------- #
@@ -132,159 +168,183 @@ def overlap_grader(task: Task, prediction: str, *, threshold: float = 0.5) -> Op
 
 
 # --------------------------------------------------------------------------- #
-# Official SWE-bench Docker grader
+# Local-execution grader (host venv, best-effort, honest None; no container runtime)
 # --------------------------------------------------------------------------- #
-class SWEBenchDockerGrader:
-    """Grade CODE tasks with the official SWE-bench harness (Docker).
+@dataclass(slots=True)
+class CmdResult:
+    """The result of one shell command (the :data:`CmdRunner` contract)."""
 
-    Per call: builds a one-instance prediction, runs the SWE-bench evaluation in
-    its per-task container, and reads back the report to decide resolved/not.
-    Heavy and slow (a container per task) but the only faithful CODE score.
+    returncode: int = 0
+    stdout: str = ""
+    stderr: str = ""
 
-    ``on_unavailable`` controls behavior when Docker or ``swebench`` is missing:
-    ``"error"`` (default) raises a clear ``RuntimeError``; ``"skip"`` returns
-    ``None`` (ungraded) so a run can proceed and report only what it could grade.
+
+#: A command runner: ``runner(args, cwd, env) -> CmdResult``. ``args`` is the
+#: full argv (e.g. ``["python", "-m", "pytest", ...]``); ``cwd`` the working dir;
+#: ``env`` an optional environment overlay. Default is :func:`_subprocess_cmd`;
+#: offline tests inject a fake that returns canned pytest output.
+CmdRunner = Callable[..., CmdResult]
+
+
+def _subprocess_cmd(args: list[str], cwd: Any, env: Optional[dict] = None,
+                    *, timeout: int = 1800) -> CmdResult:
+    """Default :data:`CmdRunner` — run ``args`` via subprocess (lazy-imported).
+
+    The only place this grader shells out; offline tests inject their own.
+    """
+    import os
+    import subprocess
+
+    full_env = {**os.environ, **(env or {})}
+    proc = subprocess.run(
+        args, cwd=str(cwd), capture_output=True, text=True,
+        timeout=timeout, env=full_env,
+    )
+    return CmdResult(returncode=proc.returncode, stdout=proc.stdout or "",
+                     stderr=proc.stderr or "")
+
+
+class LocalExecGrader:
+    """Grade CODE tasks by applying the patch + gold tests in a fresh host checkout.
+
+    Per call (CODE tasks only):
+
+    1. provision a throwaway checkout of ``task.repo`` @ ``base_commit``;
+    2. apply the agent's ``prediction`` patch (empty -> ``False``: a real miss;
+       fails to apply -> ``None``: could be base drift, can't grade honestly);
+    3. apply the GOLD ``task.test_patch`` (the harness applies tests, NEVER the
+       agent — the trust boundary that keeps the number honest);
+    4. build a per-task venv best-effort and run ``FAIL_TO_PASS`` + ``PASS_TO_PASS``;
+    5. decide RESOLVED by the SWE-bench rule via :func:`resolved_from_report`.
+
+    The CENTRAL honesty rule (ADR-eval-002 §tradeoffs): any inability to build the
+    env or run the tests returns ``None`` (UNGRADED), never ``False`` and never a
+    crash — so accuracy reflects only what was actually graded. Host-dependent and
+    partial-coverage; NOT comparable to a containerized SWE-bench leaderboard.
+
+    Both the command runner and the git runner are injectable so offline tests
+    drive the whole flow over a stub repo with canned pytest output.
     """
 
     def __init__(
         self,
         *,
-        dataset_name: str = DEFAULT_DATASET,
+        runner: Optional[CmdRunner] = None,
+        git_runner: Any = None,
         model_name: str = "memeval",
-        run_id: str = "memeval",
         timeout: int = 1800,
-        max_workers: int = 1,
-        on_unavailable: str = "error",
+        python_exe: Optional[str] = None,
     ) -> None:
-        if on_unavailable not in ("error", "skip"):
-            raise ValueError("on_unavailable must be 'error' or 'skip'")
-        self.dataset_name = dataset_name
+        self._runner = runner or _subprocess_cmd
+        self._git_runner = git_runner  # forwarded to checkout (None -> its default)
         self.model_name = model_name
-        self.run_id = run_id
         self.timeout = timeout
-        self.max_workers = max_workers
-        self.on_unavailable = on_unavailable
+        self._python_exe = python_exe
 
     def __call__(self, task: Task, prediction: str) -> Optional[bool]:
         if task.kind is not TaskKind.CODE:
             return None  # not a CODE task; let QA grading handle it
+        # Empty prediction = no patch produced = a real miss (consistent with the
+        # overlap grader and SWE-bench's empty_patch handling).
+        if not (prediction or "").strip():
+            return False
         try:
-            report = self._evaluate(task, prediction)
-        except _Unavailable as exc:
-            if self.on_unavailable == "skip":
-                return None
-            raise RuntimeError(str(exc)) from exc
-        return resolved_from_report(report, instance_id_of(task))
+            return self._grade(task, prediction)
+        except Exception:  # noqa: BLE001 - any env/run failure -> UNGRADED, never a crash
+            return None
 
-    # -- container invocation (isolated; not exercised offline) ------------- #
-    def _evaluate(self, task: Task, prediction: str) -> dict:  # pragma: no cover
-        """Run the SWE-bench harness for one instance and return its report.
-
-        Isolated so the pure path stays testable. Lazy-imports ``swebench`` and
-        invokes ``run_evaluation``; raises :class:`_Unavailable` if the package
-        or Docker is not present.
-        """
-        try:
-            from swebench.harness import run_evaluation as _re  # type: ignore
-        except Exception as exc:
-            raise _Unavailable(
-                "SWE-bench grading requires the optional 'swebench' package and "
-                "a running Docker daemon. Install with `pip install memeval[swebench]` "
-                "and ensure Docker is available, or pass on_unavailable='skip'. "
-                "Note: swebench is Linux-only (imports `resource`); on Windows run "
-                "the eval from WSL."
-            ) from exc
-
+    # -- internals -------------------------------------------------------- #
+    def _grade(self, task: Task, prediction: str) -> Optional[bool]:
         import tempfile
         from pathlib import Path
 
-        iid = instance_id_of(task)
-        pred = build_prediction(task, prediction, model_name=self.model_name)
+        from .claudecode.checkout import CheckoutError, prepare_checkout
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "repo"
+            git_kwargs = {} if self._git_runner is None else {"git_runner": self._git_runner}
+            try:
+                prepare_checkout(task.repo or "", task.base_commit, dest,
+                                 timeout=self.timeout, **git_kwargs)
+            except CheckoutError:
+                return None  # can't even check out -> ungraded
+
+            # (2) apply the agent's prediction patch.
+            applied = self._apply_patch(dest, prediction)
+            if applied is None:
+                return None  # patch wouldn't apply (base drift) -> ungraded
+            if applied is False:
+                return None
+
+            # (3) apply the GOLD test_patch (harness applies tests, never the agent).
+            if task.test_patch:
+                if self._apply_patch(dest, task.test_patch) is not True:
+                    return None  # gold tests won't apply -> can't grade
+
+            # (4) build env + run tests, best-effort.
+            stdout = self._build_and_run(dest, task)
+            if stdout is None:
+                return None  # env build / test run failed -> ungraded
+
+            # (5) SWE-bench resolved rule via the shared report interpreter.
+            status = _parse_pytest(stdout, task.fail_to_pass, task.pass_to_pass)
+            iid = instance_id_of(task)
+            return resolved_from_report({iid: {"tests_status": status}}, iid)
+
+    def _apply_patch(self, dest: Any, patch: str) -> Optional[bool]:
+        """Write ``patch`` to a temp file and ``git apply`` it in ``dest``.
+
+        Returns ``True`` (applied), ``False`` (empty patch), or ``None`` (apply
+        failed). Uses the injectable git runner so offline tests can synthesize the
+        apply over the stub repo."""
+        import tempfile
+        from pathlib import Path
+
+        from .claudecode import checkout as _checkout
+
+        if not (patch or "").strip():
+            return False
+        git = self._git_runner or _checkout._subprocess_git
+        pf = Path(tempfile.gettempdir()) / f"memeval-patch-{abs(hash(patch)) % (10 ** 10)}.patch"
         try:
-            with tempfile.TemporaryDirectory() as tmp:
-                preds_path = Path(tmp) / "predictions.json"
-                preds_path.write_text(json.dumps([pred]), encoding="utf-8")
-                report_path = self._invoke(_re, iid, str(preds_path), tmp)
-                data = json.loads(Path(report_path).read_text(encoding="utf-8"))
-            return data
-        except Exception as exc:  # noqa: BLE001
-            # A dead/unreachable Docker daemon surfaces as docker.errors.DockerException
-            # (often wrapping FileNotFoundError on the socket). Treat any inability to
-            # reach Docker as "unavailable" so on_unavailable='skip' leaves the task
-            # ungraded (None) rather than misreporting it as a failed (False) grade —
-            # the common case being Docker Desktop's WSL integration dropping mid-run.
-            if _is_docker_unavailable(exc):
-                raise _Unavailable(
-                    f"Docker daemon not reachable while grading {iid} "
-                    f"({type(exc).__name__}: {str(exc)[:160]}). Is Docker running with "
-                    "WSL integration enabled? Pass on_unavailable='skip' to leave "
-                    "unreachable-Docker tasks ungraded."
-                ) from exc
-            raise
+            pf.write_text(patch if patch.endswith("\n") else patch + "\n", encoding="utf-8")
+            res = git(["apply", "--whitespace=nowarn", str(pf)], Path(dest))
+            return True if res.returncode == 0 else None
+        finally:
+            try:
+                pf.unlink()
+            except OSError:
+                pass
 
-    def _invoke(self, _re: Any, iid: str, preds_path: str, report_dir: str):  # pragma: no cover
-        """Call the swebench evaluation entry point across version differences.
+    def _build_and_run(self, dest: Any, task: Task) -> Optional[str]:
+        """Best-effort: build a per-task venv and run the named tests; return pytest
+        stdout, or ``None`` if anything in the env build / run fails.
 
-        swebench >= 4.x exposes ``main`` (returns the summary-report path) with a
-        long required-arg list; older releases expose ``run_evaluation``. Try the
-        modern entry point first, then fall back.
-        """
-        if hasattr(_re, "main"):
-            return _re.main(
-                dataset_name=self.dataset_name,
-                split="test",
-                instance_ids=[iid],
-                predictions_path=preds_path,
-                max_workers=self.max_workers,
-                force_rebuild=False,
-                cache_level="env",
-                clean=False,
-                open_file_limit=4096,
-                run_id=self.run_id,
-                timeout=self.timeout,
-                namespace=None,
-                rewrite_reports=False,
-                modal=False,
-                report_dir=report_dir,
-            )
-        return _re.run_evaluation(  # older API
-            dataset_name=self.dataset_name, split="test", instance_ids=[iid],
-            predictions_path=preds_path, max_workers=self.max_workers,
-            run_id=self.run_id, timeout=self.timeout,
-        )
-
-
-class _Unavailable(Exception):
-    """Internal: swebench/Docker not available."""
-
-
-def _is_docker_unavailable(exc: BaseException) -> bool:
-    """True if ``exc`` indicates the Docker daemon can't be reached.
-
-    Covers ``docker.errors.DockerException`` (and ``APIError``) plus the
-    underlying socket errors (``FileNotFoundError`` / ``ConnectionError``) the
-    SDK wraps when the daemon — or, on Windows, Docker Desktop's WSL integration
-    socket — is gone. Matches by class name so we don't hard-depend on the
-    ``docker`` package being importable here.
-    """
-    seen: set[int] = set()
-    cur: Optional[BaseException] = exc
-    while cur is not None and id(cur) not in seen:
-        seen.add(id(cur))
-        name = type(cur).__name__
-        if name in ("DockerException", "APIError", "TLSParameterError"):
-            return True
-        if isinstance(cur, (FileNotFoundError, ConnectionError, ConnectionRefusedError)):
-            msg = str(cur).lower()
-            if "docker" in msg or "/var/run/docker.sock" in msg or "pipe" in msg:
-                return True
-            # docker SDK wraps a bare FileNotFoundError(2) on the socket with no
-            # "docker" text; if it bubbled out of _invoke it's almost surely the
-            # daemon, so treat a bare socket FileNotFoundError as unavailable too.
-            if isinstance(cur, FileNotFoundError):
-                return True
-        cur = cur.__cause__ or cur.__context__
-    return False
+        Tries ``uv`` (venv + editable install) then ``pip``; either may be absent.
+        The ENTIRE build+run is wrapped so any failure degrades to ``None`` — the
+        honesty rule (never a fake ``False`` on an environment problem)."""
+        selectors = list(task.fail_to_pass or []) + list(task.pass_to_pass or [])
+        if not selectors:
+            return None  # nothing to run -> nothing to grade
+        py = self._python_exe or "python"
+        # Best-effort editable install (ignore failures; many repos run from source).
+        for install in (["uv", "pip", "install", "-e", "."],
+                        [py, "-m", "pip", "install", "-e", "."]):
+            try:
+                r = self._runner(install, dest, None)
+                if getattr(r, "returncode", 1) == 0:
+                    break
+            except Exception:  # noqa: BLE001 - installer absent / failed; try the next
+                continue
+        # Run the named tests.
+        r = self._runner([py, "-m", "pytest", "-q", *selectors], dest, None)
+        rc = getattr(r, "returncode", None)
+        out = getattr(r, "stdout", "") or ""
+        # pytest rc 0 = all passed, 1 = tests failed (still gradeable output);
+        # rc >=2 (or no output) = usage/collection error -> can't grade.
+        if rc is None or (rc not in (0, 1) and not out):
+            return None
+        return out
 
 
 # --------------------------------------------------------------------------- #
@@ -293,27 +353,28 @@ def _is_docker_unavailable(exc: BaseException) -> bool:
 def get_grader(name: str, **kwargs: Any) -> Grader:
     """Resolve a grader by name.
 
-    ``"swebench"`` / ``"docker"`` -> :class:`SWEBenchDockerGrader` (kwargs
-    forwarded); ``"overlap"`` -> :func:`overlap_grader`; ``"none"`` -> a grader
-    that always returns ``None`` (leave CODE ungraded).
+    ``"local"`` / ``"localexec"`` / ``"local-exec"`` -> :class:`LocalExecGrader`
+    (kwargs forwarded); ``"overlap"`` -> :func:`overlap_grader`; ``"none"`` -> a
+    grader that always returns ``None`` (leave CODE ungraded).
     """
     key = (name or "").strip().lower()
-    if key in ("swebench", "docker", "swebench-docker"):
-        return SWEBenchDockerGrader(**kwargs)
+    if key in ("local", "localexec", "local-exec"):
+        return LocalExecGrader(**kwargs)
     if key == "overlap":
         return lambda task, pred: overlap_grader(task, pred, **kwargs)
     if key in ("none", "", "off"):
         return lambda task, pred: None
-    raise ValueError(f"unknown grader {name!r} (use swebench / overlap / none)")
+    raise ValueError(f"unknown grader {name!r} (use local / overlap / none)")
 
 
 __all__ = [
-    "DEFAULT_DATASET",
     "Grader",
     "instance_id_of",
     "build_prediction",
     "resolved_from_report",
     "overlap_grader",
-    "SWEBenchDockerGrader",
+    "LocalExecGrader",
+    "CmdResult",
+    "CmdRunner",
     "get_grader",
 ]

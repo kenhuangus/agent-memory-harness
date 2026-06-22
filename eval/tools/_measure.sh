@@ -17,7 +17,7 @@ export PYTHONUNBUFFERED=1
 STRAT="${1:-baseline}"
 N="${2:-20}"
 WT=/mnt/c/Users/kenhu/amh-mcp-fix
-PY=/home/kenhu/.venvs/swebench/bin/python
+PY="${MEMEVAL_PY:-/home/kenhu/.venvs/memeval/bin/python}"
 C=/home/kenhu/.local/bin/claude
 export PYTHONPATH="$WT/eval"
 
