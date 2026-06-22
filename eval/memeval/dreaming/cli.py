@@ -16,15 +16,12 @@ plugin-hooks contract reserves exit 2 as "block this hook's action."
 (`MEMORY_STORE` is a directory; supersedes ADR-015 §1), with try/finally
 restore of the prior value (ADR-dreaming-017 §X).
 
-Store factory: :func:`_make_store` returns
-:class:`memeval.stores.MarkdownStore` rooted at ``<basedir>/markdown/``.
-MemoryItems persist as OKF-native markdown docs (one ``.md`` per item
-under ``<basedir>/markdown/memory/``), so memories accumulate across
-``daydream-cli daydream`` invocations and are readable by the plugin's
-recall path. The plugin's ``_Engine``
-(``plugin/cookbook_memory/core/client.py``) routes recall across
-vector/markdown/graph backends, but writes go to markdown only by
-design — so the daydreamer wires markdown direct.
+Store factory: :func:`_make_store` returns the :class:`RouterStore` built
+by :func:`cookbook_memory.core.contract.build_store` — the same single
+assembly seam the plugin's ``_Engine`` uses (ADR-harness-011). Daydream
+writes are routed + deduped across vector/markdown/graph backends per
+the auto-selected profile, so daydream-extracted memories get the same
+treatment as ``memory-cli remember`` writes (no markdown-only bypass).
 
 ``dream --all`` calls :func:`memeval.dreaming.worker.dream`; the v1
 ``worker.DreamingWorker.run`` is a stub that raises
@@ -40,7 +37,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any, NoReturn, cast
 
 from memeval.protocols import MemoryStore
 
@@ -91,14 +88,21 @@ def _read_stdin_json() -> dict[str, Any]:
 
 
 def _make_store(basedir: Path) -> MemoryStore:
-    """Return the v1 MemoryStore — :class:`MarkdownStore` rooted at ``basedir/markdown``.
+    """Return the v1 MemoryStore — :class:`RouterStore` via :func:`cookbook_memory.core.contract.build_store`.
 
-    Writes go to ``<basedir>/markdown/memory/<item_id>.md`` as OKF-native
-    concept docs (markdown + YAML frontmatter). See module docstring for
-    the routing rationale.
+    Mirrors the plugin's single assembly seam (ADR-harness-011) so daydream
+    writes go through the same Router policy that the plugin's ``_Engine``
+    uses: dedup + write-routing across all backends per the auto-selected
+    profile (``$MEMORY_PROFILE`` override; else accuracy if ``$VOYAGE_API_KEY``
+    is set; else fusion). MarkdownStore docs still land at
+    ``<basedir>/markdown/memory/<item_id>.md`` — Router fan-out includes the
+    markdown backend — plus vector + graph coverage that direct-MarkdownStore
+    writes used to miss.
     """
-    from memeval.stores.markdown_store import MarkdownStore
-    return MarkdownStore(basedir / "markdown")
+    from cookbook_memory.core.contract import build_store
+    # cast because mypy's follow_imports=silent loses the cross-package
+    # return-type annotation; build_store is typed as -> MemoryStore at source.
+    return cast(MemoryStore, build_store(str(basedir)))
 
 
 def _emit_cli_resolved_event(hook_event_name: str | None) -> None:
