@@ -120,6 +120,50 @@ path that would break reproducibility of the benchmark).
   limitations rather than papering over them. Keep the grader deterministic.
 - **Further ranking tuning as the headline fix** (see the BM25 note above).
 
+## Suggestion 4: let priming run on stdio / WSL, not native-only (recall reliability)
+
+**The priming + retry path is gated to native runtimes, so every WSL plugin run —
+both QA and CODE — silently loses ~half its recalls.**
+
+`_solve_plugin` routes to the primed HTTP path only when
+`self.transport == 'http' and rt.kind == 'native'`
+(`eval/memeval/claudecode/agent.py`, the dispatch in `_solve_plugin`). On this
+machine the artifacts are produced under a **WSL** runtime (the `.mcp.json` command
+is `/home/kenhu/.venvs/swebench/bin/python`), so `rt.kind == 'wsl'`, the condition
+is false, and the QA plugin path falls through to a **plain, non-primed**
+spawn-per-invocation stdio turn. Plain headless `claude -p` registers the MCP
+server only ~half the time before generation starts (the documented 8/20-vs-20/20
+startup race), so `memory_recall` is silently unavailable on roughly half of WSL
+plugin turns — QA and CODE alike. This is the mechanism-side root of the
+`memory_reached = 0` CODE blocker; we worked around it on the **pipeline** side for
+CODE by driving the agentic CODE plugin turn through `_run_primed` + retry-until-
+recall directly (it already supports WSL via `build_argv_primed` and gates priming
+on `self._runner is run_claude`, not on `rt.kind`), but the QA plugin path on WSL is
+still unprimed.
+
+Suggested mechanism change (team-owned — we did not edit it): gate priming on the
+**runner identity** (`self._runner is run_claude`), not on `rt.kind == 'native'`, so
+stdio/WSL plugin runs get the priming turn too. `_run_primed` and `build_argv_primed`
+already have working WSL branches, so the priming flow itself needs no new platform
+code — only the dispatch condition. (Open question worth confirming first: was the
+HTTP/native gate deliberate to avoid a known Windows↔WSL HTTP/port issue, or just an
+oversight? If HTTP is genuinely problematic across the boundary, the fix is to allow
+the **stdio + priming** form on WSL rather than the HTTP form.)
+
+## Suggestion 5: swe_contextbench loads tasks with `n_gold = 0` (metric-quality gap)
+
+**Even once recall fires on the CODE path, contextbench precision/relevancy stay 0
+because the loaded tasks carry no gold ids.**
+
+`swe_contextbench` tasks are loaded with `n_gold = 0`, so the retrieval-quality
+metrics (precision / relevancy) have no gold set to score against and read 0
+regardless of what the agent actually retrieved. This is independent of the
+`memory_reached` fix: making recall fire proves the mechanism is *exercised*
+(`memory_reached > 0`, a `retrieve` step is emitted) but does **not** make
+contextbench's memory-quality numbers meaningful. Surfacing gold memory ids for
+contextbench tasks (so `n_gold > 0`) is a separate, mechanism-/loader-side metric
+fix the team should track distinctly from the recall-reliability work above.
+
 ## Evidence index
 
 - Corrected recall diagnosis and the metric table: `results/v0.1/README.md`.
@@ -127,3 +171,5 @@ path that would break reproducibility of the benchmark).
 - BM25 scorer change: PR #43 (merged), guarded by the `test_bm25_*` tests in
   `eval/tests/test_smoke.py`.
 - `is_gold`-persistence fix that corrected the recall measurement: PR #46.
+- CODE `memory_reached = 0` blocker diagnosis (9-agent investigate → verify):
+  `code-memory-reached-blocker-and-plan.md` (repo root).
