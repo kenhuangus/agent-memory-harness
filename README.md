@@ -77,6 +77,8 @@ straight to GitHub Pages.
 
 Complementary: [LoCoMo](https://arxiv.org/abs/2402.17753), [SWE-bench](https://www.swebench.com).
 
+**Dataset schemas & sample records:** see [`benchmark-schema-sampledata.md`](benchmark-schema-sampledata.md) for each benchmark's source JSON schema, a truncated example record, and how it maps to the harness `Task` shape.
+
 ## Run the benchmarks (the `eval/` harness)
 
 The evaluation code lives in [`eval/`](eval/) — a stdlib-first Python package
