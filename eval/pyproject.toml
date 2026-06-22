@@ -111,6 +111,9 @@ memeval = "memeval.cli:main"
 # subscription auth). `memeval-bench --benchmark longmemeval --mode plugin` is the
 # short form of `python -m memeval.claudecode.run_bench …`.
 memeval-bench = "memeval.claudecode.run_bench:main"
+# Daydreaming CLI (ADR-dreaming-016): `daydream-cli daydream` is the Stop/PreCompact
+# hook entry point; `daydream-cli dream --all` triggers the night-dream pass.
+daydream-cli = "memeval.dreaming.cli:main"
 
 # --------------------------------------------------------------------------- #
 # setuptools packaging
