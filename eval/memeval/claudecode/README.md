@@ -101,6 +101,19 @@ After that one-time `/login`, the sandbox holds its own token and
 `python -m memeval.claudecode.sandbox` anytime to check status; it prints whether
 the sandbox is logged in.
 
+**What the sandbox isolates (and what it can't).** It removes everything in the
+host `~/.claude`: your global `CLAUDE.md`, every installed/personal skill, custom
+agents, `settings.json`, and MCP servers — verified, those are gone. It does
+**not** remove Claude Code's **built-in skills** (`init`, `review`,
+`security-review`, `code-review`, `verify`, `loop`, `schedule`, …) — those are
+baked into the CLI binary, present in every config dir. The only flag that strips
+them is `--bare`, which forces API-key auth and rejects the sandbox's OAuth login,
+so we don't use it. For benchmarking this is the right trade: the confound we care
+about (your personal skills/agents skewing the agent under test) is gone, and the
+agent still authenticates via subscription. The CLI also auto-installs the official
+plugin marketplace into a fresh dir on first run; its skills overlap the built-ins
+and are immaterial to a bench run.
+
 **Control it:**
 
 | Env var | Effect |
