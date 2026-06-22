@@ -135,10 +135,23 @@ and are immaterial to a bench run.
 | `--mode` | What memory the agent has |
 |---|---|
 | `builtin` | **Claude Code's own**: the task's prior sessions are written to `CLAUDE.md` and auto-loaded |
-| `plugin` | **ours**: an MCP server (`memory_recall` / `memory_remember`) over an OKF store |
+| `plugin` | **ours, in-harness**: an MCP server (`memory_recall` / `memory_remember`) over an OKF store, wired by the harness |
+| `plugin-real` | **the shipping plugin, black box**: the real `plugin/cookbook_memory` package installed via `claude plugin install`, seeded with `memory-cli remember`, and driven through the plugin's own `recall` tool |
 | `off` | none (baseline) — accepted explicitly, but **not** part of `--mode all` |
 
-`--mode all` runs the head-to-head that matters: **builtin vs plugin**.
+`--mode all` runs the head-to-head that matters: **builtin vs plugin**. `off` and
+`plugin-real` are accepted but must be named explicitly (they are *not* part of `all`).
+
+**Bench the shipping plugin (`plugin-real`):**
+
+```bash
+memeval-bench --benchmark longmemeval --mode plugin-real --model claude-haiku-4-5 --limit 20
+```
+
+Prereqs for `plugin-real`: build the sandbox config (`python -m memeval.claudecode.sandbox`),
+`/login` once inside it, and install the plugin package so its `recall` tool and
+`memory-cli` are importable (`pip install -e '../../plugin[mcp]'`). The harness then
+performs the real `claude plugin install` and treats the plugin as a black box.
 
 ## 4. Quickstart
 
@@ -289,8 +302,11 @@ Code's built-in memory** per benchmark.
 - **plugin**: seeds an OKF store, writes a per-task `.mcp.json` pointing at
   `memeval.claudecode.memory_server`, allows the `memory_*` tools, and reads the
   server's recall log back so recency / relevancy / efficiency are still scored.
+- **plugin-real**: installs the shipping `cookbook_memory` plugin for real, seeds it
+  via `memory-cli remember`, lets the model call the plugin's own `recall` tool, and
+  reads the plugin's recall log back for the memory metrics.
 - `off` / `builtin` don't expose retrieval, so only **accuracy** is meaningful
-  there; `plugin` reports all four metrics.
+  there; `plugin` / `plugin-real` report all four metrics.
 - `cli._clean_env` strips API keys and, when a [sandbox](#sandboxed-config) is
   active, sets `CLAUDE_CONFIG_DIR` so the CLI ignores the host `~/.claude`. The
   WSL path carries both across the boundary via an in-WSL `env …` prefix

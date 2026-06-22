@@ -39,8 +39,19 @@ memeval/
   cost.py          # CostTracker, BudgetExceeded, PRICING, load_key_config, cheapest_first  (stdlib)
   models.py        # EchoModel (offline) + AnthropicAdapter (lazy-imports anthropic)
   harness.py       # run(...) -> RunResult ; InMemoryStore ; cheapest-first ordering; early-exit
+  agent.py         # multi-step agent path: AgentAdapter, AgentContext, run_agent, EchoAgent
   cli.py           # python -m memeval.cli run ...
+  results.py       # results-ledger IO + `summary`/`show`/`run` subcommands (Results page reads this)
+  aggregate.py     # hypothesis scoreboard (Haiku+mem vs Opus-no-mem; win criterion)
+  grader.py        # CODE grading (SWEBenchDockerGrader); QA benches use exact-match
+  okf.py           # OKFStore — the Open Knowledge Format memory store backend
+  router.py        # Brent's query router (route · rank · dedup) over the store backends
   loaders/         # registry + one loader per benchmark (local=stdlib, remote=lazy datasets)
+  stores/          # storage backends behind the MemoryStore seam (Brent)
+  dreaming/        # async Daydream/Dream consolidation worker + CLI (Scott B.)  (daydream-cli)
+  claudecode/      # run benchmarks through the Claude Code CLI + memory server (run_bench, agent, sandbox)
+  opencode/        # OpenCode agent integration (Keith)
+  tracing.py       # optional Langfuse mirror (no-op unless installed + keyed)
   config/keys.example.json   # per-captain / per-benchmark sharded-eval config
 tests/
   test_smoke.py    # OFFLINE smoke tests (stdlib only; run with or without pytest)
@@ -74,8 +85,12 @@ Optional extras, added only when you need a live/remote capability:
 | `anthropic`      | `anthropic`                                | `AnthropicAdapter` (real Claude calls)                |
 | `hf`             | `datasets`                                 | loaders' remote download path (HuggingFace)           |
 | `embeddings`     | `numpy`                                     | embedding-based relevancy / vector retrieval          |
+| `swebench`       | `swebench`                                 | real CODE grading (`SWEBenchDockerGrader`; needs Docker) |
+| `langfuse`       | `langfuse`                                 | optional Langfuse tracing mirror (`memeval.tracing`)  |
+| `claudecode`     | `mcp`                                       | run benchmarks via the Claude Code CLI + memory server (`memeval.claudecode.*`) |
+| `daydream`       | `detect-secrets`, `httpx`                  | Daydream secret redaction + OpenRouter client (`memeval.dreaming`) |
 | `full`           | anthropic + datasets + numpy + requests + pyyaml | real, online, paid runs                         |
-| `dev`            | `pytest`                                   | `python -m pytest` (tests also run without it)        |
+| `dev`            | `pytest`, `mypy`                           | `python -m pytest` + typecheck (tests also run without pytest) |
 
 ```bash
 pip install -e ".[full]"         # everything for real online runs
@@ -130,7 +145,7 @@ the four metrics, token/cost totals, partial/budget flags). Key flags:
 
 | Flag                         | Meaning                                                        |
 |------------------------------|---------------------------------------------------------------|
-| `--benchmark`                | `longmemeval` \| `memoryagentbench` \| `swe_contextbench` \| `swe_bench_cl` (loose names accepted via `Benchmark.from_str`) |
+| `--benchmark`                | `longmemeval` \| `memoryagentbench` \| `swe_contextbench` \| `swe_bench_cl` \| `contextbench` (loose names accepted via `Benchmark.from_str`) |
 | `--model`                    | adapter id; default `echo` (offline). Real ids: `claude-haiku-4-5`, `claude-sonnet-4-6`, `claude-opus-4-8` |
 | `--memory` / `--no-memory`   | toggle the memory path (memory-ON vs memory-OFF cell)         |
 | `--limit N`                  | cap tasks (cheap dev iteration)                               |
@@ -210,11 +225,19 @@ for traj in read_trajectories("runs/lme.jsonl"):
 
 ---
 
-## Multi-step agents (OpenCode integration)
+## Multi-step agents (`AgentAdapter`)
 
 `run` is a **single-shot** loop (one retrieve → one generate) — right for the
 QA-style memory benchmarks. Coding agents run a **multi-step loop**, so
 `memeval.agent` adds a sibling path **without touching the frozen contract**:
+
+> **The primary real agent path is `ClaudeCodeAgent`** (`memeval.claudecode.agent`),
+> which drives the local **Claude Code CLI** under four memory modes —
+> `off` | `builtin` | `plugin` | `plugin-real` — and is wrapped by the
+> `memeval-bench` runner. The `OpenCodeAgent` below is the original integration
+> sketch for the same `AgentAdapter` seam. See
+> [`memeval/claudecode/README.md`](memeval/claudecode/README.md) for the modes and
+> run commands.
 
 - **`AgentAdapter`** — the seam an agent implements: one method, `solve(task, ctx)`.
   **OpenCode plugs in here** (architecture A): Keith wraps the OpenCode loop as an
@@ -294,10 +317,10 @@ with `harness.should_early_exit(...)`, you run the cheap+memory cell first and
 stop climbing the price ladder once a configuration already clears the target
 accuracy — directly testing the project hypothesis at minimum cost.
 
-> **Prices are PLACEHOLDERS.** `cost.PRICING` ships plausible stand-ins (USD per
-> **million** tokens) so the offline cost gate is exercisable. They are clearly
-> marked in source and **must be verified against the current Anthropic price
-> sheet before any paid run.**
+> **Prices are live/confirmed.** `cost.PRICING` carries the confirmed Anthropic
+> list prices (USD per **million** tokens, verified 2026-06; see `cost.py` and
+> prd.md §7), plus the OpenRouter subconscious-side models. **Re-verify against the
+> current price sheet before any large paid run** — list prices do change.
 
 ---
 

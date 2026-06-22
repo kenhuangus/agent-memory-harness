@@ -19,20 +19,26 @@ that documents the plan, architecture, benchmarks, implementation contracts, and
 | Overview | `index.html` | Hypothesis, the four modules, the four metrics |
 | Plan | `plan.html` | Problem, technical approach, scope, ownership, Gantt + milestones — with a **[PDF download](project-plan.pdf)** |
 | Architecture | `architecture.html` | The diagram, data flows, the router, indexing |
-| Benchmarks | `benchmarks.html` | The 4 public benchmarks + metric mapping, with links |
+| Benchmarks | `benchmarks.html` | The 5 public benchmarks + metric mapping, with links |
 | Implementation | `implementation.html` | Schemas, storage interface, router/dreaming contracts, eval protocol |
-| Results | `results.html` | Empty scoreboard template to fill in after the runs |
+| Results | `results.html` | Live scoreboard rendered from `results.json` (v0.1 results exist; see `results/`) |
+| Collaborate | `collaborate.html` | Branch model, ownership, running the pipeline, PR/merge flow |
 
 ```
 .
-├── index.html  plan.html  architecture.html  benchmarks.html  implementation.html  results.html
+├── index.html  plan.html  architecture.html  benchmarks.html  implementation.html  results.html  collaborate.html
 ├── project-plan.md          # full plan (problem · approach · scope · ownership · timeline)
 ├── project-plan.pdf         # downloadable PDF of the plan
+├── plan.md · prd.md · architecture.md  # the design contracts (what · why · how)
 ├── assets/
 │   ├── css/style.css        # theme + all components
 │   ├── js/main.js           # nav toggle, active link, reveal-on-scroll
 │   └── img/architecture.svg # standalone architecture diagram
 ├── eval/                     # the evaluation harness (Python pkg `memeval`) — see "Run the benchmarks"
+├── plugin/                   # the installable Cookbook Memory plugin (cookbook_memory) — see plugin/README.md
+├── results/                  # committed benchmark results, bucketed by memory version (v0.1, v0.1-bm25, …)
+├── docs/                     # ADRs and design records (docs/adrs/**)
+├── tools/                    # helper scripts (dataset probes, etc.)
 ├── .nojekyll                # serve assets as-is (no Jekyll build)
 └── README.md
 ```
@@ -111,8 +117,11 @@ python -m memeval.results summary --path ../runs/claudecode/results.json
 - **Auth is subscription-only** — `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` are
   stripped from every `claude` invocation; runs use your Claude Code OAuth login.
 - **Cross-platform**, auto-detected: macOS · Linux · Windows · Windows→WSL.
-- **`--mode`** is `builtin` (Claude Code's own `CLAUDE.md` memory) | `plugin` (our
-  OKF-backed MCP memory) | `all`. CODE benchmarks need the SWE-bench Docker grader
+- **`--mode`** is `off` (no memory baseline) | `builtin` (Claude Code's own `CLAUDE.md`
+  memory) | `plugin` (our in-harness OKF-backed MCP memory) | `plugin-real` (the shipping
+  `plugin/cookbook_memory` package installed via a real `claude plugin install` and driven
+  as a black box) | `all`. `--mode all` runs **builtin + plugin only** — name `off` and
+  `plugin-real` explicitly. CODE benchmarks need the SWE-bench Docker grader
   (`pip install -e ".[swebench]"`) to score accuracy.
 
 Full guides: the per-developer, per-benchmark runbook is
