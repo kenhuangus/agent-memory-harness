@@ -65,11 +65,11 @@ def _make_basedir(tmp_path: Path) -> Path:
 
 
 def _set_env_memory_store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    """Create a memory store file and bind $MEMORY_STORE to it; return basedir."""
-    store_file = tmp_path / "memory.jsonl"
-    store_file.write_text("", encoding="utf-8")
-    monkeypatch.setenv("MEMORY_STORE", str(store_file))
-    return tmp_path
+    """Create a memory store directory and bind $MEMORY_STORE to it; return basedir (ADR-019)."""
+    basedir = tmp_path / "memory-store"
+    basedir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("MEMORY_STORE", str(basedir))
+    return basedir
 
 
 def _age_file(p: Path, age_seconds: float) -> None:
@@ -120,10 +120,10 @@ def _mp_take_and_exit(
 
 
 # =========================================================================== #
-# B. resolve_basedir() — ADR-015 §1
+# B. resolve_basedir() — ADR-019 (supersedes ADR-015 §1)
 # =========================================================================== #
 class TestResolveBasedir:
-    """ADR-015 §1 — MEMORY_STORE-based basedir resolution."""
+    """ADR-019 — MEMORY_STORE is a directory; auto-mkdir; ValueError on file."""
 
     def test_resolve_basedir_reads_memory_store_env(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -138,43 +138,46 @@ class TestResolveBasedir:
         with pytest.raises(KeyError):
             resolve_basedir()
 
-    def test_resolve_basedir_filenotfounderror_on_missing(
+    def test_resolve_basedir_creates_missing_dir(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        missing = tmp_path / "does-not-exist.jsonl"
+        """ADR-019 — missing path → auto-mkdir, no error."""
+        missing = tmp_path / "deep" / "tree" / "memory-store"
+        assert not missing.exists()
         monkeypatch.setenv("MEMORY_STORE", str(missing))
-        with pytest.raises(FileNotFoundError) as excinfo:
-            resolve_basedir()
-        assert str(missing) in str(excinfo.value)
+        result = resolve_basedir()
+        assert result == missing.resolve()
+        assert missing.is_dir()
 
-    def test_resolve_basedir_valueerror_on_directory(
+    def test_resolve_basedir_valueerror_on_file(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("MEMORY_STORE", str(tmp_path))
+        """ADR-019 — pointing at an existing FILE is the only error mode (inverted from ADR-015)."""
+        store_file = tmp_path / "stale-sentinel.jsonl"
+        store_file.write_text("", encoding="utf-8")
+        monkeypatch.setenv("MEMORY_STORE", str(store_file))
         with pytest.raises(ValueError) as excinfo:
             resolve_basedir()
-        assert str(tmp_path.resolve()) in str(excinfo.value)
+        assert str(store_file.resolve()) in str(excinfo.value)
+        assert "directory" in str(excinfo.value).lower()
 
-    def test_resolve_basedir_returns_parent(
+    def test_resolve_basedir_returns_dir_itself(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        store = tmp_path / "subdir" / "store.jsonl"
-        store.parent.mkdir(parents=True)
-        store.write_text("", encoding="utf-8")
-        monkeypatch.setenv("MEMORY_STORE", str(store))
-        assert resolve_basedir() == (tmp_path / "subdir").resolve()
+        """ADR-019 — basedir IS $MEMORY_STORE (no .parent indirection)."""
+        basedir = tmp_path / "subdir" / "memory-store"
+        basedir.mkdir(parents=True)
+        monkeypatch.setenv("MEMORY_STORE", str(basedir))
+        assert resolve_basedir() == basedir.resolve()
 
     def test_resolve_basedir_resolves_symlinks(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         real_dir = tmp_path / "real"
         real_dir.mkdir()
-        real_store = real_dir / "store.jsonl"
-        real_store.write_text("", encoding="utf-8")
         symlink_dir = tmp_path / "link"
         symlink_dir.symlink_to(real_dir)
-        symlinked_store = symlink_dir / "store.jsonl"
-        monkeypatch.setenv("MEMORY_STORE", str(symlinked_store))
+        monkeypatch.setenv("MEMORY_STORE", str(symlink_dir))
         # .resolve() (not .absolute()) follows symlinks; expect real path.
         assert resolve_basedir() == real_dir.resolve()
 

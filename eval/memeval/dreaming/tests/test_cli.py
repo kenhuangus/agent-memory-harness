@@ -65,10 +65,10 @@ def empty_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-def memory_store_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Create a temp MEMORY_STORE file and set the env-var; yield the path."""
-    store = tmp_path / "store.jsonl"
-    store.touch()
+def memory_store_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Create a temp MEMORY_STORE directory and set the env-var; yield the path (ADR-019)."""
+    store = tmp_path / "memory-store"
+    store.mkdir()
     monkeypatch.setenv("MEMORY_STORE", str(store))
     return store
 
@@ -303,7 +303,7 @@ def test_daydream_subcommand_no_input_failopens_zero(empty_stdin: None) -> None:
 
 
 def test_daydream_session_optional_when_stdin_provides(
-    patch_stdin: Any, memory_store_file: Path, fake_engine: MagicMock,
+    patch_stdin: Any, memory_store_dir: Path, fake_engine: MagicMock,
     fake_make_store: MagicMock, fake_emit: list[Any], tmp_path: Path,
 ) -> None:
     """Rubric §D criterion 23 — `--session` is optional; stdin JSON can provide `session_id`."""
@@ -317,7 +317,7 @@ def test_daydream_session_optional_when_stdin_provides(
 
 
 def test_daydream_log_optional_when_stdin_provides(
-    patch_stdin: Any, memory_store_file: Path, fake_engine: MagicMock,
+    patch_stdin: Any, memory_store_dir: Path, fake_engine: MagicMock,
     fake_make_store: MagicMock, fake_emit: list[Any], tmp_path: Path,
 ) -> None:
     """Rubric §D criterion 24 — `--log` is optional; stdin JSON can provide `transcript_path`."""
@@ -352,7 +352,7 @@ def test_daydream_no_store_parses_clean(empty_stdin: None) -> None:
 
 
 def test_daydream_reads_stdin_json_when_no_flags(
-    patch_stdin: Any, memory_store_file: Path, fake_engine: MagicMock,
+    patch_stdin: Any, memory_store_dir: Path, fake_engine: MagicMock,
     fake_make_store: MagicMock, fake_emit: list[Any], tmp_path: Path,
 ) -> None:
     """Rubric §D criterion 28 — valid hook JSON on stdin → engine.daydream called with kwargs from stdin."""
@@ -367,7 +367,7 @@ def test_daydream_reads_stdin_json_when_no_flags(
 
 
 def test_daydream_flags_override_stdin_json(
-    patch_stdin: Any, memory_store_file: Path, fake_engine: MagicMock,
+    patch_stdin: Any, memory_store_dir: Path, fake_engine: MagicMock,
     fake_make_store: MagicMock, fake_emit: list[Any], tmp_path: Path,
 ) -> None:
     """Rubric §D criterion 29 — explicit `--session`/`--log` override stdin JSON values."""
@@ -396,7 +396,7 @@ def test_daydream_failopens_on_bad_stdin(
 
 
 def test_daydream_records_hook_event_name(
-    patch_stdin: Any, memory_store_file: Path, fake_engine: MagicMock,
+    patch_stdin: Any, memory_store_dir: Path, fake_engine: MagicMock,
     fake_make_store: MagicMock, fake_emit: list[Any], tmp_path: Path,
 ) -> None:
     """Rubric §D criterion 31 — `hook_event_name` from stdin → cli_resolved event field."""
@@ -415,7 +415,7 @@ def test_daydream_records_hook_event_name(
 
 
 def test_daydream_subcommand_invokes_engine(
-    empty_stdin: None, memory_store_file: Path, fake_engine: MagicMock,
+    empty_stdin: None, memory_store_dir: Path, fake_engine: MagicMock,
     fake_make_store: MagicMock, fake_emit: list[Any], tmp_path: Path,
 ) -> None:
     """Rubric §E criterion 32 — `daydream --session SID --log L` → engine.daydream called once with those kwargs."""
@@ -433,11 +433,11 @@ def test_daydream_threads_store_via_env_var_with_restore(
     fake_emit: list[Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Rubric §E criterion 33 — `--store P` sets MEMORY_STORE for the engine call and restores prior value."""
-    prev = tmp_path / "prev.jsonl"
-    prev.touch()
+    prev = tmp_path / "prev-store"
+    prev.mkdir()
     monkeypatch.setenv("MEMORY_STORE", str(prev))
-    new_store = tmp_path / "new.jsonl"
-    new_store.touch()
+    new_store = tmp_path / "new-store"
+    new_store.mkdir()
     log_file = tmp_path / "log.jsonl"
     log_file.touch()
 
@@ -455,7 +455,7 @@ def test_daydream_threads_store_via_env_var_with_restore(
 
 
 def test_daydream_subcommand_uses_orchestrator(
-    empty_stdin: None, memory_store_file: Path, fake_engine: MagicMock,
+    empty_stdin: None, memory_store_dir: Path, fake_engine: MagicMock,
     fake_make_store: MagicMock, fake_emit: list[Any], tmp_path: Path,
 ) -> None:
     """Rubric §E criterion 34 — CLI calls _make_store() once and threads its return value as `store=` kw."""
@@ -467,7 +467,7 @@ def test_daydream_subcommand_uses_orchestrator(
 
 
 def test_daydream_subcommand_exits_zero_on_success(
-    empty_stdin: None, memory_store_file: Path, fake_engine: MagicMock,
+    empty_stdin: None, memory_store_dir: Path, fake_engine: MagicMock,
     fake_make_store: MagicMock, fake_emit: list[Any], tmp_path: Path,
 ) -> None:
     """Rubric §E criterion 35 — on successful engine.daydream return, main returns 0."""
@@ -477,7 +477,7 @@ def test_daydream_subcommand_exits_zero_on_success(
 
 
 def test_daydream_emits_cli_resolved_event(
-    empty_stdin: None, memory_store_file: Path, fake_engine: MagicMock,
+    empty_stdin: None, memory_store_dir: Path, fake_engine: MagicMock,
     fake_make_store: MagicMock, fake_emit: list[Any], tmp_path: Path,
 ) -> None:
     """Rubric §E criterion 36 — exactly one daydream.cli_resolved event with the five pinned fields."""
@@ -492,7 +492,7 @@ def test_daydream_emits_cli_resolved_event(
 
 
 def test_daydream_passes_session_id_raw_to_engine_subprocess(
-    empty_stdin: None, memory_store_file: Path, fake_engine: MagicMock,
+    empty_stdin: None, memory_store_dir: Path, fake_engine: MagicMock,
     fake_make_store: MagicMock, fake_emit: list[Any], tmp_path: Path,
 ) -> None:
     """Rubric §E criterion 37 — hostile session_id is passed raw to engine; sanitization is engine-side."""
@@ -520,33 +520,35 @@ def test_daydream_subcommand_failopens_on_keyerror(
     assert any("MEMORY_STORE" in rec.getMessage() for rec in caplog.records)
 
 
-def test_daydream_subcommand_failopens_on_filenotfounderror(
-    empty_stdin: None, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, tmp_path: Path,
+def test_daydream_creates_missing_basedir(
+    empty_stdin: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
-    """Rubric §F criterion 39 — MEMORY_STORE points at missing path → exit 0 + WARNING."""
-    monkeypatch.setenv("MEMORY_STORE", "/nonexistent/path/to/store.jsonl")
+    """Rubric §F criterion 39 — repurposed under ADR-019: MEMORY_STORE pointing at a missing path auto-mkdirs (no error)."""
+    missing = tmp_path / "deep" / "nested" / "memory-store"
+    assert not missing.exists()
+    monkeypatch.setenv("MEMORY_STORE", str(missing))
     log_file = tmp_path / "log.jsonl"
     log_file.touch()
-    caplog.set_level(logging.WARNING, logger="memeval.dreaming.cli")
     assert cli.main(["daydream", "--session", "S", "--log", str(log_file)]) == 0
-    assert any(rec.levelno >= logging.WARNING for rec in caplog.records)
+    assert missing.is_dir()  # auto-created by resolve_basedir per ADR-019
 
 
 def test_daydream_subcommand_failopens_on_valueerror(
     empty_stdin: None, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, tmp_path: Path,
 ) -> None:
-    """Rubric §F criterion 40 — MEMORY_STORE points at a directory → exit 0 + WARNING."""
-    dir_path = tmp_path / "a-dir"
-    dir_path.mkdir()
-    monkeypatch.setenv("MEMORY_STORE", str(dir_path))
+    """Rubric §F criterion 40 — inverted under ADR-019: MEMORY_STORE points at a FILE → exit 0 + WARNING."""
+    file_path = tmp_path / "stale-sentinel.jsonl"
+    file_path.touch()
+    monkeypatch.setenv("MEMORY_STORE", str(file_path))
     log_file = tmp_path / "log.jsonl"
     log_file.touch()
     caplog.set_level(logging.WARNING, logger="memeval.dreaming.cli")
     assert cli.main(["daydream", "--session", "S", "--log", str(log_file)]) == 0
+    assert any("MEMORY_STORE" in rec.getMessage() for rec in caplog.records)
 
 
 def test_daydream_subcommand_failopens_on_unexpected_exception(
-    empty_stdin: None, memory_store_file: Path, fake_make_store: MagicMock,
+    empty_stdin: None, memory_store_dir: Path, fake_make_store: MagicMock,
     fake_emit: list[Any], caplog: pytest.LogCaptureFixture, tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -565,7 +567,7 @@ def test_daydream_subcommand_failopens_on_unexpected_exception(
 
 
 def test_daydream_subcommand_does_not_swallow_keyboardinterrupt(
-    empty_stdin: None, memory_store_file: Path, fake_make_store: MagicMock,
+    empty_stdin: None, memory_store_dir: Path, fake_make_store: MagicMock,
     fake_emit: list[Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Rubric §F criterion 42 — KeyboardInterrupt from engine propagates out of main."""
@@ -582,7 +584,7 @@ def test_daydream_subcommand_does_not_swallow_keyboardinterrupt(
 
 
 def test_daydream_subcommand_does_not_swallow_systemexit(
-    empty_stdin: None, memory_store_file: Path, fake_make_store: MagicMock,
+    empty_stdin: None, memory_store_dir: Path, fake_make_store: MagicMock,
     fake_emit: list[Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Rubric §F criterion 43 — SystemExit from engine propagates."""
@@ -649,14 +651,14 @@ def test_dream_subcommand_all_is_required_boolean() -> None:
 
 
 def test_dream_all_failopens_on_notimplementederror(
-    memory_store_file: Path, fake_make_store: MagicMock, fake_emit: list[Any],
+    memory_store_dir: Path, fake_make_store: MagicMock, fake_emit: list[Any],
 ) -> None:
     """Rubric §H criterion 49 — `dream --all` returns 0 even though DreamingWorker.run raises NotImplementedError."""
     assert cli.main(["dream", "--all"]) == 0
 
 
 def test_dream_all_emits_skipped_event(
-    memory_store_file: Path, fake_make_store: MagicMock, fake_emit: list[Any],
+    memory_store_dir: Path, fake_make_store: MagicMock, fake_emit: list[Any],
 ) -> None:
     """Rubric §H criterion 50 — on NotImplementedError, CLI emits `daydream.dream_all_skipped`."""
     cli.main(["dream", "--all"])
@@ -664,7 +666,7 @@ def test_dream_all_emits_skipped_event(
 
 
 def test_dream_all_logs_notimplemented_visibly(
-    memory_store_file: Path, fake_make_store: MagicMock, fake_emit: list[Any],
+    memory_store_dir: Path, fake_make_store: MagicMock, fake_emit: list[Any],
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Rubric §H criterion 51 — on NotImplementedError, WARNING log contains `night` or `consolidation`."""
@@ -677,7 +679,7 @@ def test_dream_all_logs_notimplemented_visibly(
 
 
 def test_dream_all_failopens_and_emits_error_event(
-    memory_store_file: Path, monkeypatch: pytest.MonkeyPatch, fake_make_store: MagicMock,
+    memory_store_dir: Path, monkeypatch: pytest.MonkeyPatch, fake_make_store: MagicMock,
     fake_emit: list[Any], caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Rubric §H criterion 52 — any other exception → exit 0 + dream_all_error event + class-name log."""
@@ -707,10 +709,10 @@ def test_dream_all_threads_store_arg(
     monkeypatch: pytest.MonkeyPatch, fake_make_store: MagicMock, fake_emit: list[Any], tmp_path: Path,
 ) -> None:
     """Rubric §H criterion 54 — `--store P` threaded via MEMORY_STORE with try/finally restore."""
-    prev = tmp_path / "prev.jsonl"
-    prev.touch()
-    new_store = tmp_path / "new.jsonl"
-    new_store.touch()
+    prev = tmp_path / "prev-store"
+    prev.mkdir()
+    new_store = tmp_path / "new-store"
+    new_store.mkdir()
     monkeypatch.setenv("MEMORY_STORE", str(prev))
 
     captured: dict[str, str | None] = {}
@@ -727,7 +729,7 @@ def test_dream_all_threads_store_arg(
 
 
 def test_dream_all_does_not_swallow_keyboardinterrupt(
-    memory_store_file: Path, monkeypatch: pytest.MonkeyPatch, fake_make_store: MagicMock,
+    memory_store_dir: Path, monkeypatch: pytest.MonkeyPatch, fake_make_store: MagicMock,
 ) -> None:
     """Rubric §H criterion 55 — KeyboardInterrupt propagates."""
     from memeval.dreaming import worker

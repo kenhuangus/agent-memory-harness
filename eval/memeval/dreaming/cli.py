@@ -12,8 +12,9 @@ plugin-hooks contract reserves exit 2 as "block this hook's action."
 :class:`_NonExitingParser` raises :class:`argparse.ArgumentError` and
 :func:`main` returns 1.
 
-``--store`` threads through :envvar:`MEMORY_STORE` per ADR-dreaming-015,
-with try/finally restore of the prior value (ADR-dreaming-017 §X).
+``--store`` threads through :envvar:`MEMORY_STORE` per ADR-dreaming-019
+(`MEMORY_STORE` is a directory; supersedes ADR-015 §1), with try/finally
+restore of the prior value (ADR-dreaming-017 §X).
 
 Store factory: :func:`_make_store` returns
 :class:`memeval.stores.MarkdownStore` rooted at ``<basedir>/markdown/``.
