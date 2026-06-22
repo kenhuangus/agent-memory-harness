@@ -11,3 +11,6 @@ dist/
 run*.jsonl
 *.run.jsonl
 results/
+
+# Sandboxed Claude config dir (holds a seeded OAuth credential — never commit)
+.claude-sandbox/

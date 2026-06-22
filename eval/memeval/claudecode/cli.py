@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
+from . import sandbox
 from .platform import ClaudeRuntime, detect, to_wsl_path
 
 #: Credentials stripped so the CLI uses the Claude Code *subscription* (OAuth),
@@ -189,11 +190,27 @@ def run_claude_primed(
 
 
 def _clean_env(strip_api_key: bool) -> Optional[dict]:
-    """Subprocess env with API-key vars removed (so WSLENV can't forward them and
-    a native CLI can't read them). ``None`` keeps the inherited env."""
-    if not strip_api_key:
+    """Subprocess env for the ``claude`` CLI.
+
+    Two adjustments to the inherited environment:
+
+    * API-key vars removed (so WSLENV can't forward them and a native CLI can't
+      read them) when ``strip_api_key`` — the CLI then uses the subscription.
+    * ``CLAUDE_CONFIG_DIR`` set to the sandbox dir when one is active
+      (:func:`memeval.claudecode.sandbox.active_config_dir`), so the CLI reads
+      only the seeded sandbox config — no host skills / agents / ``CLAUDE.md`` —
+      instead of ``~/.claude``.
+
+    Returns ``None`` (keep the inherited env unchanged) only when neither
+    adjustment applies."""
+    sandbox_dir = sandbox.active_config_dir()
+    if not strip_api_key and sandbox_dir is None:
         return None
-    return {k: v for k, v in os.environ.items() if k not in _API_KEY_VARS}
+    env = {k: v for k, v in os.environ.items()
+           if not (strip_api_key and k in _API_KEY_VARS)}
+    if sandbox_dir is not None:
+        env["CLAUDE_CONFIG_DIR"] = sandbox_dir
+    return env
 
 
 def run_claude(
