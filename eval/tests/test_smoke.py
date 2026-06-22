@@ -39,6 +39,7 @@ from __future__ import annotations
 import importlib
 import json
 import math
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -1947,6 +1948,29 @@ def test_claudecode_solve_qa_unchanged() -> None:
     assert rr.n_tasks == 1
     assert rr.trajectories[0].prediction == "Berlin"     # verbatim, NOT a diff
     assert seen["system"] == _SYS_PLAIN                   # QA path untouched
+
+
+def test_plugin_real_requires_openrouter_key() -> None:
+    """--mode plugin-real must refuse to start without OPENROUTER_API_KEY.
+
+    Otherwise the dreaming/subconscious model fail-opens to zero extracted
+    memories (ADR-dreaming-012) and the bench reports noise as a score.
+    """
+    from memeval.claudecode import run_bench
+
+    saved = os.environ.pop("OPENROUTER_API_KEY", None)
+    try:
+        err = run_bench._require_openrouter_for_plugin_real(["plugin-real"])
+        assert err is not None and "OPENROUTER_API_KEY" in err   # refuse + actionable
+        # non-plugin-real modes are unaffected
+        assert run_bench._require_openrouter_for_plugin_real(["builtin", "plugin"]) is None
+        # key present -> no error
+        os.environ["OPENROUTER_API_KEY"] = "sk-or-test"
+        assert run_bench._require_openrouter_for_plugin_real(["plugin-real"]) is None
+    finally:
+        os.environ.pop("OPENROUTER_API_KEY", None)
+        if saved is not None:
+            os.environ["OPENROUTER_API_KEY"] = saved
 
 
 # --------------------------------------------------------------------------- #

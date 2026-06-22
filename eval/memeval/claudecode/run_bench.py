@@ -20,6 +20,8 @@ show up on the Results page / scoreboard next to the API runs.
 from __future__ import annotations
 
 import argparse
+import os
+import sys
 from typing import Any, Optional
 
 from .. import MEMORY_VERSION
@@ -217,6 +219,23 @@ def _benchmark_table() -> str:
     return "\n".join(rows)
 
 
+def _require_openrouter_for_plugin_real(modes: list[str]) -> Optional[str]:
+    """Refuse to run ``plugin-real`` without ``OPENROUTER_API_KEY``.
+
+    The shipping cookbook-memory plugin builds its memories via the subconscious
+    "dreaming" model over OpenRouter. With the key unset that step fail-opens to
+    ZERO extracted memories (ADR-dreaming-012) — the bench would still print a
+    number, but it measures noise, not memory. Returns an actionable message when
+    ``plugin-real`` is requested with no key, else ``None``.
+    """
+    if "plugin-real" in modes and not (os.environ.get("OPENROUTER_API_KEY") or "").strip():
+        return ("--mode plugin-real needs OPENROUTER_API_KEY to build memories — "
+                "without it the dreaming/subconscious model fail-opens to zero "
+                "memories (ADR-dreaming-012), so results would measure noise. "
+                "Set it in `.env` or export it; see `.env.example`.")
+    return None
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(
         prog="memeval-bench",
@@ -301,6 +320,13 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     benches = _ALL_BENCH if args.benchmark == "all" else [args.benchmark]
     modes = _MODES if args.mode == "all" else [args.mode]
+
+    # Fail fast: plugin-real with no OpenRouter key extracts ZERO memories
+    # (dreaming fail-open, ADR-dreaming-012) and would report noise as a score.
+    _or_err = _require_openrouter_for_plugin_real(modes)
+    if _or_err is not None:
+        print(f"ERROR: {_or_err}", file=sys.stderr)
+        return 2
 
     # One timestamp for the whole sweep, so a sweep's per-benchmark files share it:
     # results/v{X.Y}/{benchmark}-{timestamp}.json
