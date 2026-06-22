@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -m cookbook_memory.adapters.claude_code.hooks_handler SessionStart",
+            "command": "memory-hook SessionStart || python3 -m cookbook_memory.adapters.claude_code.hooks_handler SessionStart",
             "env": { "MEMORY_STORE": "${CLAUDE_PROJECT_DIR}/.cookbook-memory" }
           }
         ]
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -m cookbook_memory.adapters.claude_code.hooks_handler UserPromptSubmit",
+            "command": "memory-hook UserPromptSubmit || python3 -m cookbook_memory.adapters.claude_code.hooks_handler UserPromptSubmit",
             "env": { "MEMORY_STORE": "${CLAUDE_PROJECT_DIR}/.cookbook-memory" }
           }
         ]
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -m cookbook_memory.adapters.claude_code.hooks_handler Stop",
+            "command": "memory-hook Stop || python3 -m cookbook_memory.adapters.claude_code.hooks_handler Stop",
             "async": true,
             "env": { "MEMORY_STORE": "${CLAUDE_PROJECT_DIR}/.cookbook-memory" }
           }
@@ -39,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -m cookbook_memory.adapters.claude_code.hooks_handler PreCompact",
+            "command": "memory-hook PreCompact || python3 -m cookbook_memory.adapters.claude_code.hooks_handler PreCompact",
             "env": { "MEMORY_STORE": "${CLAUDE_PROJECT_DIR}/.cookbook-memory" }
           }
         ]
@@ -50,7 +50,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -m cookbook_memory.adapters.claude_code.hooks_handler PostCompact",
+            "command": "memory-hook PostCompact || python3 -m cookbook_memory.adapters.claude_code.hooks_handler PostCompact",
             "env": { "MEMORY_STORE": "${CLAUDE_PROJECT_DIR}/.cookbook-memory" }
           }
         ]
