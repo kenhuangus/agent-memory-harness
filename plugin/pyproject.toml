@@ -37,8 +37,9 @@ mcp = ["mcp>=1.0"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]
-# The human / ops surface: `memory mcp|query|remember|stats|log|reset`.
-memory = "cookbook_memory.cli:main"
+# The human / ops surface: `memory-cli mcp|query|remember|stats|log|reset`.
+# Name-spaced so the binary does not collide on $PATH with other tools.
+memory-cli = "cookbook_memory.cli:main"
 # The Claude Code hooks entry point, wired from hooks.json.
 memory-hook = "cookbook_memory.adapters.claude_code.hooks_handler:main"
 
@@ -50,10 +51,11 @@ include = ["cookbook_memory*"]
 exclude = ["tests*"]
 
 [tool.setuptools.package-data]
-# Ship the Claude Code plugin bundle assets inside the wheel.
+# Generic skills (harness-agnostic), shipped in the wheel.
+"cookbook_memory" = ["skills/*/SKILL.md"]
+# Harness-specific Claude Code bundle manifests.
 "cookbook_memory.adapters.claude_code" = [
     ".claude-plugin/*.json",
     ".mcp.json",
     "hooks/*.json",
-    "skills/*/SKILL.md",
 ]

@@ -3,8 +3,8 @@
 The MCP server's live ``run()`` needs the MCP SDK and a stdio peer, so it isn't
 invoked here; its tool *logic* is the core's (covered in test_core). These tests
 cover the hook handler's fail-open behavior and verify the shipped plugin bundle is
-well-formed (so a real install finds valid plugin.json / .mcp.json / hooks.json /
-skills).
+well-formed (valid plugin.json / .mcp.json / hooks.json). Skills live in the core and
+are placed into a harness's discovery path by the install command (test_install).
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ def test_plugin_json_is_valid():
 def test_mcp_json_points_at_memory_server():
     data = json.loads((BUNDLE / ".mcp.json").read_text())
     server = data["mcpServers"]["cookbook-memory"]
-    assert server["command"] == "memory"
+    assert server["command"] == "memory-cli"
     assert server["args"] == ["mcp"]
     assert "MEMORY_STORE" in server["env"]
 
@@ -59,17 +59,14 @@ def test_mcp_json_points_at_memory_server():
 def test_hooks_json_wires_lifecycle_events():
     data = json.loads((BUNDLE / "hooks" / "hooks.json").read_text())
     hooks = data["hooks"]
-    # The skeleton wires these lifecycle points (all fail-open no-ops for now).
     for evt in ("SessionStart", "UserPromptSubmit", "Stop", "PreCompact", "PostCompact"):
         assert evt in hooks, f"missing hook: {evt}"
-    # Stop is async (the Daydreamer day pass lands here later).
     stop = hooks["Stop"][0]["hooks"][0]
     assert stop.get("async") is True
     assert stop["command"].startswith("memory-hook")
 
 
-def test_skills_present_with_frontmatter():
-    for name in ("recall", "remember"):
-        text = (BUNDLE / "skills" / name / "SKILL.md").read_text()
-        assert text.startswith("---")
-        assert f"name: {name}" in text
+def test_bundle_has_no_skills_dir():
+    # Skills are canonical in the core and placed by the install command, never
+    # committed into the adapter bundle (ADR-harness-009).
+    assert not (BUNDLE / "skills").exists()

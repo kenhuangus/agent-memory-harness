@@ -1,19 +1,23 @@
-"""The ``memory`` CLI — the human / ops surface over the plugin core.
+"""The ``memory-cli`` — the human / ops surface over the plugin core.
 
 One console script, several subcommands (mirroring the cross-harness design's
-"one core, two surfaces": MCP for the model, a CLI for us):
+"one core, two surfaces": MCP for the model, a CLI for us). The model's conscious
+surface is recall-only (the MCP ``recall`` tool); this CLI additionally keeps a
+``remember`` command for manual/debug writes by a human:
 
-* ``memory mcp``            — speak MCP over stdio (the model's recall/remember tools).
-* ``memory query "<q>"``    — debug retrieval from the shell.
-* ``memory remember "<c>"`` — write a memory from the shell.
-* ``memory stats``          — summarize the events stream for a store.
-* ``memory log``            — print recent events (the black-box-readable trail).
-* ``memory reset``          — clear a store's events stream (fresh per-run isolation).
+* ``memory-cli mcp``            — speak MCP over stdio (the model's ``recall`` tool).
+* ``memory-cli install``        — place the skills into a harness's discovery path.
+* ``memory-cli query "<q>"``    — debug retrieval from the shell.
+* ``memory-cli remember "<c>"`` — write a memory from the shell (manual/debug).
+* ``memory-cli stats``          — summarize the events stream for a store.
+* ``memory-cli log``            — print recent events (the black-box-readable trail).
+* ``memory-cli reset``          — clear a store's events stream (fresh per-run state).
 
-This CLI is for the human dev and the plugin's own hook scripts — **not** a back door
-for the eval engine, which drives the plugin only through the ``claude`` CLI
-(ADR-eval-001). Every command resolves its store from ``$MEMORY_STORE`` or ``--store``.
-Output is JSON on stdout so commands compose in scripts.
+The console script ``memory-cli`` has a name-spaced binary so it does not collide on
+``$PATH`` with other tools. This CLI is for the human dev and the plugin's own hook
+scripts — **not** a back door for the eval engine, which drives the plugin only
+through the ``claude`` CLI (ADR-eval-001). Every command resolves its store from
+``$MEMORY_STORE`` or ``--store``. Output is JSON on stdout so commands compose.
 """
 
 from __future__ import annotations
@@ -23,18 +27,25 @@ import json
 import sys
 from typing import Optional
 
-from .core import build_memory
+from .core import MemoryClient
 from .core.config import Settings
 from .core.events import EventStream
 
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the top-level parser with all subcommands."""
-    p = argparse.ArgumentParser(prog="memory", description="Cookbook Memory CLI.")
+    p = argparse.ArgumentParser(prog="memory-cli", description="Cookbook Memory CLI.")
     p.add_argument("--store", help="Store path (overrides $MEMORY_STORE).")
     sub = p.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("mcp", help="Run the MCP stdio server (the model's recall/remember).")
+    sub.add_parser("mcp", help="Run the MCP stdio server (the model's recall tool).")
+
+    ins = sub.add_parser("install", help="Install the skills into a harness's discovery path.")
+    ins.add_argument("--harness", required=True, choices=["claude", "codex", "opencode", "agents"],
+                     help="Target harness (agents = the shared Codex+OpenCode .agents/skills path).")
+    ins.add_argument("--scope", default="project", choices=["project", "user"],
+                     help="project = cwd (default); user = home directory.")
+    ins.add_argument("--link", action="store_true", help="Symlink the skills instead of copying.")
 
     q = sub.add_parser("query", help="Debug retrieval: search memory and print hits.")
     q.add_argument("query", help="The search query.")
@@ -63,17 +74,30 @@ def _cmd_mcp(args: argparse.Namespace) -> int:
     return run_mcp(store=args.store)
 
 
+def _cmd_install(args: argparse.Namespace) -> int:
+    from .core.install import install_skills
+
+    installed = install_skills(args.harness, scope=args.scope, link=args.link)
+    _emit({
+        "harness": args.harness,
+        "scope": args.scope,
+        "linked": args.link,
+        "skills": [str(p) for p in installed],
+    })
+    return 0
+
+
 def _cmd_query(args: argparse.Namespace) -> int:
-    mem = build_memory(store=args.store, k=args.k)
-    hits = mem.recall(args.query, args.k)
+    client = MemoryClient(store=args.store, default_k=args.k or 5)
+    hits = client.recall(args.query, args.k)
     _emit({"query": args.query, "hits": [h.to_dict() for h in hits]})
     return 0
 
 
 def _cmd_remember(args: argparse.Namespace) -> int:
-    mem = build_memory(store=args.store)
+    client = MemoryClient(store=args.store)
     tags = [t.strip() for t in args.tags.split(",") if t.strip()]
-    mem_id = mem.remember(args.content, tags=tags)
+    mem_id = client.remember(args.content, tags=tags)
     _emit({"id": mem_id, "stored": bool(mem_id)})
     return 0
 
@@ -111,6 +135,7 @@ def _cmd_reset(args: argparse.Namespace) -> int:
 
 _COMMANDS = {
     "mcp": _cmd_mcp,
+    "install": _cmd_install,
     "query": _cmd_query,
     "remember": _cmd_remember,
     "stats": _cmd_stats,

@@ -42,7 +42,7 @@ the move).
 | [ADR-eval-001](ADR-eval-001-extract-memory-package.md) | Extract the memory system into its own package; `memeval` stays pure eval | Accepted | no |
 | [ADR-storage-001](ADR-storage-001-orchestrator-in-process-library.md) | Orchestrator is an in-process library; store-by-`$MEMORY_STORE`, no daemon | Accepted | **yes** |
 | [ADR-harness-001](ADR-harness-001-claude-code-plugin-shape.md) | Claude Code plugin = bundled MCP server + hooks + skills | Accepted | no |
-| [ADR-harness-002](ADR-harness-002-recall-remember-mcp-tools.md) | `recall`/`remember` are MCP tools that call the Orchestrator | Accepted | **yes** |
+| [ADR-harness-002](ADR-harness-002-recall-remember-mcp-tools.md) | `recall`/`remember` are MCP tools that call the Orchestrator | Superseded by [ADR-harness-008](ADR-harness-008-recall-only-conscious-surface.md) | **yes** |
 | [ADR-dreaming-001](ADR-dreaming-001-daydreaming-stop-fired.md) | Daydreaming = in-session capture, auto `Stop`/`PreCompact`-fired (day scope) — its own entrypoint | Accepted | **yes** |
 | [ADR-dreaming-002](ADR-dreaming-002-dreaming-consolidation-cli.md) | Dreaming = whole-store consolidation via `memory dream --all` CLI (night scope) — its own entrypoint | Accepted | **yes** |
 | [ADR-dreaming-003](ADR-dreaming-003-consolidation-llmclient.md) | Subconscious model = swappable `LLMClient`, OpenRouter-first (shared helper) | Superseded by [ADR-dreaming-006](ADR-dreaming-006-llmclient-completion-dataclass.md) | **yes** |
@@ -64,6 +64,8 @@ the move).
 | [ADR-harness-005](ADR-harness-005-log-adapter-redaction.md) | The log adapter redacts secrets before any model call | Accepted | no |
 | [ADR-harness-006](ADR-harness-006-fail-open.md) | Every hook/tool is fail-open — never break the user's session | Accepted | no |
 | [ADR-harness-007](ADR-harness-007-memory-events-stream.md) | Structured memory-events stream, observability-platform-bound (Langfuse) | Accepted | **yes** |
+| [ADR-harness-008](ADR-harness-008-recall-only-conscious-surface.md) | The conscious surface is recall-only; writes happen via the Daydreamer | Accepted | **yes** |
+| [ADR-harness-009](ADR-harness-009-client-agnostic-skills.md) | Skills are canonical Agent-Skills folders, placed per-harness by an install command | Accepted | no |
 
 > **Provenance.** These eleven ADRs were extracted from the consolidated ADR-P1…P11
 > series in
