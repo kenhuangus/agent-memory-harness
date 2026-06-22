@@ -785,6 +785,11 @@ def test_claudecode_agent_plugin_real_records_retrieval_from_events() -> None:
     # for the installed plugin: it writes a recall event (with meta.hits) to the
     # plugin's own events stream, exactly as the cookbook-memory MCP server would,
     # and the agent attributes that retrieval to the trajectory from meta.hits.
+    #
+    # plugin-real seeds the store via the plugin's own MemoryClient, so this test
+    # needs `cookbook_memory` installed. CI runs the smoke suite stdlib-only (no deps),
+    # so skip there — it runs for a developer who has `pip install -e plugin`.
+    _try_import("cookbook_memory")
     import json as _json
     from memeval.claudecode.agent import ClaudeCodeAgent
     from memeval.claudecode.cli import ClaudeResult
