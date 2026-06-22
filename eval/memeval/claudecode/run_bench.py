@@ -153,7 +153,7 @@ def _run_one(benchmark: str, mode: str, args: argparse.Namespace,
     # Plugin talks to an MCP server; headless claude's MCP connection degrades under
     # concurrency, so plugin runs at --plugin-workers (default 1) while builtin/off
     # (no MCP, just file reads) run at the full --workers.
-    workers = args.plugin_workers if mode == "plugin" else args.workers
+    workers = args.plugin_workers if mode in ("plugin", "plugin-real") else args.workers
 
     # Incremental save: after every task, rewrite this benchmark's result file with
     # the records from already-finished modes plus the current mode's partial run,
@@ -208,8 +208,9 @@ def _benchmark_table() -> str:
         floor = DEFAULT_FLOORS.get(b, DEFAULT_MIN_ENTRIES)
         rows.append(f"  {b:<18} {kind:<4} floor={floor:<3} draw={draw}")
     rows.append("  all                run every benchmark in sequence")
-    rows.append("modes: builtin (Claude Code's own memory) | plugin (our MCP memory) | "
-                "off (baseline) | all (builtin+plugin)")
+    rows.append("modes: builtin (Claude Code's own memory) | plugin (our MCP memory, "
+                "harness-wired) | plugin-real (the shipping cookbook-memory plugin, "
+                "natively installed — black box) | off (baseline) | all (builtin+plugin)")
     return "\n".join(rows)
 
 
@@ -224,7 +225,8 @@ def main(argv: Optional[list[str]] = None) -> int:
                     help="List the available benchmark ids (with kind/floor/draw) and exit. "
                          "Works offline — no claude or dataset needed.")
     ap.add_argument("--benchmark", default="all", help="one of the five ids, or 'all'.")
-    ap.add_argument("--mode", default="all", help="builtin | plugin | all (all = builtin+plugin).")
+    ap.add_argument("--mode", default="all",
+                    help="builtin | plugin | plugin-real | off | all (all = builtin+plugin).")
     ap.add_argument("--model", default="claude-haiku-4-5")
     ap.add_argument("--path", default=None, help="local fixture/dataset path, or 'fixtures' (blank = real source).")
     ap.add_argument("--limit", type=int, default=None,

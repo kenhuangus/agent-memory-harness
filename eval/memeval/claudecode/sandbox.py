@@ -155,6 +155,68 @@ def _find_claude_exe() -> str:
     return rt.exe
 
 
+def _require_plugin_mcp_runtime() -> None:
+    """Assert the cookbook-memory plugin can actually serve its MCP tool.
+
+    The plugin's ``.mcp.json`` launches ``memory-cli mcp``, which needs the MCP SDK
+    (the plugin's ``[mcp]`` extra). Without it the server exits on startup and the
+    ``recall`` tool is silently unavailable — so we fail loudly here, the same way a
+    user would discover they hadn't installed ``cookbook-memory[mcp]``."""
+    import importlib.util
+    import shutil
+
+    if shutil.which("memory-cli") is None:
+        raise RuntimeError(
+            "memory-cli not on PATH — install the plugin's runtime "
+            "(`pip install -e 'plugin[mcp]'`) so the cookbook-memory MCP server can run.")
+    if importlib.util.find_spec("mcp") is None:
+        raise RuntimeError(
+            "the MCP SDK is not importable — install the plugin's `[mcp]` extra "
+            "(`pip install -e 'plugin[mcp]'`); without it `memory-cli mcp` exits on "
+            "startup and the plugin's recall tool never registers.")
+
+
+def plugin_runtime_env() -> dict[str, str]:
+    """The extra env a ``claude`` run needs so the installed plugin's MCP server
+    resolves: ``memory-cli``'s directory prepended to ``PATH``. (``CLAUDE_PROJECT_DIR``
+    is per-task and supplied by the caller.)"""
+    import shutil
+
+    cli = shutil.which("memory-cli")
+    if cli is None:
+        return {}
+    bin_dir = str(Path(cli).resolve().parent)
+    path = os.environ.get("PATH", "")
+    if bin_dir in path.split(os.pathsep):
+        return {}
+    return {"PATH": f"{bin_dir}{os.pathsep}{path}" if path else bin_dir}
+
+
+def setup_real_plugin(
+    *, config_dir: Optional[Path] = None, out_dir: Optional[str | Path] = None,
+    claude_exe: Optional[str] = None,
+) -> dict[str, str]:
+    """Build + install the real cookbook-memory plugin into the sandbox, as a user would.
+
+    The full user-faithful setup for the ``plugin-real`` eval mode:
+
+    1. assert the plugin's MCP runtime is present (``memory-cli`` + the MCP SDK);
+    2. build the distributable bundle via the plugin's own release step
+       (:func:`cookbook_memory.adapters.claude_code.build.build_bundle`);
+    3. install it natively into the sandbox (:func:`install_plugin_bundle`).
+
+    Returns the extra environment (``PATH``) a subsequent ``claude`` run needs so the
+    installed plugin's ``memory-cli mcp`` server resolves. Idempotent — safe to call
+    once per run before the per-task turns."""
+    from cookbook_memory.adapters.claude_code.build import build_bundle
+
+    _require_plugin_mcp_runtime()
+    d = (config_dir or default_config_dir()).resolve()
+    bundle = build_bundle(out_dir or (d / "_plugin-bundle"))
+    install_plugin_bundle(bundle, config_dir=d, claude_exe=claude_exe)
+    return plugin_runtime_env()
+
+
 def build(config_dir: Optional[Path] = None, *, overwrite: bool = False) -> Path:
     """Create (or refresh) the sandbox config dir and return its path.
 

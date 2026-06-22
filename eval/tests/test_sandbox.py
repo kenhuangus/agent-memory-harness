@@ -138,6 +138,20 @@ class CleanEnvWiring(unittest.TestCase):
             self.assertNotIn("ANTHROPIC_AUTH_TOKEN", env)
             self.assertNotIn("CLAUDE_CONFIG_DIR", env)
 
+    def test_extra_env_merged_in(self) -> None:
+        # plugin-real passes PATH / CLAUDE_PROJECT_DIR so an installed plugin's MCP
+        # server + store path resolve; _clean_env must merge them on top.
+        with _Env(MEMEVAL_SANDBOX_CONFIG_DIR=None, MEMEVAL_SANDBOX="off"):
+            env = cli._clean_env(strip_api_key=False,
+                                 extra_env={"CLAUDE_PROJECT_DIR": "/run/x", "PATH": "/v/bin:/usr/bin"})
+            assert env is not None
+            self.assertEqual(env.get("CLAUDE_PROJECT_DIR"), "/run/x")
+            self.assertEqual(env.get("PATH"), "/v/bin:/usr/bin")
+
+    def test_extra_env_none_keeps_inherited_when_nothing_else(self) -> None:
+        with _Env(MEMEVAL_SANDBOX_CONFIG_DIR=None, MEMEVAL_SANDBOX="off"):
+            self.assertIsNone(cli._clean_env(strip_api_key=False, extra_env=None))
+
 
 class WslEnvPrefix(unittest.TestCase):
     """The in-WSL `env ...` prefix carries both adjustments across the boundary."""
@@ -209,6 +223,41 @@ class InstallPluginBundle(unittest.TestCase):
                     "/tmp/bundle", config_dir=Path("/tmp/sbx"), claude_exe="claude")
         finally:
             subprocess.run = orig
+
+
+class PluginRuntimeEnv(unittest.TestCase):
+    def test_prepends_memory_cli_dir_to_path(self) -> None:
+        import shutil
+        orig_which, orig_path = shutil.which, os.environ.get("PATH", "")
+        try:
+            shutil.which = lambda name: "/opt/venv/bin/memory-cli" if name == "memory-cli" else None
+            os.environ["PATH"] = "/usr/bin"
+            env = sandbox.plugin_runtime_env()
+            self.assertEqual(env["PATH"], "/opt/venv/bin" + os.pathsep + "/usr/bin")
+        finally:
+            shutil.which = orig_which
+            os.environ["PATH"] = orig_path
+
+    def test_empty_when_already_on_path(self) -> None:
+        import shutil
+        orig_which, orig_path = shutil.which, os.environ.get("PATH", "")
+        try:
+            shutil.which = lambda name: "/opt/venv/bin/memory-cli" if name == "memory-cli" else None
+            os.environ["PATH"] = "/opt/venv/bin" + os.pathsep + "/usr/bin"
+            self.assertEqual(sandbox.plugin_runtime_env(), {})
+        finally:
+            shutil.which = orig_which
+            os.environ["PATH"] = orig_path
+
+    def test_require_runtime_raises_without_memory_cli(self) -> None:
+        import shutil
+        orig_which = shutil.which
+        try:
+            shutil.which = lambda name: None
+            with self.assertRaises(RuntimeError):
+                sandbox._require_plugin_mcp_runtime()
+        finally:
+            shutil.which = orig_which
 
 
 if __name__ == "__main__":
