@@ -144,9 +144,16 @@ class SqliteVectorStore:
         self._conn = sqlite3.connect(self.path)
         # WAL journal mode (ADR-P2: mandatory) so concurrent cross-process writers/readers over one
         # file-backed $MEMORY_STORE don't block — e.g. MCP recall-path writes alongside the
-        # Daydreamer. Harmless no-op for the in-memory default (PRAGMA returns 'memory', not 'wal');
-        # it only takes effect for a file-backed DB, which is the path the plugin/harness uses.
-        self._conn.execute("PRAGMA journal_mode=WAL")
+        # Daydreamer. ENFORCED, not assumed: SQLite can fall back to another journal mode without
+        # erroring (e.g. an unsupported filesystem), silently breaking the cross-process guarantee, so
+        # we check the returned mode and fail loud for a file-backed DB. The in-memory default returns
+        # 'memory' (a harmless no-op) — that is the only non-'wal' mode we accept.
+        mode = self._conn.execute("PRAGMA journal_mode=WAL").fetchone()[0]
+        if str(mode).lower() not in ("wal", "memory"):
+            raise RuntimeError(
+                f"SqliteVectorStore requires WAL for a file-backed DB (ADR-P2); "
+                f"got journal_mode={mode!r} for path {self.path!r}"
+            )
         self._conn.row_factory = sqlite3.Row  # access columns by name, not fragile indices
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS items ("
