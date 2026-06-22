@@ -20,6 +20,8 @@ show up on the Results page / scoreboard next to the API runs.
 from __future__ import annotations
 
 import argparse
+import os
+import sys
 from typing import Any, Optional
 
 from .. import MEMORY_VERSION
@@ -217,6 +219,27 @@ def _benchmark_table() -> str:
     return "\n".join(rows)
 
 
+def _openrouter_advisory(modes: list[str]) -> Optional[str]:
+    """NON-fatal advisory when ``plugin-real`` runs without ``OPENROUTER_API_KEY``.
+
+    plugin-real does NOT depend on OpenRouter to run: memory is seeded through the
+    plugin's own write surface (``memory-cli remember`` — the user/Daydreamer
+    surface), and ``recall`` works regardless. OpenRouter only powers the plugin's
+    *dream/Daydreamer* consolidation, which fail-opens to a no-op when the key is
+    unset (ADR-dreaming-012). So the bench still runs on the seeded (or empty)
+    memory — this only flags that the *dream lift* won't appear until you set the
+    key and re-run to compare. Returns the advisory string, or ``None`` when N/A.
+
+    Intentionally advisory, not blocking: the empty-memory -> dream-inserts ->
+    re-run -> compare workflow must be allowed to start.
+    """
+    if "plugin-real" in modes and not (os.environ.get("OPENROUTER_API_KEY") or "").strip():
+        return ("note: OPENROUTER_API_KEY unset — plugin-real runs on seeded memory "
+                "only; the dream/Daydreamer consolidation is a no-op (ADR-dreaming-012). "
+                "Set it in `.env` or export it, then re-run to compare the dream lift.")
+    return None
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(
         prog="memeval-bench",
@@ -301,6 +324,14 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     benches = _ALL_BENCH if args.benchmark == "all" else [args.benchmark]
     modes = _MODES if args.mode == "all" else [args.mode]
+
+    # Advisory only (NON-blocking): plugin-real runs fine without OPENROUTER_API_KEY
+    # — memory is seeded via the plugin's own memory-cli; OpenRouter only powers the
+    # dream consolidation, which fail-opens (ADR-dreaming-012). Surface the note so a
+    # teammate knows the dream lift needs the key, but never block the run.
+    _or_note = _openrouter_advisory(modes)
+    if _or_note is not None:
+        print(_or_note, file=sys.stderr)
 
     # One timestamp for the whole sweep, so a sweep's per-benchmark files share it:
     # results/v{X.Y}/{benchmark}-{timestamp}.json

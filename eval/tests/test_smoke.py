@@ -39,6 +39,7 @@ from __future__ import annotations
 import importlib
 import json
 import math
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -1947,6 +1948,31 @@ def test_claudecode_solve_qa_unchanged() -> None:
     assert rr.n_tasks == 1
     assert rr.trajectories[0].prediction == "Berlin"     # verbatim, NOT a diff
     assert seen["system"] == _SYS_PLAIN                   # QA path untouched
+
+
+def test_plugin_real_openrouter_advisory_is_nonfatal() -> None:
+    """plugin-real must NOT depend on OPENROUTER_API_KEY.
+
+    With the key unset the run still proceeds (memory is seeded via the plugin's
+    own memory-cli; the dream/Daydreamer consolidation is a no-op, ADR-dreaming-012)
+    — only a NON-fatal advisory is emitted. This keeps the empty-memory -> dream
+    inserts -> re-run -> compare workflow runnable.
+    """
+    from memeval.claudecode import run_bench
+
+    saved = os.environ.pop("OPENROUTER_API_KEY", None)
+    try:
+        note = run_bench._openrouter_advisory(["plugin-real"])
+        assert note is not None and "OPENROUTER_API_KEY" in note   # advisory present
+        # non-plugin-real modes are unaffected
+        assert run_bench._openrouter_advisory(["builtin", "plugin"]) is None
+        # key present -> no advisory
+        os.environ["OPENROUTER_API_KEY"] = "sk-or-test"
+        assert run_bench._openrouter_advisory(["plugin-real"]) is None
+    finally:
+        os.environ.pop("OPENROUTER_API_KEY", None)
+        if saved is not None:
+            os.environ["OPENROUTER_API_KEY"] = saved
 
 
 # --------------------------------------------------------------------------- #
