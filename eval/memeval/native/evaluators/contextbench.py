@@ -28,9 +28,40 @@ them to the task's gold spans at three granularities:
 
 Headline (overall) metrics — the means across tasks at each granularity:
 ``file_recall/precision/f1``, ``block_recall/precision/f1``,
-``line_recall/precision/f1``, plus **efficiency** (mean memory-token overhead
-ratio ``memory_tokens / total_tokens`` — LOWER is better, the paper's retrieval
-efficiency signal) and **avg_retrieved** (mean predicted-set size).
+``line_recall/precision/f1``, plus ``avg_retrieved`` (mean predicted-set size)
+and ``memory_token_overhead`` (mean ``memory_tokens / total_tokens``; LOWER is
+better). NOTE: ``memory_token_overhead`` is a harness token-accounting ratio, NOT
+the paper's Efficiency metric — see the process-metrics block below for the real
+ContextBench Efficiency.
+
+Process / dynamics metrics (Appendix H, Eqs. 4-10) — faithful to the paper
+-------------------------------------------------------------------------
+ContextBench reports THREE trajectory-level process metrics over the sequence of
+intermediate context snapshots ``{C_t^A}_{t=1..T}`` (Eq. 4: ``A^(t) = ∪_{i≤t}
+C_i^A``), here read from the agent's per-step retrieve actions at **block**
+granularity:
+
+* **efficiency** (AUC-Cov, Eq. 5, HIGHER better) =
+  ``(1/T)·Σ_{t=1..T} Recall(A^(t), C^G)`` — normalized area under the cumulative
+  gold-coverage curve (how EARLY the agent reaches high coverage). Table 5
+  reports Efficiency↑ (e.g. Claude Sonnet 4.5 ≈ 0.658). This REPLACES the former
+  mislabeled token-overhead ratio.
+* **redundancy** (Eqs. 6-7, LOWER better) =
+  ``(1/(T-1))·Σ_{t=2..T} |C_t^A ∩ (∪_{i<t} C_i^A)| / |C_t^A|`` — fraction of each
+  new snapshot already seen. Defined only for ``T≥2``.
+* **evidence_drop** (Eqs. 8-10, LOWER better) =
+  ``1 - |C^A ∩ C^G| / |G_seen|`` where ``G_seen = (∪_t C_t^A) ∩ C^G`` — gold
+  evidence observed during exploration but dropped from the final patch context
+  ``C^A``. Defined only when ``G_seen`` is non-empty.
+
+Offline honesty: the EchoAgent performs exactly ONE retrieve per task, so
+``T == 1``. With a single snapshot, redundancy is undefined (needs ``T≥2``) and
+AUC-Cov/Drop collapse to the trivial single-step value; rather than report a
+fabricated number, each process metric is computed ONLY over tasks whose
+trajectory actually supplies the snapshots it needs, and DEGRADES to ``n=0``
+(skipped, value ``0.0``) when none do — exactly the skip-graceful pattern
+``resolve_rate`` uses. A real multi-step agent (e.g. the online ClaudeCode agent
+logging a retrieve step per file observation) populates them.
 
 Components — one :class:`ComponentScore` per **language** (the loader's
 ``competency`` stratum), each carrying that slice's file/block/line F1s, plus a
@@ -131,8 +162,12 @@ class ContextBenchNativeEvaluator(BaseNativeEvaluator):
             paper="ContextBench (arXiv:2602.05892, EuniAI/ContextBench)",
             metric_note=(
                 "in-task context retrieval recall/precision/F1 at file/block/line "
-                "granularity + efficiency; resolve_rate is a Docker-gated secondary "
-                "signal, skipped offline (n=0)."
+                "granularity; process metrics efficiency(AUC-Cov)/redundancy/"
+                "evidence_drop (Eqs.5-10) over the retrieve-step trajectory, "
+                "skipped (n=0) when the trajectory has too few snapshots (offline "
+                "single-step); resolve_rate is a Docker-gated secondary signal, "
+                "skipped offline (n=0). memory_token_overhead is a harness token "
+                "ratio, NOT the paper's Efficiency."
             ),
         )
 
@@ -141,8 +176,13 @@ class ContextBenchNativeEvaluator(BaseNativeEvaluator):
         rec: dict[str, list[float]] = {g: [] for g in _GRANULARITIES}
         prec: dict[str, list[float]] = {g: [] for g in _GRANULARITIES}
         f1s: dict[str, list[float]] = {g: [] for g in _GRANULARITIES}
-        effs: list[float] = []
+        overhead: list[float] = []          # memory_token ratio (harness signal)
         retrieved_sizes: list[float] = []
+        # Process / dynamics metrics (Eqs. 5-10), each over only the tasks whose
+        # trajectory supplies the snapshots it needs (skip-graceful offline).
+        auc_cov: list[float] = []           # efficiency (AUC-Cov, Eq. 5)
+        redundancy: list[float] = []        # redundancy (Eqs. 6-7)
+        evidence_drop: list[float] = []     # evidence drop (Eqs. 8-10)
         # Per-language slices.
         by_lang: dict[str, dict[str, list[float]]] = {}
         # Resolve-rate (secondary): only count tasks the grader actually scored.
@@ -172,8 +212,22 @@ class ContextBenchNativeEvaluator(BaseNativeEvaluator):
                 lang_acc[f"{g}_p"].append(gp)
                 lang_acc[f"{g}_f"].append(gf)
 
-            effs.append(_efficiency(r))
+            overhead.append(_memory_token_overhead(r))
             retrieved_sizes.append(float(len(pred["block"])))
+
+            # -- process metrics over the per-step retrieve trajectory ------- #
+            snapshots = _step_block_snapshots(r)  # [C_1^A, C_2^A, ...] block sets
+            gold_blocks = gold["block"]
+            final_pred = pred["block"]            # C^A (final/declared context)
+            ac = _auc_cov(snapshots, gold_blocks)
+            if ac is not None:
+                auc_cov.append(ac)
+            rd = _redundancy(snapshots)
+            if rd is not None:
+                redundancy.append(rd)
+            dr = _evidence_drop(snapshots, final_pred, gold_blocks)
+            if dr is not None:
+                evidence_drop.append(dr)
 
             if r.success is not None:
                 resolved_n += 1
@@ -188,10 +242,49 @@ class ContextBenchNativeEvaluator(BaseNativeEvaluator):
             report.add_metric(NativeMetric(f"{g}_precision", mean(prec[g]), n=n, better="higher"))
             report.add_metric(NativeMetric(f"{g}_f1", mean(f1s[g]), n=n, better="higher"))
 
-        # efficiency (LOWER is better) + avg predicted-context size.
+        # -- process / dynamics metrics (Eqs. 5-10), skip-graceful --------- #
         report.add_metric(
-            NativeMetric("efficiency", mean(effs), n=n, better="lower",
-                         metadata={"formula": "mean(memory_tokens / total_tokens)"})
+            NativeMetric(
+                "efficiency", mean(auc_cov), n=len(auc_cov), better="higher",
+                metadata={
+                    "formula": "AUC-Cov = (1/T)*sum_t Recall(A^(t), C^G) "
+                               "(Eq.5, block granularity)",
+                    "paper_metric": "Efficiency (Table 5, higher is better)",
+                    "skipped_when": "trajectory has no retrieve snapshots",
+                },
+            )
+        )
+        report.add_metric(
+            NativeMetric(
+                "redundancy", mean(redundancy), n=len(redundancy), better="lower",
+                metadata={
+                    "formula": "(1/(T-1))*sum_{t>=2} |C_t & union_{i<t} C_i| / |C_t| "
+                               "(Eqs.6-7)",
+                    "paper_metric": "Redundancy (Table 5, lower is better)",
+                    "skipped_when": "T<2 (needs >=2 retrieve steps; offline T=1)",
+                },
+            )
+        )
+        report.add_metric(
+            NativeMetric(
+                "evidence_drop", mean(evidence_drop), n=len(evidence_drop), better="lower",
+                metadata={
+                    "formula": "1 - |C^A & C^G| / |(union_t C_t^A) & C^G| (Eqs.8-10)",
+                    "paper_metric": "Usage/Evidence Drop (Table 5, lower is better)",
+                    "skipped_when": "no gold evidence observed in trajectory (G_seen empty)",
+                },
+            )
+        )
+
+        # memory_token_overhead (harness token ratio, NOT the paper's Efficiency)
+        # + avg predicted-context size.
+        report.add_metric(
+            NativeMetric("memory_token_overhead", mean(overhead), n=n, better="lower",
+                         metadata={
+                             "formula": "mean(memory_tokens / total_tokens)",
+                             "note": "harness token-accounting ratio; NOT "
+                                     "ContextBench Efficiency (see 'efficiency').",
+                         })
         )
         report.add_metric(
             NativeMetric("avg_retrieved", mean(retrieved_sizes), n=n, better="lower",
@@ -311,17 +404,107 @@ def _predicted_sets(record: PerTaskRecord, task: Task) -> dict[str, set]:
     return {"file": files, "block": blocks, "line": lines}
 
 
-def _efficiency(record: PerTaskRecord) -> float:
+def _memory_token_overhead(record: PerTaskRecord) -> float:
     """Memory-token overhead ratio ``memory_tokens / total_tokens`` for one task.
 
-    Matches the harness efficiency metric. ``0.0`` when no generate tokens were
-    spent (nothing to divide). LOWER is better.
+    A harness token-accounting signal (LOWER is better). NOT the paper's
+    Efficiency metric (that is AUC-Cov, Eq. 5 — see :func:`_auc_cov`). ``0.0``
+    when no generate tokens were spent (nothing to divide).
     """
     traj = record.trajectory
     total = traj.total_tokens
     if total <= 0:
         return 0.0
     return traj.memory_tokens / total
+
+
+def _step_block_snapshots(record: PerTaskRecord) -> list[set]:
+    """Per-step retrieved block sets ``[C_1^A, C_2^A, ...]`` (Eq. 4 inputs).
+
+    Each retrieve step's ``item_id`` set is one snapshot ``C_t^A`` (block
+    granularity == the span/element ids ContextBench keys on). Order follows the
+    trajectory's step order (chronological observation order). Empty snapshots
+    (a retrieve step that returned nothing) are preserved so ``T`` matches the
+    number of observation steps the agent actually took.
+    """
+    out: list[set] = []
+    for step in record.trajectory.steps:
+        if step.kind != "retrieve":
+            continue
+        out.append({str(ri.item_id) for ri in step.retrieved})
+    return out
+
+
+def _cumulative_unions(snapshots: Sequence[set]) -> list[set]:
+    """``[A^(1), A^(2), ...]`` where ``A^(t) = ∪_{i≤t} C_i^A`` (Eq. 4)."""
+    cum: list[set] = []
+    acc: set = set()
+    for snap in snapshots:
+        acc = acc | snap
+        cum.append(set(acc))
+    return cum
+
+
+def _auc_cov(snapshots: Sequence[set], gold: set) -> Optional[float]:
+    """Efficiency / AUC-Cov (Eq. 5): ``(1/T)·Σ_t Recall(A^(t), C^G)``.
+
+    Normalized area under the cumulative gold-coverage curve (HIGHER is better).
+    Returns ``None`` (skip this task) when there are no retrieve snapshots
+    (``T == 0``) so the metric degrades gracefully instead of fabricating ``0``.
+    Recall is ``0.0`` against empty gold by the shared :func:`set_recall`
+    convention; the per-task value is still well-defined.
+    """
+    if not snapshots:
+        return None
+    cum = _cumulative_unions(snapshots)
+    return sum(set_recall(a_t, gold) for a_t in cum) / len(cum)
+
+
+def _redundancy(snapshots: Sequence[set]) -> Optional[float]:
+    """Redundancy (Eqs. 6-7), LOWER is better.
+
+    ``(1/(T-1))·Σ_{t=2..T} |C_t ∩ (∪_{i<t} C_i)| / |C_t|``. Defined only for
+    ``T ≥ 2`` (needs at least one prior snapshot); returns ``None`` otherwise
+    (offline single-step trajectories are skipped). A step with an EMPTY ``C_t``
+    contributes ``0`` to the per-step ratio (no elements to be redundant) and is
+    counted in the ``T-1`` denominator, matching "fraction of elements in C_t
+    already seen" with the empty-set convention ``0/0 -> 0``.
+    """
+    snaps = list(snapshots)
+    if len(snaps) < 2:
+        return None
+    prev: set = set(snaps[0])
+    ratios: list[float] = []
+    for t in range(1, len(snaps)):
+        c_t = snaps[t]
+        if c_t:
+            ratios.append(len(c_t & prev) / len(c_t))
+        else:
+            ratios.append(0.0)
+        prev = prev | c_t
+    return sum(ratios) / len(ratios)
+
+
+def _evidence_drop(
+    snapshots: Sequence[set], final_pred: set, gold: set
+) -> Optional[float]:
+    """Evidence Drop (Eqs. 8-10), LOWER is better.
+
+    ``Drop = 1 - |C^A ∩ C^G| / |G_seen|`` where ``G_seen = (∪_t C_t^A) ∩ C^G``
+    is the gold evidence observed at least once during the trajectory and ``C^A``
+    is the FINAL/declared patch context (``final_pred``). Returns ``None`` (skip)
+    when ``G_seen`` is empty (no gold was ever observed, so "drop" is undefined).
+    """
+    if not snapshots or not gold:
+        return None
+    seen_union: set = set()
+    for snap in snapshots:
+        seen_union |= snap
+    g_seen = seen_union & gold
+    if not g_seen:
+        return None
+    keep = len(final_pred & gold) / len(g_seen)
+    return 1.0 - keep
 
 
 def _count_by_lang(records: Sequence[PerTaskRecord], by_id: dict[str, Task]) -> dict[str, int]:

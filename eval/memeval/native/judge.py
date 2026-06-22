@@ -172,7 +172,11 @@ class DeterministicJudge:
         if k in ("preference", "pref", "single-session-preference"):
             # Rubrics are descriptive, not verbatim answers: overlap only.
             return self._overlap(gold, prediction) >= self.overlap_threshold
-        # Default QA: substring tolerance OR overlap.
+        # ``temporal_reasoning`` / ``knowledge_update`` carry distinct LIVE-judge
+        # prompt wording (off-by-one tolerance / updated-answer-is-correct), but
+        # the deterministic offline path scores them exactly like plain QA
+        # (substring tolerance OR token overlap) — the nuance lives in the LLM
+        # prompt, not in the offline matcher. Any unknown kind also falls here.
         return self._qa_match(gold, prediction) or (
             self._overlap(gold, prediction) >= self.overlap_threshold
         )
@@ -224,14 +228,42 @@ class DeterministicJudge:
 _JUDGE_PROMPTS: dict[str, str] = {
     "qa": (
         "I will give you a question, a correct answer, and a response from a "
-        "model. Decide whether the response contains the correct answer.\n\n"
+        "model. Please answer yes if the response contains the correct answer. "
+        "Otherwise, answer no. If the response is equivalent to the correct "
+        "answer or contains all the intermediate steps to get the correct "
+        "answer, you should also answer yes.\n\n"
+        "Question: {question}\nCorrect answer: {gold}\nResponse: {prediction}\n\n"
+        "Does the response contain the correct answer? Answer yes or no."
+    ),
+    "temporal_reasoning": (
+        "I will give you a question, a correct answer, and a response from a "
+        "model. Please answer yes if the response contains the correct answer. "
+        "Otherwise, answer no. If the response is equivalent to the correct "
+        "answer or contains all the intermediate steps to get the correct "
+        "answer, you should also answer yes. In addition, do not penalize "
+        "off-by-one errors for the number of days. If the question asks for the "
+        "number of days/weeks/months, etc., and the model makes off-by-one "
+        "errors (e.g., predicting 19 days when the answer is 18), the model's "
+        "response is still correct.\n\n"
+        "Question: {question}\nCorrect answer: {gold}\nResponse: {prediction}\n\n"
+        "Does the response contain the correct answer? Answer yes or no."
+    ),
+    "knowledge_update": (
+        "I will give you a question, a correct answer, and a response from a "
+        "model. Please answer yes if the response contains the correct answer. "
+        "Otherwise, answer no. If the response contains some previous "
+        "information along with an updated answer, the response should be "
+        "considered as correct as long as the updated answer is the required "
+        "answer.\n\n"
         "Question: {question}\nCorrect answer: {gold}\nResponse: {prediction}\n\n"
         "Does the response contain the correct answer? Answer yes or no."
     ),
     "preference": (
         "I will give you a question, a rubric for the ideal answer, and a "
-        "response from a model. Decide whether the response satisfies the "
-        "rubric.\n\nQuestion: {question}\nRubric: {gold}\nResponse: {prediction}"
+        "response from a model. The model does not need to reflect all the "
+        "points in the rubric. The response is correct as long as it recalls "
+        "and utilizes the user's personal information correctly.\n\n"
+        "Question: {question}\nRubric: {gold}\nResponse: {prediction}"
         "\n\nDoes the response satisfy the rubric? Answer yes or no."
     ),
     "abstention": (

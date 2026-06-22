@@ -16,28 +16,46 @@ recall/NDCG from the retrieve step the agent logged.
 What we compute (matching the official ``evaluate_qa.py`` /
 ``print_qa_metrics.py`` / ``print_retrieval_metrics.py``)
 ---------------------------------------------------------
-* ``qa_accuracy_overall`` — primary metric: fraction the judge labels correct.
+* ``qa_accuracy_overall`` — primary metric (the official "Overall Accuracy",
+  ``np.mean(all_acc)``): the MICRO mean of the judge label over ALL questions
+  (answerable + abstention), exactly as ``print_qa_metrics.py`` reports it.
   Native judge is GPT-4o (``"yes" in response.lower()``); offline we substitute
   the stdlib :class:`~memeval.native.judge.DeterministicJudge`. Per the official
   scorer, the **abstention** cohort is graded with a DISTINCT unanswerable-
   question prompt; the answerable cohort with the per-question-type prompt
-  (single-session-preference uses the preference/rubric prompt). The headline
-  accuracy is the mean over ALL questions (answerable + abstention), exactly as
-  ``print_qa_metrics.py`` reports it.
+  (single-session-preference uses the preference/rubric prompt).
+* ``qa_accuracy_task_averaged`` — the official "Task-averaged Accuracy"
+  (``np.mean(task_acc)``): the MACRO mean over the per-question-type accuracies.
+  ``print_qa_metrics.py`` prints BOTH this and Overall Accuracy, so we surface
+  both. Computed over exactly the per-type buckets used for the breakdown below
+  (so it matches the official macro number, including ``_abs`` items in their
+  real type — see next bullet).
 * ``qa_accuracy_by_question_type`` — the headline breakdown: accuracy within each
-  of the six native answerable types, exposed as one
-  :class:`~memeval.native.spec.ComponentScore` per type.
-* ``abstention_accuracy`` — accuracy on the ``_abs`` cohort, scored with the
-  distinct unanswerable judge prompt and reported separately (its own component,
-  NOT a normal question-type bucket).
+  native question type, exposed as one
+  :class:`~memeval.native.spec.ComponentScore` per type. CRITICAL fidelity
+  detail: ``print_qa_metrics.py`` appends EVERY entry to its
+  ``question_type`` bucket UNCONDITIONALLY — including ``_abs`` items — *before*
+  the separate abstention tally. So an ``_abs`` item is counted BOTH in its real
+  question type AND in ``abstention_acc`` (double-counted by design). We mirror
+  that: ``_abs`` items contribute to their ``question_type`` bucket here too.
+* ``abstention_accuracy`` — accuracy on the ``_abs`` cohort (selector
+  ``'_abs' in question_id``, matching the official substring test), scored with
+  the distinct unanswerable judge prompt and reported separately (its own
+  component AND headline metric), in addition to (not instead of) its type
+  bucket.
 * ``answer_session_recall_at_k`` + ``answer_session_ndcg_at_k`` — session-level
-  retrieval quality. ``recall_all@k`` = fraction of a question's gold evidence
-  sessions (``answer_session_ids`` -> ``Task.gold_memory_ids``) appearing in the
-  top-k retrieved sessions; ``ndcg_any@k`` = NDCG@k over the ranked retrieved
-  list with binary relevance (rel=1 if the session is gold). Both are means over
-  the NON-abstention cohort (abstention items have no ground-truth location and
-  are skipped, matching ``print_retrieval_metrics.py``). Native k is {5,10,50};
-  we additionally report {1,3} since an offline retriever may return few items.
+  retrieval quality, faithful to ``eval_utils.py``. ``recall_all@k`` is
+  ALL-OR-NOTHING per question: ``1.0`` iff EVERY gold evidence session
+  (``answer_session_ids`` -> ``Task.gold_memory_ids``) is in the top-k retrieved
+  sessions, else ``0.0`` (``float(all(doc in topk for doc in gold))``). We ALSO
+  report ``recall_any@k`` = ``float(any(...))`` (1.0 iff at least one gold session
+  is in top-k). ``ndcg_any@k`` = NDCG@k over the ranked retrieved list with binary
+  relevance, using LongMemEval's idiosyncratic DCG (``rel[0] +
+  sum(rel[1:]/log2(arange(2,n+1)))`` — positions 0 AND 1 share the same
+  discount), not the textbook ``rel/log2(i+2)``. All are means over the
+  NON-abstention cohort (abstention items have no ground-truth location and are
+  skipped, matching ``print_retrieval_metrics.py``). Native k is {5,10,50}; we
+  additionally report {1,3} since an offline retriever may return few items.
   Turn-level recall (``has_answer``) is intentionally NOT reported: the loader
   does not preserve per-turn ``has_answer``, so only the session-level variant is
   faithfully derivable from the normalized :class:`~memeval.schema.Task`.
@@ -60,12 +78,12 @@ from ..spec import (
     NativeMetric,
     PerTaskRecord,
 )
+import math
+
 from .base import (
     BaseNativeEvaluator,
     mean,
     mode_to_memory,
-    ndcg_at_k,
-    set_recall,
 )
 
 #: Retrieval cut-offs we report recall/NDCG at. Native LongMemEval reports
@@ -101,6 +119,13 @@ _DISPLAY_NAME: dict[str, str] = {
 #: than the plain QA prompt. (single-session-preference's gold is a rubric.)
 _PREFERENCE_TYPES = frozenset({"single_session_preference"})
 
+#: Competencies whose official ``get_anscheck_prompt`` branch carries DISTINCT
+#: grading wording (so the live judge must use the matching template). Mapped to
+#: the judge ``kind``. The offline DeterministicJudge scores these as plain QA —
+#: the nuance (temporal off-by-one tolerance; knowledge-update "latest answer is
+#: correct") lives in the LLM prompt only, so offline scoring is unaffected.
+_DISTINCT_QA_KINDS = frozenset({"temporal_reasoning", "knowledge_update"})
+
 
 class LongMemEvalNativeEvaluator(BaseNativeEvaluator):
     """Native evaluator for LongMemEval QA (judge-graded, retrieval-aware)."""
@@ -121,11 +146,12 @@ class LongMemEvalNativeEvaluator(BaseNativeEvaluator):
         cost: Any = None,
         limit: Optional[int] = None,
         k: int = 5,
+        allow_shared_store: bool = False,
         **kwargs: Any,
     ) -> list[PerTaskRecord]:
         """Run each (question, full-history) trial once → per-task records.
 
-        Each LongMemEval question is an independent trial with its own history
+        Each LongMemEval question is an INDEPENDENT trial with its own history
         (no carry-over across questions), so we drive the EXACT loaded task list
         through the shared agent seam via :meth:`BaseNativeEvaluator.run_tasks`
         (EchoAgent offline; whatever AgentAdapter the caller passes online). For
@@ -135,7 +161,28 @@ class LongMemEvalNativeEvaluator(BaseNativeEvaluator):
         ``"preference"`` rubric prompt for single-session-preference, else
         ``"qa"`` — exactly the three prompt families the official
         ``get_anscheck_prompt`` switches between.
+
+        Independent-trial guard
+        -----------------------
+        ``_store_for_task`` returns an explicit ``store`` for ALL tasks, which
+        would leak one question's history into the next and violate LongMemEval's
+        independent-trial protocol (each question must see ONLY its own
+        ``haystack_sessions``). The default path (offline + ``run_native``) passes
+        ``store=None`` so every task gets a FRESH per-task ``InMemoryStore`` — the
+        correct behavior. To prevent accidental misuse we REJECT a non-``None``
+        ``store`` here unless the caller explicitly opts in with
+        ``allow_shared_store=True`` (e.g. a custom store that is itself reset
+        per task). LongMemEval tasks carry no ``group_id``, so with ``store=None``
+        no cross-task carry-over can occur.
         """
+        if store is not None and not allow_shared_store:
+            raise ValueError(
+                "LongMemEval is an independent-trial benchmark: a shared `store` "
+                "would leak memory across questions (each question must see only "
+                "its own haystack). Pass store=None (the default, fresh per-task "
+                "InMemoryStore) or, only if your store resets per task, "
+                "allow_shared_store=True."
+            )
         records = self.run_tasks(
             tasks,
             agent_or_model=agent_or_model,
@@ -190,6 +237,13 @@ class LongMemEvalNativeEvaluator(BaseNativeEvaluator):
         )
 
         # ---- accuracy (overall, by type, abstention) -------------------- #
+        # Faithful to print_qa_metrics.py: EVERY entry is appended to its
+        # question_type bucket UNCONDITIONALLY (including ``_abs`` items, in their
+        # real type), and a SEPARATE pass tallies the ``_abs`` cohort into
+        # ``abstention_acc``. So an ``_abs`` item is double-counted by design (its
+        # type bucket AND abstention). ``Overall Accuracy`` is the micro mean over
+        # all entries; ``Task-averaged Accuracy`` is the macro mean of the per-type
+        # accuracies.
         all_labels: list[float] = []
         abst_labels: list[float] = []
         by_type: dict[str, list[float]] = {t: [] for t in _QUESTION_TYPES}
@@ -197,12 +251,8 @@ class LongMemEvalNativeEvaluator(BaseNativeEvaluator):
             label = 1.0 if rec.extra.get("label") else 0.0
             all_labels.append(label)
             task = by_id.get(rec.task_id)
-            is_abs = bool(rec.extra.get("abstention")) or (
-                task is not None and bool(task.metadata.get("abstention"))
-            )
-            if is_abs:
-                abst_labels.append(label)
-                continue
+            # Question type bucket: append EVERY item (incl. _abs) to its real
+            # type, matching the official unconditional `type2acc[...].append(...)`.
             qtype = rec.extra.get("question_type") or (
                 task.competency if task is not None else ""
             )
@@ -210,6 +260,9 @@ class LongMemEvalNativeEvaluator(BaseNativeEvaluator):
                 by_type[qtype].append(label)
             else:
                 by_type.setdefault(qtype or "unknown", []).append(label)
+            # Abstention tally: official uses substring `'_abs' in question_id`.
+            if _is_abstention(rec, task):
+                abst_labels.append(label)
 
         rep.add_metric(
             NativeMetric(
@@ -217,7 +270,29 @@ class LongMemEvalNativeEvaluator(BaseNativeEvaluator):
                 mean(all_labels),
                 n=len(all_labels),
                 better="higher",
-                metadata={"label_parse": "'yes' in judge_response.lower()"},
+                metadata={
+                    "label_parse": "'yes' in judge_response.lower()",
+                    "official_name": "Overall Accuracy (micro: np.mean(all_acc))",
+                },
+            )
+        )
+        # Task-averaged (macro) Accuracy: np.mean over the per-type means. The
+        # official scorer averages over every question_type present in the data
+        # (each type weighted equally regardless of its item count).
+        type_means = [
+            mean(labels) for labels in by_type.values() if labels
+        ]
+        rep.add_metric(
+            NativeMetric(
+                "qa_accuracy_task_averaged",
+                mean(type_means),
+                n=len(type_means),
+                better="higher",
+                metadata={
+                    "official_name": "Task-averaged Accuracy (macro: np.mean(task_acc))",
+                    "note": "mean over per-question-type accuracies; _abs items "
+                            "counted in their real type (as print_qa_metrics.py does)",
+                },
             )
         )
         rep.add_metric(
@@ -252,11 +327,13 @@ class LongMemEvalNativeEvaluator(BaseNativeEvaluator):
             comp.add(NativeMetric("qa_accuracy", mean(labels), n=len(labels)))
             rep.add_component(comp)
 
-        # Abstention as its own component (NOT a normal question-type bucket).
+        # Abstention as its OWN dedicated component, in ADDITION to the type
+        # buckets above (an _abs item appears in BOTH, exactly as the official
+        # scorer double-counts it).
         abst_comp = ComponentScore(
             name="abstention",
             n=len(abst_labels),
-            metadata={"selector": "question_id endswith '_abs'"},
+            metadata={"selector": "'_abs' in question_id (official substring test)"},
         )
         abst_comp.add(
             NativeMetric(
@@ -282,24 +359,34 @@ class LongMemEvalNativeEvaluator(BaseNativeEvaluator):
         records: Sequence[PerTaskRecord],
         by_id: dict[str, Task],
     ) -> None:
-        """Append ``answer_session_recall@k`` / ``answer_session_ndcg@k``.
+        """Append ``answer_session_recall_{all,any}@k`` / ``answer_session_ndcg@k``.
 
-        Session-level only (``answer_session_ids`` == ``Task.gold_memory_ids``).
-        Abstention items are skipped (no ground-truth location), matching the
-        native ``print_retrieval_metrics.py``. ``recall_all@k`` averages the
-        fraction of a question's gold sessions in the top-k retrieved ids;
-        ``ndcg_any@k`` averages NDCG@k over the ranked retrieved list with binary
-        gold relevance. Questions with no gold sessions are excluded from the
-        recall/NDCG means (their recall is undefined).
+        Session-level only (``answer_session_ids`` == ``Task.gold_memory_ids``),
+        faithful to LongMemEval's ``eval_utils.py``. Abstention items are skipped
+        (no ground-truth location), matching ``print_retrieval_metrics.py``.
+
+        * ``recall_all@k`` is ALL-OR-NOTHING per question — ``1.0`` iff EVERY gold
+          session is in the top-k (``float(all(doc in topk for doc in gold))``),
+          NOT the fractional ``|topk ∩ gold| / |gold|``. For multi-gold questions
+          (multi-session / temporal-reasoning) finding only some gold sessions
+          scores ``0.0`` here.
+        * ``recall_any@k`` is ``float(any(...))`` — ``1.0`` iff at least one gold
+          session is in the top-k.
+        * ``ndcg_any@k`` uses LongMemEval's idiosyncratic DCG (positions 0 and 1
+          share the same discount), via :func:`_lme_ndcg`.
+
+        Questions with no gold sessions are excluded from the means (recall is
+        undefined there).
         """
-        recall_at: dict[int, list[float]] = {k: [] for k in _RECALL_KS}
+        recall_all_at: dict[int, list[float]] = {k: [] for k in _RECALL_KS}
+        recall_any_at: dict[int, list[float]] = {k: [] for k in _RECALL_KS}
         ndcg_at: dict[int, list[float]] = {k: [] for k in _RECALL_KS}
         n_scored = 0
         for rec in records:
             task = by_id.get(rec.task_id)
             if task is None:
                 continue
-            if rec.extra.get("abstention") or bool(task.metadata.get("abstention")):
+            if _is_abstention(rec, task):
                 continue
             gold = {str(g) for g in task.gold_memory_ids}
             if not gold:
@@ -308,20 +395,44 @@ class LongMemEvalNativeEvaluator(BaseNativeEvaluator):
             ranked_ids = _ranked_session_ids(rec)
             n_scored += 1
             for k in _RECALL_KS:
-                topk = ranked_ids[:k]
-                recall_at[k].append(set_recall(set(topk), gold))
-                rels = [1.0 if sid in gold else 0.0 for sid in topk]
-                ndcg_at[k].append(ndcg_at_k(rels, k))
+                topk = set(ranked_ids[:k])
+                # All-or-nothing recall_all and binary recall_any, per eval_utils.
+                recall_all_at[k].append(1.0 if gold <= topk else 0.0)
+                recall_any_at[k].append(1.0 if (gold & topk) else 0.0)
+                rels = [1.0 if sid in gold else 0.0 for sid in ranked_ids[:k]]
+                ndcg_at[k].append(_lme_ndcg(rels, gold_count=len(gold)))
 
         for k in _RECALL_KS:
-            vals = recall_at[k]
+            vals = recall_all_at[k]
             rep.add_metric(
                 NativeMetric(
                     f"answer_session_recall_at_{k}",
                     mean(vals),
                     n=len(vals),
                     better="higher",
-                    metadata={"k": k, "level": "session", "variant": "recall_all"},
+                    metadata={
+                        "k": k,
+                        "level": "session",
+                        "variant": "recall_all",
+                        "formula": "float(all(g in topk for g in gold)) "
+                                   "(all-or-nothing, per eval_utils.py)",
+                    },
+                )
+            )
+        for k in _RECALL_KS:
+            vals = recall_any_at[k]
+            rep.add_metric(
+                NativeMetric(
+                    f"answer_session_recall_any_at_{k}",
+                    mean(vals),
+                    n=len(vals),
+                    better="higher",
+                    metadata={
+                        "k": k,
+                        "level": "session",
+                        "variant": "recall_any",
+                        "formula": "float(any(g in topk for g in gold))",
+                    },
                 )
             )
         for k in _RECALL_KS:
@@ -332,7 +443,13 @@ class LongMemEvalNativeEvaluator(BaseNativeEvaluator):
                     mean(vals),
                     n=len(vals),
                     better="higher",
-                    metadata={"k": k, "level": "session", "variant": "ndcg_any"},
+                    metadata={
+                        "k": k,
+                        "level": "session",
+                        "variant": "ndcg_any",
+                        "dcg": "rel[0] + sum(rel[1:]/log2(arange(2,n+1))) "
+                               "(LongMemEval eval_utils.py idiosyncratic DCG)",
+                    },
                 )
             )
         rep.metadata.setdefault("n_retrieval_scored", n_scored)
@@ -344,14 +461,75 @@ class LongMemEvalNativeEvaluator(BaseNativeEvaluator):
 def _judge_kind(task: Task) -> str:
     """Pick the judge prompt family for a task (mirrors get_anscheck_prompt).
 
-    ``"abstention"`` for the ``_abs`` cohort; ``"preference"`` for
-    single-session-preference (its gold is a rubric); ``"qa"`` otherwise.
+    Maps each task to the judge ``kind`` so the LIVE judge uses the matching
+    official prompt branch:
+
+    * ``"abstention"`` for the ``_abs`` cohort (official substring check
+      ``'_abs' in question_id``, plus the loader's normalized ``abstention``
+      flag);
+    * ``"preference"`` for single-session-preference (its gold is a rubric);
+    * ``"temporal_reasoning"`` / ``"knowledge_update"`` — distinct QA prompts
+      (off-by-one tolerance / updated-answer-is-correct). The offline
+      DeterministicJudge scores these as plain QA;
+    * ``"qa"`` otherwise.
     """
-    if bool(task.metadata.get("abstention")) or task.task_id.endswith("_abs"):
+    if bool(task.metadata.get("abstention")) or "_abs" in task.task_id:
         return "abstention"
-    if (task.competency or "") in _PREFERENCE_TYPES:
+    comp = task.competency or ""
+    if comp in _PREFERENCE_TYPES:
         return "preference"
+    if comp in _DISTINCT_QA_KINDS:
+        return comp
     return "qa"
+
+
+def _is_abstention(rec: PerTaskRecord, task: Optional[Task]) -> bool:
+    """Whether a record is an abstention item, by the OFFICIAL substring test.
+
+    ``print_qa_metrics.py`` / ``evaluate_qa.py`` select the abstention cohort with
+    ``'_abs' in entry['question_id']`` (substring, NOT endswith). We honor that,
+    plus the loader's normalized ``abstention`` metadata flag and the per-record
+    cache set by :meth:`LongMemEvalNativeEvaluator.run`.
+    """
+    if bool(rec.extra.get("abstention")):
+        return True
+    if task is None:
+        return "_abs" in rec.task_id
+    return bool(task.metadata.get("abstention")) or "_abs" in task.task_id
+
+
+def _lme_ndcg(relevances: Sequence[float], *, gold_count: int) -> float:
+    """NDCG using LongMemEval's idiosyncratic DCG (``eval_utils.py``).
+
+    Official ``dcg(rel) = rel[0] + sum(rel[1:] / log2(arange(2, n+1)))`` — i.e.
+    positions 0 AND 1 both get discount ``1`` (``1/log2(2) == 1``), differing from
+    the textbook ``rel / log2(i + 2)`` for position 0. The ideal DCG ranks all
+    ``gold_count`` relevant items first (binary relevance), capped at the length of
+    ``relevances`` (the top-k window). Returns ``0.0`` when there is no gold.
+    """
+    rels = list(relevances)
+    if not rels or gold_count <= 0:
+        return 0.0
+    dcg = _lme_dcg(rels)
+    ideal = [1.0] * min(gold_count, len(rels))
+    idcg = _lme_dcg(ideal)
+    return (dcg / idcg) if idcg > 0.0 else 0.0
+
+
+def _lme_dcg(relevances: Sequence[float]) -> float:
+    """LongMemEval DCG: ``rel[0] + sum(rel[i]/log2(i+1) for i>=1)``.
+
+    Mirrors ``eval_utils.py``'s ``relevances[0] + np.sum(relevances[1:] /
+    np.log2(np.arange(2, n+1)))`` — for the i-th (0-based) item with ``i>=1`` the
+    discount is ``log2(i+1)`` (so i=1 -> log2(2)=1, i=2 -> log2(3), ...).
+    """
+    rels = list(relevances)
+    if not rels:
+        return 0.0
+    total = rels[0]
+    for i in range(1, len(rels)):
+        total += rels[i] / math.log2(i + 1)
+    return total
 
 
 def _ranked_session_ids(rec: PerTaskRecord) -> list[str]:

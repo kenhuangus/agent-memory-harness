@@ -44,6 +44,8 @@ from memeval.native import (  # noqa: E402
 from memeval.native.evaluators.longmemeval import (  # noqa: E402
     LongMemEvalNativeEvaluator,
     _judge_kind,
+    _lme_dcg,
+    _lme_ndcg,
     _ranked_session_ids,
 )
 from memeval.native.registry import register_native_evaluator
@@ -200,9 +202,18 @@ def test_all_question_type_components_and_abstention() -> None:
         assert comp is not None, f"missing component {name!r}"
         acc = comp.get("qa_accuracy")
         assert acc is not None and 0.0 <= acc.value <= 1.0
-        assert comp.n == 1  # exactly one question of each type in the fixture
 
-    # Abstention component present and separate from the type buckets.
+    # Faithful to print_qa_metrics.py: the _abs item (question_type
+    # "single-session-user") is appended to its REAL type bucket UNCONDITIONALLY,
+    # in addition to the abstention tally. So single-session-user has n==2 (its
+    # own answerable question + the abstention item), every other type has n==1.
+    assert report.components["single-session-user"].n == 2
+    for name in _TYPE_COMPONENTS:
+        if name == "single-session-user":
+            continue
+        assert report.components[name].n == 1, f"{name} should hold exactly 1 item"
+
+    # Abstention component present AND ALSO double-counted in its type bucket.
     abst = report.components.get("abstention")
     assert abst is not None
     assert abst.n == 1
@@ -214,6 +225,13 @@ def test_all_question_type_components_and_abstention() -> None:
     assert overall is not None
     assert overall.n == 7
     assert 0.0 <= overall.value <= 1.0
+
+    # Task-averaged (macro) Accuracy also surfaced: mean over the six per-type
+    # means (each type weighted equally). n == number of non-empty type buckets.
+    macro = report.metric("qa_accuracy_task_averaged")
+    assert macro is not None
+    assert macro.n == 6  # all six native types are populated in this fixture
+    assert 0.0 <= macro.value <= 1.0
 
     # Retrieval means computed over the 6 non-abstention questions only (the
     # abstention item has no gold session and is excluded).
@@ -253,10 +271,21 @@ def test_abstention_judge_marks_refusal_correct() -> None:
     report = ev.score(records, abs_tasks)
     aa = report.metric("abstention_accuracy")
     assert aa is not None and aa.value == 1.0
-    # The abstention item must NOT appear in any answerable type component.
+
+    # Faithful to print_qa_metrics.py: the _abs item is ALSO counted in its real
+    # question_type bucket (here single-session-user), not excluded from it. So
+    # that one type holds the item; the other five types are empty.
+    abs_types = {t.competency for t in abs_tasks}  # normalized form
+    # The bundled abstention fixture is a single-session-user item.
+    assert "single_session_user" in abs_types
+    assert report.components["single-session-user"].n == len(abs_tasks)
     for name in _TYPE_COMPONENTS:
+        if name == "single-session-user":
+            continue
         comp = report.components.get(name)
         assert comp is None or comp.n == 0
+    # And it appears in the dedicated abstention component too (double-counted).
+    assert report.components["abstention"].n == len(abs_tasks)
 
 
 def test_memory_off_recall_is_zero() -> None:
@@ -288,11 +317,17 @@ def test_helpers_judge_kind_and_ranking() -> None:
         str(_FIXTURES / "longmemeval.json")
     )
     by_id = {t.task_id: t for t in tasks}
-    # temporal item -> qa; abstention item -> abstention
+    # temporal item -> distinct temporal_reasoning kind (off-by-one tolerance in
+    # the LIVE prompt; offline it is still scored as plain QA); abstention ->
+    # abstention.
     temporal = next(t for t in tasks if t.competency == "temporal_reasoning")
-    assert _judge_kind(temporal) == "qa"
+    assert _judge_kind(temporal) == "temporal_reasoning"
     abst = next(t for t in tasks if t.metadata.get("abstention"))
     assert _judge_kind(abst) == "abstention"
+    # The deterministic judge treats temporal_reasoning/knowledge_update as QA.
+    dj = DeterministicJudge()
+    assert dj.judge("q", "Lisbon", "We went to Lisbon.", kind="temporal_reasoning") is True
+    assert dj.judge("q", "manager", "Promoted to manager.", kind="knowledge_update") is True
 
     # _ranked_session_ids reads the last retrieve step in rank order.
     ev = LongMemEvalNativeEvaluator()
@@ -303,6 +338,119 @@ def test_helpers_judge_kind_and_ranking() -> None:
     # Every id must be one of the task's session ids (item_id == session_id).
     sess_ids = {s.session_id for s in by_id[temporal.task_id].sessions}
     assert set(ranked) <= sess_ids
+
+
+def _multigold_record(task_id: str, gold_ids, retrieved_ids, label=True):
+    """Build a PerTaskRecord with a single retrieve step over ``retrieved_ids``.
+
+    ``retrieved_ids`` is best-first (rank 0 = first). Used to exercise the
+    all-or-nothing recall_all vs recall_any distinction directly.
+    """
+    from memeval.native.spec import PerTaskRecord
+    from memeval.schema import (
+        Benchmark as _B,
+        MemoryItem,
+        RetrievedItem,
+        Trajectory,
+        TrajectoryStep,
+    )
+
+    traj = Trajectory(task_id=task_id, benchmark=_B.LONGMEMEVAL, model="t", memory_on=True)
+    hits = [
+        RetrievedItem(
+            item=MemoryItem(item_id=str(sid), content="", timestamp=0.0),
+            score=1.0 - 0.01 * i,
+            rank=i,
+        )
+        for i, sid in enumerate(retrieved_ids)
+    ]
+    traj.add(TrajectoryStep(step=0, kind="retrieve", content="q", retrieved=hits))
+    rec = PerTaskRecord.from_trajectory(traj)
+    rec.extra["label"] = label
+    rec.extra["abstention"] = False
+    rec.extra["question_type"] = "multi_session"
+    return rec
+
+
+def test_recall_all_is_all_or_nothing_for_multigold() -> None:
+    """recall_all@k = 1.0 ONLY if EVERY gold session is in top-k (not fractional).
+
+    This is the case single-gold fixtures hide: with 2 gold sessions and only 1
+    retrieved within top-k, the official recall_all is 0.0 (impl was 0.5);
+    recall_any is 1.0.
+    """
+    from memeval.schema import Benchmark as _B, Task, TaskKind
+
+    # Two gold sessions; the retriever surfaces ONLY one of them at rank 0.
+    task = Task(
+        task_id="mg_1",
+        benchmark=_B.LONGMEMEVAL,
+        kind=TaskKind.QA,
+        question="q",
+        answer="a",
+        competency="multi_session",
+        gold_memory_ids=["g1", "g2"],
+    )
+    rec = _multigold_record("mg_1", ["g1", "g2"], retrieved_ids=["g1", "d1", "d2"])
+
+    ev = LongMemEvalNativeEvaluator()
+    report = ev.score([rec], [task])
+
+    # Only g1 is in top-3, g2 is missing -> recall_all = 0.0 (NOT 0.5).
+    r3 = report.metric("answer_session_recall_at_3")
+    assert r3 is not None and r3.value == 0.0, f"recall_all@3 should be 0.0, got {r3.value}"
+    # recall_any@3 = 1.0 (at least one gold present).
+    a3 = report.metric("answer_session_recall_any_at_3")
+    assert a3 is not None and a3.value == 1.0, f"recall_any@3 should be 1.0, got {a3.value}"
+
+    # Now surface BOTH gold within top-3 -> recall_all = 1.0.
+    rec2 = _multigold_record("mg_1", ["g1", "g2"], retrieved_ids=["g1", "g2", "d1"])
+    report2 = ev.score([rec2], [task])
+    assert report2.metric("answer_session_recall_at_3").value == 1.0
+    assert report2.metric("answer_session_recall_any_at_3").value == 1.0
+    # And at k=1 only g1 is in top-1 -> recall_all@1 = 0.0, recall_any@1 = 1.0.
+    assert report2.metric("answer_session_recall_at_1").value == 0.0
+    assert report2.metric("answer_session_recall_any_at_1").value == 1.0
+
+
+def test_lme_ndcg_idiosyncratic_discount() -> None:
+    """_lme_ndcg uses LongMemEval's DCG: positions 0 and 1 share discount 1.0."""
+    # DCG of [1, 1] = 1 + 1/log2(2) = 1 + 1 = 2.0 (position 1 discount == 1).
+    assert _lme_dcg([1.0, 1.0]) == 2.0
+    # DCG of [1, 0, 1] = 1 + 0 + 1/log2(3).
+    import math as _m
+    assert abs(_lme_dcg([1.0, 0.0, 1.0]) - (1.0 + 1.0 / _m.log2(3))) < 1e-12
+
+    # Gold at rank 0 with 1 gold -> perfect NDCG = 1.0.
+    assert _lme_ndcg([1.0, 0.0, 0.0], gold_count=1) == 1.0
+    # Two gold, both at ranks 0 and 1 -> ideal == actual -> 1.0.
+    assert _lme_ndcg([1.0, 1.0, 0.0], gold_count=2) == 1.0
+    # Two gold but one at rank 2: actual = 1 + 1/log2(3); ideal = 1 + 1 = 2.
+    val = _lme_ndcg([1.0, 0.0, 1.0], gold_count=2)
+    assert abs(val - ((1.0 + 1.0 / _m.log2(3)) / 2.0)) < 1e-12
+    # No gold -> 0.0.
+    assert _lme_ndcg([0.0, 0.0], gold_count=0) == 0.0
+
+
+def test_shared_store_rejected_to_preserve_independent_trials() -> None:
+    """Passing an explicit shared store must raise (it would leak memory)."""
+    from memeval.harness import InMemoryStore
+
+    tasks = get_loader(Benchmark.LONGMEMEVAL).load(str(_FIXTURES / "longmemeval.json"))
+    ev = LongMemEvalNativeEvaluator()
+    shared = InMemoryStore()
+    raised = False
+    try:
+        ev.run(tasks, mode="echo", store=shared, judge=DeterministicJudge())
+    except ValueError:
+        raised = True
+    assert raised, "a shared store must be rejected for the independent-trial protocol"
+    # Explicit opt-in is allowed (caller asserts the store resets per task).
+    recs = ev.run(
+        tasks, mode="echo", store=shared, judge=DeterministicJudge(),
+        allow_shared_store=True,
+    )
+    assert len(recs) == len(tasks)
 
 
 def _run_all() -> int:

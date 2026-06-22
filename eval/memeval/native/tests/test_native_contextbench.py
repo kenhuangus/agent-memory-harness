@@ -34,8 +34,12 @@ from memeval.native import (  # noqa: E402
 )
 from memeval.native.evaluators.contextbench import (  # noqa: E402
     ContextBenchNativeEvaluator,
+    _auc_cov,
+    _evidence_drop,
     _gold_sets,
     _predicted_sets,
+    _redundancy,
+    _step_block_snapshots,
 )
 from memeval.schema import Benchmark  # noqa: E402
 
@@ -112,9 +116,30 @@ def test_score_memory_on_metrics_in_range() -> None:
     assert report.metric("block_recall").value > 0.0
     assert report.metric("file_recall").value > 0.0
 
-    # efficiency present, >= 0, flagged lower-is-better.
+    # efficiency is now the PAPER's AUC-Cov (Eq. 5), HIGHER is better, in [0,1].
     eff = report.metric("efficiency")
-    assert eff is not None and eff.value >= 0.0 and eff.better == "lower"
+    assert eff is not None and eff.better == "higher"
+    assert _in_unit(eff.value)
+    assert eff.metadata.get("paper_metric", "").startswith("Efficiency")
+    # Offline EchoAgent does ONE retrieve, so AUC-Cov == block_recall (T=1).
+    assert abs(eff.value - report.metric("block_recall").value) < 1e-9
+
+    # redundancy needs >=2 retrieve steps; the single-step offline trajectory
+    # has none, so it must DEGRADE to n=0 (skipped), never fabricate a value.
+    red = report.metric("redundancy")
+    assert red is not None and red.n == 0 and red.value == 0.0 and red.better == "lower"
+
+    # evidence_drop (Eqs. 8-10) lower-is-better; offline EchoAgent observes gold
+    # in its single snapshot and keeps it in the final context -> Drop == 0.0,
+    # computed over the tasks where gold was observed (n > 0).
+    drop = report.metric("evidence_drop")
+    assert drop is not None and drop.better == "lower" and _in_unit(drop.value)
+    assert drop.n > 0
+
+    # memory_token_overhead present, >= 0, lower-is-better (a harness token ratio,
+    # explicitly NOT the paper's Efficiency).
+    over = report.metric("memory_token_overhead")
+    assert over is not None and over.value >= 0.0 and over.better == "lower"
 
     # avg_retrieved present and non-negative.
     avg = report.metric("avg_retrieved")
@@ -193,6 +218,77 @@ def test_judge_arg_ignored_but_accepted() -> None:
     assert len(records) == len(tasks)
     report = ev.score(records, tasks)
     assert report.n_tasks == len(tasks)
+
+
+def _traj_with_steps(step_id_lists):
+    """Trajectory whose retrieve steps surface the given block-id lists in order."""
+    from memeval.schema import (
+        Benchmark as _B,
+        MemoryItem,
+        RetrievedItem,
+        Trajectory,
+        TrajectoryStep,
+    )
+
+    traj = Trajectory(task_id="t", benchmark=_B.CONTEXTBENCH, model="m", memory_on=True)
+    for ids in step_id_lists:
+        hits = [
+            RetrievedItem(item=MemoryItem(item_id=str(i), content="", timestamp=0.0),
+                          score=1.0, rank=r)
+            for r, i in enumerate(ids)
+        ]
+        traj.add(TrajectoryStep(step=0, kind="retrieve", content="q", retrieved=hits))
+    return traj
+
+
+def test_process_metrics_multistep_formulas() -> None:
+    """AUC-Cov / Redundancy / Evidence Drop match hand-computed Eq.5-10 values."""
+    from memeval.native.spec import PerTaskRecord
+
+    # Snapshots: step1 {g1, d1}, step2 {g1, g2} (re-reads g1 -> redundancy>0).
+    # Gold blocks = {g1, g2}.
+    gold = {"g1", "g2"}
+    traj = _traj_with_steps([["g1", "d1"], ["g1", "g2"]])
+    rec = PerTaskRecord.from_trajectory(traj)
+    snaps = _step_block_snapshots(rec)
+    assert snaps == [{"g1", "d1"}, {"g1", "g2"}]
+
+    # AUC-Cov (Eq.5): A1={g1,d1} recall=1/2; A2={g1,d1,g2} recall=2/2=1.
+    #   AUC = (0.5 + 1.0)/2 = 0.75.
+    assert abs(_auc_cov(snaps, gold) - 0.75) < 1e-12
+
+    # Redundancy (Eqs.6-7): only t=2. C2={g1,g2}, prior={g1,d1}.
+    #   |C2 & prior| = |{g1}| = 1; |C2| = 2 -> 0.5. Averaged over T-1=1 -> 0.5.
+    assert abs(_redundancy(snaps) - 0.5) < 1e-12
+
+    # Evidence Drop (Eqs.8-10): G_seen = (union {g1,d1,g2}) & gold = {g1,g2}.
+    #   final patch context C^A == last snapshot {g1,g2}; keep = |{g1,g2}|/|{g1,g2}| = 1.
+    #   Drop = 1 - 1 = 0.0 (all observed gold kept).
+    assert _evidence_drop(snaps, {"g1", "g2"}, gold) == 0.0
+    # If the final context DROPS g2 (only keeps g1): keep = 1/2 -> Drop = 0.5.
+    assert abs(_evidence_drop(snaps, {"g1"}, gold) - 0.5) < 1e-12
+
+
+def test_process_metrics_degrade_gracefully() -> None:
+    """Single-step / empty trajectories skip (None) instead of fabricating values."""
+    from memeval.native.spec import PerTaskRecord
+
+    gold = {"g1", "g2"}
+    # Single retrieve step: redundancy undefined (needs T>=2) -> None.
+    one = _step_block_snapshots(PerTaskRecord.from_trajectory(_traj_with_steps([["g1"]])))
+    assert _redundancy(one) is None
+    # AUC-Cov defined for T=1 (= recall of the single cumulative snapshot).
+    assert _auc_cov(one, gold) == 0.5
+    # No retrieve steps at all: AUC-Cov and Drop both skip.
+    none = _step_block_snapshots(PerTaskRecord.from_trajectory(_traj_with_steps([])))
+    assert _auc_cov(none, gold) is None
+    assert _redundancy(none) is None
+    assert _evidence_drop(none, set(), gold) is None
+    # Gold never observed -> Evidence Drop undefined (G_seen empty) -> None.
+    no_gold = _step_block_snapshots(
+        PerTaskRecord.from_trajectory(_traj_with_steps([["d1"], ["d2"]]))
+    )
+    assert _evidence_drop(no_gold, {"d1"}, gold) is None
 
 
 def _run_all() -> int:
