@@ -30,7 +30,7 @@ from __future__ import annotations
 import inspect
 import math
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Optional, Protocol, runtime_checkable
 
 from .protocols import MemoryStore
@@ -455,6 +455,30 @@ class RouterConfig:
     # behavior is byte-for-byte unchanged regardless of this field.
     write_policy: str = "base_all"
     write_base: str = MARKDOWN
+    # Dedup-on-write (ADR-P2/P4, D024): on write, if an existing memory in `dedup_backend` is at or
+    # above `dedup_threshold` cosine similarity, MERGE into it (reuse its id, newer content wins,
+    # version+1) instead of creating a duplicate. **Default OFF** — D024 measured that the offline
+    # char-n-gram embedder CANNOT separate near-dups from distinct-but-similar memories (a distinct
+    # "read timeout 5s" vs "write timeout 30s" scores HIGHER than a reworded true duplicate), so
+    # auto-merging offline risks FALSE MERGES = silent data loss. So dedup is intended for the
+    # real-embedder (paid) path, where same-fact vs different-fact actually separate (the D020 story);
+    # `RouterConfig(dedup=True)` is permitted (not enforced — the router can't tell a "real" embedder
+    # from the hashing default) but is unsafe offline. `dedup_threshold` applies when enabled. Only
+    # Router.write uses these; route()/route_write() are unaffected.
+    dedup: bool = False
+    dedup_threshold: float = 0.92
+    dedup_backend: str = VECTORS
+
+
+@dataclass(frozen=True)
+class WriteReceipt:
+    """The result of :meth:`Router.write`: the resulting ``item_id`` (an existing one if a duplicate
+    was merged), whether it ``merged``, the ``version`` written, and the backend names persisted to."""
+
+    item_id: str
+    merged: bool
+    version: int
+    backends: tuple
 
 
 # --------------------------------------------------------------------------- #
@@ -820,8 +844,54 @@ class Router:
                 out.append(name)
         return out
 
+    # -- dedup-aware orchestrated write (ADR-P2/P4, D024) ------------------------------------
+    def write(self, item: MemoryItem, *, dedup: Optional[bool] = None) -> WriteReceipt:
+        """Persist ``item`` with dedup + write-routing; return a :class:`WriteReceipt`.
+
+        The orchestrated write the ADR describes: resolve dedup (a near-duplicate MERGES into the
+        existing memory — reuse its id, newer content wins, version+1), then route the (possibly
+        merged) item to its backend(s) and persist. Returns the resulting id so the caller learns
+        whether a duplicate was merged. ``dedup`` overrides :attr:`RouterConfig.dedup` for this call.
+        The merge path copies via ``dataclasses.replace`` (the caller's item is untouched); the
+        no-merge path hands the original ``item`` to the backend stores, which may set derived fields
+        (e.g. ``tokens``) per their own write behavior.
+        """
+        merged = False
+        do_dedup = self._config.dedup if dedup is None else dedup
+        if do_dedup:
+            found = self._find_duplicate(item)
+            if found is not None:
+                dup_id, dup_version = found
+                item = replace(item, item_id=dup_id, version=dup_version + 1)  # newer content wins
+                merged = True
+        stores = self.route_write(item)
+        for store in stores:
+            store.write(item)
+        names = tuple(n for n in self._write_backend_names(item) if n in self.backends)
+        return WriteReceipt(item_id=item.item_id, merged=merged, version=item.version, backends=names)
+
+    def _find_duplicate(self, item: MemoryItem) -> Optional[tuple]:
+        """``(existing_id, existing_version)`` of a near-duplicate of ``item`` in the dedup backend
+        (top non-self hit at/above ``dedup_threshold``), else ``None``.
+
+        A FALSE positive collapses two distinct memories (silent data loss), so the threshold is
+        conservative. Writing over the SAME id is a plain overwrite, not a dedup-merge, so a self-hit
+        is skipped. Hits are score-sorted, so the first non-self hit decides.
+        """
+        store = self.backends.get(self._config.dedup_backend)
+        content = (item.content or "").strip()
+        if store is None or not content:
+            return None
+        for hit in store.search(content, k=2):
+            if hit.item_id == item.item_id:
+                continue  # overwrite of the same memory, not a duplicate to merge
+            if hit.score >= self._config.dedup_threshold:
+                return (hit.item_id, hit.item.version)
+            return None  # top non-self hit is below threshold -> no near-duplicate
+        return None
+
 
 __all__ = [
-    "Router", "RouterConfig", "CascadeConfig", "Consult2Config",
+    "Router", "RouterConfig", "CascadeConfig", "Consult2Config", "WriteReceipt",
     "speed_profile", "accuracy_profile",
 ]
