@@ -42,3 +42,39 @@ The conscious surface is **recall-only** (ADR-harness-008) — `recall` is expos
 - [`docs/adrs/ADR-harness-007-memory-events-stream.md`](../docs/adrs/ADR-harness-007-memory-events-stream.md)
 - [`docs/adrs/ADR-harness-008-recall-only-conscious-surface.md`](../docs/adrs/ADR-harness-008-recall-only-conscious-surface.md)
 - [`docs/adrs/ADR-harness-009-client-agnostic-skills.md`](../docs/adrs/ADR-harness-009-client-agnostic-skills.md)
+
+---
+
+## 2026-06-22T12:45 — entry 2
+
+**Triggered by:** Milestone: production install landed (PR #70 / ADR-harness-010) + a live install-readiness verification of the plugin from `main`.
+**Branch:** main
+**Related ADRs:** ADR-harness-010 (new), ADR-harness-009 (one clause superseded)
+
+### Summary
+The harness crossed from "builds an artifact" to "installs from git on a clean machine." ADR-harness-010 (PR #70) reverses the one git-ignored-bundle clause of ADR-harness-009: the materialized Claude Code bundle is now **committed** at `plugin/marketplace/cookbook-memory/` and a **root `.claude-plugin/marketplace.json`** points at it via a `git-subdir` source, so `claude plugin marketplace add <repo>` + `claude plugin install cookbook-memory` delivers the recall skill, the MCP recall tool, and the five lifecycle hooks together with no repo clone. The package half of the install is a `pip install --user "cookbook-memory[mcp] @ git+…#subdirectory=plugin"`, which also pulls the frozen-contract dep (`agent-memory-eval`) as a `git+URL`. A clause of ADR-harness-009 is superseded; its canonical-skill authoring model still holds. The `/kb` command + `.kb/` journal also landed this window (PR #71) but is process tooling, not harness runtime.
+
+### Key state
+The bundle invokes its surfaces **by module, not by console script** — `python3 -m cookbook_memory mcp` for MCP and `python3 -m cookbook_memory.adapters.claude_code.hooks_handler <Event>` for hooks — so resolution depends only on `cookbook_memory` being importable by the `python3` Claude Code runs. This is why the README mandates `pip install --user`, not pipx: a pipx-isolated install is invisible to that interpreter. The committed bundle and the canonical adapter source (`adapters/claude_code/`) are in sync (both module-form); the only divergence is the **git-ignored, untracked `plugin/dist/claude-code/`** artifact, which still carries the old `memory-cli`/`memory-hook` console-script wiring — harmless because it's not the install target. Everything remains fail-open (ADR-harness-006) and recall-only (ADR-harness-008). A live check this session confirmed: package imports, hooks_handler exits 0, the module CLI dispatches, and a remember→query recall round-trip retrieves the stored fact (BM25, lexical-default — a no-term-overlap query correctly returns empty, which is backend behavior, not a break).
+
+### Open items
+- Stale `plugin/dist/claude-code/` bundle carries outdated `memory-cli`/`memory-hook` commands; gitignored and not an install target, but worth deleting to avoid confusion.
+- The two documented install steps are the only thing between `main` and a working local install — nothing is installed against the **system** `python3` yet (verified absent this session); the repo `.venv` is what currently has it.
+- Recall is lexical-default (BM25): queries with no shared terms return empty by design — same edge to keep in mind once a vector/embedding backend becomes the routing target.
+- OpenCode adapter still not implemented (carried from entry 1).
+- PreCompact/Stop concurrency contract still lacks an automated under-load race test (carried from entry 1).
+
+### Artifacts at time of entry
+- [`.claude-plugin/marketplace.json`](../.claude-plugin/marketplace.json) — root git-subdir install manifest
+- [`plugin/marketplace/cookbook-memory/`](../plugin/marketplace/cookbook-memory/) — the committed, installable bundle
+- [`plugin/cookbook_memory/adapters/claude_code/`](../plugin/cookbook_memory/adapters/claude_code/) — canonical adapter source (manifests + hooks + build.py)
+- [`plugin/README.md`](../plugin/README.md) — the two-step install instructions
+- [`plugin/pyproject.toml`](../plugin/pyproject.toml) — `[mcp]` extra, `git+URL` contract dep, console-script conveniences
+- [`docs/adrs/ADR-harness-010-commit-release-bundle.md`](../docs/adrs/ADR-harness-010-commit-release-bundle.md)
+- [`docs/adrs/ADR-harness-009-client-agnostic-skills.md`](../docs/adrs/ADR-harness-009-client-agnostic-skills.md) (one clause superseded by 010)
+
+### Notable since last entry
+- ADR-harness-010 landed (PR #70) — release bundle is now committed + installs from git with no clone; reverses ADR-harness-009's git-ignored-bundle clause.
+- Install is now two real steps (`pip install --user` of the package, then `claude plugin install`); both verified resolvable in this session.
+- `/kb` command + `.kb/` per-domain journal added (PR #71) — process tooling.
+- Confirmed a stale, untracked `plugin/dist/` bundle with old console-script wiring exists alongside the live module-form bundle.
