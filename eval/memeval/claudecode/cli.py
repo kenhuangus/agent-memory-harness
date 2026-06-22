@@ -78,7 +78,7 @@ def build_argv(
     model: Optional[str] = None, mcp_config: Optional[str | Path] = None,
     allowed_tools: Optional[list[str]] = None, append_system_prompt: Optional[str] = None,
     permission_mode: str = "bypassPermissions", strict_mcp: bool = False,
-    strip_api_key: bool = True,
+    strip_api_key: bool = True, wsl_extra_env: Optional[dict[str, str]] = None,
 ) -> tuple[list[str], Optional[str]]:
     """Build the (argv, subprocess_cwd) for a run. Pure — unit-tested per platform.
 
@@ -86,13 +86,15 @@ def build_argv(
     ``wsl -d <distro> --cd <wslcwd> -- [env -u API_KEY…] <claude> …`` with file
     paths translated; the subprocess cwd is ``None`` (WSL ``--cd`` sets the dir).
     ``strip_api_key`` drops API-key env vars so the CLI uses the subscription.
+    ``wsl_extra_env`` is folded into the in-WSL ``env`` prefix (native runs pass
+    extra env via the subprocess env instead — see :func:`_clean_env`).
     """
     if runtime.kind == "wsl":
         mcp = to_wsl_path(mcp_config) if mcp_config else None
         flags = _flags(model=model, mcp_config=mcp, allowed_tools=allowed_tools,
                        append_system_prompt=append_system_prompt,
                        permission_mode=permission_mode, strict_mcp=strict_mcp)
-        prefix = _wsl_env_prefix(strip_api_key)
+        prefix = _wsl_env_prefix(strip_api_key, wsl_extra_env)
         argv = ["wsl", "-d", runtime.distro or "Ubuntu", "--cd", to_wsl_path(cwd),
                 "--", *prefix, runtime.exe, "-p", prompt, *flags]
         return argv, None
@@ -130,7 +132,7 @@ def build_argv_primed(
     model: Optional[str] = None, mcp_config: Optional[str | Path] = None,
     allowed_tools: Optional[list[str]] = None, append_system_prompt: Optional[str] = None,
     permission_mode: str = "bypassPermissions", strict_mcp: bool = False,
-    strip_api_key: bool = True,
+    strip_api_key: bool = True, wsl_extra_env: Optional[dict[str, str]] = None,
 ) -> tuple[list[str], Optional[str]]:
     """(argv, cwd) for a primed run. The prompt is fed via stdin (stream-json), so
     unlike :func:`build_argv` no ``-p <prompt>`` positional is included."""
@@ -139,7 +141,7 @@ def build_argv_primed(
         flags = _flags_primed(model=model, mcp_config=mcp, allowed_tools=allowed_tools,
                               append_system_prompt=append_system_prompt,
                               permission_mode=permission_mode, strict_mcp=strict_mcp)
-        prefix = _wsl_env_prefix(strip_api_key)
+        prefix = _wsl_env_prefix(strip_api_key, wsl_extra_env)
         argv = ["wsl", "-d", runtime.distro or "Ubuntu", "--cd", to_wsl_path(cwd),
                 "--", *prefix, runtime.exe, "-p", *flags]
         return argv, None
@@ -154,7 +156,7 @@ def run_claude_primed(
     mcp_config: Optional[str | Path] = None, allowed_tools: Optional[list[str]] = None,
     append_system_prompt: Optional[str] = None, permission_mode: str = "bypassPermissions",
     strict_mcp: bool = False, strip_api_key: bool = True, timeout: int = 300,
-    runtime: Optional[ClaudeRuntime] = None,
+    runtime: Optional[ClaudeRuntime] = None, extra_env: Optional[dict[str, str]] = None,
 ) -> ClaudeResult:
     """Run one headless turn with a *priming turn* first, over stream-json I/O.
 
@@ -164,17 +166,19 @@ def run_claude_primed(
     answer — eliminating the startup race that drops ``memory_recall`` on ~half of
     plain ``claude -p`` invocations. Returns the LAST result event (the real
     answer). Used by the plugin (MCP) path; the plain text path is unchanged.
+    ``extra_env`` (e.g. ``PATH`` / ``CLAUDE_PROJECT_DIR``) is added to the CLI's
+    environment so an installed plugin's MCP-server command and store path resolve.
     """
     rt = require_runtime(runtime)
     argv, sub_cwd = build_argv_primed(
         rt, cwd=cwd, model=model, mcp_config=mcp_config, allowed_tools=allowed_tools,
         append_system_prompt=append_system_prompt, permission_mode=permission_mode,
-        strict_mcp=strict_mcp, strip_api_key=strip_api_key,
+        strict_mcp=strict_mcp, strip_api_key=strip_api_key, wsl_extra_env=extra_env,
     )
     stdin_data = _stream_json_input([_PRIME_MESSAGE, prompt])
     for attempt in range(3):
         proc = subprocess.run(argv, cwd=sub_cwd, capture_output=True, text=True,
-                              timeout=timeout, env=_clean_env(strip_api_key),
+                              timeout=timeout, env=_clean_env(strip_api_key, extra_env),
                               input=stdin_data)
         if proc.returncode == 0:
             return _parse_stream_json(proc.stdout)
@@ -185,14 +189,16 @@ def run_claude_primed(
     return _parse_stream_json(proc.stdout)
 
 
-def _wsl_env_prefix(strip_api_key: bool) -> list[str]:
+def _wsl_env_prefix(strip_api_key: bool,
+                    extra_env: Optional[dict[str, str]] = None) -> list[str]:
     """The ``env ...`` prefix run *inside* WSL before ``claude``.
 
     Env vars don't cross the Windows->WSL boundary, so the native ``_clean_env``
-    can't reach the in-WSL CLI. We instead express the same two adjustments as an
-    ``env`` command in the WSL argv: ``-u VAR`` unsets each API key, and
+    can't reach the in-WSL CLI. We instead express the same adjustments as an
+    ``env`` command in the WSL argv: ``-u VAR`` unsets each API key,
     ``CLAUDE_CONFIG_DIR=<wsl-path>`` points the in-WSL CLI at the sandbox (path
-    translated to its ``/mnt`` form). Returns ``[]`` when nothing needs setting."""
+    translated to its ``/mnt`` form), and any ``extra_env`` is appended verbatim
+    (the caller supplies WSL-correct values). Returns ``[]`` when nothing is set."""
     parts: list[str] = []
     if strip_api_key:
         for v in _API_KEY_VARS:
@@ -200,13 +206,16 @@ def _wsl_env_prefix(strip_api_key: bool) -> list[str]:
     sandbox_dir = sandbox.active_config_dir()
     if sandbox_dir is not None:
         parts.append(f"CLAUDE_CONFIG_DIR={to_wsl_path(sandbox_dir)}")
+    for key, val in (extra_env or {}).items():
+        parts.append(f"{key}={val}")
     return ["env", *parts] if parts else []
 
 
-def _clean_env(strip_api_key: bool) -> Optional[dict]:
+def _clean_env(strip_api_key: bool,
+               extra_env: Optional[dict[str, str]] = None) -> Optional[dict]:
     """Subprocess env for the ``claude`` CLI.
 
-    Two adjustments to the inherited environment:
+    Adjustments to the inherited environment:
 
     * API-key vars removed (so WSLENV can't forward them and a native CLI can't
       read them) when ``strip_api_key`` — the CLI then uses the subscription.
@@ -214,16 +223,20 @@ def _clean_env(strip_api_key: bool) -> Optional[dict]:
       (:func:`memeval.claudecode.sandbox.active_config_dir`), so the CLI reads
       only the seeded sandbox config — no host skills / agents / ``CLAUDE.md`` —
       instead of ``~/.claude``.
+    * ``extra_env`` merged on top (e.g. ``PATH`` so a plugin's MCP-server command
+      resolves, ``CLAUDE_PROJECT_DIR`` so its store path resolves).
 
-    Returns ``None`` (keep the inherited env unchanged) only when neither
-    adjustment applies."""
+    Returns ``None`` (keep the inherited env unchanged) only when no adjustment
+    applies."""
     sandbox_dir = sandbox.active_config_dir()
-    if not strip_api_key and sandbox_dir is None:
+    if not strip_api_key and sandbox_dir is None and not extra_env:
         return None
     env = {k: v for k, v in os.environ.items()
            if not (strip_api_key and k in _API_KEY_VARS)}
     if sandbox_dir is not None:
         env["CLAUDE_CONFIG_DIR"] = sandbox_dir
+    if extra_env:
+        env.update(extra_env)
     return env
 
 
@@ -232,18 +245,20 @@ def run_claude(
     mcp_config: Optional[str | Path] = None, allowed_tools: Optional[list[str]] = None,
     append_system_prompt: Optional[str] = None, permission_mode: str = "bypassPermissions",
     strict_mcp: bool = False, strip_api_key: bool = True, timeout: int = 300,
-    runtime: Optional[ClaudeRuntime] = None,
+    runtime: Optional[ClaudeRuntime] = None, extra_env: Optional[dict[str, str]] = None,
 ) -> ClaudeResult:
     """Run one headless ``claude -p`` turn (native or WSL) and return text + usage.
 
     ``strip_api_key`` (default True) makes the CLI authenticate with the Claude
     Code subscription, never an API key — no API billing for benchmark runs.
+    ``extra_env`` is added to the CLI's environment (e.g. ``PATH`` /
+    ``CLAUDE_PROJECT_DIR`` for an installed plugin's MCP server + store path).
     """
     rt = require_runtime(runtime)
     argv, sub_cwd = build_argv(
         rt, prompt, cwd=cwd, model=model, mcp_config=mcp_config, allowed_tools=allowed_tools,
         append_system_prompt=append_system_prompt, permission_mode=permission_mode,
-        strict_mcp=strict_mcp, strip_api_key=strip_api_key,
+        strict_mcp=strict_mcp, strip_api_key=strip_api_key, wsl_extra_env=extra_env,
     )
     # stdin=DEVNULL: headless `claude -p` reads its prompt from argv, but without a
     # TTY (e.g. a background process) it waits 3s for stdin and prints a warning
@@ -253,7 +268,7 @@ def run_claude(
     # not found") before any model turn — so a retry is cheap and usually succeeds.
     for attempt in range(3):
         proc = subprocess.run(argv, cwd=sub_cwd, capture_output=True, text=True,
-                              timeout=timeout, env=_clean_env(strip_api_key),
+                              timeout=timeout, env=_clean_env(strip_api_key, extra_env),
                               stdin=subprocess.DEVNULL)
         if proc.returncode == 0:
             return _parse(proc.stdout)

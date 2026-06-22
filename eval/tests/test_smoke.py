@@ -780,6 +780,44 @@ def test_claudecode_agent_plugin_records_retrieval() -> None:
     assert seen["strict_mcp"] is True                            # plugin isolates MCP
 
 
+def test_claudecode_agent_plugin_real_records_retrieval_from_events() -> None:
+    # plugin-real mode = the SHIPPING plugin as a black box. The fake CLI stands in
+    # for the installed plugin: it writes a recall event (with meta.hits) to the
+    # plugin's own events stream, exactly as the cookbook-memory MCP server would,
+    # and the agent attributes that retrieval to the trajectory from meta.hits.
+    import json as _json
+    from memeval.claudecode.agent import ClaudeCodeAgent
+    from memeval.claudecode.cli import ClaudeResult
+    from memeval.claudecode.platform import ClaudeRuntime
+    seen: dict = {}
+
+    def fake(prompt, *, cwd, **kw):
+        seen["cwd"] = str(cwd)
+        # Simulate the installed plugin's MCP server logging a recall to its events
+        # stream under ${CLAUDE_PROJECT_DIR}/.cookbook-memory (here: the run dir).
+        store = Path(cwd) / ".cookbook-memory"
+        store.mkdir(parents=True, exist_ok=True)
+        ev = {
+            "ts": 1.0, "op": "recall", "ids": ["m1"], "query": prompt,
+            "meta": {"hits": [{"id": "m1", "content": "sqlite was chosen",
+                               "score": 0.9, "rank": 0, "tokens": 3, "timestamp": 1.0}]},
+        }
+        (store / "events.jsonl").write_text(_json.dumps(ev) + "\n")
+        return ClaudeResult(text="sqlite", tokens_in=20, tokens_out=4)
+
+    native = ClaudeRuntime(kind="native", exe="claude", python="python")
+    with tempfile.TemporaryDirectory() as tmp:
+        agent = ClaudeCodeAgent(memory_mode="plugin-real", runner=fake, runtime=native,
+                                workdir=tmp)
+        rr = run_agent(Benchmark.MEMORY_AGENT_BENCH, agent, memory=True,
+                       path_or_id=_fixture("memoryagentbench.json"), limit=1,
+                       seed_sessions=False)
+    kinds = [s.kind for t in rr.trajectories for s in t.steps]
+    assert "retrieve" in kinds and "generate" in kinds      # attributed from meta.hits
+    # the run executed in the per-task dir, where the plugin's store/events live
+    assert seen["cwd"]
+
+
 def test_claudecode_platform_path_translation_and_argv() -> None:
     import os
     from memeval.claudecode.platform import to_wsl_path, ClaudeRuntime
@@ -887,21 +925,30 @@ def test_claudecode_strips_api_key_subscription_only() -> None:
     from memeval.claudecode.platform import ClaudeRuntime
     os.environ["ANTHROPIC_API_KEY"] = "sk-test"
     os.environ["ANTHROPIC_AUTH_TOKEN"] = "tok-test"
+    # Force the config sandbox off for the whole test so it asserts only the API-key
+    # behavior, regardless of whether a local eval/.claude-sandbox/ has been built
+    # (which would otherwise make _clean_env / the WSL prefix inject CLAUDE_CONFIG_DIR).
+    prev_sbx = os.environ.get("MEMEVAL_SANDBOX")
+    os.environ["MEMEVAL_SANDBOX"] = "0"
     try:
         env = cli._clean_env(True)
         assert "ANTHROPIC_API_KEY" not in env and "ANTHROPIC_AUTH_TOKEN" not in env
         assert cli._clean_env(False) is None     # opt-out keeps the inherited env
+        # WSL path strips via `env -u` by default
+        wsl = ClaudeRuntime(kind="wsl", exe="/c/claude", distro="Ubuntu")
+        argv, _ = cli.build_argv(wsl, "hi", cwd=r"C:\w")
+        assert "env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN" in " ".join(argv)
+        # explicit opt-out drops the env-strip prefix (the claude exe follows `--`)
+        argv2, _ = cli.build_argv(wsl, "hi", cwd=r"C:\w", strip_api_key=False)
+        assert argv2[argv2.index("--") + 1] == "/c/claude"
+        assert "ANTHROPIC_API_KEY" not in " ".join(argv2)
     finally:
         os.environ.pop("ANTHROPIC_API_KEY", None)
         os.environ.pop("ANTHROPIC_AUTH_TOKEN", None)
-    # WSL path strips via `env -u` by default
-    wsl = ClaudeRuntime(kind="wsl", exe="/c/claude", distro="Ubuntu")
-    argv, _ = cli.build_argv(wsl, "hi", cwd=r"C:\w")
-    assert "env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN" in " ".join(argv)
-    # explicit opt-out drops the env-strip prefix (the claude exe follows `--`)
-    argv2, _ = cli.build_argv(wsl, "hi", cwd=r"C:\w", strip_api_key=False)
-    assert argv2[argv2.index("--") + 1] == "/c/claude"
-    assert "ANTHROPIC_API_KEY" not in " ".join(argv2)
+        if prev_sbx is None:
+            os.environ.pop("MEMEVAL_SANDBOX", None)
+        else:
+            os.environ["MEMEVAL_SANDBOX"] = prev_sbx
 
 
 def test_group_aware_draw_prefers_whole_largest_groups() -> None:

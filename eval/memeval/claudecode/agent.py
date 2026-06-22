@@ -31,8 +31,14 @@ from .cli import ClaudeResult, run_claude, run_claude_primed
 from .platform import ClaudeRuntime, detect, to_wsl_path
 from .service import MemoryService
 
-MemoryMode = str  # "off" | "builtin" | "plugin"
-_MODES = ("off", "builtin", "plugin")
+MemoryMode = str  # "off" | "builtin" | "plugin" | "plugin-real"
+# "plugin"      — our memory wired DIRECTLY by the harness (the memeval-memory MCP
+#                 server + per-task .mcp.json). Fast, deterministic, in-process.
+# "plugin-real" — the SHIPPING cookbook-memory plugin installed and driven exactly as
+#                 a user installs it (native `claude plugin install` into the sandbox);
+#                 a black-box end-to-end test of skill + MCP + hooks. See
+#                 :meth:`ClaudeCodeAgent._solve_plugin_real`.
+_MODES = ("off", "builtin", "plugin", "plugin-real")
 
 _SYS_PLUGIN = (
     "You have persistent memory via the memory_recall and memory_remember tools. "
@@ -52,6 +58,18 @@ _SYS_CODE = (
 _PLUGIN_PREFIX = (
     "First call the memory_recall tool with the question to retrieve relevant prior "
     "context, then answer concisely with just the final answer.\n\n"
+)
+# plugin-real mode uses the SHIPPING plugin, whose model-callable tool is `recall`
+# (exposed by the cookbook-memory MCP server), not `memory_recall`. Same retrieve-
+# then-answer instruction, named for the real tool.
+_SYS_PLUGIN_REAL = (
+    "You have persistent memory via the recall tool. ALWAYS call recall with the "
+    "question before answering, use the returned notes, and answer concisely with "
+    "just the final answer."
+)
+_PLUGIN_REAL_PREFIX = (
+    "First call the recall tool with the question to retrieve relevant prior context, "
+    "then answer concisely with just the final answer.\n\n"
 )
 
 # Builtin mode = Claude Code's OWN memory/context mechanism. The real one is not
@@ -121,6 +139,23 @@ def _count_recalls(log: Path) -> int:
         return 0
 
 
+def _read_events(events: Path) -> list[dict]:
+    """Read the plugin's JSONL events stream (``events.jsonl``); ``[]`` if absent.
+
+    The shipping cookbook-memory plugin owns its own events stream (ADR-harness-007),
+    separate from the harness's ``MemoryService`` recall log — so plugin-real reads it
+    directly rather than through ``MemoryService``."""
+    try:
+        return [json.loads(line) for line in events.read_text().splitlines() if line.strip()]
+    except (OSError, ValueError):
+        return []
+
+
+def _count_recall_events(events: Path) -> int:
+    """Number of recall events in the plugin's own events stream."""
+    return sum(1 for rec in _read_events(events) if rec.get("op") == "recall")
+
+
 class ClaudeCodeAgent:
     """Benchmark agent backed by the Claude Code CLI. Satisfies AgentAdapter."""
 
@@ -153,6 +188,8 @@ class ClaudeCodeAgent:
         # relative run dir would double the path ("run_dir/run_dir/.mcp.json" -> not
         # found) and every plugin task would fail. Absolute paths are cwd-independent.
         self._root = Path(workdir).resolve() if workdir else None
+        # plugin-real: built+installed once per agent; caches the MCP-server PATH env.
+        self._real_plugin_env: Optional[dict[str, str]] = None
         self.k = k
         self.timeout = timeout
         self.name = f"claude-code:{model}:{memory_mode}"
@@ -185,6 +222,8 @@ class ClaudeCodeAgent:
                             mcp_config=None, allowed_tools=None)
         elif self.memory_mode == "plugin":
             res = self._solve_plugin(task, ctx, _PLUGIN_PREFIX + prompt, run_dir)
+        elif self.memory_mode == "plugin-real":
+            res = self._solve_plugin_real(task, ctx, _PLUGIN_REAL_PREFIX + prompt, run_dir)
         else:  # off
             res = self._run(prompt, run_dir, _SYS_PLAIN, mcp_config=None, allowed_tools=None)
 
@@ -293,6 +332,82 @@ class ClaudeCodeAgent:
             except Exception:
                 srv.kill()
 
+    # -- plugin-real mode (the shipping plugin, black box) ------------------ #
+    def _solve_plugin_real(self, task: Task, ctx: Any, prompt: str,
+                           run_dir: Path) -> ClaudeResult:
+        """Run a task against the REAL cookbook-memory plugin, installed natively.
+
+        Black box, end to end, exactly as a user runs it:
+
+        1. seed the plugin's store at ``<run_dir>/.cookbook-memory`` via the plugin's
+           own ``MemoryClient.remember`` (the store format the plugin reads);
+        2. ensure the plugin is built + installed into the sandbox once per agent
+           (native ``claude plugin install``), capturing the PATH the MCP server needs;
+        3. drive a primed ``claude`` turn with ``CLAUDE_PROJECT_DIR=<run_dir>`` so the
+           plugin's ``.mcp.json`` (``${CLAUDE_PROJECT_DIR}/.cookbook-memory``) resolves
+           to the seeded store;
+        4. attribute what the agent recalled to the trajectory, read from the plugin's
+           own events stream (``events.jsonl``, ``meta.hits``).
+        """
+        from cookbook_memory.core import MemoryClient
+
+        store_dir = run_dir / ".cookbook-memory"
+        store_dir.mkdir(parents=True, exist_ok=True)
+        # Seed the store the way the plugin reads it (engine write via remember).
+        client = MemoryClient(store=str(store_dir))
+        for s in task.sessions:
+            item = MemoryItem.from_session(s)
+            client.remember(item.content, tags=list(getattr(item, "tags", []) or []),
+                            ts=float(getattr(item, "timestamp", 0.0) or 0.0))
+
+        extra_env = {**self._ensure_real_plugin(), "CLAUDE_PROJECT_DIR": str(run_dir)}
+        events = store_dir / "events.jsonl"
+
+        res: Optional[ClaudeResult] = None
+        for _ in range(_PLUGIN_MAX_TRIES):
+            before = _count_recall_events(events)
+            res = self._run_primed(prompt, run_dir, _SYS_PLUGIN_REAL,
+                                   mcp_config=None, allowed_tools=None, extra_env=extra_env)
+            if _count_recall_events(events) > before:
+                break  # the agent reached the recall tool -> plugin MCP connected
+        self._attribute_real_recall(events, ctx)
+        return res  # type: ignore[return-value]
+
+    def _ensure_real_plugin(self) -> dict[str, str]:
+        """Build + install the real plugin into the sandbox once per agent; cache the
+        PATH env its MCP server needs. Offline tests inject a runner, so skip the real
+        install when no real CLI is in play."""
+        if self._real_plugin_env is not None:
+            return self._real_plugin_env
+        if self._runner is not run_claude:
+            self._real_plugin_env = {}      # offline/fake-runner: nothing to install
+            return self._real_plugin_env
+        from . import sandbox
+        self._real_plugin_env = sandbox.setup_real_plugin(
+            claude_exe=(self._runtime.exe if self._runtime else None))
+        return self._real_plugin_env
+
+    def _attribute_real_recall(self, events: Path, ctx: Any) -> None:
+        """Record each recall the agent performed (from the plugin's events stream)
+        to the trajectory, using the enriched ``meta.hits`` (ADR-harness-007)."""
+        for rec in _read_events(events):
+            if rec.get("op") != "recall":
+                continue
+            hits = [
+                RetrievedItem(
+                    item=MemoryItem(
+                        item_id=str(h.get("id", "")), content=h.get("content", ""),
+                        timestamp=float(h.get("timestamp", 0.0) or 0.0),
+                        tokens=int(h.get("tokens", 0) or 0),
+                    ),
+                    score=float(h.get("score", 0.0) or 0.0),
+                    rank=int(h.get("rank", i) or i),
+                )
+                for i, h in enumerate(rec.get("meta", {}).get("hits", []))
+            ]
+            if hits:
+                ctx.record_retrieve(hits, query=rec.get("query", ""))
+
     # -- helpers ------------------------------------------------------------ #
     def _run(self, prompt: str, cwd: Path, system: str, *,
              mcp_config: Optional[Path], allowed_tools: Optional[list[str]],
@@ -305,16 +420,25 @@ class ClaudeCodeAgent:
         )
 
     def _run_primed(self, prompt: str, cwd: Path, system: str, *,
-                    mcp_config: Optional[Path], allowed_tools: Optional[list[str]]) -> ClaudeResult:
+                    mcp_config: Optional[Path], allowed_tools: Optional[list[str]],
+                    extra_env: Optional[dict[str, str]] = None) -> ClaudeResult:
         """Like :meth:`_run`, but drives a priming turn first (stream-json I/O) so
         the MCP connection registers before the real prompt generates. If a custom
         runner was injected (offline tests), defer to it instead — the priming flow
-        only matters against the real CLI."""
-        runner = run_claude_primed if self._runner is run_claude else self._runner
-        return runner(
+        only matters against the real CLI. ``extra_env`` is forwarded to the real
+        runner (PATH / CLAUDE_PROJECT_DIR for an installed plugin); a fake runner is
+        called without it so injected test doubles keep their simple signature."""
+        if self._runner is run_claude:
+            return run_claude_primed(
+                prompt, cwd=cwd, model=self.model, mcp_config=mcp_config,
+                allowed_tools=allowed_tools, append_system_prompt=system,
+                strict_mcp=True, strip_api_key=True,  # subscription only — never an API key
+                timeout=self.timeout, runtime=self._runtime, extra_env=extra_env,
+            )
+        return self._runner(
             prompt, cwd=cwd, model=self.model, mcp_config=mcp_config,
             allowed_tools=allowed_tools, append_system_prompt=system,
-            strict_mcp=True, strip_api_key=True,  # subscription only — never an API key
+            strict_mcp=True, strip_api_key=True,
             timeout=self.timeout, runtime=self._runtime,
         )
 
