@@ -415,15 +415,25 @@ class CascadeConfig:
 
 @dataclass(frozen=True)
 class Consult2Config:
-    """Second-opinion / RRF-fusion knobs. Declared for D016; UNUSED in PR2.
+    """Cross-backend FUSION knobs — the accuracy end of the speed↔accuracy spectrum (D025/PLAN-7).
 
-    No RRF implementation ships here — ``enabled`` stays ``False`` and the fields
-    only reserve the shape a later PR (2.5/3) fills in.
+    When ``enabled``, :meth:`Router.route` returns a :class:`_FusionRetriever` that fans the query out
+    to several backends and merges their ranked results into one top-k. ``method`` picks the merge:
+    ``"rrf"`` (Reciprocal Rank Fusion — rank-based, robust to per-backend score-scale differences) or
+    ``"score"`` (max-normalize each backend's scores to [0,1], then sum). ``rrf_k`` is the RRF damping
+    constant; ``per_backend_k`` is the fan-out depth fetched from each backend before merging;
+    ``backends`` names the backends to consult (empty = every registered backend). ``margin_below`` is
+    reserved for a future *conditional* fusion (consult a second backend only when routing confidence is
+    low); v1 always fuses across the fan-out set when ``enabled``. ``enabled=False`` is the default and
+    keeps single-route/cascade behavior byte-for-byte unchanged.
     """
 
     enabled: bool = False
     margin_below: float = 0.0
     rrf_k: int = 60
+    method: str = "rrf"             # "rrf" | "score"
+    per_backend_k: int = 10         # fan-out depth fetched per backend before merge
+    backends: tuple = ()            # backend names to fuse; () = every registered backend
 
 
 @dataclass(frozen=True)
@@ -516,6 +526,24 @@ def accuracy_profile(*, classifier: RouterClassifier, embed: Any,
         cascade=CascadeConfig(enabled=True),
         embed=embed,
         embed_model=embed_model,
+        k=k,
+    )
+
+
+def fusion_profile(*, method: str = "rrf", per_backend_k: int = 10, rrf_k: int = 60,
+                   k: int = 8, backends: tuple = ()) -> RouterConfig:
+    """A cross-backend FUSION profile: fan out to several backends and merge their results (D025).
+
+    Enables :class:`Consult2Config` so :meth:`Router.route` returns a :class:`_FusionRetriever`.
+    ``method`` is ``"rrf"`` (Reciprocal Rank Fusion) or ``"score"`` (max-normalized score fusion);
+    ``per_backend_k`` is the fan-out depth fetched per backend; ``backends`` selects which to fuse
+    (empty = all registered). The cascade is left OFF (fusion supersedes it). Single-route/speed and
+    the offline default are unaffected — this only *builds the config*.
+    """
+    return RouterConfig(
+        profile_name="fusion",
+        consult2=Consult2Config(enabled=True, method=method, rrf_k=rrf_k,
+                                per_backend_k=per_backend_k, backends=backends),
         k=k,
     )
 
@@ -727,6 +755,122 @@ class _GraphVectorCascade:
         return item is not None and item.timestamp > as_of
 
 
+_FUSION_METHODS = frozenset({"rrf", "score"})
+
+
+class _FusionRetriever:
+    """Retrieval-only view that fans a query out to several backends and FUSES their ranked results
+    into one top-k — the accuracy end of the routing spectrum (returned by :meth:`Router.route` when a
+    profile enables :class:`Consult2Config`). Two merge methods (``Consult2Config.method``):
+
+    * ``"rrf"`` — Reciprocal Rank Fusion: an item's fused score is ``sum over backends of
+      1/(rrf_k + position)`` (1-based position). Rank-based, so it is robust to per-backend score-scale
+      differences (markdown BM25 is unbounded; vector cosine is [0,1]).
+    * ``"score"`` — score-normalization fusion: max-normalize each backend's scores to [0,1], then sum.
+
+    Fan-out covers ``consult2.backends`` (default: every registered backend); each is searched to
+    ``per_backend_k`` depth, results merged + de-duplicated by ``item_id``, then the top-k returned
+    (rank reset 0..k-1). The returned-token budget is unchanged (still k items) — fusion buys recall at
+    an equal retrieval-context cost, paying N× backend searches in compute. ``write`` raises (a view).
+    """
+
+    def __init__(self, backends: dict, consult2: "Consult2Config") -> None:
+        if consult2.method not in _FUSION_METHODS:
+            # Fail loud on a typo'd method rather than silently routing as one or the other.
+            raise ValueError(
+                f"_FusionRetriever supports method in {sorted(_FUSION_METHODS)}; got {consult2.method!r}")
+        self._backends = backends
+        self._cfg = consult2
+
+    # -- MemoryStore protocol ----------------------------------------------
+    def search(self, query: str, *, k: int = 5, as_of: Optional[float] = None,
+               **kwargs: Any) -> list[RetrievedItem]:
+        """Fan ``query`` out to the configured backends and return the fused top-``k``."""
+        if k <= 0:
+            return []
+        depth = max(k, self._cfg.per_backend_k)
+        per_backend = [
+            self._backends[name].search(query, k=depth, as_of=as_of, **kwargs)
+            for name in self._fan_out_names()
+        ]
+        fused = (self._rrf(per_backend) if self._cfg.method == "rrf"
+                 else self._score_fusion(per_backend))
+        return [RetrievedItem(item=item, score=score, rank=rank)
+                for rank, (item, score) in enumerate(fused[:k])]
+
+    def get(self, item_id: str) -> Optional[MemoryItem]:
+        for name in self._fan_out_names():
+            found = self._backends[name].get(item_id)
+            if found is not None:
+                return found
+        return None
+
+    def all(self) -> list[MemoryItem]:
+        seen: set = set()
+        out: list = []
+        for name in self._fan_out_names():
+            for item in self._backends[name].all():
+                if item.item_id not in seen:
+                    seen.add(item.item_id)
+                    out.append(item)
+        return out
+
+    def write(self, item: MemoryItem) -> None:
+        raise NotImplementedError(
+            "_FusionRetriever is the retrieval-only view returned by Router.route(); "
+            "write to the underlying backends directly.")
+
+    # -- fusion ------------------------------------------------------------
+    def _fan_out_names(self) -> list:
+        """Registered backend names to fuse (``consult2.backends`` ∩ registered, else all registered),
+        de-duplicated + order-preserving — a name repeated in the config must NOT double-count a backend."""
+        names = self._cfg.backends or tuple(self._backends.keys())
+        out: list = []
+        for n in names:
+            if n in self._backends and n not in out:
+                out.append(n)
+        return out
+
+    def _rrf(self, per_backend: list) -> list:
+        """Reciprocal Rank Fusion across each backend's ranked hits; merged best-first."""
+        agg: dict = {}  # item_id -> [fused_score, item]
+        for hits in per_backend:
+            for position, hit in enumerate(hits):
+                contrib = 1.0 / (self._cfg.rrf_k + position + 1)  # 1-based rank (canonical RRF)
+                if hit.item_id in agg:
+                    agg[hit.item_id][0] += contrib
+                else:
+                    agg[hit.item_id] = [contrib, hit.item]
+        return self._sorted(agg)
+
+    def _score_fusion(self, per_backend: list) -> list:
+        """Max-normalized score fusion: each backend's scores scaled to [0,1], then summed.
+
+        Negative scores are clamped to 0 BEFORE normalizing: a lexical/hashing backend can emit a
+        negative cosine, and a raw negative contribution would PENALIZE an item for appearing (weakly)
+        in another backend — the opposite of fusion. Clamping makes every contribution a nonnegative
+        [0,1] vote. (RRF sidesteps this entirely — it is rank-based, not score-based.)
+        """
+        agg: dict = {}
+        for hits in per_backend:
+            top = max((h.score for h in hits), default=0.0)
+            denom = top if top > 0 else 1.0
+            for hit in hits:
+                norm = max(0.0, hit.score) / denom
+                if hit.item_id in agg:
+                    agg[hit.item_id][0] += norm
+                else:
+                    agg[hit.item_id] = [norm, hit.item]
+        return self._sorted(agg)
+
+    @staticmethod
+    def _sorted(agg: dict) -> list:
+        """``[(item, fused_score), ...]`` sorted by descending score, ties stable by ``item_id``."""
+        merged = [(entry[1], entry[0]) for entry in agg.values()]
+        merged.sort(key=lambda t: (-t[1], t[0].item_id))
+        return merged
+
+
 class Router:
     """Routes a query to one registered :class:`MemoryStore` backend (rule-based v1).
 
@@ -774,12 +918,15 @@ class Router:
     def route(self, query: str, **kwargs: Any) -> MemoryStore:
         """Return the store for ``query``, degrading to an available backend.
 
-        When the active profile enables the cascade and a GRAPH-classified query has
-        both cascade backends registered, returns a fresh :class:`_GraphVectorCascade`
-        bound to the currently registered backends; otherwise the v1
-        ``(choice, *fallback)`` resolution.
+        When the active profile enables cross-backend fusion (``consult2``), returns a fresh
+        :class:`_FusionRetriever` over the registered backends (query-agnostic fan-out + merge — the
+        accuracy end of the spectrum), taking precedence over the cascade. Else when the profile enables
+        the cascade and a GRAPH-classified query has both cascade backends registered, returns a fresh
+        :class:`_GraphVectorCascade`; otherwise the v1 ``(choice, *fallback)`` single-route resolution.
         """
         choice = self.classify(query)
+        if self._config.consult2.enabled and self.backends:
+            return self._fusion_retriever()
         cascade = self._config.cascade
         if (cascade.enabled and choice == GRAPH
                 and cascade.graph_backend in self.backends
@@ -790,6 +937,14 @@ class Router:
             if store is not None:
                 return store
         raise RuntimeError("Router has no registered backends to route to")
+
+    def _fusion_retriever(self) -> _FusionRetriever:
+        """Construct a fresh :class:`_FusionRetriever` over the CURRENTLY registered backends.
+
+        Not memoized (same reasoning as the cascade): ``self.backends`` may be replaced after the
+        Router is built, and each fused route must fan out to whatever backends are registered NOW.
+        """
+        return _FusionRetriever(self.backends, self._config.consult2)
 
     def _graph_vector_cascade(self) -> _GraphVectorCascade:
         """Construct a fresh cascade over the CURRENTLY registered backends.
@@ -970,5 +1125,5 @@ class RouterStore:
 
 __all__ = [
     "Router", "RouterStore", "RouterConfig", "CascadeConfig", "Consult2Config", "WriteReceipt",
-    "speed_profile", "accuracy_profile",
+    "speed_profile", "accuracy_profile", "fusion_profile",
 ]
