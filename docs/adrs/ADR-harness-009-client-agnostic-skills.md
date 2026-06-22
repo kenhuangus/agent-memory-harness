@@ -2,19 +2,23 @@
 id: ADR-harness-009
 domain: harness
 title: One canonical skill, materialized into each harness's native bundle by a build step
-status: Accepted
+status: Accepted (one clause superseded by ADR-harness-010)
 date: 2026-06-21
 contract: false
 supersedes: none
-superseded_by: none
+superseded_by: ADR-harness-010 (the "bundle is git-ignored, never committed" clause only)
 owner: Keith (P1)
 origin: design session 2026-06-21 (cross-harness skills research)
 ---
 
 # ADR-harness-009: One canonical skill, materialized into each harness's native bundle by a build step
 
-**Status:** Accepted · **Date:** 2026-06-21 · **Contract:** no
-**Supersedes:** none · **Superseded by:** none
+**Status:** Accepted — except the "bundle is git-ignored, never committed" clause,
+**superseded by [ADR-harness-010](ADR-harness-010-commit-release-bundle.md)** (the
+shipping bundle is committed at a tracked path so the plugin installs from git). The
+authoring model below — one canonical skill, build-time materialization, single native
+install — still stands. · **Date:** 2026-06-21 · **Contract:** no
+**Supersedes:** none · **Superseded by:** ADR-harness-010 (one clause)
 
 ## Context
 The plugin ships a `recall` skill (a `SKILL.md` describing how to use the recall

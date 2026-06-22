@@ -53,28 +53,43 @@ creation happens asynchronously in the Daydreamer (the dreaming workstream), whi
 watches the session feed. The `memory-cli remember` command exists for manual/debug
 writes by a human.
 
-## Install
+## Install (from git — no repo clone)
+
+Two steps: install the Python package (so the host has the `cookbook_memory` module
+and the memory engine), then add the plugin to Claude Code from this repo's git URL.
+
+**1. Install the package on the host.** A `pip install --user` from git pulls the
+plugin *and* its frozen-contract dependency (`agent-memory-eval`, declared as a
+`git+URL`) with no clone and no package index:
 
 ```bash
-cd plugin
-pip install -e "../eval"          # the eval package (provides the frozen contract)
-pip install -e ".[mcp,dev]"       # the plugin + MCP SDK + test deps
+pip install --user \
+  "cookbook-memory[mcp] @ git+https://github.com/kenhuangus/agent-memory-harness.git#subdirectory=plugin"
 ```
 
-## Install into your harness
+> **Use `pip install --user`, not pipx.** The plugin's hooks and MCP server are
+> invoked by module — `python3 -m cookbook_memory …` — which resolves against the
+> interpreter Claude Code runs (your system `python3`). A `--user` install is visible
+> to that interpreter; a pipx-isolated install would not be. Ensure your user
+> `bin`/site is on the path your `python3` uses (it is, by default).
 
-**Claude Code (recommended) — one native install.** Build the distributable bundle
-(manifests + MCP + hooks + the materialized skill), then install it the native way:
+**2. Add the plugin to Claude Code from git** — the repo ships a root
+`.claude-plugin/marketplace.json` pointing at the committed bundle, so a single native
+install delivers the `recall` skill + MCP tool + lifecycle hooks together:
 
 ```bash
-memory-cli build-bundle --out dist/claude-code              # release the bundle
-claude plugin marketplace add "$PWD/dist/claude-code"       # or /plugin marketplace add
-claude plugin install cookbook-memory                       # or /plugin install
+claude plugin marketplace add https://github.com/kenhuangus/agent-memory-harness   # or /plugin marketplace add
+claude plugin install cookbook-memory                                              # or /plugin install
 ```
 
-That single install delivers the `recall` skill, the MCP tool, and the lifecycle
-hooks together (verify with `claude plugin details cookbook-memory` → `Skills (1)`).
-The materialized bundle under `dist/` is a build output — never committed.
+Verify with `claude plugin details cookbook-memory` → `Skills (1)`, `Hooks (5)`,
+`MCP servers (1)`. The bundle invokes `python3 -m cookbook_memory` for the MCP server
+and `python3 -m cookbook_memory.adapters.claude_code.hooks_handler <Event>` for hooks,
+so nothing needs a console script on `$PATH` — only that step 1 installed the package
+for your `python3`.
+
+> If your Claude Code client can't resolve a `git-subdir` marketplace source, fall
+> back to cloning the repo and running `claude plugin marketplace add <path-to-clone>`.
 
 **Codex / OpenCode — place the skill into the harness's discovery path:**
 
@@ -82,6 +97,23 @@ The materialized bundle under `dist/` is a build output — never committed.
 memory-cli install --harness codex      # → .agents/skills/  (also read by OpenCode)
 memory-cli install --harness opencode   # → .opencode/skills/
 # --scope user installs under your home dir; --link symlinks instead of copying
+```
+
+## Develop from source
+
+Working on the plugin itself (editable installs + test deps):
+
+```bash
+cd plugin
+pip install -e "../eval"          # the eval package (provides the frozen contract)
+pip install -e ".[mcp,dev]"       # the plugin + MCP SDK + test deps
+```
+
+To regenerate the committed release bundle after changing the skill or manifests
+(the test suite fails on drift until you do):
+
+```bash
+python -m cookbook_memory build-bundle --out marketplace/cookbook-memory
 ```
 
 ## Use it
