@@ -2,19 +2,19 @@
 id: ADR-dreaming-015
 domain: dreaming
 title: Per-session filesystem state — Python path resolution + uniform retention TTL
-status: Accepted
+status: Superseded
 date: 2026-06-21
 contract: true
 supersedes: none
-superseded_by: none
+superseded_by: ADR-dreaming-019
 owner: Scott B. (P4)
 origin: design session 2026-06-21 (halliday adversarial-review Findings #8 + #9)
 ---
 
 # ADR-dreaming-015: Per-session filesystem state — Python path resolution + uniform retention TTL
 
-**Status:** Accepted · **Date:** 2026-06-21 · **Contract:** yes
-**Supersedes:** none · **Superseded by:** none
+**Status:** Superseded · **Date:** 2026-06-21 · **Contract:** yes
+**Supersedes:** none · **Superseded by:** [`ADR-dreaming-019`](ADR-dreaming-019-memory-store-is-a-directory.md) (§1 basedir resolution rule only — §2/§3/§4 stand)
 
 ## Context
 Four dreaming-domain ADRs put per-session state files on disk under a

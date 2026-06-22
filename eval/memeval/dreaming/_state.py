@@ -90,28 +90,27 @@ def _default_state() -> SidecarState:
 # Path helpers
 # --------------------------------------------------------------------------- #
 def resolve_basedir() -> Path:
-    """Resolve the Daydream basedir from ``$MEMORY_STORE`` per ADR-015 §1.
+    """Resolve the Daydream basedir from ``$MEMORY_STORE`` per ADR-019.
 
     Reads ``os.environ["MEMORY_STORE"]`` (raises ``KeyError`` if unset),
-    resolves symlinks via ``.resolve()``, raises ``FileNotFoundError`` if
-    the path does not exist, raises ``ValueError`` if it points to a
-    directory rather than a file, and returns the file's parent directory.
+    resolves symlinks via ``.resolve()``, raises ``ValueError`` if it
+    points to an existing regular file (the inverted error mode from
+    ADR-015 §1, which is superseded), creates the directory idempotently
+    with ``mkdir(parents=True, exist_ok=True)`` if missing, and returns
+    the directory itself.
 
-    These are the ONLY non-fail-open exits in PR4 — the engine deliberately
-    does not swallow them. The PR5 plugin shim is responsible for handling
-    these at the harness boundary.
+    ``KeyError`` and ``ValueError`` are the ONLY non-fail-open exits —
+    the engine deliberately does not swallow them. The PR5+ plugin shim
+    is responsible for handling them at the harness boundary.
     """
     raw = os.environ["MEMORY_STORE"]
-    resolved = Path(raw).resolve()
-    if not resolved.exists():
-        raise FileNotFoundError(
-            f"MEMORY_STORE points to a non-existent path: {resolved}"
-        )
-    if resolved.is_dir():
+    basedir = Path(raw).resolve()
+    if basedir.exists() and not basedir.is_dir():
         raise ValueError(
-            f"MEMORY_STORE must point to a file, got a directory: {resolved}"
+            f"MEMORY_STORE must be a directory, got a file: {basedir}"
         )
-    return resolved.parent
+    basedir.mkdir(parents=True, exist_ok=True)
+    return basedir
 
 
 _SAFE_SESSION_ID = re.compile(r"^[A-Za-z0-9_.-]+$")

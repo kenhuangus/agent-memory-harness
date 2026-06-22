@@ -834,7 +834,13 @@ def test_resolve_basedir_failures_propagate_criterion_100(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Criterion 100: resolve_basedir errors propagate (only non-fail-open path)."""
+    """Criterion 100: resolve_basedir errors propagate (only non-fail-open path).
+
+    Under ADR-019 (supersedes ADR-015 §1):
+    - Unset → KeyError (unchanged)
+    - Missing path → auto-mkdir, no error (was FileNotFoundError)
+    - Pointing at a FILE → ValueError (inverted; was directory → ValueError)
+    """
     monkeypatch.delenv("MEMORY_STORE", raising=False)
     with pytest.raises(KeyError):
         daydream(
@@ -845,18 +851,10 @@ def test_resolve_basedir_failures_propagate_criterion_100(
             now=1000.0,
         )
 
-    monkeypatch.setenv("MEMORY_STORE", str(tmp_path / "does_not_exist"))
-    with pytest.raises(FileNotFoundError):
-        daydream(
-            session_id=session_id,
-            log_path=log_path,
-            store=InMemoryStore(),
-            client=StubClient(),
-            now=1000.0,
-        )
-
-    # directory case
-    monkeypatch.setenv("MEMORY_STORE", str(tmp_path))
+    # file case (inverted under ADR-019)
+    stale_sentinel = tmp_path / "stale-sentinel.jsonl"
+    stale_sentinel.touch()
+    monkeypatch.setenv("MEMORY_STORE", str(stale_sentinel))
     with pytest.raises(ValueError):
         daydream(
             session_id=session_id,
