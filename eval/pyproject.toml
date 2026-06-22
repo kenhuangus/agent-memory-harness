@@ -62,7 +62,7 @@ embeddings = ["numpy>=1.26"]
 # tests) and LocalExecGrader applies the agent's patch + the gold tests in a
 # fresh checkout, then runs the project's tests in a per-task venv (best-effort;
 # ungraded when the env can't be built). No containers, no extra grading package
-# — see ADR-eval-003.
+# — see ADR-eval-002.
 
 # Langfuse Cloud tracing (memeval.tracing). Lazy + no-op unless keys are set, so
 # the offline path never imports it.

@@ -40,7 +40,7 @@ the move).
 | ADR | Decision | Status | Contract |
 |-----|----------|--------|----------|
 | [ADR-eval-001](ADR-eval-001-extract-memory-package.md) | Extract the memory system into its own package; `memeval` stays pure eval | Accepted | no |
-| [ADR-eval-002](ADR-eval-002-docker-free-code-grading.md) | Docker-free CODE grading: agentic Claude Code loop + `LocalExecGrader`; SWE-bench Docker grader removed | Accepted | no |
+| [ADR-eval-002](ADR-eval-002-docker-free-code-grading.md) | Docker removed entirely: Claude Code CLI is the coding agent; `LocalExecGrader` / retrieval replace the SWE-bench Docker grader | Accepted | no |
 | [ADR-storage-001](ADR-storage-001-orchestrator-in-process-library.md) | Orchestrator is an in-process library; store-by-`$MEMORY_STORE`, no daemon | Accepted | **yes** |
 | [ADR-harness-001](ADR-harness-001-claude-code-plugin-shape.md) | Claude Code plugin = bundled MCP server + hooks + skills | Accepted | no |
 | [ADR-harness-002](ADR-harness-002-recall-remember-mcp-tools.md) | `recall`/`remember` are MCP tools that call the Orchestrator | Superseded by [ADR-harness-008](ADR-harness-008-recall-only-conscious-surface.md) | **yes** |

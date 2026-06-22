@@ -8,7 +8,7 @@ runtime, no real git/venv**. The fixture `swe_contextbench.json` drives the
 (the fixture is not a real repo). A real swe_contextbench run additionally needs
 network (clone by SHA), live `claude` subscription auth, and a buildable repo —
 none available offline; that is the intentional limit of this suite (see
-ADR-eval-003).
+ADR-eval-002).
 
 Run under the Py313 interpreter with PYTHONIOENCODING=utf-8.
 """

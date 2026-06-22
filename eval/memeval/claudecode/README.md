@@ -49,7 +49,7 @@ Grading runs entirely on the host (`--grader`, default `auto`):
 
 No extra install and no container runtime are needed. See
 [`../PROTOCOL.md`](../PROTOCOL.md) §5 and
-[`../../docs/adrs/ADR-eval-003-no-docker-cc-coding-agent.md`](../../../docs/adrs/ADR-eval-003-no-docker-cc-coding-agent.md).
+[`../../docs/adrs/ADR-eval-002-docker-free-code-grading.md`](../../../docs/adrs/ADR-eval-002-docker-free-code-grading.md).
 
 **Platform support (auto-detected): macOS · Linux · Windows · Windows→WSL.** On
 Windows, if `claude` isn't on the native PATH the harness routes through WSL

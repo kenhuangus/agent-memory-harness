@@ -122,7 +122,7 @@ it never inflates the score.
 > leaderboard. Many multilingual SWE-ContextBench instances are un-gradeable on a
 > single host and return `None`. The `success=None` trust boundary (the harness,
 > not the model, applies the gold tests) is what keeps the reported numbers honest.
-> See `docs/adrs/ADR-eval-003-no-docker-cc-coding-agent.md`.
+> See `docs/adrs/ADR-eval-002-docker-free-code-grading.md`.
 
 ## 6. The four metrics
 

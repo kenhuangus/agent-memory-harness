@@ -73,7 +73,7 @@ test execution (`LocalExecGrader`), retired the prior approach where the agent e
 instead of a diff. **The 0.00s here are from that earlier cycle, not a memory result.** Note the
 local-exec grader is host-dependent and partial-coverage (it reports `None`/ungraded when a repo's
 env can't be built), so it is not comparable to a containerized leaderboard — see
-`docs/adrs/ADR-eval-003-no-docker-cc-coding-agent.md`.
+`docs/adrs/ADR-eval-002-docker-free-code-grading.md`.
 
 ## What changed this cycle (engineering)
 
@@ -84,7 +84,7 @@ env can't be built), so it is not comparable to a containerized leaderboard — 
   re-run task reached memory). A clean QA re-run on the fixed code is pending a stable WSL VM.
 - **CODE grader (PR #32, since superseded).** A container-based grader was wired for CODE benches at
   the time. It has since been **removed entirely** in favor of a host-local `LocalExecGrader` plus an
-  agentic coding loop where the Claude Code CLI is the genuine coding agent (ADR-eval-003); CODE
+  agentic coding loop where the Claude Code CLI is the genuine coding agent (ADR-eval-002); CODE
   grading no longer needs any container runtime or extra package.
 - **Runner hardened (PR #26).** Parallel CLI processes, incremental per-task result saves, and a
   `reliability` block in every record documenting failures + `memory_reached`.

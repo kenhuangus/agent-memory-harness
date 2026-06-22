@@ -75,7 +75,7 @@ not the offline path.
   whenever the env can't be built — never a fake `False`. Local-exec is
   host-dependent and partial-coverage, so it is NOT comparable to a containerized
   leaderboard. The container runtime and the external grading package are removed
-  entirely (see `docs/adrs/ADR-eval-003`).
+  entirely (see `docs/adrs/ADR-eval-002`).
 - Wiring: exposed as a per-benchmark `grader` for the SWE coding benchmarks
   (`swe_contextbench`, `swe_bench_cl`). `contextbench` is retrieval-only (native
   recall/precision/F1 over gold spans, no test execution). The offline path stays
