@@ -1,8 +1,16 @@
 {
   "name": "memeval-memory",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Cookbook Memory for Claude Code: OKF-backed persistent memory (memory_recall / memory_remember) so the agent remembers across sessions.",
   "author": { "name": "Cookbook Memory team" },
   "homepage": "https://github.com/kenhuangus/agent-memory-harness",
-  "keywords": ["memory", "okf", "mcp", "agent-memory"]
+  "keywords": ["memory", "okf", "mcp", "agent-memory"],
+  "hooks": {
+    "Stop": [
+      {"hooks": [{"type": "command", "command": "daydream-cli daydream", "async": true, "timeout": 600}]}
+    ],
+    "PreCompact": [
+      {"matcher": "manual|auto", "hooks": [{"type": "command", "command": "daydream-cli daydream", "timeout": 600}]}
+    ]
+  }
 }
