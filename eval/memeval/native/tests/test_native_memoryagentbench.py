@@ -1,6 +1,6 @@
 """Offline tests for the MemoryAgentBench native evaluator.
 
-Fully deterministic, no network, no LLM, no Docker: EchoAgent + EchoModel +
+Fully deterministic, no network, no LLM, no real test execution: EchoAgent + EchoModel +
 DeterministicJudge (the judge is unused by this benchmark but accepted). Asserts
 the evaluator runs end-to-end and that every native metric + component slice is
 computed and in range.

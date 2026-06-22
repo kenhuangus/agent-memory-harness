@@ -37,17 +37,18 @@ Three result vectors per sequence (per the spec)
 * ``per-task memory-OFF`` — the zero-shot baseline ``a-bar(0,·)``; supplies the
   mem-off side of Forward Transfer.
 
-Offline / Docker safety
------------------------
+Offline safety
+--------------
 ``score`` is pure and deterministic. ``run`` drives the EXACT loaded task list
 through the reused :meth:`BaseNativeEvaluator.run_tasks` (EchoAgent + per-group
 InMemoryStore), strictly ordered by ``Task.order`` within each ``Task.group_id``,
-and reset between groups (the harness store policy is per-group). The real
-SWE-bench resolve grader is Docker-backed and **must never hard-fail offline**:
-we resolve the grader via :func:`memeval.grader.get_grader` only when the caller
-asks for it, default to the dependency-free ``overlap`` stand-in, and fall back
-to ``Trajectory.success`` if grading yields ``None`` — so the offline path needs
-no Docker, no network, no heavy deps.
+and reset between groups (the harness store policy is per-group). The CODE
+resolve grader (:class:`memeval.grader.LocalExecGrader`, run in a local venv)
+**must never hard-fail offline**: we resolve the grader via
+:func:`memeval.grader.get_grader` only when the caller asks for it, default to
+the dependency-free ``overlap`` stand-in, and fall back to ``Trajectory.success``
+if grading yields ``None`` — so the offline path needs no network and no heavy
+deps.
 """
 
 from __future__ import annotations
@@ -112,9 +113,9 @@ class SWEBenchCLNativeEvaluator(BaseNativeEvaluator):
 
         Each record is tagged in ``extra['phase']`` so ``score`` can recover the
         three vectors. Grading is via the reused offline grader (default
-        ``overlap``), falling back to ``Trajectory.success``; the Docker resolve
-        grader is used only when ``grader='swebench'`` is passed AND degrades
-        gracefully (``on_unavailable='skip'`` -> ``None`` -> trajectory success).
+        ``overlap``), falling back to ``Trajectory.success``; the local-execution
+        resolve grader is used only when ``grader='local'`` is passed AND degrades
+        gracefully (grading ``None`` -> trajectory success).
         """
         k = int(kwargs.get("k", 5))
         retest = bool(kwargs.get("retest", True))
@@ -456,12 +457,13 @@ class SWEBenchCLNativeEvaluator(BaseNativeEvaluator):
     def _resolve_grader(grader_spec: Any):
         """Resolve an offline-safe CODE grader.
 
-        ``None`` / falsy -> the dependency-free ``overlap`` stand-in (never
-        touches Docker). A callable is used as-is. A string is resolved via
-        :func:`memeval.grader.get_grader`; for the Docker resolve grader we force
-        ``on_unavailable='skip'`` so a missing daemon yields ``None`` (ungraded)
-        rather than hard-failing — ``run_tasks`` then falls back to
-        ``Trajectory.success``.
+        ``None`` / falsy -> the dependency-free ``overlap`` stand-in (no real
+        test execution). A callable is used as-is. A string is resolved via
+        :func:`memeval.grader.get_grader` (valid keys: ``local`` / ``overlap`` /
+        ``none``); the local-execution resolve grader (``local`` ->
+        :class:`memeval.grader.LocalExecGrader`, run in a local venv) yields
+        ``None`` (ungraded) when it cannot evaluate rather than hard-failing —
+        ``run_tasks`` then falls back to ``Trajectory.success``.
         """
         from ...grader import get_grader, overlap_grader
 
@@ -469,10 +471,7 @@ class SWEBenchCLNativeEvaluator(BaseNativeEvaluator):
             return lambda task, pred: overlap_grader(task, pred)
         if callable(grader_spec):
             return grader_spec
-        key = str(grader_spec).strip().lower()
-        if key in ("swebench", "docker", "swebench-docker"):
-            return get_grader(key, on_unavailable="skip")
-        return get_grader(key)
+        return get_grader(str(grader_spec).strip().lower())
 
 
 #: Per-sequence metric name -> optimization direction. ``forgetting`` is the only

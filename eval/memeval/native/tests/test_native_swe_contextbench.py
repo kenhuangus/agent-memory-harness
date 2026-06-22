@@ -1,7 +1,7 @@
 """Offline tests for the SWE-ContextBench native evaluator.
 
 Fully offline + deterministic: EchoAgent + EchoModel + per-group InMemoryStore +
-the dependency-free overlap grader. No network, no Docker, no LLM. Runs both
+the dependency-free overlap grader. No network, no real test execution, no LLM. Runs both
 under pytest and as a standalone script (``python test_native_swe_contextbench.py``).
 
 Asserts the evaluator runs end-to-end and that every native metric + component

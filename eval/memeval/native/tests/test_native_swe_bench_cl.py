@@ -1,7 +1,7 @@
 """Offline tests for the SWE-Bench-CL native evaluator.
 
 Fully offline + deterministic: EchoAgent / EchoModel + per-group InMemoryStore +
-the dependency-free ``overlap`` CODE grader (no Docker, no swebench, no network,
+the dependency-free ``overlap`` CODE grader (no real test execution, no network,
 no heavy deps). Asserts the evaluator runs end-to-end over the bundled fixture
 and that every native metric + component slice is computed and in range.
 

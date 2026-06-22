@@ -36,9 +36,10 @@ Native metrics implemented (see the per-benchmark spec)
     * ``resolve_rate``         — Resolved % (SWE-bench rule: all FAIL_TO_PASS pass
                                  AND all PASS_TO_PASS pass). Offline stand-in uses
                                  the overlap grader vs the gold patch / a graded
-                                 ``Trajectory.success``; the real Docker grader is
-                                 used only when explicitly passed in and degrades
-                                 gracefully (never hard-fails offline).
+                                 ``Trajectory.success``; the local-execution
+                                 grader (:class:`memeval.grader.LocalExecGrader`)
+                                 is used only when explicitly passed in and
+                                 degrades gracefully (never hard-fails offline).
     * ``context_lift``         — resolve-rate delta on the related subset.
     * ``match_rate@k``         — fraction of related tasks whose top-k retrieved
                                  contexts include the gold-linked sibling.
@@ -141,12 +142,12 @@ class SWEContextBenchNativeEvaluator(BaseNativeEvaluator):
         the contrast between the two; the experience subset's OFF pass is its
         baseline difficulty. The offline grader is the dependency-free overlap
         stand-in (``overlap_grader``) unless a real grader is supplied; a real
-        Docker grader is honored if passed but never required.
+        local-execution grader is honored if passed but never required.
         """
         ordered = self._ordered(tasks)
         mem_default = mode_to_memory(mode)
         # Offline default grader: token-overlap vs gold patch. A caller may pass
-        # the real SWEBenchDockerGrader; if Docker is unavailable it returns None
+        # the real LocalExecGrader; if it cannot evaluate it returns None
         # (ungraded) and we fall back per-task, so we NEVER hard-fail offline.
         offline_grader = grader if grader is not None else overlap_grader
 
@@ -224,7 +225,7 @@ class SWEContextBenchNativeEvaluator(BaseNativeEvaluator):
             paper="arXiv 2602.08316",
             dataset="jiayuanz3/SWEContextBench",
             note="resolve_rate offline stand-in = overlap vs gold patch; "
-                 "Docker grader optional and skippable.",
+                 "local-execution grader optional and skippable.",
         )
 
         # ---- headline: overall resolve rate (memory-ON pass) -------------- #
@@ -463,9 +464,9 @@ class SWEContextBenchNativeEvaluator(BaseNativeEvaluator):
         """Fraction resolved. ``success is True`` counts; None/False do not.
 
         ``success`` is set by the grader during run (overlap stand-in offline,
-        the SWE-bench rule under the real Docker grader). An ungraded task
-        (``None``, e.g. Docker unavailable) is treated as not-resolved for the
-        rate but does not crash — callers can read ``n`` to gauge coverage.
+        the SWE-bench rule under the real local-execution grader). An ungraded
+        task (``None``, e.g. grader could not evaluate) is treated as not-resolved
+        for the rate but does not crash — callers can read ``n`` to gauge coverage.
         """
         if not recs:
             return 0.0

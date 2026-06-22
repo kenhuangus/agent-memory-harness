@@ -16,7 +16,8 @@ them in one place:
 * set-overlap + token-overlap helpers used by the retrieval/code benchmarks.
 
 Everything is standard-library only. Heavy paths (a real AgentAdapter, the
-SWE-bench Docker grader) are reached only when the caller passes them in.
+local-execution CODE grader :class:`memeval.grader.LocalExecGrader`) are reached
+only when the caller passes them in.
 """
 
 from __future__ import annotations

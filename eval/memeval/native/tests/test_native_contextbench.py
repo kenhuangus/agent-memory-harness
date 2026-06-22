@@ -1,12 +1,13 @@
 """Offline tests for the ContextBench native evaluator.
 
 Proves the evaluator runs end-to-end fully offline (EchoAgent + EchoModel +
-per-group InMemoryStore + DeterministicJudge — no network, no Docker, no LLM)
-and that every native metric + component slice is computed and in range.
+per-group InMemoryStore + DeterministicJudge — no network, no real test
+execution, no LLM) and that every native metric + component slice is computed
+and in range.
 
 ContextBench is scored on **in-task context retrieval** quality at file / block /
 line granularity (recall / precision / F1) + efficiency, stratified by language;
-resolve_rate is a Docker-gated secondary signal that must DEGRADE (n=0), never
+resolve_rate is a grader-gated secondary signal that must DEGRADE (n=0), never
 hard-fail, offline.
 
 Run offline with the Windows Python:
@@ -145,7 +146,7 @@ def test_score_memory_on_metrics_in_range() -> None:
     avg = report.metric("avg_retrieved")
     assert avg is not None and avg.value >= 0.0
 
-    # resolve_rate: secondary, skipped offline (no Docker grader) -> n == 0.
+    # resolve_rate: secondary, skipped offline (no CODE grader) -> n == 0.
     rr = report.metric("resolve_rate")
     assert rr is not None and rr.n == 0 and rr.value == 0.0
     assert rr.metadata.get("secondary") is True

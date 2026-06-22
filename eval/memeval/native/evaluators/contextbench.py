@@ -68,18 +68,19 @@ Components — one :class:`ComponentScore` per **language** (the loader's
 per-granularity component (``granularity:file|block|line``) bundling recall +
 precision + F1 so a dashboard can pivot either way.
 
-Resolve rate (optional, Docker-gated, never hard-fails offline)
+Resolve rate (optional, grader-gated, never hard-fails offline)
 --------------------------------------------------------------
 ContextBench is fundamentally a *retrieval* benchmark, but the rows carry SWE-
 bench fields (``patch``/``f2p``/``p2p``), so a resolve-rate signal is offered as
 a SECONDARY metric when a real grader is available. It is computed from the
-per-task ``success`` flags ONLY when present; offline (EchoAgent + no Docker)
-those are ``None`` and the metric degrades to ``n=0`` (skipped) — it NEVER calls
-Docker or hard-fails. A real run can pass ``grader=memeval.grader.get_grader(
-"swebench", on_unavailable="skip")`` through ``run`` to populate it.
+per-task ``success`` flags ONLY when present; offline (EchoAgent + no grader)
+those are ``None`` and the metric degrades to ``n=0`` (skipped) — it NEVER runs
+tests or hard-fails. A real run can pass ``grader=memeval.grader.get_grader(
+"local")`` (:class:`memeval.grader.LocalExecGrader`) through ``run`` to populate
+it.
 
 Offline: EchoAgent + InMemoryStore + DeterministicJudge, stdlib only, no network,
-no Docker.
+no real test execution.
 """
 
 from __future__ import annotations
@@ -165,7 +166,7 @@ class ContextBenchNativeEvaluator(BaseNativeEvaluator):
                 "granularity; process metrics efficiency(AUC-Cov)/redundancy/"
                 "evidence_drop (Eqs.5-10) over the retrieve-step trajectory, "
                 "skipped (n=0) when the trajectory has too few snapshots (offline "
-                "single-step); resolve_rate is a Docker-gated secondary signal, "
+                "single-step); resolve_rate is a grader-gated secondary signal, "
                 "skipped offline (n=0). memory_token_overhead is a harness token "
                 "ratio, NOT the paper's Efficiency."
             ),
@@ -300,7 +301,7 @@ class ContextBenchNativeEvaluator(BaseNativeEvaluator):
                 metadata={
                     "secondary": True,
                     "note": "fraction of graded tasks resolved; skipped (n=0) "
-                            "when no Docker grader supplied (offline).",
+                            "when no CODE grader supplied (offline).",
                 },
             )
         )
