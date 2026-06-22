@@ -26,7 +26,7 @@ gold ids and the full haystack:
 ~0.007 Jaccard tie-floor to the top (offline replay: gold recall@5 12/15 → 15/15) and repairs the
 relevancy metric — but it helps **ranking**, not recall, and won't by itself close the extraction
 gap. The next lever is **turn-level chunking** (small, targeted memory items instead of whole
-sessions).
+sessions) — see [`suggestion.md`](../../suggestion.md) for the full set of memory-team suggestions.
 
 **Measured (live plugin re-run on the BM25 code, `results/v0.1-bm25/`, n=20, reach 20/20):**
 
@@ -39,7 +39,7 @@ sessions).
 This is exactly the predicted shape: BM25 dramatically improves **ranking** (relevancy and recency —
 gold is now surfaced at the top) but only nudges **accuracy** (+0.05), still below builtin's 0.35,
 because the binding constraint is long-context answer extraction, not retrieval. Confirms turn-level
-chunking as the next lever.
+chunking as the next lever (full memory-team suggestions in [`suggestion.md`](../../suggestion.md)).
 
 ## Headline (the two discriminative QA benchmarks)
 

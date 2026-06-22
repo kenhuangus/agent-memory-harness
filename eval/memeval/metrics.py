@@ -15,13 +15,13 @@ recency      Of queries whose gold-relevant memory is the *freshest* among the
              decayed variant ``mean(exp(-dt / tau))``.
 efficiency   ``memory_tokens / total_tokens`` overhead per retrieval, averaged
              over tasks. LOWER is better (target < ~0.10).
-relevancy    Mean similarity of retrieved items vs. the query, plus
-             precision@k = fraction of retrieved items scoring >= threshold.
-             Higher is better. For the lexical retriever-score path (e.g. the
-             BM25 stores, whose scores are non-negative and *unbounded*, not in
-             ``[0, 1]``) the per-retrieve-step scores are max-normalized to
-             ``[0, 1]`` before the threshold/mean so precision@k stays meaningful;
-             the embedding-cosine path is already in ``[0, 1]`` and is left as-is.
+relevancy    precision@k = fraction of retrieved items that are GOLD
+             (``is_gold``, from the benchmark's ``gold_memory_ids``), micro-
+             averaged over retrieve steps. Scorer-AGNOSTIC: it measures what was
+             retrieved, not the team's retriever-score distribution, so it is
+             comparable across Jaccard / BM25 / embeddings. ``mean_similarity``
+             keeps the embedding-cosine meaning when query embeddings are
+             supplied, else mirrors the gold precision. Higher is better.
 accuracy     Task success rate (QA normalized match / CODE tests pass), tracked
              memory-on vs. memory-off. Higher is better.
 
@@ -66,7 +66,9 @@ __all__ = [
 # --------------------------------------------------------------------------- #
 # Constants
 # --------------------------------------------------------------------------- #
-#: precision@k score threshold -- a retrieved item "counts" at or above this.
+#: Legacy precision@k score threshold. The default (offline) relevancy path now
+#: uses scorer-agnostic GOLD precision and ignores this; it is retained only for
+#: the embedding-cosine mean_similarity interpretation and call-site compat.
 THRESHOLD_DEFAULT: float = 0.7
 
 #: recency-decay time constant in seconds (1 day). Larger tau == slower decay.
@@ -267,55 +269,64 @@ def relevancy(
 
     Returns ``(mean_similarity, precision_at_k)``.
 
-    For each retrieved item a similarity score is taken as:
+    **precision_at_k is scorer-AGNOSTIC gold precision.** It is the fraction of
+    retrieved items that are gold (``RetrievedItem.is_gold``), micro-averaged
+    over every retrieved item in every retrieve step::
 
-    * ``cosine(query_emb, item.embedding)`` when ``query_embeddings`` is
-      supplied (keyed by ``task_id``) *and* the item carries an embedding (already
-      in ``[0, 1]``; used verbatim); else
-    * the retriever-provided :attr:`RetrievedItem.score`, **max-normalized within
-      its retrieve step**: ``val = ri.score / max(step scores)`` (or ``0.0`` when
-      that max is ``<= 0``). Lexical backends (BM25) return non-negative *unbounded*
-      scores, so without this per-step normalization the ``threshold`` compare
-      would be meaningless (precision would inflate toward ``1.0`` for any run with
-      large-magnitude scores). Normalizing per step puts the top hit of every step
-      at ``1.0`` and keeps the ``threshold`` interpretable.
+        precision_at_k = |{retrieved items that are gold}| / |{retrieved items}|
 
-    Then::
+    Gold-ness comes from the benchmark's ground truth (``Task.gold_memory_ids``,
+    annotated onto the items by :func:`_annotate_gold`), NOT from the retriever's
+    own :attr:`RetrievedItem.score`. This is deliberate: a score-threshold
+    precision measured the *shape* of the team's scorer distribution rather than
+    retrieval relevance, so the SAME retrieval quality read ~0.005 under the old
+    length-coupled Jaccard scorer and ~0.57 under BM25. Tying precision to gold
+    membership makes the metric reflect *what was actually retrieved* and stay
+    comparable across any present or future scorer (BM25, embeddings, anything),
+    without touching the store scorer. ``threshold`` is no longer used by the
+    gold-precision path; it is retained only for the embedding-cosine
+    ``mean_similarity`` interpretation below and for call-site compatibility.
 
-        mean_similarity = mean( val_i )                    over all retrieved items
-        precision_at_k  = |{i: val_i >= threshold}| / N    over all retrieved items
+    ``mean_similarity`` keeps the embedding-cosine meaning when ``query_embeddings``
+    is supplied (the only genuine ``[0, 1]`` semantic measure): the mean of
+    ``cosine(query_emb, item.embedding)`` over items that carry an embedding. When
+    no query embeddings are available (the offline/default path) there is no
+    query-vs-item similarity to compute, so ``mean_similarity`` falls back to the
+    same scorer-agnostic gold precision as ``precision_at_k`` (rather than
+    reporting a scorer-shape artifact).
 
     Both are micro-averaged over every retrieved item in every retrieve step of
     every trajectory (so a task that retrieves more items weighs more). Returns
-    ``(0.0, 0.0)`` when nothing was retrieved.
+    ``(0.0, 0.0)`` when nothing was retrieved. As a side effect, sets
+    :attr:`RetrievedItem.is_gold` on the passed trajectories (idempotent with
+    :func:`recency`'s annotation).
     """
-    scores: list[float] = []
+    by_id = _task_index(tasks)
+    gold_flags: list[bool] = []      # is_gold over every retrieved item
+    cosine_scores: list[float] = []  # only items with an embedding + a query emb
 
     for traj in trajectories:
+        task = by_id.get(traj.task_id)
+        if task is not None:
+            _annotate_gold(traj, set(task.gold_memory_ids))
         q_emb: Optional[list[float]] = None
         if query_embeddings is not None:
             q_emb = query_embeddings.get(traj.task_id)
         for step in _retrieve_steps(traj):
-            # Split the step's items into the embedding-cosine path (already in
-            # [0, 1], used as-is) and the retriever-score path (max-normalized
-            # within this step so unbounded BM25 scores stay threshold-comparable).
-            retriever_scores: list[float] = []
             for ri in step.retrieved:
+                gold_flags.append(bool(ri.is_gold))
                 if q_emb is not None and ri.item.embedding is not None:
-                    scores.append(cosine(q_emb, ri.item.embedding))
-                else:
-                    retriever_scores.append(ri.score)
-            if retriever_scores:
-                step_max = max(retriever_scores)
-                if step_max > 0.0:
-                    scores.extend(s / step_max for s in retriever_scores)
-                else:
-                    scores.extend(0.0 for _ in retriever_scores)
+                    cosine_scores.append(cosine(q_emb, ri.item.embedding))
 
-    if not scores:
+    if not gold_flags:
         return 0.0, 0.0
-    mean_sim = sum(scores) / len(scores)
-    precision = sum(1 for s in scores if s >= threshold) / len(scores)
+    precision = sum(1 for g in gold_flags if g) / len(gold_flags)
+    if cosine_scores:
+        mean_sim = sum(cosine_scores) / len(cosine_scores)
+    else:
+        # No query embeddings -> no scorer-independent similarity to report;
+        # mirror the gold precision rather than expose a scorer-shape artifact.
+        mean_sim = precision
     return mean_sim, precision
 
 
@@ -363,23 +374,50 @@ def normalize_answer(text: str) -> str:
 
 
 def qa_match(prediction: str, gold: str) -> bool:
-    """Normalized exact match with substring tolerance.
+    """Normalized exact match with whole-word containment tolerance.
 
     ``True`` when the normalized gold and prediction are equal, or when the
-    (non-empty) normalized gold appears as a substring of the normalized
-    prediction (the model often answers in a fuller sentence)::
+    (non-empty) normalized gold tokens appear as a contiguous run of WHOLE
+    words inside the normalized prediction (the model often answers in a fuller
+    sentence)::
 
-        match = norm(gold) == norm(pred)  OR  norm(gold) in norm(pred)
+        match = tokens(gold) == tokens(pred)
+                OR tokens(gold) is a contiguous sub-sequence of tokens(pred)
+
+    The containment test is at the *token* (word) boundary, NOT a raw character
+    substring: gold ``"7"`` no longer matches ``"17 shirts"`` (``7`` is a
+    substring of ``17`` but not a whole word), and gold ``"each way"`` only
+    matches a prediction whose words are ``... each way ...`` in that order.
+    This eliminates the digit-inside-a-number class of false positives while
+    keeping the fuller-sentence tolerance the harness relies on.
 
     An empty normalized gold only matches an empty normalized prediction.
+
+    Known (deterministic-grader) limitations, documented rather than papered
+    over with a non-deterministic LLM judge (see ``suggestion.md``):
+
+    * **Negation/list false positives** — a prediction that explicitly denies
+      the gold ("your name was *not* Johnson") still contains the gold token as
+      a whole word and so is credited. Whole-word matching does not detect
+      negation; only an LLM judge would, at the cost of reproducibility.
+    * **Paraphrase/synonym/abbreviation false negatives** — "14th of February"
+      vs gold "February 14th", "ten" vs "10", "Business Admin" vs "Business
+      Administration" do not match. These are inherent to deterministic exact
+      matching and cap, but never inflate, achievable accuracy.
     """
-    np_ = normalize_answer(prediction)
-    ng = normalize_answer(gold)
-    if not ng:
-        return np_ == ""
-    if np_ == ng:
+    np_tokens = normalize_answer(prediction).split()
+    ng_tokens = normalize_answer(gold).split()
+    if not ng_tokens:
+        return not np_tokens
+    if np_tokens == ng_tokens:
         return True
-    return ng in np_
+    # Whole-word contiguous containment: does the gold token list appear as a
+    # contiguous run somewhere in the prediction token list?
+    n = len(ng_tokens)
+    for start in range(len(np_tokens) - n + 1):
+        if np_tokens[start:start + n] == ng_tokens:
+            return True
+    return False
 
 
 # --------------------------------------------------------------------------- #
