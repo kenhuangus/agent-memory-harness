@@ -71,6 +71,7 @@ the move).
 | [ADR-harness-008](ADR-harness-008-recall-only-conscious-surface.md) | The conscious surface is recall-only; writes happen via the Daydreamer | Accepted | **yes** |
 | [ADR-harness-009](ADR-harness-009-client-agnostic-skills.md) | One canonical skill, materialized into each harness's native bundle by a build step (single native install) | Accepted (one clause superseded by [ADR-harness-010](ADR-harness-010-commit-release-bundle.md)) | no |
 | [ADR-harness-010](ADR-harness-010-commit-release-bundle.md) | Commit the materialized release bundle + a root `marketplace.json` so the plugin installs from git (no clone) | Accepted | no |
+| [ADR-harness-011](ADR-harness-011-plugin-dumb-client-auto-profile.md) | Plugin is a dumb client of the router (one opaque `build_store()` → `RouterStore`); the engine auto-selects the routing profile (fusion offline, accuracy with a key) | Accepted | no |
 
 > **Provenance.** These eleven ADRs were extracted from the consolidated ADR-P1…P11
 > series in
