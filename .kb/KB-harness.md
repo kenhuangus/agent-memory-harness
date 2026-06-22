@@ -78,3 +78,36 @@ The bundle invokes its surfaces **by module, not by console script** — `python
 - Install is now two real steps (`pip install --user` of the package, then `claude plugin install`); both verified resolvable in this session.
 - `/kb` command + `.kb/` per-domain journal added (PR #71) — process tooling.
 - Confirmed a stale, untracked `plugin/dist/` bundle with old console-script wiring exists alongside the live module-form bundle.
+
+---
+
+## 2026-06-22T13:27 — entry 3
+
+**Triggered by:** Rework of the plugin↔engine seam so recall/remember consume Brent's router at full capability as a dumb client (no merged PR yet — work on a fresh branch this session).
+**Branch:** main
+**Related ADRs:** none (no new ADR yet; candidate noted in Open items)
+
+### Summary
+The plugin had been wiring the router itself: `client.py`'s `_Engine` instantiated the three concrete backends, hard-coded their constructor args, and called the bare `Router(backends)` — which is byte-for-byte the v1 "speed" profile (rule classifier, offline hashing embedder, cascade OFF, fusion OFF). Worse, `remember` wrote *directly* to the markdown backend, bypassing the router's write path entirely. So every accuracy feature the router has grown — graph→vector cascade, cross-backend RRF/score fusion, semantic-exemplar routing, real embeddings, the reranker, and dedup + write-routing — was dead from the plugin's side, and the plugin was making storage decisions it had no business making. This window inverts that: the plugin becomes a **dumb client of the engine**, knowing nothing of profiles, backends, embedders, classifiers, or routing. All assembly moved behind the contract seam.
+
+### Key state
+The contract seam (`core/contract.py`) replaced the old `load_engine()` (which handed back raw classes for the plugin to assemble) with a single factory, **`build_store(store_path)`**, that owns *all* assembly and returns one opaque `MemoryStore` — specifically a **`RouterStore`** over a `Router.with_config(backends, config)`. `RouterStore` is the load-bearing choice: the bare `Router` is not a `MemoryStore` (its `write` returns a `WriteReceipt`, `route` returns a backend, and it has no `get`/`all`), so without the facade the dedup + multi-index write path stays dead code — wrapping it makes routed read *and* routed write live through one object. `_Engine` collapsed to a thin wrapper: `recall` → `store.search`, `remember` → `store.write` (routed, deduped), mapping results to `Hit`. Profile selection is the engine's call with **zero plugin input**: `$MEMORY_PROFILE` forces `speed`/`fusion`/`accuracy` when set; otherwise `VOYAGE_API_KEY` present → **accuracy** (semantic classifier + Voyage embedder wired into the vector store at its matching dimension + cascade), else → **fusion** (offline cross-backend RRF — best offline recall, no key, no embedder-dimension mismatch). `speed` is never auto-selected. The accuracy branch is the only one that swaps the embedder, so it (and only it) builds the vector store around that embedder — the dimension-consistency detail the plugin must never reason about. Everything stays fail-open (ADR-harness-006) and recall-only on the conscious surface (ADR-harness-008); the `build_engine` test-injection seam is unchanged.
+
+### Open items
+- No ADR yet for this plugin↔engine boundary + auto-profile policy; it lives entirely in `contract.py` (harness domain, no `[CONTRACT]` PR needed) but is load-bearing enough to merit an `ADR-harness-011` — flagged, not written.
+- `remember` discards the `WriteReceipt`; `RouterStore.last_receipt` exposes merge/fan-out info that the debug CLI could surface but currently doesn't.
+- Accuracy profile is only construction-verified offline (mocked embedder); the real Voyage path (key + 1024-dim rebuild) is untested against the live API.
+- Stale untracked `plugin/dist/claude-code/` bundle still present (carried from entry 2).
+- OpenCode adapter still not implemented; PreCompact/Stop under-load race test still absent (carried from entry 1).
+
+### Artifacts at time of entry
+- [`plugin/cookbook_memory/core/contract.py`](../plugin/cookbook_memory/core/contract.py) — the seam; now owns `build_store()` and all profile/backend assembly
+- [`plugin/cookbook_memory/core/client.py`](../plugin/cookbook_memory/core/client.py) — `_Engine` reduced to a dumb client over one opaque `RouterStore`
+- [`eval/memeval/router.py`](../eval/memeval/router.py) — `Router`/`RouterStore`/`RouterConfig` + `speed_/accuracy_/fusion_profile` consumed here
+- [`docs/adrs/ADR-harness-006-fail-open.md`](../docs/adrs/ADR-harness-006-fail-open.md), [`ADR-harness-008-recall-only-conscious-surface.md`](../docs/adrs/ADR-harness-008-recall-only-conscious-surface.md) — still in force
+
+### Notable since last entry
+- Plugin stopped wiring the router itself; `load_engine()` (raw-class handoff) replaced by `build_store()` (full assembly behind the seam).
+- `remember` no longer writes markdown-only — it routes through `RouterStore.write` (dedup + write-routing now live); the markdown-only path was a prior plugin-side shortcut, now removed.
+- Recall default moved from the bare speed profile to **fusion** (offline) / **accuracy** (with a Voyage key), auto-selected by the engine.
+- Full plugin suite green (38/38); all four profile paths verified to construct and round-trip (accuracy via a mocked embedder).
