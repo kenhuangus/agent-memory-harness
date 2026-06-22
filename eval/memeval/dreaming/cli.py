@@ -99,7 +99,7 @@ def _emit_cli_resolved_event(hook_event_name: str | None) -> None:
 
     try:
         from importlib.metadata import version as _pkg_version
-        package_version = _pkg_version("memeval")
+        package_version = _pkg_version("agent-memory-eval")
     except Exception:
         package_version = "unknown"
 
