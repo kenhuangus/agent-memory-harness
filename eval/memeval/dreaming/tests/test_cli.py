@@ -648,19 +648,24 @@ def test_dream_subcommand_all_is_required_boolean() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_dream_all_failopens_on_notimplementederror(fake_make_store: MagicMock, fake_emit: list[Any]) -> None:
+def test_dream_all_failopens_on_notimplementederror(
+    memory_store_file: Path, fake_make_store: MagicMock, fake_emit: list[Any],
+) -> None:
     """Rubric §H criterion 49 — `dream --all` returns 0 even though DreamingWorker.run raises NotImplementedError."""
     assert cli.main(["dream", "--all"]) == 0
 
 
-def test_dream_all_emits_skipped_event(fake_make_store: MagicMock, fake_emit: list[Any]) -> None:
+def test_dream_all_emits_skipped_event(
+    memory_store_file: Path, fake_make_store: MagicMock, fake_emit: list[Any],
+) -> None:
     """Rubric §H criterion 50 — on NotImplementedError, CLI emits `daydream.dream_all_skipped`."""
     cli.main(["dream", "--all"])
     assert any(t == "daydream.dream_all_skipped" for t, _ in fake_emit)
 
 
 def test_dream_all_logs_notimplemented_visibly(
-    fake_make_store: MagicMock, fake_emit: list[Any], caplog: pytest.LogCaptureFixture,
+    memory_store_file: Path, fake_make_store: MagicMock, fake_emit: list[Any],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Rubric §H criterion 51 — on NotImplementedError, WARNING log contains `night` or `consolidation`."""
     caplog.set_level(logging.WARNING, logger="memeval.dreaming.cli")
@@ -672,8 +677,8 @@ def test_dream_all_logs_notimplemented_visibly(
 
 
 def test_dream_all_failopens_and_emits_error_event(
-    monkeypatch: pytest.MonkeyPatch, fake_make_store: MagicMock, fake_emit: list[Any],
-    caplog: pytest.LogCaptureFixture,
+    memory_store_file: Path, monkeypatch: pytest.MonkeyPatch, fake_make_store: MagicMock,
+    fake_emit: list[Any], caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Rubric §H criterion 52 — any other exception → exit 0 + dream_all_error event + class-name log."""
     from memeval.dreaming import worker
@@ -722,7 +727,7 @@ def test_dream_all_threads_store_arg(
 
 
 def test_dream_all_does_not_swallow_keyboardinterrupt(
-    monkeypatch: pytest.MonkeyPatch, fake_make_store: MagicMock,
+    memory_store_file: Path, monkeypatch: pytest.MonkeyPatch, fake_make_store: MagicMock,
 ) -> None:
     """Rubric §H criterion 55 — KeyboardInterrupt propagates."""
     from memeval.dreaming import worker

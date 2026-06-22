@@ -16,8 +16,14 @@ plugin-hooks contract reserves exit 2 as "block this hook's action."
 with try/finally restore of the prior value (ADR-dreaming-017 §X).
 
 Store factory: :func:`_make_store` returns
-:class:`memeval.harness.InMemoryStore`. When the storage-domain ships a
-unified Orchestrator entry point (ADR-storage-001), swap this body.
+:class:`memeval.stores.MarkdownStore` rooted at ``<basedir>/markdown/``.
+MemoryItems persist as OKF-native markdown docs (one ``.md`` per item
+under ``<basedir>/markdown/memory/``), so memories accumulate across
+``daydream-cli daydream`` invocations and are readable by the plugin's
+recall path. The plugin's ``_Engine``
+(``plugin/cookbook_memory/core/client.py``) routes recall across
+vector/markdown/graph backends, but writes go to markdown only by
+design — so the daydreamer wires markdown direct.
 
 ``dream --all`` calls :func:`memeval.dreaming.worker.dream`; the v1
 ``worker.DreamingWorker.run`` is a stub that raises
@@ -83,13 +89,15 @@ def _read_stdin_json() -> dict[str, Any]:
     return parsed
 
 
-def _make_store() -> MemoryStore:
-    """Return the v1 MemoryStore — :class:`memeval.harness.InMemoryStore`.
+def _make_store(basedir: Path) -> MemoryStore:
+    """Return the v1 MemoryStore — :class:`MarkdownStore` rooted at ``basedir/markdown``.
 
-    See module docstring for the Orchestrator-migration note.
+    Writes go to ``<basedir>/markdown/memory/<item_id>.md`` as OKF-native
+    concept docs (markdown + YAML frontmatter). See module docstring for
+    the routing rationale.
     """
-    from memeval.harness import InMemoryStore
-    return InMemoryStore()
+    from memeval.stores.markdown_store import MarkdownStore
+    return MarkdownStore(basedir / "markdown")
 
 
 def _emit_cli_resolved_event(hook_event_name: str | None) -> None:
@@ -165,7 +173,7 @@ def _handle_daydream(args: argparse.Namespace) -> int:
         try:
             with event_context(session_id=session_id, basedir=basedir):
                 _emit_cli_resolved_event(stdin_data.get("hook_event_name"))
-                store = _make_store()
+                store = _make_store(basedir)
                 engine.daydream(session_id=session_id, log_path=log_path, store=store)
             return 0
         except (KeyboardInterrupt, SystemExit):
@@ -182,13 +190,14 @@ def _handle_daydream(args: argparse.Namespace) -> int:
 
 def _handle_dream(args: argparse.Namespace) -> int:
     """Run night-dream consolidation — v1 worker is a stub; CLI emits skipped/error events."""
-    from memeval.dreaming import worker
+    from memeval.dreaming import _state, worker
     from memeval.dreaming.events import emit
 
     prev = _set_store_env(args.store)
     try:
         try:
-            store = _make_store()
+            basedir = _state.resolve_basedir()
+            store = _make_store(basedir)
             worker.dream(store=store)
             return 0
         except (KeyboardInterrupt, SystemExit):
