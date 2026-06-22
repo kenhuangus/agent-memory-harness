@@ -140,10 +140,28 @@ def _restore_store_env(store_arg: Path | None, prev: str | None) -> None:
         os.environ["MEMORY_STORE"] = prev
 
 
+def _alert_openrouter_unset(events_emit: Any) -> None:
+    """Emit the OPENROUTER_API_KEY-unset alert across stderr + log + diary (halliday F9).
+
+    Called exactly once per invocation, BEFORE any engine work. Engine still
+    runs and fail-opens; this just stops the silence. Diary event is the only
+    observable signal in CC's async-Stop subprocess path where stderr may be
+    captured-and-discarded by the parent.
+    """
+    sys.stderr.write(
+        "daydream-cli: OPENROUTER_API_KEY is unset — memory extraction "
+        "disabled (see .env.example). Run continues; writes will be empty.\n"
+    )
+    log.warning(
+        "OPENROUTER_API_KEY unset — memory extraction disabled; see .env.example"
+    )
+    events_emit("daydream.openrouter_unset")
+
+
 def _handle_daydream(args: argparse.Namespace) -> int:
     """Run one Daydream pass — reads stdin JSON, calls engine, fail-opens on every exception."""
     from memeval.dreaming import _state, engine
-    from memeval.dreaming.events import event_context
+    from memeval.dreaming.events import emit as events_emit, event_context
 
     stdin_data = _read_stdin_json()
     session_id = args.session if args.session is not None else stdin_data.get("session_id")
@@ -160,6 +178,8 @@ def _handle_daydream(args: argparse.Namespace) -> int:
         )
         return 0
 
+    openrouter_unset = not os.environ.get("OPENROUTER_API_KEY")
+
     prev = _set_store_env(args.store)
     try:
         try:
@@ -174,6 +194,8 @@ def _handle_daydream(args: argparse.Namespace) -> int:
         try:
             with event_context(session_id=session_id, basedir=basedir):
                 _emit_cli_resolved_event(stdin_data.get("hook_event_name"))
+                if openrouter_unset:
+                    _alert_openrouter_unset(events_emit)
                 store = _make_store(basedir)
                 engine.daydream(session_id=session_id, log_path=log_path, store=store)
             return 0
