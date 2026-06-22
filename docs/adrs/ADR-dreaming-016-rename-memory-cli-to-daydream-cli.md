@@ -2,19 +2,19 @@
 id: ADR-dreaming-016
 domain: dreaming
 title: Console script renamed memory → daydream-cli to eliminate PATH-collision risk
-status: Accepted
+status: Superseded
 date: 2026-06-21
 contract: true
 supersedes: ADR-dreaming-008
-superseded_by: none
+superseded_by: ADR-dreaming-018
 owner: Scott B. (P4) — engine; Keith (P1) — informed (plugin shells out to this name)
 origin: design session 2026-06-21 (halliday adversarial-review Finding #7)
 ---
 
 # ADR-dreaming-016: Console script renamed `memory` → `daydream-cli` to eliminate PATH-collision risk
 
-**Status:** Accepted · **Date:** 2026-06-21 · **Contract:** yes
-**Supersedes:** [`ADR-dreaming-008`](ADR-dreaming-008-memory-cli-console-script.md) · **Superseded by:** none
+**Status:** Superseded · **Date:** 2026-06-21 · **Contract:** yes
+**Supersedes:** [`ADR-dreaming-008`](ADR-dreaming-008-memory-cli-console-script.md) · **Superseded by:** [`ADR-dreaming-018`](ADR-dreaming-018-cli-argparse-exit-code.md) (exit-code policy only — the rename + naming rationale here remains the active contract)
 
 > **Scope of supersession.** This ADR carries forward all of ADR-008's
 > structural decisions (standalone console script in
