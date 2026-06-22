@@ -411,6 +411,9 @@ class CascadeConfig:
     margin_floor: float = 0.05
     gate: str = "exact_anchor"
     hydrate_from_vector: bool = True
+    # Per-query graph BFS depth the cascade injects into graph.search; None = the graph store's own
+    # default (byte-equivalent). An accuracy profile sets it deeper to recover multi-hop gold (D032).
+    graph_max_depth: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -510,20 +513,23 @@ def speed_profile() -> RouterConfig:
 
 
 def accuracy_profile(*, classifier: RouterClassifier, embed: Any,
-                     embed_model: Optional[str] = None, k: int = 8) -> RouterConfig:
+                     embed_model: Optional[str] = None, k: int = 8,
+                     graph_max_depth: int = 3) -> RouterConfig:
     """The ``accuracy`` profile: injected classifier + real embedder, cascade ON.
 
     The heavy strategies are CALLER-INJECTED (PR3): ``classifier`` is a
     :class:`RouterClassifier` (e.g. a learned / spaCy classifier) and ``embed`` is
     a real embedder the vector store is built around. This factory only *builds the
-    config* — it turns the graph→vector cascade on and leaves ``consult2`` at its
-    declared default (no RRF / second-opinion implementation ships here). ``k`` is
-    the profile's retrieval breadth (wider than speed's default 5).
+    config* — it turns the graph→vector cascade on (traversing the graph to
+    ``graph_max_depth`` hops, default 3 — one deeper than speed's 2, a PROVISIONAL
+    value pending a captained "does deeper traversal help" measurement, D032) and
+    leaves ``consult2`` at its declared default (no RRF / second-opinion ships here).
+    ``k`` is the profile's retrieval breadth (wider than speed's default 5).
     """
     return RouterConfig(
         profile_name="accuracy",
         classifier=classifier,
-        cascade=CascadeConfig(enabled=True),
+        cascade=CascadeConfig(enabled=True, graph_max_depth=graph_max_depth),
         embed=embed,
         embed_model=embed_model,
         k=k,
@@ -639,6 +645,21 @@ class _GraphVectorCascade:
         self._vector = vector
         self._cfg = cascade_config
 
+    def _graph_search_kwargs(self, kwargs: dict) -> dict:
+        """Inject the cascade's configured graph BFS depth (if any) into a graph.search call, so the
+        accuracy profile traverses deeper without rebuilding the store (D032). An explicit caller
+        ``max_depth`` wins; ``graph_max_depth=None`` leaves the graph store's own default untouched.
+
+        This also feeds the GATE's graph stage. The accept/fall-through verdict is invariant for any
+        depth **>= 1**: deeper traversal only appends strictly-lower-scored farther nodes, so rank-0 and
+        rank-1 — hence ``score0`` and ``margin = score0 - score1`` — are unchanged; the shipping
+        speed(2)/accuracy(3) band never flips a verdict. NOTE: a future ``graph_max_depth=0`` profile would
+        remove rank-1 and could shrink the margin — revisit the gate floors if a depth-0 profile is added."""
+        gk = dict(kwargs)
+        if self._cfg.graph_max_depth is not None:
+            gk.setdefault("max_depth", self._cfg.graph_max_depth)
+        return gk
+
     # -- MemoryStore protocol ----------------------------------------------
     def search(self, query: str, *, k: int = 5, as_of: Optional[float] = None,
                **kwargs: Any) -> list[RetrievedItem]:
@@ -648,7 +669,7 @@ class _GraphVectorCascade:
         underlying stores so a routed read through the cascade honors them exactly as a direct
         single-backend read does (e.g. a ``RouterStore`` over a cascade-enabled profile).
         """
-        graph_hits = self._graph.search(query, k=k, as_of=as_of, **kwargs)
+        graph_hits = self._graph.search(query, k=k, as_of=as_of, **self._graph_search_kwargs(kwargs))
         gate = self._gate(query, graph_hits, as_of)
         if gate.decision == ACCEPT:
             return self._project(graph_hits)
@@ -678,7 +699,8 @@ class _GraphVectorCascade:
     # -- gate + projection -------------------------------------------------
     def gate(self, query: str, *, k: int = 5, as_of: Optional[float] = None) -> GateResult:
         """Introspect the accept/fall-through verdict without retrieving (testable seam)."""
-        return self._gate(query, self._graph.search(query, k=k, as_of=as_of), as_of)
+        return self._gate(query, self._graph.search(query, k=k, as_of=as_of,
+                                                     **self._graph_search_kwargs({})), as_of)
 
     def _gate(self, query: str, graph_hits: list[RetrievedItem],
               as_of: Optional[float]) -> GateResult:
