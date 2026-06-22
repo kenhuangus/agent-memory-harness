@@ -1950,23 +1950,25 @@ def test_claudecode_solve_qa_unchanged() -> None:
     assert seen["system"] == _SYS_PLAIN                   # QA path untouched
 
 
-def test_plugin_real_requires_openrouter_key() -> None:
-    """--mode plugin-real must refuse to start without OPENROUTER_API_KEY.
+def test_plugin_real_openrouter_advisory_is_nonfatal() -> None:
+    """plugin-real must NOT depend on OPENROUTER_API_KEY.
 
-    Otherwise the dreaming/subconscious model fail-opens to zero extracted
-    memories (ADR-dreaming-012) and the bench reports noise as a score.
+    With the key unset the run still proceeds (memory is seeded via the plugin's
+    own memory-cli; the dream/Daydreamer consolidation is a no-op, ADR-dreaming-012)
+    — only a NON-fatal advisory is emitted. This keeps the empty-memory -> dream
+    inserts -> re-run -> compare workflow runnable.
     """
     from memeval.claudecode import run_bench
 
     saved = os.environ.pop("OPENROUTER_API_KEY", None)
     try:
-        err = run_bench._require_openrouter_for_plugin_real(["plugin-real"])
-        assert err is not None and "OPENROUTER_API_KEY" in err   # refuse + actionable
+        note = run_bench._openrouter_advisory(["plugin-real"])
+        assert note is not None and "OPENROUTER_API_KEY" in note   # advisory present
         # non-plugin-real modes are unaffected
-        assert run_bench._require_openrouter_for_plugin_real(["builtin", "plugin"]) is None
-        # key present -> no error
+        assert run_bench._openrouter_advisory(["builtin", "plugin"]) is None
+        # key present -> no advisory
         os.environ["OPENROUTER_API_KEY"] = "sk-or-test"
-        assert run_bench._require_openrouter_for_plugin_real(["plugin-real"]) is None
+        assert run_bench._openrouter_advisory(["plugin-real"]) is None
     finally:
         os.environ.pop("OPENROUTER_API_KEY", None)
         if saved is not None:
