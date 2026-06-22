@@ -7,12 +7,12 @@ the QUERY into a ``(relation, direction)`` intent and traverses only the matchin
 depend on" (out-edges) and "what depends on X" (in-edges) no longer return the same set. ("what breaks if
 X changes" is an *impacts*-OUT query — what X impacts — not an in-edge query.)
 
-**Where the typed links come from (Step 1b, NOT yet wired):** the graph store *consumes* typed
-``okf_links`` entries, but ``okf.py`` parsing still captures only the link TARGET and discards the
-markdown anchor text (``okf.py`` ``_LINK_RE``), so **real OKF markdown links arrive untyped** and fall
-back to ``relates_to`` (generic). Typed edges are exercised today only by callers that supply typed
-entries (the eval). Capturing the relation from the OKF anchor at parse time — making real markdown
-``[depends on](x.md)`` links typed end-to-end — is the next sub-step.
+**Where the typed links come from (Step 1b, DONE):** ``okf.py`` parsing now captures the markdown link
+ANCHOR text alongside the target (``okf.py`` ``_LINK_RE``), emitting ``okf_links`` as ``(anchor, target)``
+pairs, so **real OKF markdown links arrive typed** — a ``[depends on](x.md)`` link becomes a ``depends_on``
+edge end-to-end. The graph store classifies the anchor (an untyped or empty anchor falls back to
+``relates_to``, generic); ``okf.py`` stays a pure parser and does not import the relation vocabulary. The
+OKF→GraphStore round-trip is covered by ``stores/tests/test_okf_to_graph.py``.
 
 Edges live in two indexes maintained at ``write``: ``_out`` (source -> [(target, rel)]) and a reverse
 ``_in`` (target -> [(source, rel)]) — the reverse index makes IN/impact traversal O(deg) instead of the

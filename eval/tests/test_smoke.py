@@ -634,7 +634,7 @@ def test_okf_round_trip_lossless() -> None:
               "tokens", "version"):
         assert getattr(back, f) == getattr(m, f), f
     assert back.metadata["extra"] == 1
-    assert back.metadata["okf_links"] == ["/t/customers.md"]  # link -> graph edge
+    assert back.metadata["okf_links"] == [("customers", "/t/customers.md")]  # (anchor, target) link -> graph edge
 
 
 def test_okf_bundle_export_import_and_conformance() -> None:
@@ -676,7 +676,7 @@ def test_okf_imports_foreign_google_sample_doc() -> None:
     assert "Stack Overflow" in it.tags and "users" in it.tags
     assert it.timestamp > 0                          # ISO parsed to epoch
     assert it.metadata["okf_title"] == "Users"       # OKF semantics preserved
-    assert it.metadata["okf_links"] == ["../datasets/stackoverflow.md"]
+    assert it.metadata["okf_links"] == [("stackoverflow", "../datasets/stackoverflow.md")]
     assert "Overview" in it.content
 
 
