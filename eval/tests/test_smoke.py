@@ -358,10 +358,12 @@ def test_efficiency_metric() -> None:
 def test_relevancy_metric() -> None:
     trajs, tasks = _crafted_trajectory()
     rel, prec = M.relevancy(trajs, tasks)
-    # Retriever scores are max-normalized within the retrieve step: the step max
-    # is 0.9, so 0.9 -> 1.0 and 0.5 -> 0.5/0.9. mean = (1.0 + 0.5/0.9) / 2.
-    assert _approx(rel, (1.0 + 0.5 / 0.9) / 2.0), rel
-    assert _approx(prec, 0.5), prec  # only the top hit (1.0) >= 0.7 threshold
+    # precision@k is scorer-AGNOSTIC gold precision: of the 2 retrieved items,
+    # exactly 1 (g1) is gold -> 1/2 = 0.5, independent of the BM25/Jaccard score.
+    assert _approx(prec, 0.5), prec
+    # No query embeddings supplied -> mean_similarity mirrors the gold precision
+    # (no scorer-shape artifact).
+    assert _approx(rel, 0.5), rel
 
 
 def test_relevancy_with_embeddings() -> None:
@@ -399,8 +401,31 @@ def test_qa_grading_helpers() -> None:
     assert M.normalize_answer("The  Eiffel-Tower!") == "eiffel tower"
     assert M.normalize_answer(None) == ""  # type: ignore[arg-type]
     assert M.qa_match("Paris", "paris") is True
-    assert M.qa_match("The capital is Paris.", "Paris") is True  # substring
+    assert M.qa_match("The capital is Paris.", "Paris") is True  # whole-word containment
     assert M.qa_match("London", "Paris") is False
+
+
+def test_qa_match_whole_word_not_digit_substring() -> None:
+    """Regression: qa_match credits gold only on a WHOLE-word match, never a raw
+    character substring. The classic failure was a numeric gold matching a digit
+    embedded in a larger number.
+    """
+    # FALSE POSITIVE the old raw-substring grader produced: gold '7' inside '17'.
+    assert M.qa_match("You packed 17 shirts for your trip.", "7") is False
+    # The genuine whole-word match still passes.
+    assert M.qa_match("You packed 7 shirts for your trip.", "7") is True
+    # Multi-word gold must appear as a contiguous run of whole words, in order.
+    assert M.qa_match("a one way ticket each way costs more", "each way") is True
+    assert M.qa_match("the report covers each topic anyway", "each way") is False
+    # Equality and the fuller-sentence containment from test_smoke still hold.
+    assert M.qa_match("The capital is Paris.", "Paris") is True
+    assert M.qa_match("Paris", "paris") is True
+    assert M.qa_match("London", "Paris") is False
+    # A numeric gold no longer matches a different number sharing a digit run.
+    assert M.qa_match("the discount was 20% off", "10%") is False
+    # Empty gold only matches empty prediction.
+    assert M.qa_match("anything", "") is False
+    assert M.qa_match("", "") is True
 
 
 def test_cosine() -> None:
@@ -417,8 +442,9 @@ def test_compute_metrics_aggregate() -> None:
     assert _approx(m.recency, 1.0)
     assert _approx(m.recency_decayed, math.exp(-1.0))
     assert _approx(m.efficiency, 15.0 / 120.0)
-    # Per-step max-normalized: (1.0 + 0.5/0.9) / 2 (see test_relevancy_metric).
-    assert _approx(m.relevancy, (1.0 + 0.5 / 0.9) / 2.0)
+    # Scorer-agnostic gold precision: 1 of 2 retrieved items is gold -> 0.5
+    # (see test_relevancy_metric). mean_similarity mirrors it (no query emb).
+    assert _approx(m.relevancy, 0.5)
     assert _approx(m.precision_at_k, 0.5)
     assert _approx(m.accuracy, 1.0)
     assert m.n == 1
@@ -1108,6 +1134,34 @@ def test_grader_registry_and_unavailable_skip() -> None:
         pass
 
 
+def test_run_agent_grading_exception_is_ungraded_not_a_miss() -> None:
+    """When the GRADER itself raises (e.g. Docker/swebench unavailable under
+    on_unavailable='error'), the task is recorded UNGRADED (success=None), not a
+    counted CODE failure. metrics.accuracy then excludes it from the denominator
+    rather than dishonestly depressing the resolved rate.
+    """
+    def _raising_grader(task, prediction):
+        raise RuntimeError("SWE-bench grading requires Docker (unavailable)")
+
+    fx = _fixture("swe_contextbench.json")
+    rr = run_agent(Benchmark.SWE_CONTEXTBENCH, EchoAgent(), memory=False,
+                   path_or_id=fx, limit=1, grader=_raising_grader)
+    # The grading exception leaves success unset (None == ungraded), not False.
+    assert all(t.success is None for t in rr.trajectories)
+    # Ungraded tasks are excluded from accuracy's denominator -> 0.0 here (no
+    # graded trajectory), never a fake miss.
+    assert _approx(rr.metrics.accuracy, 0.0)
+    # A clean comparison: a grader that returns False IS a counted miss.
+    rr_false = run_agent(Benchmark.SWE_CONTEXTBENCH, EchoAgent(), memory=False,
+                         path_or_id=fx, limit=1,
+                         grader=lambda task, pred: False)
+    assert all(t.success is False for t in rr_false.trajectories)
+    assert _approx(rr_false.metrics.accuracy, 0.0)
+    # accuracy() sees the False run as graded (denominator 1) but the raising run
+    # as ungraded (denominator 0) -- the honest distinction this fix restores.
+    assert M.accuracy(rr.trajectories) == 0.0 and rr.trajectories[0].success is None
+
+
 # --------------------------------------------------------------------------- #
 # Aggregate -- the hypothesis scoreboard (Haiku+mem vs Opus no-mem)
 # --------------------------------------------------------------------------- #
@@ -1443,24 +1497,34 @@ def test_bm25_empty_query_inmemory_zero_padded() -> None:
     assert all(h.score == 0.0 for h in hits)
 
 
-def test_relevancy_per_step_max_normalization() -> None:
-    """metrics.relevancy max-normalizes raw BM25-magnitude scores per retrieve
-    step, so precision@k's threshold is meaningful again.
-
-    One step with raw scores 3.2 and 0.4: step max is 3.2, so 3.2 -> 1.0 (>= 0.7,
-    counts) and 0.4 -> 0.125 (< 0.7, does not). precision@k = 1/2 = 0.5; mean is
-    (1.0 + 0.125) / 2.
+def test_relevancy_is_scorer_agnostic_gold_precision() -> None:
+    """metrics.relevancy.precision@k is GOLD precision, independent of the raw
+    retriever-score magnitude. The same retrieval (one gold, one non-gold)
+    yields precision 0.5 whether the scorer emits tiny Jaccard-era scores or
+    large BM25-magnitude scores -- the metric reflects WHAT was retrieved, not
+    the scorer's distribution shape.
     """
     task = Task(task_id="t", benchmark=Benchmark.LONGMEMEVAL, kind=TaskKind.QA,
                 question="q", gold_memory_ids=["g"])
-    traj = Trajectory(task_id="t", benchmark=Benchmark.LONGMEMEVAL, model="echo")
-    traj.add(TrajectoryStep(step=0, kind="retrieve", timestamp=10.0, retrieved=[
-        RetrievedItem(item=_mk_item("g", 5.0, 1), score=3.2, rank=0),
-        RetrievedItem(item=_mk_item("n", 4.0, 1), score=0.4, rank=1),
-    ]))
-    rel, prec = M.relevancy([traj], [task])
-    assert _approx(prec, 0.5), prec
-    assert _approx(rel, (1.0 + 0.4 / 3.2) / 2.0), rel
+
+    def _two_item_traj(s_gold: float, s_noise: float) -> Trajectory:
+        tr = Trajectory(task_id="t", benchmark=Benchmark.LONGMEMEVAL, model="echo")
+        tr.add(TrajectoryStep(step=0, kind="retrieve", timestamp=10.0, retrieved=[
+            RetrievedItem(item=_mk_item("g", 5.0, 1), score=s_gold, rank=0),
+            RetrievedItem(item=_mk_item("n", 4.0, 1), score=s_noise, rank=1),
+        ]))
+        return tr
+
+    # Jaccard-era tiny scores and BM25-magnitude scores give the SAME precision.
+    _, prec_small = M.relevancy([_two_item_traj(0.007, 0.005)], [task])
+    _, prec_big = M.relevancy([_two_item_traj(3.2, 0.4)], [task])
+    assert _approx(prec_small, 0.5), prec_small
+    assert _approx(prec_big, 0.5), prec_big
+    # is_gold gets annotated as a side effect (idempotent with recency).
+    tr = _two_item_traj(3.2, 0.4)
+    M.relevancy([tr], [task])
+    flags = {ri.item_id: ri.is_gold for ri in tr.steps[0].retrieved}
+    assert flags == {"g": True, "n": False}
 
 
 def test_agent_adapter_protocol() -> None:
