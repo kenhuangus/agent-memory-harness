@@ -92,6 +92,21 @@ _PLUGIN_REAL_PREFIX = (
     "then answer concisely with just the final answer.\n\n"
 )
 
+# Seeding turn: drives Claude through one turn per prior session so each Stop hook
+# fires the daydreamer over that session's substantive content (PR #77). Replaces
+# the back-door `memory-cli remember` write for the real-plugin path, so the bench
+# measures what daydream extracted — not what was hand-loaded.
+_SYS_SEED_SESSION = (
+    "You are being shown a snippet of a prior conversation for your records. "
+    "Briefly acknowledge that you've noted it — a single short sentence is enough. "
+    "Do not call any tools. Do not ask questions. Do not act on the content."
+)
+_SEED_SESSION_PREFIX = (
+    "The following is a prior conversation snippet to remember. Briefly acknowledge "
+    "that you've noted it; do not respond further.\n\n"
+    "--- prior session ---\n"
+)
+
 # Builtin mode = Claude Code's OWN memory/context mechanism. The real one is not
 # "dump the whole history into the context window" (a 200k+-token CLAUDE.md just
 # 400s) — it is agentic retrieval: the prior history is written as files in the
@@ -174,6 +189,38 @@ def _read_events(events: Path) -> list[dict]:
 def _count_recall_events(events: Path) -> int:
     """Number of recall events in the plugin's own events stream."""
     return sum(1 for rec in _read_events(events) if rec.get("op") == "recall")
+
+
+def _count_daydream_fired_events(events: Path) -> int:
+    """Number of ``daydream.hook_subprocess_fired`` events in the plugin's events stream.
+
+    Written by the plugin's hook handler (PR #77) AFTER the daydream-cli subprocess
+    completes — so its appearance in the stream is the signal that daydream has
+    finished extracting + writing memories for the just-ended Claude turn.
+    """
+    return sum(
+        1 for rec in _read_events(events)
+        if rec.get("op") == "daydream.hook_subprocess_fired"
+    )
+
+
+def _wait_for_daydream_fired(events: Path, baseline: int, timeout: float = 60.0,
+                             poll_interval: float = 0.25) -> bool:
+    """Block until daydream.hook_subprocess_fired count exceeds ``baseline``, or timeout.
+
+    Returns True on observed fire, False on timeout. Fail-open: never raises.
+    The Stop hook is async (CC detaches the handler), so the bench's main thread
+    has to wait for the background extraction to finish before moving to the next
+    Claude turn — otherwise the next turn's daydream invocation races on the same
+    flock or reads stale state.
+    """
+    import time
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if _count_daydream_fired_events(events) > baseline:
+            return True
+        time.sleep(poll_interval)
+    return False
 
 
 class ClaudeCodeAgent:
@@ -482,22 +529,42 @@ class ClaudeCodeAgent:
 
         1. ensure the plugin is built + installed into the sandbox once per agent
            (native ``claude plugin install``), capturing the PATH the MCP server needs;
-        2. seed the plugin's store at ``<run_dir>/.cookbook-memory`` through the
-           plugin's OWN CLI (``memory-cli remember``) — the same write surface a user
-           or the Daydreamer uses — so nothing reaches into the plugin's Python API;
+        2. populate the store with prior-session content:
+           - **Real-plugin path** (``memory-cli`` on PATH): drive Claude through one
+             primed turn per ``task.sessions[i]``, so each turn's Stop hook fires the
+             daydreamer (PR #77) over substantive session content. Wait for each
+             daydream subprocess to finish (via the ``daydream.hook_subprocess_fired``
+             event the plugin's handler emits when extraction completes) before
+             moving to the next session. This is what makes the bench measure what
+             the daydreamer actually extracted, instead of what a back-door write
+             pre-loaded.
+           - **Offline/fake-runner path** (no real install): fall back to
+             :meth:`_seed_plugin_store` — direct ``memory-cli remember`` writes that
+             no-op when the binary isn't on PATH. Keeps the existing offline tests
+             green without requiring a real plugin install.
         3. drive a primed ``claude`` turn with ``CLAUDE_PROJECT_DIR=<run_dir>`` so the
            plugin's ``.mcp.json`` (``${CLAUDE_PROJECT_DIR}/.cookbook-memory``) resolves
            to the seeded store;
         4. attribute what the agent recalled to the trajectory, read from the plugin's
            own events stream (``events.jsonl``, ``meta.hits``).
         """
+        import shutil
+
         plugin_env = self._ensure_real_plugin()  # install first so memory-cli is on PATH
         store_dir = run_dir / ".cookbook-memory"
         store_dir.mkdir(parents=True, exist_ok=True)
-        self._seed_plugin_store(task, store_dir, plugin_env)
 
         extra_env = {**plugin_env, "CLAUDE_PROJECT_DIR": str(run_dir)}
         events = store_dir / "events.jsonl"
+
+        # Real install? Drive sessions through Claude turns so daydream fires over
+        # them. No real install? Back-door seed (offline tests).
+        env_for_path = {**os.environ, **plugin_env, "MEMORY_STORE": str(store_dir)}
+        memory_cli_exe = shutil.which("memory-cli", path=env_for_path.get("PATH"))
+        if memory_cli_exe is not None:
+            self._drive_sessions_through_daydream(task, run_dir, extra_env, events)
+        else:
+            self._seed_plugin_store(task, store_dir, plugin_env)
 
         res: Optional[ClaudeResult] = None
         for _ in range(_PLUGIN_MAX_TRIES):
@@ -508,6 +575,31 @@ class ClaudeCodeAgent:
                 break  # the agent reached the recall tool -> plugin MCP connected
         self._attribute_real_recall(events, ctx)
         return res  # type: ignore[return-value]
+
+    def _drive_sessions_through_daydream(self, task: Task, run_dir: Path,
+                                         extra_env: dict[str, str],
+                                         events: Path) -> None:
+        """Run one primed Claude turn per ``task.sessions[i]`` so each Stop hook
+        fires the daydreamer over that session's content. Polls for the
+        ``daydream.hook_subprocess_fired`` event between sessions to serialize:
+        Stop is async (CC detaches the handler), so the bench's main thread has
+        to wait for the background extraction to finish before the next turn
+        races on the per-session flock or reads stale state.
+
+        Fail-open: per-session timeout returns True/False but never raises. A
+        missed daydream fire (timeout) leaves a gap in the seeded memory but
+        doesn't break the bench — the question turn still runs, recall still
+        attributes, the trajectory just under-represents that session.
+        """
+        for sess in task.sessions:
+            content = getattr(sess, "content", "") or ""
+            if not content.strip():
+                continue
+            baseline = _count_daydream_fired_events(events)
+            seed_prompt = _SEED_SESSION_PREFIX + content + "\n--- end snippet ---\n"
+            self._run_primed(seed_prompt, run_dir, _SYS_SEED_SESSION,
+                             mcp_config=None, allowed_tools=None, extra_env=extra_env)
+            _wait_for_daydream_fired(events, baseline=baseline)
 
     def _ensure_real_plugin(self) -> dict[str, str]:
         """Build + install the real plugin into the sandbox once per agent; cache the

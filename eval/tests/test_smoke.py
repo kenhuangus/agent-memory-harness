@@ -849,6 +849,124 @@ def test_claudecode_agent_plugin_real_records_retrieval_from_events() -> None:
     assert seen["cwd"]
 
 
+def test_solve_plugin_real_drives_sessions_through_daydream_when_memory_cli_installed() -> None:
+    # When memory-cli is on PATH (real-plugin install case), _solve_plugin_real
+    # now drives Claude through one primed turn per task.sessions[i] so each
+    # Stop hook fires the daydreamer over substantive session content (PR #77),
+    # then a final question turn. Before this fix, sessions were back-doored via
+    # `memory-cli remember` and daydream only saw the trivial question turn.
+    #
+    # The fake runner stands in for the installed plugin's Stop-hook chain:
+    # for each seeding turn it writes a `daydream.hook_subprocess_fired` event
+    # (what the plugin's handler emits AFTER the daydream-cli subprocess returns,
+    # per PR #77) so the poll in _wait_for_daydream_fired sees fire and proceeds.
+    # The question turn writes a `recall` event so the existing attribution path
+    # produces a retrieve step.
+    import json as _json
+    import shutil as _shutil
+    from unittest.mock import patch
+    from memeval.claudecode.agent import ClaudeCodeAgent
+    from memeval.claudecode.cli import ClaudeResult
+    from memeval.claudecode.platform import ClaudeRuntime
+
+    seen_prompts: list[str] = []
+    seen_systems: list[str] = []
+
+    def fake(prompt, *, cwd, **kw):
+        seen_prompts.append(prompt)
+        seen_systems.append(kw.get("append_system_prompt", ""))
+        store = Path(cwd) / ".cookbook-memory"
+        store.mkdir(parents=True, exist_ok=True)
+        evfile = store / "events.jsonl"
+        # Last turn = question turn (uses recall); earlier turns = seeding turns.
+        if "recall the question" in prompt.lower() or "call the recall tool" in prompt.lower():
+            rec = {"ts": 1.0, "op": "recall", "ids": ["m1"], "query": prompt,
+                   "meta": {"hits": [{"id": "m1", "content": "berlin", "score": 0.9,
+                                       "rank": 0, "tokens": 1, "timestamp": 1.0}]}}
+        else:
+            # Seeding turn: simulate the plugin's hooks_handler emitting fired-event
+            # AFTER its daydream-cli subprocess completes (PR #77).
+            rec = {"ts": 1.0, "op": "daydream.hook_subprocess_fired",
+                   "session_id": "seed", "meta": {"hook": "Stop"}}
+        with evfile.open("a", encoding="utf-8") as fh:
+            fh.write(_json.dumps(rec) + "\n")
+        return ClaudeResult(text="ack", tokens_in=10, tokens_out=2)
+
+    native = ClaudeRuntime(kind="native", exe="claude", python="python")
+    # Pretend memory-cli is on PATH so _solve_plugin_real takes the multi-turn branch.
+    real_which = _shutil.which
+    with tempfile.TemporaryDirectory() as tmp:
+        with patch.object(_shutil, "which",
+                          side_effect=lambda name, **kw: "/fake/memory-cli"
+                          if name == "memory-cli" else real_which(name, **kw)):
+            agent = ClaudeCodeAgent(memory_mode="plugin-real", runner=fake,
+                                    runtime=native, workdir=tmp)
+            rr = run_agent(Benchmark.MEMORY_AGENT_BENCH, agent, memory=True,
+                           path_or_id=_fixture("memoryagentbench.json"), limit=1,
+                           seed_sessions=False)
+
+    # The memoryagentbench fixture's first task has multiple prior sessions.
+    # Expect: N seeding turns + at least one question-turn try (up to _PLUGIN_MAX_TRIES).
+    seed_calls = [p for p in seen_prompts if "prior session" in p]
+    assert len(seed_calls) >= 1, (
+        "expected at least one seeding turn driving a session through a Claude "
+        "turn (so its Stop hook fires daydream over substantive content); got "
+        f"{seen_prompts!r}"
+    )
+    # Each seeding turn used the seed-system prompt, not the question-system.
+    for sys_p in seen_systems[: len(seed_calls)]:
+        assert "noted it" in sys_p or "Briefly acknowledge" in sys_p, (
+            f"seeding turn used wrong system prompt: {sys_p!r}"
+        )
+    # The final turn(s) ran with the question-targeted system prompt + a recall happened.
+    kinds = [s.kind for t in rr.trajectories for s in t.steps]
+    assert "retrieve" in kinds and "generate" in kinds
+
+
+def test_solve_plugin_real_falls_back_to_back_door_when_memory_cli_missing() -> None:
+    # Offline / fake-runner case: memory-cli is NOT on PATH. _solve_plugin_real
+    # falls back to _seed_plugin_store (which no-ops without the binary), so the
+    # existing offline plugin-real test path stays green. Behavior baseline:
+    # only ONE _run_primed invocation (the question turn) — no seeding turns.
+    import json as _json
+    import shutil as _shutil
+    from unittest.mock import patch
+    from memeval.claudecode.agent import ClaudeCodeAgent
+    from memeval.claudecode.cli import ClaudeResult
+    from memeval.claudecode.platform import ClaudeRuntime
+
+    seen_prompts: list[str] = []
+
+    def fake(prompt, *, cwd, **kw):
+        seen_prompts.append(prompt)
+        store = Path(cwd) / ".cookbook-memory"
+        store.mkdir(parents=True, exist_ok=True)
+        rec = {"ts": 1.0, "op": "recall", "ids": ["m1"], "query": prompt,
+               "meta": {"hits": [{"id": "m1", "content": "x", "score": 0.9,
+                                   "rank": 0, "tokens": 1, "timestamp": 1.0}]}}
+        (store / "events.jsonl").write_text(_json.dumps(rec) + "\n")
+        return ClaudeResult(text="x", tokens_in=10, tokens_out=2)
+
+    native = ClaudeRuntime(kind="native", exe="claude", python="python")
+    # Pretend memory-cli is NOT on PATH — _solve_plugin_real must NOT enter the
+    # multi-turn branch.
+    real_which = _shutil.which
+    with tempfile.TemporaryDirectory() as tmp:
+        with patch.object(_shutil, "which",
+                          side_effect=lambda name, **kw: None
+                          if name == "memory-cli" else real_which(name, **kw)):
+            agent = ClaudeCodeAgent(memory_mode="plugin-real", runner=fake,
+                                    runtime=native, workdir=tmp)
+            run_agent(Benchmark.MEMORY_AGENT_BENCH, agent, memory=True,
+                      path_or_id=_fixture("memoryagentbench.json"), limit=1,
+                      seed_sessions=False)
+    seed_calls = [p for p in seen_prompts if "prior session" in p]
+    assert seed_calls == [], (
+        "without memory-cli the multi-turn branch must NOT engage; got "
+        f"{seen_prompts!r}"
+    )
+
+
 def test_claudecode_platform_path_translation_and_argv() -> None:
     import os
     from memeval.claudecode.platform import to_wsl_path, ClaudeRuntime
