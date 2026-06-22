@@ -83,6 +83,22 @@ def test_events_are_emitted(tmp_path, inject_engine):
     assert events[1]["ids"] == ["mem-1"]
 
 
+def test_recall_event_carries_full_hits_in_meta(tmp_path, inject_engine):
+    # The recall event enriches meta.hits with content/score/rank/timestamp so a
+    # reader (the eval verification step) can attribute retrieval without a second
+    # store lookup. `ids` stays the top-level contract field (ADR-harness-007).
+    inject_engine(FakeEngine())
+    c = _client(tmp_path)
+    c.remember("alpha note")
+    c.recall("alpha")
+    recall_ev = [e for e in c.events.read() if e["op"] == "recall"][-1]
+    hits = recall_ev["meta"]["hits"]
+    assert [h["id"] for h in hits] == recall_ev["ids"]
+    h0 = hits[0]
+    for field in ("id", "content", "score", "rank", "tokens", "timestamp"):
+        assert field in h0, f"recall hit missing {field}"
+
+
 def test_recall_fail_open_returns_empty_and_logs_error(tmp_path, inject_engine):
     inject_engine(FakeEngine(boom=True))
     c = _client(tmp_path)

@@ -32,9 +32,10 @@ from .events import EventStream
 class Hit:
     """One recalled memory, flattened for an adapter/tool response.
 
-    ``id``, ``content``, ``score`` (higher = more relevant), ``tokens``, and the
-    0-based ``rank``. Kept separate from the engine's ``RetrievedItem`` so the
-    plugin's public response shape doesn't depend on an internal type.
+    ``id``, ``content``, ``score`` (higher = more relevant), ``tokens``, the source
+    ``timestamp`` (when the memory was written; ``0.0`` if unknown), and the 0-based
+    ``rank``. Kept separate from the engine's ``RetrievedItem`` so the plugin's public
+    response shape doesn't depend on an internal type.
     """
 
     id: str
@@ -42,6 +43,7 @@ class Hit:
     score: float
     tokens: int
     rank: int = 0
+    timestamp: float = 0.0
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -50,6 +52,7 @@ class Hit:
             "score": self.score,
             "tokens": self.tokens,
             "rank": self.rank,
+            "timestamp": self.timestamp,
         }
 
 
@@ -86,6 +89,7 @@ class _Engine:
                 score=round(float(it.score), 6),
                 tokens=it.tokens,
                 rank=it.rank,
+                timestamp=float(getattr(it.item, "timestamp", 0.0) or 0.0),
             )
             for it in items
         ]
@@ -173,8 +177,13 @@ class MemoryClient:
             self.events.emit("error", session_id=self.session_id, query=query, ts=ts,
                              op_attempted="recall", error=str(exc))
             return []
+        # `ids` stays the contract field (ADR-harness-007); the full ranked hits go
+        # into `meta.hits` (span-friendly extra) so a reader — e.g. the eval
+        # verification step — can attribute content/score/rank/timestamp without a
+        # second store lookup. Additive: does not change the event's top-level shape.
         self.events.emit("recall", session_id=self.session_id, query=query, ts=ts,
-                         ids=[h.id for h in hits], k=kk, n=len(hits))
+                         ids=[h.id for h in hits], k=kk, n=len(hits),
+                         hits=[h.to_dict() for h in hits])
         return hits
 
     def remember(
