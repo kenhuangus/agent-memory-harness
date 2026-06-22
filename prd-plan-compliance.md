@@ -11,6 +11,24 @@ treated as "the requirement is met" — each verdict is grounded in observed beh
 
 ---
 
+## Update (post-#62, 2026-06-22)
+
+> **This audit predates the Docker removal — its Docker-grader statements below are
+> historical, describing the pre-#62 state.** Docker has since been removed from the
+> project entirely. The CODE pipeline no longer grades blind diffs in per-task
+> SWE-bench containers; instead it runs the **Claude Code CLI as a genuine coding
+> agent** (real checkout / edit / test, with `git diff` captured) graded by
+> `LocalExecGrader` (a local venv) for execution benchmarks or by retrieval metrics
+> for ContextBench. The `SWEBenchDockerGrader` and the `swebench` extra are gone.
+> See **ADR-eval-002** and **PR #62**.
+>
+> Consequently **PRD-8 ("real CODE scoring")** is **re-scoped**: the requirement is
+> now satisfied via the CLI-coding-agent + `LocalExecGrader`/retrieval path rather
+> than the official SWE-bench Docker harness. The PRD-8 finding below (and the
+> related Gap §3.2) records the **pre-#62** state and should be read as historical.
+
+---
+
 ## 1. Executive summary
 
 **Verdict: substantially compliant on infrastructure and contracts; the central
@@ -20,8 +38,9 @@ intentionally superseded or remain stubbed.**
 
 The evaluation harness, frozen contract, all five benchmark loaders, all four
 metrics, the cost/budget + sharded-key workflow, the three storage backends, the
-rule-based + learned-classifier router, the real SWE-bench Docker grader, and a
-shipping Claude Code plugin are all built and behave as specified. The system was
+rule-based + learned-classifier router, the (then-present) real SWE-bench Docker
+grader (removed in #62; see the update note above), and a
+shipping Claude Code plugin were all built and behaved as specified. The system was
 deliberately re-platformed from the PRD/plan's **OpenCode** agent onto the
 **Claude Code CLI** (documented in ADRs), which left the original `opencode/`
 framework and the `dreaming/worker.py` consolidation engine as stubs — their
@@ -52,7 +71,7 @@ is not yet within budget. The repo is honest about this (`results/v0.1/README.md
 | PRD-5 | Offline eval path reproducible with zero required dependencies | **Done** | [stores/__init__.py](https://github.com/kenhuangus/agent-memory-harness/blob/main/eval/memeval/stores/__init__.py#L12) · [metrics.py](https://github.com/kenhuangus/agent-memory-harness/blob/main/eval/memeval/metrics.py#L38) | Heavy deps lazy-imported; InMemoryStore + EchoModel reference stubs. |
 | PRD-6 | Embedding default Voyage `voyage-3-large`, bge-m3 fallback, injected behind `MemoryStore` | **Partial** | [embedders.py `VoyageEmbedder`](https://github.com/kenhuangus/agent-memory-harness/blob/main/eval/memeval/stores/embedders.py#L98) | VoyageEmbedder (1024-d) shipped + injectable via `SqliteVectorStore(embed=...)`. `bge-m3` fallback is documented but no concrete bge adapter ships — only Voyage + a Mock/hashing default. |
 | PRD-7 | Reranker default Voyage `rerank-2.5` / Cohere `rerank-3.5`, rerank top ~50 | **Missing** | (no reranker module found) | No reranker adapter implemented anywhere in `stores/`. Spec'd in PRD §7.1 but absent. |
-| PRD-8 | Real CODE scoring via official SWE-bench Docker harness (FAIL_TO_PASS ∧ PASS_TO_PASS), `sb-cli` cloud option, per-bench grader | **Partial** | [grader.py `SWEBenchDockerGrader`](https://github.com/kenhuangus/agent-memory-harness/blob/main/eval/memeval/grader.py#L137) | Docker grader implements the exact SWE-bench resolved rule and is wired per-benchmark. But the agent currently emits prose-or-empty diffs, so all CODE tasks grade `False`/None (0.00 on record). `sb-cli` cloud option not implemented. |
+| PRD-8 | Real CODE scoring via official SWE-bench Docker harness (FAIL_TO_PASS ∧ PASS_TO_PASS), `sb-cli` cloud option, per-bench grader | **Partial** *(historical — re-scoped post-#62; see update note)* | [grader.py `SWEBenchDockerGrader`](https://github.com/kenhuangus/agent-memory-harness/blob/main/eval/memeval/grader.py#L137) | *As of this audit (pre-#62):* the Docker grader implemented the exact SWE-bench resolved rule and was wired per-benchmark. But the agent emitted prose-or-empty diffs, so all CODE tasks graded `False`/None (0.00 on record); `sb-cli` cloud option not implemented. **(Docker grader removed in #62; CODE scoring re-scoped to the Claude Code CLI coding agent + `LocalExecGrader`/retrieval — see update note above.)** |
 | PRD-9 | Live pricing table in `cost.py` (Haiku/Sonnet/Opus $/Mtok) | **Done** | [cost.py `PRICING`](https://github.com/kenhuangus/agent-memory-harness/blob/main/eval/memeval/cost.py#L53) | Matches PRD §7.3 exactly; also adds OpenRouter subconscious-model prices. |
 | PRD-10 | Default per-run budget $10, override `--budget-usd`, `<=0` disables | **Deviated** | [cost.py `DEFAULT_BUDGET_USD`](https://github.com/kenhuangus/agent-memory-harness/blob/main/eval/memeval/cost.py#L44) | Default is **$200**, not the PRD's $10 (docstring explains: headroom for group-aware code-bench floors). Override + `<=0`-disable behavior preserved. Reasonable deviation; PRD text now stale. |
 | PLAN-1 | Five benchmarks + one loader each, registered | **Done** | [loaders/__init__.py `_REGISTRY`](https://github.com/kenhuangus/agent-memory-harness/blob/main/eval/memeval/loaders/__init__.py#L30) | All five (memoryagentbench, longmemeval, swe_contextbench, swe_bench_cl, contextbench) registered with concrete loaders present. |
@@ -88,12 +107,15 @@ is not yet within budget. The repo is honest about this (`results/v0.1/README.md
    efficiency computation so it is a true ratio; land turn-level chunking to lift
    QA accuracy (already identified in `results/v0.1/README.md` and `suggestion.md`).
 
-2. **PRD-8 / CODE benches carry no memory signal (Partial).** The Docker grader
-   is correct, but the agent emits prose/empty patches and CODE tasks bypass the
-   memory loop entirely, so SWE-Bench-CL / SWE-ContextBench / ContextBench are
-   structurally 0.00. *To close:* make the CODE agent emit applyable diffs and
-   route CODE retrieval through memory (or explicitly scope memory to QA and
-   amend the plan's "memory on CODE" claim).
+2. **PRD-8 / CODE benches carry no memory signal (Partial).** *(Pre-#62 finding —
+   the Docker grader described here was removed in #62; see the update note above.)*
+   At audit time the Docker grader was correct, but the agent emitted prose/empty
+   patches and CODE tasks bypassed the memory loop entirely, so SWE-Bench-CL /
+   SWE-ContextBench / ContextBench were structurally 0.00. *To close (now addressed
+   in #62):* make the CODE agent emit applyable diffs and route CODE retrieval
+   through memory (or explicitly scope memory to QA and amend the plan's "memory on
+   CODE" claim). Post-#62 the CODE agent is the Claude Code CLI itself (real
+   checkout/edit/test, `git diff` captured) graded by `LocalExecGrader`/retrieval.
 
 3. **PLAN-8 — planned dreaming consolidation jobs missing (Partial).** Conflict
    resolution, must-know/must-do/blacklist governance, and read-time
