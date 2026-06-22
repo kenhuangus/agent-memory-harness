@@ -147,6 +147,181 @@ def _parse_pytest(stdout: str, fail_to_pass: list[str],
     }
 
 
+def django_label(selector: str) -> str:
+    """Convert a SWE-bench django selector to a ``runtests.py`` test label.
+
+    SWE-bench's django ``FAIL_TO_PASS`` / ``PASS_TO_PASS`` entries come in a few
+    shapes; ``runtests.py`` wants a dotted label (``module.Class.method`` or a
+    bare app/module). This normalizes:
+
+    * ``"test_method (module.path.TestClass)"``  -> ``module.path.TestClass.test_method``
+      (django's unittest ``str(test)`` form — the dominant SWE-bench shape).
+    * ``"module.path.TestClass.test_method (sub.case)"`` -> the leading dotted
+      part as-is (the method is already dotted; the parenthetical is noise).
+    * ``"tests/x/y.py::Class::test"`` (pytest node id, defensive) ->
+      ``x.y.Class.test`` (strip a leading ``tests/``, drop ``.py``, ``::`` -> ``.``).
+    * an already-dotted label passes through unchanged.
+
+    Best-effort and string-only (unit-testable); an unrecognized shape returns the
+    input stripped, which ``runtests.py`` will simply report as not-found.
+    """
+    s = (selector or "").strip()
+    if not s:
+        return s
+    # "method (dotted.Class)" — the canonical SWE-bench django form.
+    if "(" in s and s.endswith(")"):
+        head, paren = s.split("(", 1)
+        head = head.strip()
+        path = paren[:-1].strip()  # drop trailing ')'
+        if not head:
+            return path
+        if "." in head:
+            # head is itself dotted (already a label); the paren is redundant.
+            return head
+        return f"{path}.{head}" if path else head
+    # pytest node id: tests/foo/bar.py::Class::test -> foo.bar.Class.test
+    if "::" in s or s.endswith(".py"):
+        path, _, rest = s.partition("::")
+        if path.startswith("tests/"):
+            path = path[len("tests/"):]
+        if path.endswith(".py"):
+            path = path[:-3]
+        path = path.replace("/", ".")
+        rest = rest.replace("::", ".")
+        return f"{path}.{rest}" if rest else path
+    return s
+
+
+def is_django_selector(selector: str) -> bool:
+    """True iff ``selector`` looks like a runnable django test label, not prose.
+
+    SWE-bench django ``PASS_TO_PASS`` lists occasionally carry a *docstring* as a
+    standalone entry (an artifact of how verbose unittest output was captured) —
+    e.g. ``"Paginator.get_page() with an empty object_list."``. Handing that to
+    ``runtests.py`` makes unittest try to import a module named ``Paginator`` and
+    raise a phantom ``ERROR: ... _FailedTest`` (RC=1), poisoning the whole run.
+
+    A real django selector is one of:
+
+    * ``"method (dotted.Class)"`` — the canonical unittest ``str(test)`` form, OR
+    * a bare dotted path / label (``module.Class.method``, ``app.tests``) with no
+      whitespace and no call/sentence punctuation.
+
+    Prose is rejected: it contains spaces *outside* a trailing ``(...)``, or ``()``
+    call syntax, or sentence punctuation. Best-effort + string-only (unit-tested).
+    """
+    s = (selector or "").strip()
+    if not s:
+        return False
+    # Canonical "method (dotted.path)" form: head is a bare identifier, paren is a
+    # dotted path. Reject "Paginator.get_page() with an empty object_list." which
+    # has text after the ')' / call-parens "()" inside.
+    if "(" in s and s.endswith(")"):
+        head, paren = s.split("(", 1)
+        head = head.strip()
+        inner = paren[:-1].strip()
+        if head and head.replace("_", "").isalnum() and inner and "(" not in inner \
+                and " " not in inner and all(
+                    part.isidentifier() for part in inner.split(".") if part):
+            return True
+        return False
+    # Bare dotted label: no spaces, no call/prose punctuation.
+    if " " in s or "(" in s or ")" in s:
+        return False
+    if s.endswith("."):  # a sentence, not a label
+        return False
+    # Every dotted segment must be a Python identifier (allow pytest node-ids too).
+    if "::" in s or s.endswith(".py"):
+        return True  # defensive: a pytest node id; django_label normalizes it
+    return all(part.isidentifier() for part in s.split(".") if part)
+
+
+def _parse_django(stdout: str, stderr: str, fail_to_pass: list[str],
+                  pass_to_pass: list[str]) -> dict:
+    """Parse ``tests/runtests.py`` output into a ``tests_status`` dict.
+
+    django's runner is unittest-based, NOT pytest. At ``--verbosity=2`` a test
+    that ran prints a line naming its **full dotted label**, e.g.::
+
+        test_paginator_iteration (pagination.tests.PaginationTests.test_paginator_iteration) ... ok
+
+    and — crucially — a test *with a docstring* is split across two lines, the
+    ``... ok`` landing on the DOCSTRING line which does NOT repeat the method::
+
+        test_get_page (pagination.tests.PaginationTests.test_get_page)
+        Paginator.get_page() returns a valid page ... ok
+
+    So a naive "method on a line ending in ok" check misses docstringed tests.
+    Failures/errors are instead listed under ``FAIL:`` / ``ERROR:`` banners that
+    name the test by its dotted path. The reliable, docstring-proof rule:
+
+      a selector **PASSED** iff its full dotted label (``django_label``) appears
+      anywhere in the output (so it actually ran) AND neither that dotted path nor
+      its ``method``/``Class`` pair is named in any ``FAIL:`` / ``ERROR:`` banner.
+
+    A selector django never mentioned (didn't run) is a failure — the honest
+    default (not-passed -> not-resolved). runtests writes its progress to STDERR,
+    so both streams are scanned.
+    """
+    out = (stdout or "") + "\n" + (stderr or "")
+    lines = out.splitlines()
+    # Failure/error banners: "FAIL: <method> (<dotted.path>)" / "ERROR: ...".
+    failed_blobs: list[str] = [
+        ln.strip() for ln in lines
+        if ln.strip().startswith("FAIL:") or ln.strip().startswith("ERROR:")
+    ]
+
+    def _short(dotted: str) -> str:
+        return dotted.rsplit(".", 1)[-1] if dotted else dotted
+
+    def _method_and_class(selector: str) -> tuple[str, str]:
+        """Recover (method, dotted-class-or-path) from any selector shape."""
+        s = (selector or "").strip()
+        if "(" in s and s.endswith(")"):
+            head, paren = s.split("(", 1)
+            return head.strip(), paren[:-1].strip()
+        label = django_label(s)
+        parts = label.rsplit(".", 1)
+        return (parts[-1], parts[0]) if len(parts) == 2 else (label, "")
+
+    def _in_failure_banner(method: str, klass: str) -> bool:
+        for blob in failed_blobs:
+            if method and method in blob and (
+                not klass or klass in blob or _short(klass) in blob
+            ):
+                return True
+        return False
+
+    def _passed(selector: str) -> bool:
+        label = django_label(selector)          # full dotted form, e.g. a.b.C.m
+        method, klass = _method_and_class(selector)
+        # Did it actually run? Its full dotted label is printed on the test's
+        # header line whether or not it carries a docstring.
+        ran = bool(label) and label in out
+        if not ran:
+            # Fall back to a verbose method+class header line (covers shapes where
+            # the dotted label isn't echoed verbatim).
+            for ln in lines:
+                if method and method in ln and (
+                    not klass or klass in ln or _short(klass) in ln
+                ):
+                    ran = True
+                    break
+        if not ran:
+            return False  # never ran -> not passed (honest default)
+        return not _in_failure_banner(method, klass)
+
+    def _group(selectors: list[str]) -> dict:
+        success = [s for s in selectors if _passed(s)]
+        failure = [s for s in selectors if s not in success]
+        return {"success": success, "failure": failure}
+
+    return {
+        "FAIL_TO_PASS": _group(list(fail_to_pass or [])),
+        "PASS_TO_PASS": _group(list(pass_to_pass or [])),
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Cheap offline grader
 # --------------------------------------------------------------------------- #
@@ -281,13 +456,12 @@ class LocalExecGrader:
                 if self._apply_patch(dest, task.test_patch) is not True:
                     return None  # gold tests won't apply -> can't grade
 
-            # (4) build env + run tests, best-effort.
-            stdout = self._build_and_run(dest, task)
-            if stdout is None:
+            # (4) build env + run tests, best-effort -> a SWE-bench tests_status dict.
+            status = self._build_and_run(dest, task)
+            if status is None:
                 return None  # env build / test run failed -> ungraded
 
             # (5) SWE-bench resolved rule via the shared report interpreter.
-            status = _parse_pytest(stdout, task.fail_to_pass, task.pass_to_pass)
             iid = instance_id_of(task)
             return resolved_from_report({iid: {"tests_status": status}}, iid)
 
@@ -316,35 +490,109 @@ class LocalExecGrader:
             except OSError:
                 pass
 
-    def _build_and_run(self, dest: Any, task: Task) -> Optional[str]:
-        """Best-effort: build a per-task venv and run the named tests; return pytest
-        stdout, or ``None`` if anything in the env build / run fails.
+    def _build_and_run(self, dest: Any, task: Task) -> Optional[dict]:
+        """Best-effort: build a FRESH per-task venv, run the repo's tests with a
+        repo-aware command, and return a SWE-bench ``tests_status`` dict
+        (``FAIL_TO_PASS``/``PASS_TO_PASS`` -> ``success``/``failure``), or ``None``
+        if the env build / run can't yield a gradeable result.
 
-        Tries ``uv`` (venv + editable install) then ``pip``; either may be absent.
-        The ENTIRE build+run is wrapped so any failure degrades to ``None`` — the
-        honesty rule (never a fake ``False`` on an environment problem)."""
-        selectors = list(task.fail_to_pass or []) + list(task.pass_to_pass or [])
+        No Docker: uses ``uv`` for an isolated venv. The test command is dispatched
+        per repo — django's ``tests/runtests.py`` (unittest) vs. the default
+        ``pytest`` — because SWE-bench repos do not all use pytest. The ENTIRE
+        build+run is wrapped so any failure degrades to ``None`` — the honesty rule
+        (never a fake ``False`` on an environment problem)."""
+        from pathlib import Path
+
+        f2p = list(task.fail_to_pass or [])
+        p2p = list(task.pass_to_pass or [])
+        selectors = f2p + p2p
         if not selectors:
             return None  # nothing to run -> nothing to grade
-        py = self._python_exe or "python"
-        # Best-effort editable install (ignore failures; many repos run from source).
-        for install in (["uv", "pip", "install", "-e", "."],
-                        [py, "-m", "pip", "install", "-e", "."]):
-            try:
-                r = self._runner(install, dest, None)
-                if getattr(r, "returncode", 1) == 0:
-                    break
-            except Exception:  # noqa: BLE001 - installer absent / failed; try the next
-                continue
-        # Run the named tests.
-        r = self._runner([py, "-m", "pytest", "-q", *selectors], dest, None)
-        rc = getattr(r, "returncode", None)
-        out = getattr(r, "stdout", "") or ""
+        dest = Path(dest)
+
+        # Fresh, isolated venv (best-effort); install the checkout into it.
+        py = self._make_venv(dest) or (self._python_exe or "python")
+        self._install_repo(dest, py)
+
+        # Repo-aware test command. django uses tests/runtests.py (unittest), not pytest.
+        runtests = dest / "tests" / "runtests.py"
+        if runtests.exists():
+            # Drop non-test-id selectors (prose / leaked docstrings such as
+            # ``"Paginator.get_page() with an empty object_list."`` that SWE-bench
+            # source data carries in PASS_TO_PASS). Handing them to runtests makes
+            # unittest try to import a bogus module and emit a phantom
+            # ``ERROR: ... _FailedTest`` (RC=1) that poisons the whole run. We drop
+            # them from BOTH the command AND the parsed lists so they neither run
+            # nor get scored as a never-ran failure.
+            f2p = [s for s in f2p if is_django_selector(s)]
+            p2p = [s for s in p2p if is_django_selector(s)]
+            valid = f2p + p2p
+            if not valid:
+                return None  # no runnable selectors left -> nothing to grade
+            labels = [django_label(s) for s in valid]
+            ran = self._run([py, "tests/runtests.py", "--verbosity=2",
+                             "--parallel=1", *labels], dest)
+            if ran is None:
+                return None
+            rc, out, err = ran
+            # runtests rc 0 = all passed, 1 = some failed (both gradeable); any
+            # other rc with no output = setup/collection error -> ungraded.
+            if rc not in (0, 1) and not (out or err):
+                return None
+            return _parse_django(out, err, f2p, p2p)
+
+        # Default: pytest.
+        ran = self._run([py, "-m", "pytest", "-q", *selectors], dest)
+        if ran is None:
+            return None
+        rc, out, _err = ran
         # pytest rc 0 = all passed, 1 = tests failed (still gradeable output);
         # rc >=2 (or no output) = usage/collection error -> can't grade.
         if rc is None or (rc not in (0, 1) and not out):
             return None
-        return out
+        return _parse_pytest(out, f2p, p2p)
+
+    def _run(self, args: list, cwd: Any):
+        """Invoke the injectable command runner; return ``(rc, stdout, stderr)`` or
+        ``None`` if the runner raised (installer/tool absent, timeout, etc.)."""
+        try:
+            r = self._runner(args, cwd, None)
+        except Exception:  # noqa: BLE001 - tool absent / failed -> ungraded upstream
+            return None
+        return (getattr(r, "returncode", None),
+                getattr(r, "stdout", "") or "",
+                getattr(r, "stderr", "") or "")
+
+    def _make_venv(self, dest: Any) -> Optional[str]:
+        """Create a fresh ``uv`` venv beside the checkout; return its python exe
+        path, or ``None`` if uv is unavailable / failed. Offline (stub runner) this
+        is a harmless no-op: the canned runner reports success but creates no files,
+        so we fall back to the configured python and still drive the pytest path."""
+        from pathlib import Path
+
+        venv = Path(dest).parent / ".venv-grade"
+        # ``--clear`` so a re-used parent dir (debug harness, retries) doesn't make
+        # ``uv venv`` refuse with "already exists"; harmless on a fresh dir.
+        ran = self._run(["uv", "venv", "--clear", str(venv)], dest)
+        if ran is None or ran[0] != 0:
+            return None
+        posix = venv / "bin" / "python"
+        if posix.exists():
+            return str(posix)
+        win = venv / "Scripts" / "python.exe"
+        if win.exists():
+            return str(win)
+        return None  # venv reported OK but no interpreter on disk (offline stub)
+
+    def _install_repo(self, dest: Any, py: str) -> None:
+        """Best-effort editable install of the checkout (+ common test extras) into
+        the venv ``py``. Failures are tolerated — many repos import from source."""
+        for spec in (".[test]", ".[tests]", ".[dev]", "."):
+            ran = self._run(["uv", "pip", "install", "--python", py, "-e", spec], dest)
+            if ran is not None and ran[0] == 0:
+                return
+        # Last resort: pip inside the target interpreter.
+        self._run([py, "-m", "pip", "install", "-e", "."], dest)
 
 
 # --------------------------------------------------------------------------- #
@@ -373,6 +621,8 @@ __all__ = [
     "build_prediction",
     "resolved_from_report",
     "overlap_grader",
+    "django_label",
+    "is_django_selector",
     "LocalExecGrader",
     "CmdResult",
     "CmdRunner",
