@@ -1,7 +1,7 @@
 ---
 id: ADR-harness-009
 domain: harness
-title: Skills are canonical Agent-Skills folders, placed per-harness by an install command
+title: One canonical skill, materialized into each harness's native bundle by a build step
 status: Accepted
 date: 2026-06-21
 contract: false
@@ -11,77 +11,123 @@ owner: Keith (P1)
 origin: design session 2026-06-21 (cross-harness skills research)
 ---
 
-# ADR-harness-009: Skills are canonical Agent-Skills folders, placed per-harness by an install command
+# ADR-harness-009: One canonical skill, materialized into each harness's native bundle by a build step
 
 **Status:** Accepted · **Date:** 2026-06-21 · **Contract:** no
 **Supersedes:** none · **Superseded by:** none
 
 ## Context
 The plugin ships a `recall` skill (a `SKILL.md` describing how to use the recall
-tool). The question was where it lives and how it stays client-agnostic across the
-three target harnesses without duplicating it or coupling it to Claude Code.
+tool). The question is where it lives and how it reaches each target harness while
+satisfying three hard requirements:
 
-Research into the harnesses settled it: skills are **one open standard** — [Agent
-Skills](https://agentskills.io) (originally Anthropic, now adopted across ~40 tools
-including all three targets). A skill is a folder with a `SKILL.md` (name +
-description + instructions). The *same folder* is valid in every harness; only the
-**discovery path** each scans differs:
+1. **No duplication** — the skill content (and any shared markdown/code) exists
+   exactly once in the repo; it is never copied or symlinked per-harness *in git*.
+2. **Shared foundations** — the harness-agnostic core is the single source; adapters
+   stay thin.
+3. **Single, native, per-harness install** — the end user runs *one* command that is
+   that harness's own standard install, and gets the whole capability. No extra,
+   tool-specific "now also install the skill" step.
 
-| Harness | Skill discovery paths (relevant) |
+Skills are **one open standard** — [Agent Skills](https://agentskills.io)
+(originally Anthropic, now adopted across ~40 tools including all three targets). A
+skill is a folder with a `SKILL.md` (name + description + instructions). The *same
+folder* is valid in every harness; only the **discovery path** each scans differs,
+and — critically — each harness will load skills bundled *inside its own native
+package*:
+
+| Harness | Skill discovery (incl. native bundle) |
 |---|---|
-| Claude Code | `.claude/skills/<name>/`, `~/.claude/skills/`, `<plugin>/skills/<name>/` |
+| Claude Code | `<plugin>/skills/<name>/` (inside an installed plugin), plus `.claude/skills/`, `~/.claude/skills/` |
 | OpenCode | `.opencode/skills/`, `.claude/skills/`, `.agents/skills/` (and `~` equivalents) |
 | Codex | `.agents/skills/` (CWD/repo), `~/.agents/skills/`, `/etc/codex/skills` |
 
-There is no config field in any of them to point at an arbitrary skills directory,
-and no reliable symlink/external-reference mechanism. A committed symlink from the
-Claude bundle into a shared dir was tried and rejected — it breaks git
-(symlink-vs-directory ambiguity) and does not survive packaging or Windows.
+The earlier framing treated bundling as impossible because the only two ways
+considered were a **committed symlink** (breaks git's symlink-vs-dir handling, does
+not survive packaging or Windows) or a **committed copy** (N duplicates in the repo
+— violates requirement 1). That was a false dichotomy: it conflated *duplication in
+the repo* with *materialization in the build artifact*. A producer-side build step
+can copy the single canonical skill into each harness's bundle at package/release
+time, leaving the repo with one source and no committed symlink — and the user then
+installs that bundle with one native command.
+
+Verified empirically (2026-06-21): a Claude Code plugin whose `<plugin-root>/skills/
+recall/SKILL.md` is a **materialized real file** installs via the single native
+`claude plugin install` flow and `claude plugin details` then reports
+`Skills (1) recall` alongside `Hooks (5)` and `MCP servers (1)` — one install, all
+three components, no symlink.
 
 ## Options considered
-- **Canonical skill in the core package + a per-harness install command** (chosen):
-  the skill lives once as a standard Agent-Skills folder in the package; an adapter
-  `install` command places (copies/links) it into the target harness's discovery path
-  on the user's machine at install time.
-- Skill physically in the Claude bundle (`adapters/claude_code/skills/`): works for
-  Claude only; duplicating per adapter re-introduces N copies in the repo.
-- Committed symlink from the bundle to a shared dir: rejected — breaks git/packaging.
-- Build-time copy into each bundle: machinery that fights the spec and still leaves
-  the live source-dir install (`/plugin marketplace add`) and the non-Claude harnesses
-  unsolved.
+- **One canonical skill + a build step that materializes it into each harness's
+  native bundle** (chosen): the skill lives once in the core; the release/build for
+  each adapter copies it into that adapter's package (`adapters/claude_code/skills/`
+  for the CC plugin, the equivalent for Codex/OpenCode). The user runs only the
+  harness-native install (`claude plugin install …`, or the Codex/OpenCode
+  equivalent) and gets skill + tools + hooks together.
+- **Per-harness `install` command the user must run separately** (the prior
+  direction): canonical skill in the core, but placed onto the user's machine by a
+  bespoke `memory-cli install --harness <h>` *after* the native plugin install.
+  Rejected: it violates requirement 3 — the user faces a non-standard second step,
+  and the native Claude plugin install reports `Skills (0)` on its own. It also
+  splits install state (the CC marketplace install honors `CLAUDE_CONFIG_DIR`; a
+  home-dir skill copy does not), so the two halves can land in different places.
+- **Committed copy of the skill in each bundle**: one native install, but N
+  duplicates in git — violates requirement 1.
+- **Committed symlink from each bundle to the canonical dir**: avoids duplicate
+  *content* but breaks git/packaging/Windows — not portable.
 
 ## Decision
 **The canonical skill is a single Agent-Skills folder in the core package**
-(`cookbook_memory/skills/<name>/SKILL.md`) — the portable, standard, client-agnostic
-artifact. **Each harness adapter places it into that harness's discovery path via an
-install command** (`memory-cli install --harness claude|codex|opencode`), which copies
-or links the canonical skill into `.claude/skills/` / `.agents/skills/` /
-`.opencode/skills/` (project or user scope). The adapter's only skills responsibility
-is install-time *placement*; it owns no skill content.
+(`cookbook_memory/skills/<name>/SKILL.md`) — the one source of truth, shipped as
+package data. **A build/release step materializes (copies) that canonical skill into
+each harness adapter's native bundle**, so each adapter ships a self-contained
+package containing its manifest + MCP + hooks **+ the skill**. **The end user
+installs with one native, per-harness command** and receives the whole capability:
+
+- Claude Code: `claude plugin install cookbook-memory` (or `/plugin install`) →
+  skill + MCP + hooks.
+- Codex / OpenCode: the harness's own native skills/extension install, fed from the
+  same materialized bundle (`.agents/skills/` serves both).
+
+The materialized copies under `adapters/*/skills/` are **build outputs, not committed
+source**: generated from the canonical folder and git-ignored, so the repo holds the
+skill exactly once.
 
 ## Rationale
-This honors "generic core, thin adapters": the skill *content* is a standard artifact
-in the core (write once), and each adapter does the one harness-specific thing it must
-— put the standard folder where that harness looks. It uses the Agent-Skills standard
-as intended (build once, run across skills-compatible agents) instead of fighting it
-with symlinks or copies committed to git. `.agents/skills/` notably serves both Codex
-and OpenCode, so one install target can cover two harnesses.
+This is the only option that satisfies all three requirements at once: one source in
+the repo (no duplication), a thin adapter whose skill content is *generated* not
+authored, and a single native install for the user. It uses the Agent-Skills standard
+as intended — author once, run across skills-compatible agents — and puts the one
+unavoidable per-harness difference (where the bundle's skills live) in the *build*,
+where it belongs, instead of on the user's hands at install time. The packaging
+objection that sank bundling before was specific to *committed* symlinks/copies;
+build-time materialization sidesteps it entirely.
 
 ## Tradeoffs & risks
-The skill must be *installed* (a step) rather than auto-present in a checked-out bundle
-— a one-time `memory-cli install` per harness. Accepted: it's the same model as any
-skills-based tool, and it's the honest place for the per-harness difference. Copy vs.
-symlink at install time is the install command's choice (copy is safest cross-platform;
-a `--link` option can avoid drift for local dev).
+A build/release step is now load-bearing: the bundles must be (re)materialized
+whenever the canonical skill changes, or a stale/missing skill ships. Mitigation: the
+materialization is a single deterministic copy from one source (cheap, scriptable,
+testable), it runs in the package/release pipeline, and the eval rebuilds the bundle
+before each run so a checkout-and-run developer is never testing a stale copy. The
+generated `adapters/*/skills/` dirs must be git-ignored so a built tree never commits
+duplicates; a stray commit of them would reintroduce the duplication this ADR forbids
+— enforced by `.gitignore` and a CI check. For pure local dev, the build step may
+symlink instead of copy (drift-free), but release artifacts always copy (portable).
 
 ## Consequences for the build
 
-- **Policy:** the canonical skill lives at `cookbook_memory/skills/<name>/SKILL.md` and
-  is shipped as core package data. No skill files or symlinks under
-  `adapters/claude_code/`.
-- **Policy:** each adapter provides install-time placement into its harness's discovery
-  path; `memory-cli install --harness <h> [--scope project|user] [--link]` is the
-  entry point. `.agents/skills/` covers Codex + OpenCode; `.claude/skills/` (or the CC
-  plugin bundle) covers Claude Code.
+- **Policy:** the canonical skill lives at `cookbook_memory/skills/<name>/SKILL.md`
+  and is shipped as core package data. It is authored exactly once; no other
+  `SKILL.md` is committed.
+- **Policy:** a build step materializes the canonical skill into each harness
+  adapter's bundle (`adapters/<harness>/skills/<name>/`) from that single source. The
+  materialized dirs are **git-ignored build outputs**, never committed.
+- **Policy:** the end user's install is the harness's own native command and nothing
+  else — for Claude Code, `claude plugin install` delivers skill + MCP + hooks in one
+  step (verified: `plugin details` → `Skills (1)`). No separate skill-placement step
+  is required of the user.
 - **Policy:** skill content is harness-agnostic Agent-Skills markdown — it must not
   reference a specific harness's tool-id namespace.
+- **Policy:** the eval harness builds (materializes) the bundle before a run and
+  installs it via the native flow, so the benchmark exercises exactly what a user
+  installs.
