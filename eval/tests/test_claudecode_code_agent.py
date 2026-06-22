@@ -424,6 +424,70 @@ def test_agentic_code_plugin_records_retrieval() -> None:
     assert calls["n"] == 2
 
 
+def test_agentic_code_plugin_real_records_retrieval() -> None:
+    # plugin-real-mode agentic CODE = the SHIPPING plugin (cookbook-memory) as a
+    # black box. The fake CLI stands in for the installed plugin: it edits the
+    # checkout (so a diff is produced) AND writes a recall event (with meta.hits) to
+    # the plugin's OWN events stream under ${CLAUDE_PROJECT_DIR}/.cookbook-memory —
+    # exactly as the cookbook-memory MCP server would. The agent now drives this turn
+    # through the primed + retry-until-recall loop (mirroring the QA plugin-real
+    # path) and attributes the retrieval to the CODE trajectory from meta.hits.
+    #
+    # Stdlib-only: plugin-real seeds through `memory-cli` (a subprocess that no-ops
+    # when the plugin isn't installed) and uses a fake runner, so no `cookbook_memory`
+    # import and no real `claude`. Under the fake runner _ensure_real_plugin returns
+    # {} and seeding no-ops, and _run_primed falls back to a plain call (priming only
+    # engages when self._runner is run_claude) — so this also verifies the fallback
+    # still reaches the plugin's recall.
+    import json as _json
+
+    flag: dict = {}
+    calls: dict = {"n": 0, "tools": "UNSET", "permission": None}
+    git = _make_fake_git(edited_flag=flag)
+
+    def fake(prompt, *, cwd, permission_mode="bypassPermissions", allowed_tools=None,
+             **kw):
+        calls["n"] += 1
+        calls["tools"] = allowed_tools
+        calls["permission"] = permission_mode
+        # Edit the checkout (so a diff is produced) ...
+        (Path(cwd) / "orm.py").write_text("def filter_empty():\n    return []\n",
+                                          encoding="utf-8")
+        flag["edited"] = True
+        # ... and simulate the installed plugin's MCP server logging a recall to its
+        # own events stream under the checkout's .cookbook-memory dir.
+        store = Path(cwd) / ".cookbook-memory"
+        store.mkdir(parents=True, exist_ok=True)
+        ev = {
+            "ts": 1.0, "op": "recall", "ids": ["m1"], "query": prompt,
+            "meta": {"hits": [{"id": "m1", "content": "return [] not None",
+                               "score": 0.9, "rank": 0, "tokens": 4, "timestamp": 1.0}]},
+        }
+        # Append so multiple tasks accumulate; the loop counts events per task.
+        with open(store / "events.jsonl", "a", encoding="utf-8") as fh:
+            fh.write(_json.dumps(ev) + "\n")
+        return ClaudeResult(text="done", tokens_in=20, tokens_out=4)
+
+    grader = G.LocalExecGrader(runner=_make_fake_cmd(), git_runner=git)
+    with tempfile.TemporaryDirectory() as tmp:
+        agent = ClaudeCodeAgent(memory_mode="plugin-real", code_mode="agentic",
+                                runner=fake, git_runner=git, runtime=_NATIVE,
+                                workdir=tmp)
+        rr = run_agent(Benchmark.SWE_CONTEXTBENCH, agent, memory=True,
+                       path_or_id=_fixture("swe_contextbench.json"), limit=2,
+                       seed_sessions=False, grader=grader)
+    kinds = [s.kind for t in rr.trajectories for s in t.steps]
+    assert "retrieve" in kinds      # CODE loop now exercises the SHIPPING plugin
+    assert "generate" in kinds
+    # plugin-real keeps the FULL native toolset (None) — the shipping plugin supplies
+    # its own MCP tools — and keeps acceptEdits so the agent can edit files.
+    assert calls["tools"] is None
+    assert calls["permission"] == "acceptEdits"
+    # Recall fired on the first try, so the retry loop stops after one call per task
+    # (2 tasks -> exactly 2 runner invocations, no wasteful retries).
+    assert calls["n"] == 2
+
+
 # --------------------------------------------------------------------------- #
 # Built-in runner (no pytest required)
 # --------------------------------------------------------------------------- #

@@ -117,6 +117,31 @@ _PLUGIN_REAL_PREFIX = (
     "First call the recall tool with the question to retrieve relevant prior context, "
     "then answer concisely with just the final answer.\n\n"
 )
+# AGENTIC CODE *plugin-real* turn: same coding-agent contract as _SYS_CODE_AGENT,
+# but the agent ALSO has the SHIPPING plugin's persistent memory. The shipping
+# plugin's model-callable tool is `recall` (NOT `memory_recall`), so this prompt
+# references `recall` — do NOT reuse _SYS_CODE_AGENT_PLUGIN, whose verb differs.
+# Keeps every coding instruction (edit files directly, run tests, no diff) so the
+# CODE solve is unchanged.
+_SYS_CODE_AGENT_PLUGIN_REAL = (
+    "You are a software engineer working in a real checkout of the repository, with "
+    "persistent memory via the recall tool. BEFORE you start editing, call recall "
+    "with the issue text to retrieve prior fixes for this repository, and use what "
+    "you recall. Then read the code with your tools, make the necessary edits to "
+    "source files to resolve the issue, and run the project's tests to validate your "
+    "change. Edit files directly — do NOT print a diff and do NOT paste patches into "
+    "your reply. When the fix is complete and tests pass, stop."
+)
+# AGENTIC CODE plugin-real turn: the QA-shaped _PLUGIN_REAL_PREFIX ("answer
+# concisely") contradicts an edit-the-files coding task, so the CODE plugin-real
+# turn uses this recall-then-EDIT prefix instead, naming the shipping plugin's
+# `recall` tool (the user-prompt counterpart of _SYS_CODE_AGENT_PLUGIN_REAL).
+_PLUGIN_REAL_PREFIX_CODE = (
+    "First call the recall tool with the issue text to retrieve prior fixes for this "
+    "repository, then edit the source files in this checkout directly to fix the "
+    "issue and run the tests to confirm. Do NOT output a diff or paste a patch — "
+    "just make the edits.\n\n"
+)
 
 # Builtin mode = Claude Code's OWN memory/context mechanism. The real one is not
 # "dump the whole history into the context window" (a 200k+-token CLAUDE.md just
@@ -456,11 +481,25 @@ class ClaudeCodeAgent:
             self._seed_plugin_store(task, store_dir, plugin_env)
             extra_env = {**plugin_env, "CLAUDE_PROJECT_DIR": str(checkout)}
             events = store_dir / "events.jsonl"
-            res = self._run(_PLUGIN_REAL_PREFIX + base_prompt, checkout, _SYS_CODE_AGENT,
-                            mcp_config=None, allowed_tools=None,
-                            permission_mode="acceptEdits", extra_env=extra_env)
+            # Drive the coding turn through the PRIMED runner with a retry-until-recall
+            # backstop (mirrors the QA _solve_plugin_real loop) so the headless MCP
+            # startup race no longer silently drops the shipping plugin's `recall`.
+            # allowed_tools stays None (full native toolset) — the shipping plugin
+            # provides its own MCP tools via its installed .mcp.json under
+            # CLAUDE_PROJECT_DIR; permission_mode stays acceptEdits so the agent can
+            # still edit files. Recall reach is counted via the plugin's OWN events
+            # stream (_count_recall_events), not the harness recall log.
+            res: Optional[ClaudeResult] = None
+            for _ in range(_PLUGIN_MAX_TRIES):
+                before = _count_recall_events(events)
+                res = self._run_primed(
+                    _PLUGIN_REAL_PREFIX_CODE + base_prompt, checkout,
+                    _SYS_CODE_AGENT_PLUGIN_REAL, mcp_config=None, allowed_tools=None,
+                    permission_mode="acceptEdits", extra_env=extra_env)
+                if _count_recall_events(events) > before:
+                    break  # the agent reached the recall tool -> plugin MCP connected
             self._attribute_real_recall(events, ctx)
-            return res
+            return res  # type: ignore[return-value]
         # off: no seeding, no memory.
         return self._run(_CODE_AGENT_PREFIX + base_prompt, checkout, _SYS_CODE_AGENT,
                          mcp_config=None, allowed_tools=None,
