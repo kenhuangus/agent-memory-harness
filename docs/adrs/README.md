@@ -63,6 +63,7 @@ the move).
 | [ADR-dreaming-017](ADR-dreaming-017-precompact-concurrency-and-transcript-trust.md) | PR5 plugin-shim operational contract — PreCompact silent-skip on Stop concurrency + transcript-path trust model (extends ADR-001) | Accepted | **yes** |
 | [ADR-dreaming-018](ADR-dreaming-018-cli-argparse-exit-code.md) | CLI argparse-error exit code is `1` (not `2`) — Claude Code reserves exit 2 for hook-blocking (partially supersedes ADR-016) | Accepted | **yes** |
 | [ADR-dreaming-019](ADR-dreaming-019-memory-store-is-a-directory.md) | `$MEMORY_STORE` is a directory (not a file-sentinel) — auto-mkdir; ValueError on file (partially supersedes ADR-015 §1 only) | Accepted | **yes** |
+| [ADR-dreaming-020](ADR-dreaming-020-cross-process-dream-mutation-gate.md) | v2 Dream mutation half is gated on a successor ADR resolving cross-process concurrency on `$MEMORY_STORE` | Accepted | **yes** |
 | [ADR-harness-003](ADR-harness-003-log-extraction-chunking.md) | `dream` log-extraction chunking = one turn = one chunk + prior-summary overlap | Accepted | no |
 | [ADR-harness-004](ADR-harness-004-dream-state-sidecar.md) | `dream` state = on-disk JSON sidecar (cursor + last_summary + recent_memory_ids) | Accepted | no |
 | [ADR-harness-005](ADR-harness-005-log-adapter-redaction.md) | The log adapter redacts secrets before any model call | Accepted | no |
