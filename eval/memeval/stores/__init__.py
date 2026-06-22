@@ -5,13 +5,17 @@ Each backend implements :class:`memeval.protocols.MemoryStore`
 dreaming worker use them interchangeably. The reference offline implementation
 is :class:`memeval.harness.InMemoryStore`; the real backends here are:
 
-* :class:`markdown_store.MarkdownStore`   — inverted keyword index
-* :class:`sqlite_store.SqliteVectorStore` — dense ANN (HNSW / FAISS)
-* :class:`graph_store.GraphStore`         — typed traversal (Neo4j)
+* :class:`markdown_store.MarkdownStore`   — OKF-native + inverted keyword index (literal recall)
+* :class:`sqlite_store.SqliteVectorStore` — ``sqlite3`` + a char-n-gram hashing embedder + brute-force
+  cosine (v1, stdlib); a real dense embedder (Voyage/bge) injects via ``embed=`` and an ANN index
+  (HNSW/FAISS) is a deferred paid-path upgrade
+* :class:`graph_store.GraphStore`         — in-memory OKF-link graph, seed-then-traverse (v1, stdlib);
+  a typed-edge graph DB (Neo4j) is a deferred paid-path seam (``uri=``)
 
-Heavy deps are lazy-imported inside the methods that need them, so importing
-this package stays stdlib-only (offline path unaffected). These are scaffolds —
-methods raise :class:`NotImplementedError` until implemented.
+Heavy deps are lazy-imported inside the methods that need them, so importing this package stays
+stdlib-only (offline path unaffected). All three backends are **implemented** (``write`` / ``get`` /
+``search`` / ``all``); the paid-path upgrades (real embeddings / ANN, Neo4j) inject behind seams and
+never touch the default offline path.
 """
 
 from __future__ import annotations
