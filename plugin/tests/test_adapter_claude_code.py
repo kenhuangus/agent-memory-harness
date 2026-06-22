@@ -72,9 +72,13 @@ def test_hooks_json_wires_lifecycle_events():
         assert evt in hooks, f"missing hook: {evt}"
     stop = hooks["Stop"][0]["hooks"][0]
     assert stop.get("async") is True
-    # Hooks are invoked by module too (see test_mcp_json_points_at_memory_server),
-    # so they resolve without the `memory-hook` console script on $PATH.
+    # Each hook tries the `memory-hook` console script first (its shebang pins the
+    # interpreter the package was installed into — correct even when Claude Code's
+    # `python3` is a different interpreter, e.g. a venv-isolated install), and falls
+    # back to `python3 -m …` (covers the case where the package is importable but the
+    # console-script bin dir isn't on $PATH). Robust to both failure modes.
     assert stop["command"] == (
+        "memory-hook Stop || "
         "python3 -m cookbook_memory.adapters.claude_code.hooks_handler Stop"
     )
 
