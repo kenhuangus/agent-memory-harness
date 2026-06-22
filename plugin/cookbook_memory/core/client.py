@@ -1,28 +1,30 @@
 """The MemoryClient — the plugin's handle for recall and remember.
 
 A :class:`MemoryClient` is constructed once per process (the MCP server, a CLI
-invocation). It builds the memory **engine** over ``$MEMORY_STORE`` once — Brent's
-``Router`` plus the store backends, pulled in through the contract seam — and exposes
-the plugin's whole memory surface: ``recall`` and ``remember``. Each call:
+invocation). It gets the fully-assembled memory **engine** over ``$MEMORY_STORE`` once —
+one opaque store the contract seam builds and configures — and exposes the plugin's whole
+memory surface: ``recall`` and ``remember``. Each call:
 
-1. performs the operation (route · rank for recall; write for remember),
+1. performs the operation (search for recall; write for remember),
 2. emits a structured event (ADR-harness-007), and
 3. fails open — any error degrades to a safe default (recall → empty, remember →
    empty id) and is recorded as an ``error`` event rather than raised
    (ADR-harness-006), so a memory failure never breaks the caller's turn.
+
+The plugin is a dumb client of the engine: it picks no routing profile, no backend, no
+embedder — the seam (:func:`~cookbook_memory.core.contract.build_store`) owns all of that.
 
 The conscious agent is recall-only (the model reads via the MCP ``recall`` tool); all
 memory creation is the Daydreamer's, asynchronously. ``remember`` here backs the
 human-facing ``memory-cli remember`` debug command.
 
 The engine is built by :func:`build_engine` — the single seam a test overrides to
-inject a fake instead of the real ``Router``+stores.
+inject a fake instead of the real configured store.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Optional
 
 from .events import EventStream
@@ -57,31 +59,25 @@ class Hit:
 
 
 class _Engine:
-    """The memory engine over a store path: Brent's Router plus the backends.
+    """A dumb client of the memory engine: one opaque store, recall + remember.
 
-    Constructs the three store backends (vectors/markdown/graph) under the store path
-    and a Router that dispatches each query to the one that answers best. ``recall``
-    routes + ranks and maps results to :class:`Hit`; ``remember`` writes to the
-    markdown backend. All engine pieces are pulled in through the contract seam — the
-    plugin holds none of the routing or storage logic itself.
+    Holds the single fully-assembled :class:`~memeval.protocols.MemoryStore` the contract
+    seam builds (:func:`~cookbook_memory.core.contract.build_store`) and does nothing but
+    drive its four-method protocol: ``recall`` calls ``search`` and maps the results to
+    :class:`Hit`; ``remember`` calls ``write``. The seam owns ALL routing/storage logic —
+    which profile, which backends, embedders, cascade, fusion, dedup, write-routing — so the
+    plugin specifies none of it and holds none of it. Switching profiles never touches this
+    class: the store it receives already encodes the choice.
     """
 
     def __init__(self, store_path: str) -> None:
-        from .contract import load_engine
+        from .contract import build_store
 
-        engine = load_engine()
-        root = Path(store_path)
-        root.mkdir(parents=True, exist_ok=True)
-        self._backends = {
-            "vectors": engine["SqliteVectorStore"](str(root / "memory.db")),
-            "markdown": engine["MarkdownStore"](root / "markdown"),
-            "graph": engine["GraphStore"](),
-        }
-        self._router = engine["Router"](self._backends)
+        self._store = build_store(store_path)
         self._n = 0
 
     def recall(self, query: str, *, k: int, as_of: Optional[float]) -> list[Hit]:
-        items = self._router.route(query).search(query, k=k, as_of=as_of)
+        items = self._store.search(query, k=k, as_of=as_of)
         return [
             Hit(
                 id=it.item_id,
@@ -99,7 +95,9 @@ class _Engine:
 
         self._n += 1
         item_id = f"cbmem-{self._n}"
-        self._backends["markdown"].write(MemoryItem(
+        # The store owns WHERE this lands — dedup + write-routing across the policy backends
+        # (RouterStore.write). The plugin just hands over the item; it picks no backend.
+        self._store.write(MemoryItem(
             item_id=item_id,
             content=content,
             tags=list(tags or []),
