@@ -47,6 +47,12 @@ def build_parser() -> argparse.ArgumentParser:
                      help="project = cwd (default); user = home directory.")
     ins.add_argument("--link", action="store_true", help="Symlink the skills instead of copying.")
 
+    bb = sub.add_parser("build-bundle",
+                        help="Build the distributable Claude Code plugin bundle (manifests + MCP + hooks + skill).")
+    bb.add_argument("--out", required=True, help="Output directory for the assembled bundle.")
+    bb.add_argument("--no-clean", action="store_true",
+                    help="Do not wipe --out first (default: clean rebuild).")
+
     q = sub.add_parser("query", help="Debug retrieval: search memory and print hits.")
     q.add_argument("query", help="The search query.")
     q.add_argument("-k", type=int, default=None, help="Number of hits (default $MEMORY_K or 5).")
@@ -84,6 +90,14 @@ def _cmd_install(args: argparse.Namespace) -> int:
         "linked": args.link,
         "skills": [str(p) for p in installed],
     })
+    return 0
+
+
+def _cmd_build_bundle(args: argparse.Namespace) -> int:
+    from .adapters.claude_code.build import build_bundle
+
+    out = build_bundle(args.out, clean=not args.no_clean)
+    _emit({"bundle": str(out), "ok": True})
     return 0
 
 
@@ -136,6 +150,7 @@ def _cmd_reset(args: argparse.Namespace) -> int:
 _COMMANDS = {
     "mcp": _cmd_mcp,
     "install": _cmd_install,
+    "build-bundle": _cmd_build_bundle,
     "query": _cmd_query,
     "remember": _cmd_remember,
     "stats": _cmd_stats,

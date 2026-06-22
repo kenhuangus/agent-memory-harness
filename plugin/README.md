@@ -20,15 +20,16 @@ cookbook_memory/
     events.py               #   the structured memory-events stream (ADR-harness-007)
     config.py               #   store-by-path resolution ($MEMORY_STORE)
     contract.py             #   the ONLY import edge to the engine (Router + stores + contract)
-    install.py              #   places skills into a harness's discovery path
-  skills/recall/SKILL.md    # the canonical Agent-Skills folder (harness-agnostic)
-  cli.py                    # the `memory-cli` (mcp/install/query/remember/stats/log/reset)
-  adapters/claude_code/     # the Claude Code bundle (harness-specific manifests only)
+    install.py              #   places the skill into a harness's discovery path (codex/opencode)
+  skills/recall/SKILL.md    # the canonical Agent-Skills folder (single source of truth)
+  cli.py                    # the `memory-cli` (mcp/install/build-bundle/query/remember/stats/log/reset)
+  adapters/claude_code/     # the Claude Code bundle (harness-specific manifests + release build)
     .claude-plugin/         #   plugin.json + marketplace.json
     .mcp.json               #   registers the recall MCP tool
     hooks/hooks.json        #   lifecycle hooks (fail-open)
     mcp_server.py           #   FastMCP recall server → core
     hooks_handler.py        #   single hook entry point → core
+    build.py                #   release: materialize skill + manifests → installable bundle
 ```
 
 **The plugin owns no store, no dreaming, no eval.** A `MemoryClient` builds the memory
@@ -37,11 +38,13 @@ cookbook_memory/
 to Memory. Everything is **fail-open**: if the engine isn't available or errors,
 `recall` returns empty — a memory failure never breaks the session (ADR-harness-006).
 
-**Generic by default.** Reusable logic — recall, the events stream, skills — lives in
-`core`. Skills are a single [Agent-Skills](https://agentskills.io) standard folder
-(`skills/`); `memory-cli install` places them into each harness's discovery path
-(ADR-harness-009). Only genuinely harness-specific things (the bundle manifests and
-the hook payload parsing) live under `adapters/claude_code/`.
+**Generic by default.** Reusable logic — recall, the events stream, the skill — lives
+in `core`. The skill is a single [Agent-Skills](https://agentskills.io) standard
+folder (`cookbook_memory/skills/`), authored once. A per-harness **release build**
+materializes it into that harness's native bundle so the user gets it through one
+native install (ADR-harness-009). Only genuinely harness-specific things (the bundle
+manifests, the hook payload parsing, and the release build) live under
+`adapters/claude_code/`.
 
 ## Conscious surface is recall-only
 
@@ -58,13 +61,24 @@ pip install -e "../eval"          # the eval package (provides the frozen contra
 pip install -e ".[mcp,dev]"       # the plugin + MCP SDK + test deps
 ```
 
-## Install the skills into your harness
+## Install into your harness
 
-Skills are one [Agent-Skills](https://agentskills.io) standard folder; place them where
-your harness looks for skills:
+**Claude Code (recommended) — one native install.** Build the distributable bundle
+(manifests + MCP + hooks + the materialized skill), then install it the native way:
 
 ```bash
-memory-cli install --harness claude     # → .claude/skills/
+memory-cli build-bundle --out dist/claude-code              # release the bundle
+claude plugin marketplace add "$PWD/dist/claude-code"       # or /plugin marketplace add
+claude plugin install cookbook-memory                       # or /plugin install
+```
+
+That single install delivers the `recall` skill, the MCP tool, and the lifecycle
+hooks together (verify with `claude plugin details cookbook-memory` → `Skills (1)`).
+The materialized bundle under `dist/` is a build output — never committed.
+
+**Codex / OpenCode — place the skill into the harness's discovery path:**
+
+```bash
 memory-cli install --harness codex      # → .agents/skills/  (also read by OpenCode)
 memory-cli install --harness opencode   # → .opencode/skills/
 # --scope user installs under your home dir; --link symlinks instead of copying
@@ -83,14 +97,8 @@ memory-cli log -n 20
 memory-cli reset
 ```
 
-**As a Claude Code plugin:**
-
-```text
-/plugin marketplace add /abs/path/to/plugin/cookbook_memory/adapters/claude_code
-/plugin install cookbook-memory
-```
-
-Then in any session the `recall` MCP tool is available, backed by the store at
+**As a Claude Code plugin:** once installed (see [Install](#install-into-your-harness)),
+the `recall` skill and MCP tool are available in any session, backed by the store at
 `${CLAUDE_PROJECT_DIR}/.cookbook-memory`.
 
 ## Test

@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
+from . import sandbox
 from .platform import ClaudeRuntime, detect, to_wsl_path
 
 #: Credentials stripped so the CLI uses the Claude Code *subscription* (OAuth),
@@ -91,9 +92,7 @@ def build_argv(
         flags = _flags(model=model, mcp_config=mcp, allowed_tools=allowed_tools,
                        append_system_prompt=append_system_prompt,
                        permission_mode=permission_mode, strict_mcp=strict_mcp)
-        prefix: list[str] = []
-        if strip_api_key:
-            prefix = ["env"] + [a for v in _API_KEY_VARS for a in ("-u", v)]
+        prefix = _wsl_env_prefix(strip_api_key)
         argv = ["wsl", "-d", runtime.distro or "Ubuntu", "--cd", to_wsl_path(cwd),
                 "--", *prefix, runtime.exe, "-p", prompt, *flags]
         return argv, None
@@ -140,9 +139,7 @@ def build_argv_primed(
         flags = _flags_primed(model=model, mcp_config=mcp, allowed_tools=allowed_tools,
                               append_system_prompt=append_system_prompt,
                               permission_mode=permission_mode, strict_mcp=strict_mcp)
-        prefix: list[str] = []
-        if strip_api_key:
-            prefix = ["env"] + [a for v in _API_KEY_VARS for a in ("-u", v)]
+        prefix = _wsl_env_prefix(strip_api_key)
         argv = ["wsl", "-d", runtime.distro or "Ubuntu", "--cd", to_wsl_path(cwd),
                 "--", *prefix, runtime.exe, "-p", *flags]
         return argv, None
@@ -188,12 +185,46 @@ def run_claude_primed(
     return _parse_stream_json(proc.stdout)
 
 
+def _wsl_env_prefix(strip_api_key: bool) -> list[str]:
+    """The ``env ...`` prefix run *inside* WSL before ``claude``.
+
+    Env vars don't cross the Windows->WSL boundary, so the native ``_clean_env``
+    can't reach the in-WSL CLI. We instead express the same two adjustments as an
+    ``env`` command in the WSL argv: ``-u VAR`` unsets each API key, and
+    ``CLAUDE_CONFIG_DIR=<wsl-path>`` points the in-WSL CLI at the sandbox (path
+    translated to its ``/mnt`` form). Returns ``[]`` when nothing needs setting."""
+    parts: list[str] = []
+    if strip_api_key:
+        for v in _API_KEY_VARS:
+            parts += ["-u", v]
+    sandbox_dir = sandbox.active_config_dir()
+    if sandbox_dir is not None:
+        parts.append(f"CLAUDE_CONFIG_DIR={to_wsl_path(sandbox_dir)}")
+    return ["env", *parts] if parts else []
+
+
 def _clean_env(strip_api_key: bool) -> Optional[dict]:
-    """Subprocess env with API-key vars removed (so WSLENV can't forward them and
-    a native CLI can't read them). ``None`` keeps the inherited env."""
-    if not strip_api_key:
+    """Subprocess env for the ``claude`` CLI.
+
+    Two adjustments to the inherited environment:
+
+    * API-key vars removed (so WSLENV can't forward them and a native CLI can't
+      read them) when ``strip_api_key`` — the CLI then uses the subscription.
+    * ``CLAUDE_CONFIG_DIR`` set to the sandbox dir when one is active
+      (:func:`memeval.claudecode.sandbox.active_config_dir`), so the CLI reads
+      only the seeded sandbox config — no host skills / agents / ``CLAUDE.md`` —
+      instead of ``~/.claude``.
+
+    Returns ``None`` (keep the inherited env unchanged) only when neither
+    adjustment applies."""
+    sandbox_dir = sandbox.active_config_dir()
+    if not strip_api_key and sandbox_dir is None:
         return None
-    return {k: v for k, v in os.environ.items() if k not in _API_KEY_VARS}
+    env = {k: v for k, v in os.environ.items()
+           if not (strip_api_key and k in _API_KEY_VARS)}
+    if sandbox_dir is not None:
+        env["CLAUDE_CONFIG_DIR"] = sandbox_dir
+    return env
 
 
 def run_claude(

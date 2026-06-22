@@ -44,12 +44,13 @@ extra).
   with events + fail-open, plus the private `_Engine` wiring and the `build_engine`
   test seam), `events.py` (the events stream), `config.py` (store-by-path),
   `contract.py` (the only import edge to the engine: Router + stores + contract).
-- **`core/skills/`** holds the canonical Agent-Skills folder (`recall`); `core/install.py`
-  places it into a harness's discovery path.
+- **`cookbook_memory/skills/`** holds the canonical Agent-Skills folder (`recall`) —
+  the single source of truth, shipped as package data.
 - **`adapters/claude_code/`** is the thin Claude Code bundle: `mcp_server.py` (FastMCP
   `recall` → core), `hooks_handler.py` (one fail-open entry point for all lifecycle
-  hooks), and the bundle manifests. No skills live here — `memory-cli install` places
-  the canonical skill into the harness's discovery path (ADR-harness-009).
+  hooks), the bundle manifests, and `build.py` (the release step). No skill is
+  *committed* here; the release **materializes** the canonical skill into the built
+  bundle's `skills/` so one native install delivers skill+MCP+hooks (ADR-harness-009).
 
 **Locked decisions (WHY):**
 - *Conscious surface is recall-only* — the model reads memory; all memory creation is
@@ -57,8 +58,9 @@ extra).
 - *Plugin → engine only* — matches the system diagram's conscious path; the engine
   (Brent's Router + stores) routes and reads the store. The plugin never holds a store
   directly outside that engine wiring.
-- *Generic by default* — reusable logic and skills live in `core`; only the Claude
-  bundle manifests and hook parsing are harness-specific.
+- *Generic by default* — reusable logic and the canonical skill live in the core
+  package; only the Claude bundle manifests, hook parsing, and the release build that
+  materializes the skill into the bundle are harness-specific.
 - *Single `contract.py` import edge* — the contract's source package is swappable by
   editing one file (ADR-eval-001).
 - *Fail-open* — no store → empty recall; the plugin never breaks a session
@@ -69,8 +71,8 @@ extra).
 - [x] Core: contract seam + events stream → AC4, AC6
 - [x] Core: MemoryClient + engine wiring (build_engine seam) → AC4, AC5, AC7
 - [x] Core: shared recall/remember (fail-open) → AC5
-- [x] Canonical `recall` skill (core) + `memory-cli install` placement → AC3
-- [x] `memory-cli` (mcp/install/query/remember/stats/log/reset) → AC1
+- [x] Canonical `recall` skill (core), materialized into the bundle by the release build → AC3
+- [x] `memory-cli` (mcp/install/build-bundle/query/remember/stats/log/reset) → AC1
 - [x] Claude Code MCP server (recall tool) → AC2
 - [x] Hooks handler (fail-open) + hooks.json → AC3
 - [x] Plugin bundle (plugin.json/.mcp.json) → AC3
@@ -96,10 +98,15 @@ extra).
   `remember` CLI command remains for manual/debug writes by a human.
 - **Console script `memory-cli`** (name-spaced) so the binary does not collide on
   `$PATH`. The hooks entry point is `memory-hook`.
-- **Skills are one canonical Agent-Skills folder in `core/skills/`** (ADR-harness-009);
-  `memory-cli install --harness <h>` places them into each harness's discovery path
-  (`.claude/skills`, `.agents/skills`, `.opencode/skills`). No skills or symlinks in
-  the bundle — no duplication, harness-specific code stays minimal.
+- **Skills are one canonical Agent-Skills folder in `cookbook_memory/skills/`**
+  (ADR-harness-009), the single source of truth. A per-harness **release build**
+  materializes it into that harness's native bundle (`memory-cli build-bundle` for
+  Claude Code copies it into `<bundle>/skills/`), so the end user runs one native
+  install (`claude plugin install`) and gets skill+MCP+hooks together. The
+  materialized skill is a git-ignored build output, never a committed copy — no
+  duplication, harness-specific code stays minimal. (For non-plugin harnesses,
+  `memory-cli install --harness <h>` still places the skill into `.agents/skills` /
+  `.opencode/skills` directly.)
 - **The engine wiring (`_Engine` in `client.py`)** constructs the three backends
   (vectors/markdown/graph) over `$MEMORY_STORE` and routes via Brent's `Router`;
   `recall` maps `RetrievedItem` → `Hit`. `remember` writes to the markdown backend.

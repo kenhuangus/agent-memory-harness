@@ -7,6 +7,7 @@ on their own machine, comparing **Claude Code's built-in memory** vs **our memor
 
 - [1. Install (once)](#1-install-once)
 - [2. Auth — subscription only, no API key](#auth)
+- [2a. Sandboxed config (isolate from your host `~/.claude`)](#sandboxed-config)
 - [3. The memory modes](#3-the-memory-modes)
 - [4. Quickstart](#4-quickstart)
 - [5. Run each benchmark](#5-run-each-benchmark)
@@ -54,6 +55,80 @@ Claude Code OAuth login and never incur API billing. Log in once with `claude`
 (interactively) and you're set. The runner prints a banner attesting to this on
 every run. The `$…` cost column is **nominal accounting** (token count × the
 price table), not a charge.
+
+## Sandboxed config
+
+By default `claude` reads the *host* user's `~/.claude` — global `CLAUDE.md`,
+every installed skill and agent, `settings.json`, MCP servers. For a clean
+benchmark you usually want the opposite: a `claude` that sees **only** what the
+harness hands it (the memory plugin via `--mcp-config`) and **nothing** of the
+host. That removes a confound — your personal skills/agents can't help or skew
+the agent under test — and makes runs reproducible across machines.
+
+The harness supports this with a **project-local sandbox config dir**
+(`eval/.claude-sandbox/`, gitignored). When it exists, every `claude` invocation
+runs with `CLAUDE_CONFIG_DIR` pointed at it, so the CLI discovers no host skills,
+agents, or `CLAUDE.md`.
+
+**Set it up once (cross-platform).** Build the dir, then log the sandbox in
+(auth is *not* copied from the host — a sandbox keeps its own credential):
+
+<details open><summary><b>macOS / Linux</b> (and Windows→WSL)</summary>
+
+```bash
+cd eval
+python -m memeval.claudecode.sandbox            # creates eval/.claude-sandbox/ + prints the login line
+CLAUDE_CONFIG_DIR="$PWD/.claude-sandbox" claude  # then run /login inside it, once
+```
+</details>
+
+<details><summary><b>Windows (native PowerShell)</b></summary>
+
+```powershell
+cd eval
+python -m memeval.claudecode.sandbox             # creates .claude-sandbox\ + prints the login line
+$env:CLAUDE_CONFIG_DIR = "$PWD\.claude-sandbox"
+claude                                           # then run /login inside it, once
+```
+
+On **Windows→WSL** (the harness routes `claude` through WSL), use the WSL/bash
+form above *inside the distro*; the harness translates the sandbox path to its
+`/mnt/...` form automatically when it launches the in-WSL CLI.
+</details>
+
+After that one-time `/login`, the sandbox holds its own token and
+`memeval-bench` **auto-detects and uses it** — no flags needed. Re-run
+`python -m memeval.claudecode.sandbox` anytime to check status; it prints whether
+the sandbox is logged in.
+
+**What the sandbox isolates (and what it can't).** It removes everything in the
+host `~/.claude`: your global `CLAUDE.md`, every installed/personal skill, custom
+agents, `settings.json`, and MCP servers — verified, those are gone. It does
+**not** remove Claude Code's **built-in skills** (`init`, `review`,
+`security-review`, `code-review`, `verify`, `loop`, `schedule`, …) — those are
+baked into the CLI binary, present in every config dir. The only flag that strips
+them is `--bare`, which forces API-key auth and rejects the sandbox's OAuth login,
+so we don't use it. For benchmarking this is the right trade: the confound we care
+about (your personal skills/agents skewing the agent under test) is gone, and the
+agent still authenticates via subscription. The CLI also auto-installs the official
+plugin marketplace into a fresh dir on first run; its skills overlap the built-ins
+and are immaterial to a bench run.
+
+**Control it:**
+
+| Env var | Effect |
+|---|---|
+| *(none)* | Use `eval/.claude-sandbox/` **iff it's been built**; otherwise fall back to the host `~/.claude` (unchanged behavior). |
+| `MEMEVAL_SANDBOX_CONFIG_DIR=/path` | Use an explicit config dir (highest precedence) — e.g. share one sandbox across checkouts. |
+| `MEMEVAL_SANDBOX=0` | Force-disable the sandbox for this run (use the host `~/.claude`). Also accepts `false`/`no`/`off`. |
+
+> **Why auth isn't seeded from the host.** We tried copying
+> `~/.claude/.credentials.json` into the sandbox; it doesn't work. On macOS the
+> live token is in the OS keychain (the on-disk file is a stale leftover), and
+> headless `claude -p` doesn't refresh an expired token — it sends it as-is and
+> gets a 401. Copying the live keychain secret into a plaintext file is the only
+> way to seed it, which we deliberately avoid. A one-time `/login` is the clean,
+> portable answer.
 
 ## 3. The memory modes
 
@@ -216,6 +291,10 @@ Code's built-in memory** per benchmark.
   server's recall log back so recency / relevancy / efficiency are still scored.
 - `off` / `builtin` don't expose retrieval, so only **accuracy** is meaningful
   there; `plugin` reports all four metrics.
+- `cli._clean_env` strips API keys and, when a [sandbox](#sandboxed-config) is
+  active, sets `CLAUDE_CONFIG_DIR` so the CLI ignores the host `~/.claude`. The
+  WSL path carries both across the boundary via an in-WSL `env …` prefix
+  (`sandbox.py` resolves the dir; `platform.to_wsl_path` translates it).
 
 Plugin details + standalone (non-benchmark) use: [`plugin/README.md`](plugin/README.md).
 Everything except the live `claude` call is covered by offline tests
