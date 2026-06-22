@@ -95,9 +95,13 @@ def _entry_rel_target(entry: Any) -> tuple:
 class GraphStore:
     """In-memory typed/directed graph ``MemoryStore``: nodes + typed edge adjacency, seed-then-traverse."""
 
-    def __init__(self, uri: Optional[str] = None, **kwargs: Any) -> None:
+    def __init__(self, uri: Optional[str] = None, *, max_depth: int = _MAX_DEPTH, **kwargs: Any) -> None:
         self.uri = uri  # a real graph DB (Neo4j) is the paid-path seam; v1 is in-memory
         self.config = kwargs
+        # BFS hops to traverse out from a seed. Default = _MAX_DEPTH (the speed end, byte-equivalent to the
+        # pre-knob store); an accuracy profile raises it for deeper multi-hop reach (the speed<->accuracy
+        # spectrum, D016). Clamped >= 0 (0 = seeds only, no traversal).
+        self._max_depth = max(0, int(max_depth))
         self._nodes: dict = {}        # item_id -> MemoryItem
         self._order: list = []        # insertion order (for all())
         self._out: dict = {}          # item_id -> list of (target_id, relation)
@@ -158,7 +162,7 @@ class GraphStore:
         # score = max(seed_overlap * decay ** distance).
         while frontier:
             nid, dist = frontier.popleft()
-            if dist >= _MAX_DEPTH:
+            if dist >= self._max_depth:
                 continue
             for nb in self._neighbors_for(nid, rel, direction):
                 if not visible(nb):
