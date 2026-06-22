@@ -743,6 +743,122 @@ def test_dream_all_does_not_swallow_keyboardinterrupt(
 
 
 # --------------------------------------------------------------------------- #
+# §E — OPENROUTER_API_KEY startup alert (migration PR §E)
+# --------------------------------------------------------------------------- #
+
+
+def test_openrouter_unset_emits_stderr_alert(
+    empty_stdin: None, memory_store_dir: Path, fake_engine: MagicMock,
+    fake_make_store: MagicMock, fake_emit: list[Any], tmp_path: Path,
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Migration rubric §E criterion 29 — unset OPENROUTER_API_KEY → stderr line names the env var."""
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    log_file = tmp_path / "log.jsonl"
+    log_file.touch()
+    cli.main(["daydream", "--session", "S", "--log", str(log_file)])
+    captured = capsys.readouterr()
+    assert "OPENROUTER_API_KEY" in captured.err
+
+
+def test_openrouter_alert_names_env_example(
+    empty_stdin: None, memory_store_dir: Path, fake_engine: MagicMock,
+    fake_make_store: MagicMock, fake_emit: list[Any], tmp_path: Path,
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Migration rubric §E criterion 30 — alert text contains `.env.example`."""
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    log_file = tmp_path / "log.jsonl"
+    log_file.touch()
+    cli.main(["daydream", "--session", "S", "--log", str(log_file)])
+    captured = capsys.readouterr()
+    assert ".env.example" in captured.err
+
+
+def test_openrouter_unset_emits_warning_log(
+    empty_stdin: None, memory_store_dir: Path, fake_engine: MagicMock,
+    fake_make_store: MagicMock, fake_emit: list[Any], tmp_path: Path,
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Migration rubric §E criterion 31 — exactly one WARNING log naming OPENROUTER_API_KEY."""
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    log_file = tmp_path / "log.jsonl"
+    log_file.touch()
+    caplog.set_level(logging.WARNING, logger="memeval.dreaming.cli")
+    cli.main(["daydream", "--session", "S", "--log", str(log_file)])
+    matching = [r for r in caplog.records if "OPENROUTER_API_KEY" in r.getMessage()]
+    assert len(matching) == 1
+
+
+def test_openrouter_set_emits_no_alert(
+    empty_stdin: None, memory_store_dir: Path, fake_engine: MagicMock,
+    fake_make_store: MagicMock, fake_emit: list[Any], tmp_path: Path,
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Migration rubric §E criterion 32 — OPENROUTER_API_KEY set → no stderr alert."""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "fake-key")
+    log_file = tmp_path / "log.jsonl"
+    log_file.touch()
+    cli.main(["daydream", "--session", "S", "--log", str(log_file)])
+    captured = capsys.readouterr()
+    assert "OPENROUTER_API_KEY" not in captured.err
+
+
+def test_openrouter_set_emits_no_warning_log(
+    empty_stdin: None, memory_store_dir: Path, fake_engine: MagicMock,
+    fake_make_store: MagicMock, fake_emit: list[Any], tmp_path: Path,
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Migration rubric §E criterion 33 — OPENROUTER_API_KEY set → no warning log."""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "fake-key")
+    log_file = tmp_path / "log.jsonl"
+    log_file.touch()
+    caplog.set_level(logging.WARNING, logger="memeval.dreaming.cli")
+    cli.main(["daydream", "--session", "S", "--log", str(log_file)])
+    matching = [r for r in caplog.records if "OPENROUTER_API_KEY" in r.getMessage()]
+    assert len(matching) == 0
+
+
+def test_openrouter_unset_does_not_short_circuit_engine(
+    empty_stdin: None, memory_store_dir: Path, fake_engine: MagicMock,
+    fake_make_store: MagicMock, fake_emit: list[Any], tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Migration rubric §E criterion 34 — alert does NOT short-circuit; engine still called once."""
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    log_file = tmp_path / "log.jsonl"
+    log_file.touch()
+    cli.main(["daydream", "--session", "S", "--log", str(log_file)])
+    fake_engine.assert_called_once()
+
+
+def test_openrouter_unset_failopens_zero(
+    empty_stdin: None, memory_store_dir: Path, fake_engine: MagicMock,
+    fake_make_store: MagicMock, fake_emit: list[Any], tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Migration rubric §E criterion 35 — OPENROUTER_API_KEY unset → main still returns 0."""
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    log_file = tmp_path / "log.jsonl"
+    log_file.touch()
+    assert cli.main(["daydream", "--session", "S", "--log", str(log_file)]) == 0
+
+
+def test_openrouter_unset_emits_diary_event(
+    empty_stdin: None, memory_store_dir: Path, fake_engine: MagicMock,
+    fake_make_store: MagicMock, fake_emit: list[Any], tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Migration rubric §E criterion 35b — diary event observable in async-Stop path (halliday F9)."""
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    log_file = tmp_path / "log.jsonl"
+    log_file.touch()
+    cli.main(["daydream", "--session", "S", "--log", str(log_file)])
+    matching = [(t, f) for t, f in fake_emit if t == "daydream.openrouter_unset"]
+    assert len(matching) == 1
+
+
+# --------------------------------------------------------------------------- #
 # §L — Anti-slop (deterministic source-scan)
 # --------------------------------------------------------------------------- #
 

@@ -1,5 +1,14 @@
 # memeval-memory — Cookbook Memory plugin for Claude Code
 
+> **DEPRECATED** — this tree is the original eval-bundled plugin shape and is
+> no longer the canonical install. The shipping plugin lives under
+> `plugin/cookbook_memory/` (Python package) and `plugin/marketplace/cookbook-memory/`
+> (marketplace install per PR #70). New collaborators should install from there.
+> This README + sibling files will be deleted after the first green
+> `memeval-bench --mode plugin-real memoryagentbench` run from the migrated
+> hook-handler path; until then they remain as historical reference for the
+> MCP-tool-based v1 design.
+
 Gives Claude Code **persistent, OKF-backed memory** via two MCP tools:
 
 - `memory_recall(query, k)` — search prior notes (ranked).

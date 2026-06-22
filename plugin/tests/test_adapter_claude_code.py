@@ -20,18 +20,23 @@ from cookbook_memory.adapters.claude_code import hooks_handler
 BUNDLE = Path(__file__).resolve().parents[1] / "cookbook_memory" / "adapters" / "claude_code"
 
 
-def test_hook_handle_is_noop_and_logs_note(tmp_path):
-    resp = hooks_handler.handle("Stop", {"session_id": "s9"}, store=str(tmp_path))
-    assert resp == {}  # no additionalContext / decision — pure observation
+def test_hook_handle_is_noop_on_non_gated_event(tmp_path):
+    # SessionStart is a non-gated event — handler emits the `note` observation
+    # event and returns {} with no subprocess fire. This is the byte-equivalent
+    # of the pre-migration no-op-with-note behavior (regression guard).
+    resp = hooks_handler.handle("SessionStart", {"session_id": "s9"}, store=str(tmp_path))
+    assert resp == {}
     events = json.loads((tmp_path / "events.jsonl").read_text().strip())
     assert events["op"] == "note"
-    assert events["meta"]["hook"] == "Stop"
+    assert events["meta"]["hook"] == "SessionStart"
     assert events["session_id"] == "s9"
 
 
 def test_hook_main_exits_zero_on_bad_stdin(monkeypatch):
+    # Use a non-gated event so this test doesn't depend on daydream-cli being
+    # on PATH (Stop / PreCompact would shell out; SessionStart is a clean no-op).
     monkeypatch.setattr("sys.stdin", io.StringIO("not json"))
-    monkeypatch.setattr("sys.argv", ["hooks_handler", "Stop"])
+    monkeypatch.setattr("sys.argv", ["hooks_handler", "SessionStart"])
     assert hooks_handler.main() == 0  # fail-open: never break the session
 
 
