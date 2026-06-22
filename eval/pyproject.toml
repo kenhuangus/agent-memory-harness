@@ -117,6 +117,10 @@ memeval-bench = "memeval.claudecode.run_bench:main"
 # Daydreaming CLI (ADR-dreaming-016): `daydream-cli daydream` is the Stop/PreCompact
 # hook entry point; `daydream-cli dream --all` triggers the night-dream pass.
 daydream-cli = "memeval.dreaming.cli:main"
+# Benchmark-NATIVE evaluation CLI (additive; paper-faithful per-benchmark metrics).
+# `memeval-native run --benchmark longmemeval --mode echo` is the short form of
+# `python -m memeval.native.cli run …`. Offline path is stdlib-only.
+memeval-native = "memeval.native.cli:main"
 
 # --------------------------------------------------------------------------- #
 # setuptools packaging
