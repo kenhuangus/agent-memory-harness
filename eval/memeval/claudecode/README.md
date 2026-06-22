@@ -37,19 +37,19 @@ CODE tasks run as a **real coding agent** by default (`--code-mode agentic`):
 native tools, runs the tests, and the harness captures `git diff` as the
 prediction. (`--code-mode blind` keeps the old one-turn "emit a diff" behavior.)
 
-Grading is **Docker-free** (`--grader`, default `auto`):
+Grading runs entirely on the host (`--grader`, default `auto`):
 
 * `swe_contextbench` / `swe_bench_cl` → **local test execution** (`LocalExecGrader`):
   a fresh checkout + the gold `test_patch` applied by the harness + the project's
   tests run in a per-task venv. Best-effort and host-dependent; it reports `None`
   (UNGRADED — excluded from accuracy) whenever the env can't be built, never a
-  fake miss. NOT comparable to a containerized SWE-bench leaderboard.
+  fake miss. NOT comparable to a containerized leaderboard.
 * `contextbench` → **retrieval-only**: scored by its native recall/precision/F1
   over gold spans (no test execution), so it uses no grader.
 
-No extra install and no Docker daemon are needed. See
+No extra install and no container runtime are needed. See
 [`../PROTOCOL.md`](../PROTOCOL.md) §5 and
-[`../../docs/adrs/ADR-eval-002-docker-free-code-grading.md`](../../../docs/adrs/ADR-eval-002-docker-free-code-grading.md).
+[`../../docs/adrs/ADR-eval-003-no-docker-cc-coding-agent.md`](../../../docs/adrs/ADR-eval-003-no-docker-cc-coding-agent.md).
 
 **Platform support (auto-detected): macOS · Linux · Windows · Windows→WSL.** On
 Windows, if `claude` isn't on the native PATH the harness routes through WSL

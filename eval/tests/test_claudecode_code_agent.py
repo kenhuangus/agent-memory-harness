@@ -2,12 +2,13 @@
 
 These prove the whole loop — `prepare_checkout` -> claude edits the checkout ->
 `capture_diff` (the prediction) -> `LocalExecGrader` (apply patch + gold tests +
-run) — runs DETERMINISTICALLY with **no network, no real `claude`, no Docker, no
-real git/venv**. The fixture `swe_contextbench.json` drives the *task shape*; the
-checkout itself is synthesized by an injected fake git runner (the fixture is not
-a real repo). A real swe_contextbench run additionally needs network (clone by
-SHA), live `claude` subscription auth, and a buildable repo — none available
-offline; that is the intentional limit of this suite (see ADR-eval-002).
+run) — runs DETERMINISTICALLY with **no network, no real `claude`, no container
+runtime, no real git/venv**. The fixture `swe_contextbench.json` drives the
+*task shape*; the checkout itself is synthesized by an injected fake git runner
+(the fixture is not a real repo). A real swe_contextbench run additionally needs
+network (clone by SHA), live `claude` subscription auth, and a buildable repo —
+none available offline; that is the intentional limit of this suite (see
+ADR-eval-003).
 
 Run under the Py313 interpreter with PYTHONIOENCODING=utf-8.
 """
@@ -303,7 +304,7 @@ def test_full_agentic_loop_noop_agent_accuracy_zero() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Test D — _make_grader auto routing (Docker-free)
+# Test D — _make_grader auto routing (host-local, no container runtime)
 # --------------------------------------------------------------------------- #
 def test_make_grader_auto_routing() -> None:
     import argparse

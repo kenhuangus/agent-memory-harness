@@ -64,8 +64,9 @@ not the offline path.
   injected, so swapping providers does not touch benchmark or harness code.
 
 ### 7.2 Real CODE scoring (patch-apply / test-run) per benchmark
-- **Default: host-local test execution (`LocalExecGrader`), Docker-free.** CODE
-  runs as a real coding agent in a working checkout (`--code-mode agentic`); the
+- **Default: host-local test execution (`LocalExecGrader`), no container runtime.**
+  CODE is solved by the Claude Code CLI acting as a genuine coding agent in a working
+  checkout (`--code-mode agentic` — real checkout, edit, run tests); the
   harness captures `git diff` as the prediction, applies the **gold `test_patch`**
   itself (never the agent — the trust boundary), and runs the project's tests in a
   per-task venv. A task PASSES only when **every `FAIL_TO_PASS` test now passes AND
@@ -73,8 +74,8 @@ not the offline path.
 - **Honesty rule:** the grader reports `None` (UNGRADED, excluded from accuracy)
   whenever the env can't be built — never a fake `False`. Local-exec is
   host-dependent and partial-coverage, so it is NOT comparable to a containerized
-  SWE-bench leaderboard. Docker and the `swebench` package are removed entirely
-  (see `docs/adrs/ADR-eval-002`).
+  leaderboard. The container runtime and the external grading package are removed
+  entirely (see `docs/adrs/ADR-eval-003`).
 - Wiring: exposed as a per-benchmark `grader` for the SWE coding benchmarks
   (`swe_contextbench`, `swe_bench_cl`). `contextbench` is retrieval-only (native
   recall/precision/F1 over gold spans, no test execution). The offline path stays

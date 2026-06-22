@@ -68,7 +68,7 @@ def resolved_from_report(report: dict, instance_id: str) -> Optional[bool]:
 
     Robust across report shapes:
 
-    * **Summary report** (swebench >= 2.x ``make_run_report`` output) — has
+    * **Summary report** (a ``make_run_report``-style summary) — has
       ``resolved_ids`` / ``unresolved_ids`` / ``error_ids`` lists. Resolved iff
       the id is in ``resolved_ids``; ``False`` if it's in any not-resolved list;
       ``None`` if absent (not evaluated).
@@ -168,7 +168,7 @@ def overlap_grader(task: Task, prediction: str, *, threshold: float = 0.5) -> Op
 
 
 # --------------------------------------------------------------------------- #
-# Local-execution grader (no Docker; host venv, best-effort, honest None)
+# Local-execution grader (host venv, best-effort, honest None; no container runtime)
 # --------------------------------------------------------------------------- #
 @dataclass(slots=True)
 class CmdResult:

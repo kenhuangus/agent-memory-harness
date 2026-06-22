@@ -1099,7 +1099,7 @@ def test_grader_resolved_from_report_rule() -> None:
     assert G.resolved_from_report(bad, iid) is False
     # Absent instance -> None (could not grade).
     assert G.resolved_from_report({}, iid) is None
-    # Summary-report shape (swebench >=2.x make_run_report output).
+    # Summary-report shape (a make_run_report-style summary).
     summ = {"resolved_ids": ["django__django-1"], "unresolved_ids": ["x__y-2"],
             "error_ids": [], "incomplete_ids": [], "empty_patch_ids": []}
     assert G.resolved_from_report(summ, "django__django-1") is True
@@ -1677,7 +1677,7 @@ def test_harness_run_with_budget_partial() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# ClaudeCodeAgent CODE-task diff emission (offline; no claude, no docker, no net)
+# ClaudeCodeAgent CODE-task diff emission (offline; no claude, no net)
 # --------------------------------------------------------------------------- #
 def test_extract_diff_plain_passthrough() -> None:
     # Output that already IS a clean git diff comes back essentially unchanged,

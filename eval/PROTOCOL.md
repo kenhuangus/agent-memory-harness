@@ -97,7 +97,7 @@ benchmarks need the patch applied and tests run; ContextBench is **retrieval-onl
 Choose a grader:
 
 ```bash
-# real score: host-local test execution (no Docker, no extra install)
+# real score: host-local test execution (LocalExecGrader; no extra install)
 python -m memeval.results run --benchmark swe_bench_cl --model claude-haiku-4-5 \
     --memory --grader local --results ../results.json
 
@@ -122,7 +122,7 @@ it never inflates the score.
 > leaderboard. Many multilingual SWE-ContextBench instances are un-gradeable on a
 > single host and return `None`. The `success=None` trust boundary (the harness,
 > not the model, applies the gold tests) is what keeps the reported numbers honest.
-> See `docs/adrs/ADR-eval-002-docker-free-code-grading.md`.
+> See `docs/adrs/ADR-eval-003-no-docker-cc-coding-agent.md`.
 
 ## 6. The four metrics
 

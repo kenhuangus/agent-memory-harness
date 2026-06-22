@@ -72,8 +72,8 @@ repo's tests. CODE now runs as a real coding agent (`--code-mode agentic`) grade
 test execution (`LocalExecGrader`), retired the prior approach where the agent emitted prose
 instead of a diff. **The 0.00s here are from that earlier cycle, not a memory result.** Note the
 local-exec grader is host-dependent and partial-coverage (it reports `None`/ungraded when a repo's
-env can't be built), so it is not comparable to a containerized SWE-bench leaderboard — see
-`docs/adrs/ADR-eval-002-docker-free-code-grading.md`.
+env can't be built), so it is not comparable to a containerized leaderboard — see
+`docs/adrs/ADR-eval-003-no-docker-cc-coding-agent.md`.
 
 ## What changed this cycle (engineering)
 
@@ -83,8 +83,9 @@ env can't be built), so it is not comparable to a containerized SWE-bench leader
   stream-json closes the race: **first-try recall 40% → 100%** (20/20 needle test; every completed
   re-run task reached memory). A clean QA re-run on the fixed code is pending a stable WSL VM.
 - **CODE grader (PR #32, since superseded).** A container-based grader was wired for CODE benches at
-  the time. It has since been **removed** in favor of a Docker-free host-local `LocalExecGrader` plus
-  an agentic coding loop (ADR-eval-002); CODE grading no longer needs Docker or any extra package.
+  the time. It has since been **removed entirely** in favor of a host-local `LocalExecGrader` plus an
+  agentic coding loop where the Claude Code CLI is the genuine coding agent (ADR-eval-003); CODE
+  grading no longer needs any container runtime or extra package.
 - **Runner hardened (PR #26).** Parallel CLI processes, incremental per-task result saves, and a
   `reliability` block in every record documenting failures + `memory_reached`.
 - **`memeval-bench` CLI (PR #33).** Run any benchmark on its own: `memeval-bench --benchmark longmemeval --mode plugin`.
