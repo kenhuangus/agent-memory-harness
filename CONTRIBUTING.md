@@ -55,6 +55,15 @@ a choice is load-bearing and not obvious; see
 the full when/how. A decision that also changes the frozen contract still follows the
 `[CONTRACT]` process above — the ADR is the *why*, the contract edit is the *what*.
 
+## Project knowledge base (`/kb`)
+For state that doesn't belong in code, ADRs, or PR descriptions but is worth
+preserving across the sprint (pivots, in-conversation decisions, end-of-arc
+checkpoints), use the `/kb` slash command in Claude Code. It writes append-only
+entries to per-domain journals under [`.kb/`](.kb/) — one file per workstream
+domain, same four domains as the ADRs. Cross-cutting changes use `/kb` with the
+`all` option to write one linked entry per domain. Setup notes and gotchas live
+in [`.kb/README.md`](.kb/README.md).
+
 ## Stubs first
 Before building a dependent, make sure the interface stub is on `main`
 (`InMemoryStore`, `EchoModel` are the reference stubs). No dependent merges
