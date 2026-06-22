@@ -138,6 +138,11 @@ class GraphStore:
         if not q:
             return []
         rel, direction = query_intent(query)
+        # Per-call traversal-depth override (the cascade / accuracy profile injects this per query; the
+        # default is the store's construction-time self._max_depth). Lets a profile traverse deeper for
+        # one query without rebuilding the store. Clamped >= 0.
+        _md = kwargs.get("max_depth")
+        depth = self._max_depth if _md is None else max(0, int(_md))
 
         def visible(nid: str) -> bool:
             it = self._nodes.get(nid)
@@ -162,7 +167,7 @@ class GraphStore:
         # score = max(seed_overlap * decay ** distance).
         while frontier:
             nid, dist = frontier.popleft()
-            if dist >= self._max_depth:
+            if dist >= depth:
                 continue
             for nb in self._neighbors_for(nid, rel, direction):
                 if not visible(nb):
