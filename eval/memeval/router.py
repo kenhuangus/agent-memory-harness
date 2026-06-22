@@ -446,6 +446,15 @@ class RouterConfig:
     consult2: Consult2Config = field(default_factory=Consult2Config)
     embed: Optional[Any] = None
     embed_model: Optional[str] = None
+    # Write-routing (D009: the router owns WHERE to STORE). markdown is the always-written literal
+    # source-of-truth base (D001). Policies: "base_all" (base + vector + graph), "base_selective"
+    # (base + the classify(content) backend), "single" (only classify(content)). Default = base_all:
+    # D023 measured the write→retrieve round-trip and found selective placement loses ~30% recall
+    # because content- and query-classification diverge under the rule classifier — so the recall-safe
+    # default writes every index. route_write() is a NEW method, so RouterConfig() *retrieval*
+    # behavior is byte-for-byte unchanged regardless of this field.
+    write_policy: str = "base_all"
+    write_base: str = MARKDOWN
 
 
 # --------------------------------------------------------------------------- #
@@ -768,6 +777,48 @@ class Router:
             self.backends[cascade.vector_backend],
             cascade,
         )
+
+    # -- write-routing (D009: the router owns WHERE to STORE, not just retrieval) -----------
+    def route_write(self, item: MemoryItem) -> list[MemoryStore]:
+        """Return the backend store(s) to PERSIST ``item`` in, per the active write policy.
+
+        Mirrors :meth:`route` for the write path (D009: the router owns *where & how* to store).
+        The caller writes the item into each returned store
+        (``for s in router.route_write(item): s.write(item)``). Markdown is the always-written
+        literal source-of-truth base (D001); :attr:`RouterConfig.write_policy` decides the secondary
+        index(es). Degrades to whatever backends are registered; raises only if none are.
+        """
+        stores: list[MemoryStore] = []
+        for name in self._write_backend_names(item):
+            store = self.backends.get(name)
+            if store is not None and store not in stores:
+                stores.append(store)
+        if not stores:
+            raise RuntimeError("Router has no registered backends to write to")
+        return stores
+
+    def write_plan(self, item: MemoryItem) -> list[str]:
+        """The backend NAMES :meth:`route_write` would persist ``item`` to (introspection seam)."""
+        return self._write_backend_names(item)
+
+    def _write_backend_names(self, item: MemoryItem) -> list[str]:
+        policy = self._config.write_policy
+        base = self._config.write_base
+        content = item.content or ""
+        if policy == "base_all":  # recall-safe default: base + every secondary index
+            names = [base, *(n for n in (MARKDOWN, VECTORS, GRAPH) if n != base)]
+        elif policy == "base_selective":  # base + only the classify(content) backend
+            choice = self._classifier.classify(content).choice
+            names = [base] + ([choice] if choice != base else [])
+        elif policy == "single":  # only the classify(content) backend (no base)
+            names = [self._classifier.classify(content).choice]
+        else:
+            raise ValueError(f"unknown write_policy {policy!r}")
+        out: list[str] = []  # dedupe, preserve order
+        for name in names:
+            if name not in out:
+                out.append(name)
+        return out
 
 
 __all__ = [
