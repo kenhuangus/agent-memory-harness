@@ -1,16 +1,31 @@
 """Graph-store backend — owner: Brent (@bgibson1618). Implements ``MemoryStore``.
 
-v1 is **stdlib-only and in-memory**: memories are nodes, and OKF links
-(``metadata["okf_links"]``) are directed edges. ``search`` scores **seed** nodes by
-token overlap with the query, then traverses the link neighborhood (BFS, bounded
-depth), scoring each reached node as ``seed_overlap * decay ** distance``. So a
-query that matches one node also surfaces its *linked* neighbors — the relationship
-retrieval the router sends here, that the keyword/vector backends can't do.
+v1 is **stdlib-only and in-memory**: memories are nodes, OKF links are edges. As of Step 1 the edges are
+**typed and directed**: each ``metadata["okf_links"]`` entry carrying a relation (e.g. ``(rel, target)``)
+is classified (via :mod:`memeval.stores.relations`) into a closed-enum relation, and ``search`` resolves
+the QUERY into a ``(relation, direction)`` intent and traverses only the matching edges — so "what does X
+depend on" (out-edges) and "what depends on X" (in-edges) no longer return the same set. ("what breaks if
+X changes" is an *impacts*-OUT query — what X impacts — not an in-edge query.)
 
-The paid-path upgrade keeps the contract: a typed-edge graph DB (Neo4j) behind the
-``uri=`` seam. v1 edges are **untyped** (OKF links carry no type) and traversal is
-**undirected** (a relationship is a relationship in either direction); typed/
-directional traversal is a later refinement.
+**Where the typed links come from (Step 1b, NOT yet wired):** the graph store *consumes* typed
+``okf_links`` entries, but ``okf.py`` parsing still captures only the link TARGET and discards the
+markdown anchor text (``okf.py`` ``_LINK_RE``), so **real OKF markdown links arrive untyped** and fall
+back to ``relates_to`` (generic). Typed edges are exercised today only by callers that supply typed
+entries (the eval). Capturing the relation from the OKF anchor at parse time — making real markdown
+``[depends on](x.md)`` links typed end-to-end — is the next sub-step.
+
+Edges live in two indexes maintained at ``write``: ``_out`` (source -> [(target, rel)]) and a reverse
+``_in`` (target -> [(source, rel)]) — the reverse index makes IN/impact traversal O(deg) instead of the
+old O(V*E) scan. Seeds are still scored by query-token overlap; a reached node scores
+``seed_overlap * decay ** distance``.
+
+**Back-compat.** An untyped OKF link (a bare target string, the pre-Step-1 format) is typed ``relates_to``
+— a *generic* relationship that is traversed by ANY query in both directions. So an untyped corpus (the
+D008 cascade fixture, ``test_graph_store``) behaves exactly as before: a "depends on" query finds the
+untyped edges via the generic fallback, and a plain "related to X" query (no relation verb) traverses
+every edge both ways. Typed filtering only narrows results when edges actually carry a type.
+
+The paid-path upgrade keeps the contract: a typed-edge graph DB (Neo4j) behind the ``uri=`` seam.
 """
 
 from __future__ import annotations
@@ -20,6 +35,7 @@ from dataclasses import replace
 from typing import Any, Optional
 
 from ..schema import MemoryItem, RetrievedItem
+from .relations import BOTH, IN, OUT, RELATES_TO, classify_relation, query_intent
 
 _DECAY = 0.5     # score falloff per graph hop
 _MAX_DEPTH = 2   # hops to traverse out from a seed
@@ -51,23 +67,41 @@ def _estimate_tokens(content: str) -> int:
 def _link_id(link: Any) -> str:
     """Normalize an OKF link target to a candidate item_id (last path segment, no .md).
 
-    v1 maps a link's basename-minus-.md to an item_id (so ``/memory/b.md`` -> ``b``),
-    which holds when an item's id equals its OKF slug. Exact resolution via the target
-    doc's ``x_item_id`` is a later refinement.
+    v1 maps a link's basename-minus-.md to an item_id (so ``/memory/b.md`` -> ``b``), which holds when an
+    item's id equals its OKF slug. Exact resolution via the target doc's ``x_item_id`` is a later refinement.
     """
     tail = str(link).rstrip("/").rsplit("/", 1)[-1]
     return tail[:-3] if tail.endswith(".md") else tail
 
 
+def _entry_rel_target(entry: Any) -> tuple:
+    """Normalize one ``okf_links`` entry to ``(relation, raw_target)``.
+
+    Supports the typed forms — ``(anchor, target)`` / ``[anchor, target]`` / ``{"rel"/"relation", "target"}``
+    (anchor text classified to a relation) — and the legacy untyped form, a bare target string (-> the
+    generic ``relates_to``). Anything unexpected degrades to ``relates_to`` over its string form.
+    """
+    if isinstance(entry, str):
+        return (RELATES_TO, entry)
+    if isinstance(entry, dict):
+        anchor = entry.get("rel") or entry.get("relation") or ""
+        target = entry.get("target") or entry.get("to") or ""
+        return (classify_relation(anchor), target)
+    if isinstance(entry, (list, tuple)) and len(entry) == 2:
+        return (classify_relation(entry[0]), entry[1])
+    return (RELATES_TO, str(entry))
+
+
 class GraphStore:
-    """In-memory graph ``MemoryStore``: nodes + link adjacency, seed-then-traverse search."""
+    """In-memory typed/directed graph ``MemoryStore``: nodes + typed edge adjacency, seed-then-traverse."""
 
     def __init__(self, uri: Optional[str] = None, **kwargs: Any) -> None:
         self.uri = uri  # a real graph DB (Neo4j) is the paid-path seam; v1 is in-memory
         self.config = kwargs
         self._nodes: dict = {}        # item_id -> MemoryItem
         self._order: list = []        # insertion order (for all())
-        self._out: dict = {}          # item_id -> set of out-edge target ids (from links)
+        self._out: dict = {}          # item_id -> list of (target_id, relation)
+        self._in: dict = {}           # item_id -> list of (source_id, relation)  (reverse index)
 
     # -- MemoryStore protocol ----------------------------------------------
     def write(self, item: MemoryItem) -> None:
@@ -75,13 +109,21 @@ class GraphStore:
         if tokens <= 0 and item.content:
             tokens = _estimate_tokens(item.content)
         node = replace(item, tokens=tokens)  # always a copy -> never alias the caller's item
-        if item.item_id not in self._nodes:
+        edges = self._parse_edges(node)
+
+        # If rewriting a node, retract its old out-edges' reverse-index contributions first.
+        if item.item_id in self._nodes:
+            for tgt, rel in self._out.get(item.item_id, []):
+                back = self._in.get(tgt)
+                if back:
+                    self._in[tgt] = [e for e in back if e != (item.item_id, rel)]
+        else:
             self._order.append(item.item_id)
+
         self._nodes[item.item_id] = node
-        self._out[item.item_id] = {
-            t for t in (_link_id(ln) for ln in (node.metadata or {}).get("okf_links", []))
-            if t and t != item.item_id
-        }
+        self._out[item.item_id] = edges
+        for tgt, rel in edges:
+            self._in.setdefault(tgt, []).append((item.item_id, rel))
 
     def get(self, item_id: str) -> Optional[MemoryItem]:
         return self._nodes.get(item_id)
@@ -91,6 +133,7 @@ class GraphStore:
         q = set(_tokenize(query))
         if not q:
             return []
+        rel, direction = query_intent(query)
 
         def visible(nid: str) -> bool:
             it = self._nodes.get(nid)
@@ -111,12 +154,13 @@ class GraphStore:
         if not best:
             return []
 
-        # BFS out from the seeds; a node's score = max(seed_overlap * decay ** distance)
+        # BFS out from the seeds along edges matching the query's (relation, direction) intent; a node's
+        # score = max(seed_overlap * decay ** distance).
         while frontier:
             nid, dist = frontier.popleft()
             if dist >= _MAX_DEPTH:
                 continue
-            for nb in self._neighbors(nid):
+            for nb in self._neighbors_for(nid, rel, direction):
                 if not visible(nb):
                     continue
                 cand = best[nid] * _DECAY
@@ -133,16 +177,37 @@ class GraphStore:
         return [self._nodes[i] for i in self._order]
 
     # -- helpers -----------------------------------------------------------
-    def _neighbors(self, nid: str) -> set:
-        """Undirected neighbors: out-edges plus in-edges (a relationship runs both ways).
+    def _parse_edges(self, node: MemoryItem) -> list:
+        """Typed out-edges ``[(target_id, relation)]`` from a node's ``okf_links`` (deduped, no self-loops)."""
+        edges: list = []
+        seen: set = set()
+        for entry in (node.metadata or {}).get("okf_links", []) or []:
+            rel, target_raw = _entry_rel_target(entry)
+            tgt = _link_id(target_raw)
+            if tgt and tgt != node.item_id and (tgt, rel) not in seen:
+                seen.add((tgt, rel))
+                edges.append((tgt, rel))
+        return edges
 
-        TODO: the in-edge scan is O(V*E) per search; a maintained reverse-adjacency
-        index would make it O(deg). Deferred — the paid path uses a real graph DB.
+    def _neighbors_for(self, nid: str, rel: str, direction: str) -> set:
+        """Neighbors of ``nid`` reachable under the query intent ``(rel, direction)``.
+
+        General intent (``relates_to``) traverses EVERY edge both ways (pre-typed behavior). A specific
+        relation traverses that relation's edges in ``direction`` PLUS any ``relates_to`` (generic /
+        untyped) edge both ways — so an untyped corpus is unaffected and typed edges add discrimination.
         """
-        nbrs = set(self._out.get(nid, ()))
-        for src, outs in self._out.items():
-            if nid in outs:
-                nbrs.add(src)
+        out_edges = self._out.get(nid, ())
+        in_edges = self._in.get(nid, ())
+        if rel == RELATES_TO:
+            return {t for t, _ in out_edges} | {s for s, _ in in_edges}
+        nbrs: set = set()
+        if direction in (OUT, BOTH):
+            nbrs |= {t for t, r in out_edges if r == rel}
+        if direction in (IN, BOTH):
+            nbrs |= {s for s, r in in_edges if r == rel}
+        # generic relates_to edges are always traversable (both ways) — untyped back-compat.
+        nbrs |= {t for t, r in out_edges if r == RELATES_TO}
+        nbrs |= {s for s, r in in_edges if r == RELATES_TO}
         return nbrs
 
 

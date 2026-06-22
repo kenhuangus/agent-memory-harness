@@ -1,11 +1,16 @@
-"""Graph-retrieval eval (Graph Store Step 0) — the link-dependent headroom instrument. Owner: Brent.
+"""Graph-retrieval eval — link-dependent instrument across the graph arc (Steps 0→1). Owner: Brent.
 
-Eval-first start of the graph arc: the instrument that must exist BEFORE any ``graph_store.py`` change, to
-pin — against the REAL current store — exactly where relational retrieval fails today, so Step 1
-(typed/directional edges + reverse-adjacency index) has a target to beat. No store change; eval only.
+Eval-first: began as the Step-0 headroom instrument (eval only — it pinned, against the then-untyped
+store, exactly where relational retrieval failed, so the typed-edge work had a target). It now also gates
+**Step 1**: the same cases assert the typed/directional store's VICTORY on the discrimination slices,
+while the reach/seed slices stay headroom. (Step 1's ``graph_store.py`` change ships in the same branch as
+this eval; the link-stripped differential below keeps every case graph-caused, not lexical.)
 
-The current ``GraphStore`` is **untyped + undirected** (a relationship runs both ways), seeds nodes by
-query-token Jaccard overlap, and traverses BFS to **depth 2** with ``0.5**hops`` decay.
+As of **Step 1**, the ``GraphStore`` is **typed + directional**: each OKF link is typed from its anchor
+(via :mod:`memeval.stores.relations`) and ``search`` resolves the query's ``(relation, direction)`` intent,
+traversing only matching edges (still seeds by Jaccard token overlap; still depth-2 BFS). So the
+discrimination slices below now **pass** (the headroom-to-victory flip); the reach/seed slices remain
+headroom for later primitives.
 
 **Why a coined-token corpus + a link-stripped DIFFERENTIAL (the anti-theater core).** A first cut of this
 eval used natural-language nodes and was rejected by cross-vendor review: rebuilding it with every
@@ -18,9 +23,10 @@ change a case, that case is lexical theater and fails the suite.
 
 Four slices (the typed-edge headroom Step 1 must recover; all link-differential-provable):
 
-* **typed_direction** / **relation_disambiguation** — DISCRIMINATION: the undirected/untyped store returns
-  a node's neighbors regardless of edge DIRECTION or RELATION, so a wrong-direction/wrong-relation
-  distractor LEAKS into top-k *with* links and is absent *without* (asserted: leak_with and not leak_without).
+* **typed_direction** / **relation_disambiguation** — DISCRIMINATION (Step 1: now PASSING): the typed store
+  traverses only the query's matching ``(relation, direction)`` edges, so it retrieves the gold and
+  EXCLUDES the wrong-direction/wrong-relation distractor (asserted: ``recall_with==1`` and ``not
+  leak_with``). Pre-Step-1 the distractor leaked — the headroom this slice pinned.
 * **multi_hop** — REACH: a depth<=2 probe IS reached *with* links (traversal works) while the depth-3 gold
   is MISSED (beyond ``_MAX_DEPTH``) — asserted: gold recall==0, probe reached with-links-only.
 * **untyped_fallback** — CONTROL: a direct 1-hop neighbor reachable ONLY via its link; the store retrieves
@@ -31,11 +37,10 @@ Four slices (the typed-edge headroom Step 1 must recover; all link-differential-
 an EMBEDDER-seeding headroom, not a typed-edge one, and can't be shown by the link differential. It
 belongs with the captained embedder work.)
 
-**Forward use.** When the typed/directional edge model lands, the discrimination slices flip from headroom
-to victory: the store must then EXCLUDE the wrong-direction/relation distractors. The multi_hop slice is a
-separate primitive — retrieving the depth-3 gold needs **deeper / path-aware traversal** (raising
-``_MAX_DEPTH`` or a path query), NOT typed/directional edges alone; it flips only once that traversal work
-lands. (semantic_seed, dropped here, needs embedder seeding — a third, independent primitive.)
+**Status / forward use.** Step 1 (typed/directional edges) landed → the discrimination slices now PASS.
+Still headroom: **multi_hop** needs **deeper / path-aware traversal** (raising ``_MAX_DEPTH`` or a path
+query) — a separate primitive from typed edges; and **semantic_seed** (dropped here) needs embedder
+seeding — a third, independent primitive. Those flip to victory only when their respective work lands.
 
 Reproduce the report: cd eval && python3 -m memeval.stores.tests.test_graph_retrieval_evals
 Run the guard:        cd eval && python3 -m unittest memeval.stores.tests.test_graph_retrieval_evals
@@ -59,8 +64,9 @@ _ALL_SLICES = DISCRIMINATION_SLICES + REACH_SLICES + CONTROL_SLICES
 
 @dataclass(frozen=True)
 class GraphItem:
-    """A memory node. ``links`` are DIRECTED typed edges (relation, target_id); the current store reads
-    only the targets and ignores type + direction — exactly the headroom the discrimination slices test."""
+    """A memory node. ``links`` are DIRECTED typed edges (relation, target_id); the store types each edge
+    from its anchor and resolves the query's (relation, direction) intent — what the discrimination slices
+    verify. (``_mk`` writes these as typed ``[relation, target]`` entries in ``okf_links``.)"""
 
     item_id: str
     content: str
@@ -149,7 +155,9 @@ _EXPECTED_CASES = 8     # count lock — changing the case set is deliberate
 
 
 def _mk(it: "GraphItem", *, strip_links: bool = False) -> MemoryItem:
-    links = [] if strip_links else [t for _, t in it.links]
+    # Typed links: each okf_links entry is [relation, target] so the store types the edge from the anchor
+    # (Step 1). strip_links empties okf_links -> no edges (the differential's premise).
+    links = [] if strip_links else [[rel, t] for rel, t in it.links]
     return MemoryItem(item_id=it.item_id, content=it.content,
                       metadata={"okf_title": it.item_id, "okf_links": links})
 
@@ -251,19 +259,20 @@ class GraphLinkDifferentialTests(unittest.TestCase):
                 self.assertLess(r["recall_without"], 1.0,
                                 f"{c.name}: control gold must be UNreachable without links (else lexical)")
 
-    def test_discrimination_leak_is_link_caused(self) -> None:
-        # The undirected/untyped store pulls in a wrong-direction/relation distractor via the links and
-        # cannot exclude it; without links the distractor is absent — so the leak is graph-caused.
+    def test_discrimination_excludes_wrong_direction_and_relation(self) -> None:
+        # Step 1 (typed/directional edges): the store resolves the query's (relation, direction) intent and
+        # traverses only matching edges, so it RETRIEVES the gold and EXCLUDES the wrong-direction /
+        # wrong-relation distractor. Pre-Step-1 these distractors LEAKED — the headroom this slice pinned;
+        # this is the headroom-to-victory flip.
         for c in CASES:
             if c.slice in DISCRIMINATION_SLICES:
                 r = self.results[c.name]
-                self.assertTrue(r["leak_with"],
-                                f"{c.name}: expected a wrong-direction/relation distractor to leak with links")
-                self.assertFalse(r["leak_without"],
-                                 f"{c.name}: distractor present without links — leak is lexical, not graph")
-                # The gold itself is also link-reachable-only: retrieved WITH links, gone WITHOUT — so the
-                # whole result set (gold + leaked distractors) is graph-caused, not lexical.
-                self.assertEqual(r["recall_with"], 1.0, f"{c.name}: gold should be retrieved with links")
+                self.assertEqual(r["recall_with"], 1.0,
+                                 f"{c.name}: typed store must retrieve the gold with links")
+                self.assertFalse(r["leak_with"],
+                                 f"{c.name}: typed store must EXCLUDE the wrong-direction/relation "
+                                 f"distractor, but leaked: {r['leak_with']}")
+                # Still graph-caused, not lexical: the gold is reachable only via links.
                 self.assertLess(r["recall_without"], 1.0,
                                 f"{c.name}: gold reachable without links — case is lexical, not graph")
 
@@ -281,17 +290,17 @@ class GraphLinkDifferentialTests(unittest.TestCase):
 
 def _report() -> None:
     gl, gn = _build_graph(), _build_graph(strip_links=True)
-    print(f"GRAPH-RETRIEVAL EVAL (Step 0) — {len(CASES)} cases over a {len(CORPUS)}-node corpus (K={K}). "
-          f"Current store = untyped/undirected/depth-2/Jaccard-seed.\n")
+    print(f"GRAPH-RETRIEVAL EVAL — {len(CASES)} cases over a {len(CORPUS)}-node corpus (K={K}). "
+          f"Store = typed/directional (Step 1); depth-2 BFS; Jaccard seed.\n")
     print(f"{'slice':<24} {'case':<22} {'rec_w':>6} {'rec_n':>6} {'leak_w':>7} {'probe_w':>8}")
     print("-" * 76)
     for c in CASES:
         r = evaluate(c, gl, gn)
         print(f"{c.slice:<24} {c.name:<22.22} {r['recall_with']:>6.2f} {r['recall_without']:>6.2f} "
               f"{len(r['leak_with']):>7} {len(r['probe_with']):>8}")
-    print("\nEvery row CHANGES when links are stripped (the anti-theater differential): controls become "
-          "unreachable, discrimination leaks vanish, multi_hop probe disappears — proving the headroom is "
-          "GRAPH-caused, not lexical. Step 1 (typed/directional edges + reverse index) flips these to victory.")
+    print("\nEvery row CHANGES when links are stripped (the anti-theater differential), proving results are "
+          "GRAPH-caused, not lexical. Step 1 typed/directional edges: discrimination now retrieves the gold "
+          "with leak_w=0 (was leaking). multi_hop stays headroom (depth-2 limit) until deeper traversal lands.")
 
 
 if __name__ == "__main__":
