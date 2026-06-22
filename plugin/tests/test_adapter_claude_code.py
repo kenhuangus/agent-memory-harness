@@ -66,7 +66,56 @@ def test_hooks_json_wires_lifecycle_events():
     assert stop["command"].startswith("memory-hook")
 
 
-def test_bundle_has_no_skills_dir():
-    # Skills are canonical in the core and placed by the install command, never
-    # committed into the adapter bundle (ADR-harness-009).
+def test_committed_adapter_has_no_skills_dir():
+    # No skill is COMMITTED under the adapter (no duplication in git): the canonical
+    # skill lives once in the core and is materialized into the bundle by the build
+    # step, not checked in here (ADR-harness-009).
     assert not (BUNDLE / "skills").exists()
+
+
+# --- production release build (build_bundle) --------------------------------- #
+
+def test_build_bundle_produces_installable_plugin(tmp_path):
+    # The release step materializes a self-contained bundle: manifests + MCP + hooks
+    # + the canonical skill copied in, so a single native `claude plugin install`
+    # delivers all three (ADR-harness-009, AC3).
+    from cookbook_memory.adapters.claude_code.build import build_bundle
+
+    out = build_bundle(tmp_path / "bundle")
+    assert (out / ".claude-plugin" / "plugin.json").is_file()
+    assert (out / ".mcp.json").is_file()
+    assert (out / "hooks" / "hooks.json").is_file()
+    # the skill is now PRESENT in the built bundle (materialized, not committed)
+    assert (out / "skills" / "recall" / "SKILL.md").is_file()
+
+
+def test_build_bundle_skill_matches_canonical_source(tmp_path):
+    # Materialized == canonical: the build copies, it does not fork the content.
+    from cookbook_memory.adapters.claude_code.build import build_bundle
+    from cookbook_memory.core.install import canonical_skills_dir
+
+    out = build_bundle(tmp_path / "bundle")
+    built = (out / "skills" / "recall" / "SKILL.md").read_text()
+    canonical = (canonical_skills_dir() / "recall" / "SKILL.md").read_text()
+    assert built == canonical
+
+
+def test_build_bundle_is_reproducible(tmp_path):
+    # A clean rebuild over an existing dir yields the same bundle (idempotent).
+    from cookbook_memory.adapters.claude_code.build import build_bundle
+
+    a = build_bundle(tmp_path / "b")
+    b = build_bundle(tmp_path / "b")
+    assert a == b
+    assert (b / "skills" / "recall" / "SKILL.md").is_file()
+
+
+def test_validate_bundle_rejects_missing_skill(tmp_path):
+    from cookbook_memory.adapters.claude_code import build
+
+    out = build.build_bundle(tmp_path / "bundle")
+    # remove the materialized skill -> validation must fail
+    import shutil
+    shutil.rmtree(out / "skills")
+    with pytest.raises(build.BundleError):
+        build.validate_bundle(out)
