@@ -106,6 +106,26 @@ class SqliteVectorStoreTests(unittest.TestCase):
             self.assertTrue(s2.search("configuration", k=1))
             s2.close()
 
+    def test_file_backed_store_uses_wal(self) -> None:
+        # ADR-P2: WAL is mandatory so concurrent cross-process writers/readers over one
+        # $MEMORY_STORE file don't block. A file-backed store must report journal_mode == 'wal'.
+        with tempfile.TemporaryDirectory() as d:
+            path = str(Path(d) / "mem.db")
+            s = SqliteVectorStore(path)
+            mode = s._conn.execute("PRAGMA journal_mode").fetchone()[0]
+            s.close()
+            self.assertEqual(mode.lower(), "wal", "file-backed store must use WAL journal mode")
+
+    def test_in_memory_store_is_unaffected_by_wal_pragma(self) -> None:
+        # The WAL pragma is a no-op for :memory: (returns 'memory', never errors) — the default
+        # offline path keeps working, write/search round-trip intact.
+        s = SqliteVectorStore()  # :memory:
+        mode = s._conn.execute("PRAGMA journal_mode").fetchone()[0]
+        self.assertEqual(mode.lower(), "memory")
+        s.write(_mk("m1", "offline path still works"))
+        self.assertTrue(s.search("offline", k=1))
+        s.close()
+
     def test_uses_injected_embedder(self) -> None:
         # the headline deferral claim: a real embedder is injected via embed=
         def embed(text: str):
