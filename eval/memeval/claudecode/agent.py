@@ -19,6 +19,7 @@ exercise the wiring with a fake CLI.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -339,28 +340,23 @@ class ClaudeCodeAgent:
 
         Black box, end to end, exactly as a user runs it:
 
-        1. seed the plugin's store at ``<run_dir>/.cookbook-memory`` via the plugin's
-           own ``MemoryClient.remember`` (the store format the plugin reads);
-        2. ensure the plugin is built + installed into the sandbox once per agent
+        1. ensure the plugin is built + installed into the sandbox once per agent
            (native ``claude plugin install``), capturing the PATH the MCP server needs;
+        2. seed the plugin's store at ``<run_dir>/.cookbook-memory`` through the
+           plugin's OWN CLI (``memory-cli remember``) — the same write surface a user
+           or the Daydreamer uses — so nothing reaches into the plugin's Python API;
         3. drive a primed ``claude`` turn with ``CLAUDE_PROJECT_DIR=<run_dir>`` so the
            plugin's ``.mcp.json`` (``${CLAUDE_PROJECT_DIR}/.cookbook-memory``) resolves
            to the seeded store;
         4. attribute what the agent recalled to the trajectory, read from the plugin's
            own events stream (``events.jsonl``, ``meta.hits``).
         """
-        from cookbook_memory.core import MemoryClient
-
+        plugin_env = self._ensure_real_plugin()  # install first so memory-cli is on PATH
         store_dir = run_dir / ".cookbook-memory"
         store_dir.mkdir(parents=True, exist_ok=True)
-        # Seed the store the way the plugin reads it (engine write via remember).
-        client = MemoryClient(store=str(store_dir))
-        for s in task.sessions:
-            item = MemoryItem.from_session(s)
-            client.remember(item.content, tags=list(getattr(item, "tags", []) or []),
-                            ts=float(getattr(item, "timestamp", 0.0) or 0.0))
+        self._seed_plugin_store(task, store_dir, plugin_env)
 
-        extra_env = {**self._ensure_real_plugin(), "CLAUDE_PROJECT_DIR": str(run_dir)}
+        extra_env = {**plugin_env, "CLAUDE_PROJECT_DIR": str(run_dir)}
         events = store_dir / "events.jsonl"
 
         res: Optional[ClaudeResult] = None
@@ -386,6 +382,30 @@ class ClaudeCodeAgent:
         self._real_plugin_env = sandbox.setup_real_plugin(
             claude_exe=(self._runtime.exe if self._runtime else None))
         return self._real_plugin_env
+
+    def _seed_plugin_store(self, task: Task, store_dir: Path,
+                           plugin_env: dict[str, str]) -> None:
+        """Seed the plugin's store through its own ``memory-cli remember`` — the real
+        user/Daydreamer write surface (no reach into the plugin's Python API).
+
+        Resolves ``memory-cli`` from the plugin runtime env (its install puts it on
+        PATH); a no-op when it isn't found, so offline tests with a fake runner (no
+        real install) skip seeding rather than fail."""
+        import shutil
+        import subprocess
+
+        env = {**os.environ, **plugin_env, "MEMORY_STORE": str(store_dir)}
+        exe = shutil.which("memory-cli", path=env.get("PATH"))
+        if exe is None:
+            return  # no real plugin install (e.g. offline test) — nothing to seed
+        for s in task.sessions:
+            item = MemoryItem.from_session(s)
+            tags = ",".join(getattr(item, "tags", []) or [])
+            args = [exe, "remember", item.content]
+            if tags:
+                args += ["--tags", tags]
+            subprocess.run(args, env=env, capture_output=True, text=True,
+                           timeout=60, check=False)
 
     def _attribute_real_recall(self, events: Path, ctx: Any) -> None:
         """Record each recall the agent performed (from the plugin's events stream)
