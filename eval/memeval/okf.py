@@ -52,7 +52,7 @@ _X = {
     "x_source": "source",
     "x_tokens": "tokens",
 }
-_LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
+_LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")  # (anchor, target): anchor carries the relation verb
 
 
 # --------------------------------------------------------------------------- #
@@ -237,9 +237,13 @@ def doc_to_memory_item(text: str, *, fallback_id: str = "") -> MemoryItem:
                       ("description", "okf_description"), ("resource", "okf_resource")):
         if fm.get(fld) is not None:
             metadata[mkey] = fm[fld]
-    links = [ln for ln in _LINK_RE.findall(body) if not ln.startswith(("http://", "https://"))]
+    # Capture each link's ANCHOR text (the relation verb) alongside its target, as (anchor, target)
+    # pairs. The graph store types the anchor via memeval.stores.relations (untyped anchors -> the
+    # generic relates_to); okf.py stays a pure parser and does not classify relations here.
+    links = [(anchor, tgt) for anchor, tgt in _LINK_RE.findall(body)
+             if not tgt.startswith(("http://", "https://"))]
     if links:
-        metadata["okf_links"] = links  # directed edges -> graph store / dreaming
+        metadata["okf_links"] = links  # (anchor, target) typed directed edges -> graph store / dreaming
 
     tags = fm.get("tags") or []
     if isinstance(tags, str):
