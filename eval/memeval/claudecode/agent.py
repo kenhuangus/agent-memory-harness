@@ -916,6 +916,7 @@ class ClaudeCodeAgent:
         rather than reconstruct it we GLOB for ``<session_id>.jsonl`` anywhere under the
         sandbox ``projects/`` tree — robust to the slug format. Returns ``(None, None)``
         when the session_id or the file can't be found."""
+        from . import sandbox  # local import (mirrors _ensure_real_plugin; avoids a module cycle)
         raw = res.raw if isinstance(res.raw, dict) else {}
         session_id = raw.get("session_id") or raw.get("sessionId")
         if not session_id:

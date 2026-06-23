@@ -21,6 +21,7 @@ real swe_contextbench run additionally needs network + a buildable repo.
 
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
@@ -120,6 +121,21 @@ def prepare_checkout(
 
     # auto / shallow: init + fetch-by-SHA + checkout (network on the real path;
     # fully synthesizable by an injected stub runner offline).
+    #
+    # Idempotency on a reused dest (rerun robustness): with a stable working dir
+    # (``--out-dir`` set) the checkout path persists across runs, so a second run
+    # finds a populated ``.git`` here. ``git init`` is harmless on an existing repo
+    # but ``git remote add origin`` then fails rc=3 "remote origin already exists",
+    # which raises CheckoutError -> empty prediction -> every task scores 0. Wipe a
+    # stale checkout so each run starts from a clean tree (also clears a stale index
+    # / FETCH_HEAD). Guarded on a *real* ``.git`` so the offline stub-runner path —
+    # where the injected runner writes files into a dest that has no real ``.git`` —
+    # is untouched. Safe: the plugin store under the checkout is restored from the
+    # group store each run (agent.py ``_group_restore``), so nothing durable is lost.
+    if (dest_path / ".git").exists():
+        shutil.rmtree(dest_path, ignore_errors=True)
+        dest_path.mkdir(parents=True, exist_ok=True)
+
     _run(["init"])
     _run(["remote", "add", "origin", _normalize_repo_url(repo)])
     ref = str(base_commit) if base_commit else "HEAD"

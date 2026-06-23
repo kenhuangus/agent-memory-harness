@@ -187,6 +187,154 @@ class SeedAuthFromHost(unittest.TestCase):
             self.assertFalse(sandbox.seed_auth_from_host(sbx, host_dir=host))
 
 
+class SeedAuthExpiredButRefreshable(unittest.TestCase):
+    """Rerun robustness: an expired host token with a refreshToken is recovered.
+
+    The host subscription token expires every ~8h; before the fix that made the whole
+    run fail (seeding refused -> sandbox logged out -> "Not logged in"). Now an expired
+    cred that still carries a refreshToken triggers a one-time host-side refresh, then
+    seeding proceeds. The refresh subprocess is injected (``refresher=``) so no real
+    ``claude`` / network is touched.
+    """
+
+    def _write_cred(self, host: Path, *, expires_at, refresh_token=None) -> None:
+        oauth = {"accessToken": "tok", "expiresAt": expires_at}
+        if refresh_token is not None:
+            oauth["refreshToken"] = refresh_token
+        host.mkdir(parents=True, exist_ok=True)
+        (host / ".credentials.json").write_text(json.dumps({"claudeAiOauth": oauth}))
+        (host.parent / ".claude.json").write_text(json.dumps(
+            {"oauthAccount": {"emailAddress": "x@y.z"}, "userID": "u1"}))
+
+    def test_expired_with_refresh_token_refreshes_then_seeds(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td)
+            host = tdp / "host" / ".claude"
+            # Expired (1970) but has a refreshToken -> recoverable.
+            self._write_cred(host, expires_at=1, refresh_token="rt-abc")
+            sbx = tdp / "sbx"
+            sandbox.build(sbx)
+
+            refreshed: dict = {}
+
+            def fake_refresh(host_dir: Path) -> bool:
+                # The CLI would rewrite .credentials.json with a fresh token; emulate it.
+                refreshed["host"] = host_dir
+                (host_dir / ".credentials.json").write_text(json.dumps(
+                    {"claudeAiOauth": {"accessToken": "fresh",
+                                       "expiresAt": 9999999999999,
+                                       "refreshToken": "rt-abc"}}))
+                return True
+
+            self.assertTrue(sandbox.seed_auth_from_host(
+                sbx, host_dir=host, refresher=fake_refresh))
+            # Host refresh was invoked against the host dir...
+            self.assertEqual(refreshed["host"], host.resolve())
+            # ...and the now-fresh token was seeded into the sandbox.
+            self.assertEqual(
+                json.loads((sbx / ".credentials.json").read_text())["claudeAiOauth"]["accessToken"],
+                "fresh")
+            self.assertTrue(sandbox.is_logged_in(sbx))
+
+    def test_expired_without_refresh_token_not_seedable(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td)
+            host = tdp / "host" / ".claude"
+            self._write_cred(host, expires_at=1)  # expired, NO refreshToken -> dead
+            sbx = tdp / "sbx"
+            sandbox.build(sbx)
+
+            called: dict = {"n": 0}
+
+            def fake_refresh(host_dir: Path) -> bool:
+                called["n"] += 1
+                return True
+
+            self.assertFalse(sandbox.seed_auth_from_host(
+                sbx, host_dir=host, refresher=fake_refresh))
+            self.assertEqual(called["n"], 0)  # never even attempted a refresh
+            self.assertFalse((sbx / ".credentials.json").exists())
+
+    def test_fresh_token_seeds_directly_without_refresh(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td)
+            host = tdp / "host" / ".claude"
+            self._write_cred(host, expires_at=9999999999999, refresh_token="rt-abc")
+            sbx = tdp / "sbx"
+            sandbox.build(sbx)
+
+            called: dict = {"n": 0}
+
+            def fake_refresh(host_dir: Path) -> bool:
+                called["n"] += 1
+                return True
+
+            self.assertTrue(sandbox.seed_auth_from_host(
+                sbx, host_dir=host, refresher=fake_refresh))
+            self.assertEqual(called["n"], 0)  # happy path: no refresh needed
+            self.assertEqual(
+                json.loads((sbx / ".credentials.json").read_text())["claudeAiOauth"]["accessToken"],
+                "tok")
+
+    def test_refresh_that_fails_to_become_fresh_does_not_seed(self) -> None:
+        # Refresh ran but the cred is still expired afterwards (e.g. refresh errored) ->
+        # don't seed a dead token; fall back to interactive login.
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td)
+            host = tdp / "host" / ".claude"
+            self._write_cred(host, expires_at=1, refresh_token="rt-abc")
+            sbx = tdp / "sbx"
+            sandbox.build(sbx)
+
+            def fake_refresh(host_dir: Path) -> bool:
+                return True  # claims success but leaves the cred expired
+
+            self.assertFalse(sandbox.seed_auth_from_host(
+                sbx, host_dir=host, refresher=fake_refresh))
+            self.assertFalse((sbx / ".credentials.json").exists())
+
+    def test_refresh_strips_api_key_env_vars(self) -> None:
+        # The real refresher MUST unset ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN before
+        # invoking claude (they're exported in WSL ~/.profile and force API-key mode,
+        # which fails "Invalid API key"). Assert subprocess.run sees them stripped.
+        import subprocess
+        import tempfile
+        captured: dict = {}
+
+        def fake_run(argv, **kw):
+            captured["argv"] = argv
+            captured["env"] = kw.get("env", {})
+            return subprocess.CompletedProcess(argv, 0, stdout="ok", stderr="")
+
+        orig_run = subprocess.run
+        orig_find = sandbox._find_claude_exe
+        with _Env(ANTHROPIC_API_KEY="sk-x", ANTHROPIC_AUTH_TOKEN="tok"):
+            try:
+                subprocess.run = fake_run
+                sandbox._find_claude_exe = lambda: "claude"
+                with tempfile.TemporaryDirectory() as td:
+                    host = Path(td) / "host" / ".claude"
+                    host.mkdir(parents=True)
+                    # cred fresh AFTER the (mocked) run so _refresh returns True
+                    (host / ".credentials.json").write_text(json.dumps(
+                        {"claudeAiOauth": {"accessToken": "fresh",
+                                           "expiresAt": 9999999999999}}))
+                    self.assertTrue(sandbox._refresh_host_credential(host))
+            finally:
+                subprocess.run = orig_run
+                sandbox._find_claude_exe = orig_find
+
+        self.assertEqual(captured["argv"][1:], ["-p", "ok"])
+        self.assertNotIn("ANTHROPIC_API_KEY", captured["env"])
+        self.assertNotIn("ANTHROPIC_AUTH_TOKEN", captured["env"])
+        # and it pointed CLAUDE_CONFIG_DIR at the host dir so the host token refreshes
+        self.assertIn("CLAUDE_CONFIG_DIR", captured["env"])
+
+
 class LoginCommands(unittest.TestCase):
     def test_posix_form(self) -> None:
         cmds = sandbox.login_commands(Path("/x/sbx"), windows=False)

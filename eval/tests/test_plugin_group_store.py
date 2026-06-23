@@ -278,6 +278,26 @@ def test_drain_is_noop_under_fake_runner() -> None:
         assert _time.monotonic() - t0 < 1.0   # returned immediately (no poll loop)
 
 
+def test_discover_transcript_resolves_sandbox() -> None:
+    """Regression: _discover_transcript calls sandbox.active_config_dir(), but the
+    `sandbox` module is imported only inside _ensure_real_plugin. Without a local
+    import in this method it raised NameError in the daydream-drain backstop —
+    failing the task AFTER a successful solve (seen on a real plugin-real run).
+    It must resolve `sandbox` and return cleanly."""
+    with tempfile.TemporaryDirectory() as tmp:
+        agent = ClaudeCodeAgent(memory_mode="plugin-real",
+                                runner=_make_fake_plugin_runner({}),
+                                runtime=_NATIVE, workdir=tmp)
+        store = Path(tmp) / "store"
+        store.mkdir()
+        # A truthy session_id makes the method proceed PAST the session_id guard to
+        # `sandbox.active_config_dir()` (the NameError site). With the fix it returns
+        # cleanly; without the local import it raised NameError here.
+        result = agent._discover_transcript(
+            ClaudeResult(text="", raw={"session_id": "sess-xyz"}), store)
+        assert isinstance(result, tuple) and len(result) == 2
+
+
 # --------------------------------------------------------------------------- #
 # Built-in runner (no pytest required).
 # --------------------------------------------------------------------------- #

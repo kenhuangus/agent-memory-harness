@@ -47,7 +47,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 #: Env var: explicit path to a config dir to sandbox into (highest precedence).
 ENV_CONFIG_DIR = "MEMEVAL_SANDBOX_CONFIG_DIR"
@@ -264,6 +264,16 @@ def host_config_dir() -> Path:
     return Path.home() / ".claude"
 
 
+def _load_oauth(cred_path: Path) -> dict:
+    """Return the ``claudeAiOauth`` block from ``cred_path``, or ``{}`` if missing/bad."""
+    try:
+        data = json.loads(cred_path.read_text())
+    except (ValueError, OSError):
+        return {}
+    oauth = data.get("claudeAiOauth")
+    return oauth if isinstance(oauth, dict) else {}
+
+
 def _credential_is_fresh(cred_path: Path) -> bool:
     """True iff ``cred_path`` holds a Claude OAuth token that exists and is unexpired.
 
@@ -275,18 +285,63 @@ def _credential_is_fresh(cred_path: Path) -> bool:
     token is the live one and is normally unexpired, so this passes."""
     import time
 
-    try:
-        oauth = json.loads(cred_path.read_text()).get("claudeAiOauth", {})
-    except (ValueError, OSError):
-        return False
-    expires_at = oauth.get("expiresAt")
+    expires_at = _load_oauth(cred_path).get("expiresAt")
     if not isinstance(expires_at, (int, float)):
         return False
     return expires_at > time.time() * 1000
 
 
+def _credential_is_refreshable(cred_path: Path) -> bool:
+    """True iff ``cred_path`` holds an OAuth block carrying a non-empty ``refreshToken``.
+
+    An expired access token whose ``.credentials.json`` still has a ``refreshToken`` is
+    recoverable: a single host-side ``claude`` invocation refreshes it in place (see
+    :func:`_refresh_host_credential`). A cred with no ``refreshToken`` is genuinely dead
+    and must fall back to interactive login."""
+    rt = _load_oauth(cred_path).get("refreshToken")
+    return isinstance(rt, str) and bool(rt.strip())
+
+
+#: Env vars that, if exported, force the ``claude`` CLI into API-key mode (which fails
+#: with "Invalid API key" instead of using the OAuth subscription). They MUST be unset
+#: for the host token-refresh invocation. On this machine they are exported in WSL
+#: ``~/.profile``, so a refresh that inherits them dies before it can refresh.
+_API_KEY_VARS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
+
+
+def _refresh_host_credential(host_dir: Path, *, timeout: int = 120) -> bool:
+    """Refresh the host's expired-but-refreshable OAuth token in place, once.
+
+    Drives the real ``claude`` CLI with a trivial prompt (``claude -p "ok"``) against
+    the *host* config dir (``CLAUDE_CONFIG_DIR=<host>``), with the API-key env vars
+    stripped (:data:`_API_KEY_VARS`) so the CLI uses the OAuth refreshToken instead of
+    falling into API-key mode. The CLI rewrites ``<host>/.credentials.json`` with a
+    fresh ``accessToken``/``expiresAt`` as a side effect. Returns True iff the cred is
+    fresh afterward. Best-effort: any failure (no CLI, network down, non-zero exit)
+    returns False and the caller falls back to interactive login.
+
+    The host's config dir, not the sandbox's, is refreshed deliberately: the sandbox is
+    seeded from the now-fresh host token, so the sandbox never has to refresh at start of
+    run — avoiding a refreshToken-rotation race against the host's stored copy."""
+    import subprocess
+
+    try:
+        exe = _find_claude_exe()
+    except RuntimeError:
+        return False
+    env = {k: v for k, v in os.environ.items() if k not in _API_KEY_VARS}
+    env["CLAUDE_CONFIG_DIR"] = str(host_dir.resolve())
+    try:
+        subprocess.run([exe, "-p", "ok"], env=env, timeout=timeout,
+                       capture_output=True, text=True, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return _credential_is_fresh(host_dir / ".credentials.json")
+
+
 def seed_auth_from_host(
     config_dir: Optional[Path] = None, *, host_dir: Optional[Path] = None,
+    refresher: "Optional[Callable[[Path], bool]]" = None,
 ) -> bool:
     """Copy the host's subscription auth into the sandbox so a sandboxed ``claude``
     runs under the same login — no interactive ``/login`` required.
@@ -300,13 +355,25 @@ def seed_auth_from_host(
 
     Best-effort and idempotent. Returns ``True`` only when a **live (unexpired)**
     on-disk credential was seeded; ``False`` (seeding nothing) when the host has no
-    on-disk credential, or only a stale/expired one — e.g. a macOS Keychain platform
-    where ``.credentials.json`` is a leftover, or a host that is itself logged out — in
-    which case the caller must authenticate the sandbox interactively
-    (:func:`login_commands`). The freshness gate (:func:`_credential_is_fresh`) is what
-    makes this safe on macOS: copying an expired leftover would produce a sandbox that
-    *looks* seeded but still fails with "Not logged in" and no ``/login`` hint. Re-seeding
-    on each call refreshes the token if the host has since rotated it.
+    on-disk credential, or only a dead one (expired with no ``refreshToken``) — e.g. a
+    macOS Keychain platform where ``.credentials.json`` is a leftover, or a host that is
+    itself logged out — in which case the caller must authenticate the sandbox
+    interactively (:func:`login_commands`). The freshness gate
+    (:func:`_credential_is_fresh`) is what makes this safe on macOS: copying an expired
+    leftover would produce a sandbox that *looks* seeded but still fails with "Not logged
+    in" and no ``/login`` hint. Re-seeding on each call refreshes the token if the host
+    has since rotated it.
+
+    **Expired-but-refreshable host token (rerun robustness).** The host subscription
+    token expires every ~8h. If the on-disk cred is expired but still carries a
+    ``refreshToken``, it is not dead — a one-time host-side ``claude`` invocation
+    refreshes it in place (``refresher``, default :func:`_refresh_host_credential`),
+    after which seeding proceeds with the now-fresh token. This is preferred over
+    copying the expired cred and letting the sandbox self-refresh, because a sandbox
+    refresh would rotate the *shared* refreshToken mid-run and invalidate the host's
+    stored copy. Refreshing the host first seeds a fresh access token, so the sandbox
+    works immediately with no at-start refresh. ``refresher`` is injectable so tests
+    never touch the real CLI / network.
     """
     import shutil
 
@@ -314,7 +381,12 @@ def seed_auth_from_host(
     host = (host_dir or host_config_dir()).resolve()
     host_cred = host / ".credentials.json"
     if not _credential_is_fresh(host_cred):
-        return False  # no token, or a stale/expired leftover (macOS) -> caller uses /login
+        # Expired but recoverable? Refresh the host token in place, then re-check.
+        # No refreshToken (or refresh failed) -> genuinely dead -> caller uses /login.
+        refresh = refresher or _refresh_host_credential
+        if not (_credential_is_refreshable(host_cred) and refresh(host)
+                and _credential_is_fresh(host_cred)):
+            return False
 
     d.mkdir(parents=True, exist_ok=True)
     shutil.copy2(host_cred, d / ".credentials.json")
