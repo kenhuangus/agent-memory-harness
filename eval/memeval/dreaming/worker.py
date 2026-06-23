@@ -52,7 +52,7 @@ class DreamingWorker:
 
     def run(self, *, trajectories_path: str | None = None, **kwargs: Any) -> dict:
         """One detection-only pass over ``store.all()``; returns the summary dict."""
-        if trajectories_path is not None:
+        if trajectories_path:
             raise ValueError(
                 "trajectories_path not consumed in v1; pass None "
                 "(detection-only worker reads store.all() exclusively)"

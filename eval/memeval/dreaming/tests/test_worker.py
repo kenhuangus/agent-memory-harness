@@ -455,6 +455,19 @@ def test_run_trajectories_path_truthy_raises_valueerror() -> None:
         worker.DreamingWorker(store).run(trajectories_path="/path/that/does/not/exist")
 
 
+def test_run_trajectories_path_empty_string_does_not_raise() -> None:
+    """G2-supplement — empty string (falsy) passes through as if None (implementer's truthy-rejection convention).
+
+    Beyond the rubric: rubric §G pins truthy-rejection, not non-None-rejection. An
+    empty string is falsy and should not be treated as a caller-supplied path.
+    Locks in the convention so a future tightening to `is not None` is caught.
+    """
+    store = _store_with("a")
+    base = worker.DreamingWorker(store).run()
+    with_empty = worker.DreamingWorker(store).run(trajectories_path="")
+    assert base == with_empty
+
+
 def test_run_no_filesystem_access_to_trajectories_path(monkeypatch: pytest.MonkeyPatch) -> None:
     """G3 — no filesystem open() is attempted against the trajectories_path string."""
     import builtins
@@ -592,8 +605,10 @@ def test_run_concurrent_threads_same_store() -> None:
 
     t1 = threading.Thread(target=_runner, args=(1,))
     t2 = threading.Thread(target=_runner, args=(2,))
-    t1.start(); t2.start()
-    t1.join(); t2.join()
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
 
     assert _structural_compare(results[1], sequential)
     assert _structural_compare(results[2], sequential)

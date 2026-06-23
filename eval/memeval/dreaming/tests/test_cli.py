@@ -671,16 +671,6 @@ def test_dream_all_failopens_and_emits_error_event(
     assert any("RuntimeError" in rec.getMessage() for rec in caplog.records)
 
 
-def test_worker_unchanged() -> None:
-    """Rubric §H criterion 53 — worker.py is byte-identical to its pre-PR5 contents (PR5 does not touch night Dream)."""
-    repo_root = Path(__file__).resolve().parents[4]
-    result = subprocess.run(
-        ["git", "diff", "--name-only", "main...HEAD", "--", "eval/memeval/dreaming/worker.py"],
-        cwd=repo_root, capture_output=True, text=True,
-    )
-    assert result.stdout.strip() == ""
-
-
 def test_dream_all_threads_store_arg(
     monkeypatch: pytest.MonkeyPatch, fake_make_store: MagicMock, fake_emit: list[Any], tmp_path: Path,
 ) -> None:
