@@ -222,17 +222,18 @@ def setup_real_plugin(
     d = (config_dir or default_config_dir()).resolve()
     bundle = build_bundle(out_dir or (d / "_plugin-bundle"))
     install_plugin_bundle(bundle, config_dir=d, claude_exe=claude_exe)
-    # The sandbox is a fresh CLAUDE_CONFIG_DIR (logged out) — without auth every
-    # turn dies on "Not logged in · Please run /login". Seed the host subscription
-    # so the run is non-interactive; fall back to a one-time /login on keychain
-    # platforms where the on-disk token isn't portable.
-    if not seed_auth_from_host(d):
+    # The sandbox needs its OWN auth (a fresh CLAUDE_CONFIG_DIR), or every turn dies on
+    # "Not logged in". If it's ALREADY logged in (the user ran /login once, or a prior
+    # seed succeeded), there is nothing to do — do NOT warn. Otherwise try to seed the
+    # host subscription (portable only on file-based-auth platforms); only when that also
+    # fails is the sandbox genuinely logged out, so print the one-time /login instructions.
+    if not is_logged_in(d) and not seed_auth_from_host(d):
         import sys
         cmds = "  " + "\n  ".join(login_commands(d))
         sys.stderr.write(
-            "cookbook-memory sandbox: no portable host credential found — the "
-            "sandbox is logged out and plugin-real turns will fail with "
-            "'Not logged in'. Authenticate it once:\n" + cmds + "\n")
+            "cookbook-memory sandbox: not logged in and no portable host credential to "
+            "seed — plugin-real turns will fail with 'Not logged in'. Authenticate it "
+            "once:\n" + cmds + "\n")
     return plugin_runtime_env()
 
 
