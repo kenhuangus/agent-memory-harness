@@ -329,6 +329,17 @@ class OpenRouterClient:
             tokens_in = 0
             tokens_out = 0
 
+        # Symmetry with failure-path emits (llm_unavailable / llm_call_failed /
+        # llm_retry / llm_rate_limited / llm_malformed_response above): record
+        # which model actually answered, so events.jsonl carries the model name
+        # on healthy runs too. Closes the observability asymmetry per ADR-dreaming-022.
+        emit(
+            "llm_call_succeeded",
+            provider="openrouter",
+            model=self.model,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+        )
         return Completion(text=str(text or ""), tokens_in=tokens_in, tokens_out=tokens_out)
 
     def _retry_delay(self, response: Any, attempt: int) -> float:
