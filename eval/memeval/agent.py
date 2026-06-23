@@ -469,10 +469,20 @@ def run_agent(
             _stop.set()
             return
         except Exception as exc:  # noqa: BLE001 - any other failure -> count as a miss
-            print(f"  task {task.task_id} errored ({type(exc).__name__}): "
-                  f"{str(exc)[:160]}", flush=True)
-            err_note = {"task_id": task.task_id, "stage": "task",
-                        "error": f"{type(exc).__name__}: {str(exc)[:200]}"}
+            import subprocess as _sp
+            if isinstance(exc, _sp.TimeoutExpired):
+                # A per-task timeout is expected for some long agentic CODE tasks; print a
+                # clean skip line (not the giant TimeoutExpired command string) and move on.
+                secs = int(getattr(exc, "timeout", 0) or 0)
+                print(f"  task {task.task_id} timed out (>{secs}s) — skipped, run continues",
+                      flush=True)
+                err_note = {"task_id": task.task_id, "stage": "task",
+                            "error": f"TimeoutExpired: exceeded {secs}s"}
+            else:
+                print(f"  task {task.task_id} errored ({type(exc).__name__}): "
+                      f"{str(exc)[:160]}", flush=True)
+                err_note = {"task_id": task.task_id, "stage": "task",
+                            "error": f"{type(exc).__name__}: {str(exc)[:200]}"}
             traj.prediction = ""
             traj.success = False
         traj.ended_at = clock()
