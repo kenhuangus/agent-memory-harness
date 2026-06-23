@@ -238,6 +238,7 @@ def _detect_contradictions(
     model: str,
     session_id: str,
     now: float,
+    protected_ids: set[str] | None = None,
 ) -> ContradictionResult:
     """LLM-driven contradiction pass over the post-TTL/post-dedup working set.
 
@@ -265,11 +266,15 @@ def _detect_contradictions(
        (b) Reject ``a_id == b_id`` (LLM violated prompt).
        (c) Deterministically pick the loser via ``_pick_winner``
            (latest-timestamp wins; lex-lowest tiebreak).
-    8. After all batches: collect candidate ``ContradictionPair``s. If an
-       item appears as BOTH a winner and a loser across the run, DROP every
-       pair that names it as loser; emit
+    8. After all batches: collect candidate ``ContradictionPair``s. DROP any
+       pair whose ``loser_id`` is in the "protected" set, defined as the union
+       of (a) every contradiction ``winner_id`` from the same run, and (b)
+       ``protected_ids`` passed by the caller (typically the prior-pass
+       dedup-cluster winners). For every drop, emit
        ``dream.contradiction_pair_dropped_winner_collision``. Conservative
-       posture (halliday B5 — never delete a probable winner).
+       posture (halliday B5 + CodeRabbit #105 — never delete a probable
+       winner; keep the §C-J2-disjoint invariant intact PRE-delete so the
+       worker never leaves the store in a partial-mutation state).
     9. Emit ``dream.contradiction_batch_complete`` per successful batch with
        ``{batch_index, tokens_in, tokens_out, cost_usd, n_pairs}``.
    10. Sort surviving pairs by ``(loser_id, winner_id)`` ascending.
@@ -437,11 +442,20 @@ def _detect_contradictions(
         total_tokens_out += completion.tokens_out
         pairs_examined += batch_size * (batch_size - 1) // 2
 
-    # Step 8: winner-collision drop (halliday B5).
-    winner_set = {p.winner_id for p in candidate_pairs}
+    # Step 8: winner-collision drop (halliday B5 + CodeRabbit #105).
+    # Protects two classes of ids from being deleted as contradiction-losers:
+    #   (a) within-pass: an item that's a winner of one pair cannot be deleted
+    #       as a loser of another (halliday B5 — never delete a probable winner).
+    #   (b) cross-pass: an item that's a prior-pass dedup-cluster winner cannot
+    #       be deleted by contradiction. Otherwise the worker could delete a
+    #       cluster's only survivor AFTER deleting all its older duplicates,
+    #       leaving no representative of that normalized content — and the
+    #       §C-J2-disjoint invariant `all_winners ⊥ contradicted_loser_ids`
+    #       would fail post-mutation, leaving the store in a partial state.
+    protected = set(protected_ids or ()) | {p.winner_id for p in candidate_pairs}
     final_pairs: list[ContradictionPair] = []
     for p in candidate_pairs:
-        if p.loser_id in winner_set:
+        if p.loser_id in protected:
             emit(
                 "dream.contradiction_pair_dropped_winner_collision",
                 loser_id=p.loser_id,
@@ -614,6 +628,13 @@ class DreamingWorker:
                 it for it in items
                 if it.item_id not in pruned_set and it.item_id not in retired_ids_set
             ]
+            # Cluster winners are PROTECTED from being contradiction-losers
+            # (CodeRabbit #105 fix): the §C-J2-disjoint invariant
+            # `all_winners ⊥ contradicted_loser_ids` must hold pre-delete, not
+            # post-delete — otherwise a deleted cluster-winner leaves no
+            # representative of its normalized content. The conservative posture
+            # (halliday B5) defers to the dedup pass's recency judgment.
+            cluster_winners_set: set[str] = {c["winner_id"] for c in cluster_specs}
             llm_client = _make_llm_client()
             contradiction_result = _detect_contradictions(
                 contradiction_survivors,
@@ -623,6 +644,7 @@ class DreamingWorker:
                 model=getattr(llm_client, "model", "unknown"),
                 session_id=_session_id_for_dream(basedir),
                 now=now_cached,
+                protected_ids=cluster_winners_set,
             )
 
             # JOB2 §F-J2-3: contradiction deletes complete BEFORE summary emit.

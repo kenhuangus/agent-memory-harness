@@ -1210,6 +1210,83 @@ def test_no_item_id_is_both_winner_and_loser_in_same_run(monkeypatch: pytest.Mon
     assert len(collisions) == 1
 
 
+def test_cluster_winner_protected_from_contradiction_loss(monkeypatch: pytest.MonkeyPatch, spy_emit: list) -> None:
+    """CodeRabbit #105 — dedup cluster-winners are protected from contradiction loss.
+
+    Scenario:
+      Cluster c1 normalized content "x" has 2 items: w1 (timestamp=5) and r1 (timestamp=1).
+      Dedup retires r1; w1 survives as cluster_winner.
+      Additional unrelated item z (timestamp=10).
+      LLM stub returns pair (w1, z): w1's content contradicts z's content.
+      Worker's deterministic pick: z wins (higher timestamp), w1 loses.
+
+    Without the fix, w1 (a cluster_winner) would be deleted → §C-J2-disjoint
+    invariant fails post-mutation (`all_winners ∩ contradicted_loser_ids = {w1}`),
+    `_disjointness_check` raises `RuntimeError`, store is mid-state.
+
+    With the fix, the worker drops the pair before the delete; w1 survives;
+    `dream.contradiction_pair_dropped_winner_collision` event emitted.
+    """
+    stub = _StubClient(completion=_ok_pairs_completion([
+        {"a_id": "w1", "b_id": "z", "rationale": "w1 contradicts z"},
+    ]))
+    _set_stub(monkeypatch, stub)
+    store = _store_with(
+        _mk_item("w1", "hello", timestamp=5.0),    # cluster c1 winner
+        _mk_item("r1", "Hello!", timestamp=1.0),    # cluster c1 retired (older)
+        _mk_item("z", "different", timestamp=10.0), # singleton, contradicts w1 per stub
+    )
+    result = DreamingWorker(store).run()
+
+    # Cluster c1 must form + retire r1.
+    assert len(result["clusters"]) == 1
+    assert result["clusters"][0]["winner_id"] == "w1"
+    assert result["clusters"][0]["retired_ids"] == ["r1"]
+
+    # The (w1, z) pair was DROPPED — w1 is a cluster_winner.
+    assert result["contradicted"]["pairs"] == []
+    assert result["counts"]["items_contradicted"] == 0
+
+    # w1 still in the store (dedup-winner survived).
+    assert store.get("w1") is not None
+    # z untouched.
+    assert store.get("z") is not None
+    # r1 deleted by dedup.
+    assert store.get("r1") is None
+
+    # Exactly one winner-collision event for the cross-pass drop.
+    collisions = [e for e in spy_emit if e[0] == "dream.contradiction_pair_dropped_winner_collision"]
+    assert len(collisions) == 1
+    assert collisions[0][1]["loser_id"] == "w1"
+    assert collisions[0][1]["winner_id"] == "z"
+
+
+def test_detect_contradictions_protected_ids_kwarg() -> None:
+    """CodeRabbit #105 — _detect_contradictions accepts protected_ids kwarg
+    and uses it to drop pairs whose loser_id is in the protected set."""
+    items = [_mk_item("a", "x", timestamp=1.0), _mk_item("b", "y", timestamp=2.0)]
+    stub = _StubClient(completion=_ok_pairs_completion([
+        {"a_id": "a", "b_id": "b", "rationale": "a vs b"},
+    ]))
+    # Without protected_ids: pair survives (b wins, a loses).
+    res_unprotected = _detect_contradictions(
+        items, stub, batch_size=10, max_calls=1, model="test-model",
+        session_id="s1", now=1000.0,
+    )
+    assert len(res_unprotected.pairs) == 1
+    assert res_unprotected.pairs[0].loser_id == "a"
+
+    # With protected_ids={a}: pair dropped because loser_id (a) is protected.
+    stub2 = _StubClient(completion=_ok_pairs_completion([
+        {"a_id": "a", "b_id": "b", "rationale": "a vs b"},
+    ]))
+    res_protected = _detect_contradictions(
+        items, stub2, batch_size=10, max_calls=1, model="test-model",
+        session_id="s1", now=1000.0, protected_ids={"a"},
+    )
+    assert res_protected.pairs == []
+
+
 def test_disjointness_violation_raises_runtimeerror(monkeypatch: pytest.MonkeyPatch) -> None:
     """F-J2-disjointness-raises — monkeypatching _disjointness_check to raise propagates RuntimeError."""
     def _bad_check(named_sets: Any) -> None:

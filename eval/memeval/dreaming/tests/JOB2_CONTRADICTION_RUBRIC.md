@@ -306,7 +306,7 @@ Required top-level keys (deltas from `JOB4_TTL_RUBRIC.md` §B in **bold**):
 - **`mode: str` — fixed literal `"detection_and_mutation_and_pruning_and_contradiction"`.**
 - **`jobs_run: list[str]` — exactly `["dedup_detection","dedup_merge","ttl_pruning","contradiction_resolution"]`.**
 - **`skipped_jobs: list[str]` — exactly `["governance"]`.**
-- **`counts: dict[str, int]` — key-set exactly `{"total_items","duplicate_clusters","items_in_duplicates","items_retired","items_pruned","retention_seconds_effective","items_contradicted","contradiction_llm_calls","contradiction_input_tokens","contradiction_output_tokens","contradiction_cost_usd_estimate","contradiction_pairs_examined_estimate"}`; values are `int`.**
+- **`counts: dict[str, int | float]` — key-set exactly `{"total_items","duplicate_clusters","items_in_duplicates","items_retired","items_pruned","retention_seconds_effective","items_contradicted","contradiction_llm_calls","contradiction_input_tokens","contradiction_output_tokens","contradiction_cost_usd_estimate","contradiction_pairs_examined_estimate"}`; all values are `int` EXCEPT `contradiction_cost_usd_estimate` which is `float` (see §B8 — cost is naturally float via `cost.cost_of`).**
 - `clusters: list[dict]` — each cluster shape unchanged from Job 1 §B.
 - `pruned: dict` — shape unchanged from Job 4 §B9-§B11/§B13.
 - **`contradicted: dict` — key-set exactly `{"pairs","model"}`. `contradicted["pairs"]` is `list[dict]`; `contradicted["model"]` is `str`.**
@@ -526,10 +526,12 @@ This section is NEW to Job 2; no Job 4 analog.
 **Pre-final-grade coverage self-check gate (jasnah follow-up #1 — MANDATORY).** Three checks must pass before dispatching jasnah for the final grade:
 
 1. **Rubric-vs-impl test name parity.** Run:
-   ```
+
+   ```bash
    comm -23 <(grep -oE 'test_[a-z_0-9]+' eval/memeval/dreaming/tests/JOB2_CONTRADICTION_RUBRIC.md | sort -u) \
             <(grep -oE 'def (test_[a-z_0-9]+)' eval/memeval/dreaming/tests/test_worker_contradiction.py eval/memeval/dreaming/tests/test_prompts.py | grep -oE 'test_[a-z_0-9]+' | sort -u)
    ```
+
    Output MUST be empty (every rubric-named test is implemented). Non-empty output = GATE FAIL; backfill missing tests before grading.
 
 2. **ADR-021 §Open-items closure_artifact.** The same PR must amend `docs/adrs/ADR-dreaming-021-dream-mutation-concurrency.md` §Open-items lines 568-573 to mark the Job 2 worker-shape question CLOSED. Verified by `git diff main -- docs/adrs/ADR-dreaming-021-dream-mutation-concurrency.md` showing the closure edit. Missing edit = GATE FAIL.
@@ -852,7 +854,7 @@ non-negotiable; if the dispatcher waives this, repeat the Job 4
 14-missing-test failure mode.
 
 **K. Inversion-guard on preemption prose — MANDATORY.** Jasnah follow-up
-#2 from Job 4. Every §D / §F-J2 preemption criterion's prose must be
+\#2 from Job 4. Every §D / §F-J2 preemption criterion's prose must be
 audited for physical possibility BEFORE final grade. Example
 counterexample: "a contradiction pair where both items have identical
 content under the dedup normalizer" is physically impossible — it would
