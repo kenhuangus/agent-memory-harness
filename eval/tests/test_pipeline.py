@@ -244,6 +244,32 @@ def test_summary_renders_ungraded_accuracy_as_dash() -> None:
     assert "accuracy_ungraded" in md
 
 
+def test_store_health_counts_daydream_diary_writes() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        substrate = Path(tmp) / "_memory"
+        store = substrate / ".cookbook-memory"
+        dream = store / "dream"
+        dream.mkdir(parents=True)
+        (store / "events.jsonl").write_text(
+            json.dumps({"event_type": "daydream.hook_subprocess_fired"}) + "\n",
+            encoding="utf-8",
+        )
+        (dream / "session.daydream-events.jsonl").write_text(
+            "\n".join([
+                json.dumps({"event_type": "daydream.chunk_extracted"}),
+                json.dumps({"event_type": "daydream.memory_written"}),
+            ]) + "\n",
+            encoding="utf-8",
+        )
+
+        health = P._store_health(substrate)
+
+    assert health["events"] == 1
+    assert health["daydream_events"] == 2
+    assert health["daydream_completed"] == 2
+    assert health["daydream_memory_written"] == 1
+
+
 def test_pipeline_fails_closed_when_sandbox_not_logged_in(monkeypatch) -> None:
     # The pipeline MUST abort before any stage runs if the sandbox isn't authenticated —
     # every stage uses the isolated sandbox, never the host, so a logged-out sandbox can't

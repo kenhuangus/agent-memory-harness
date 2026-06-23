@@ -33,7 +33,12 @@ if str(_BASE_DIR) not in sys.path:
 
 from memeval.schema import Benchmark  # noqa: E402
 from memeval.agent import run_agent  # noqa: E402
-from memeval.claudecode.agent import ClaudeCodeAgent, _build_code_agent_prompt  # noqa: E402
+from memeval.claudecode.agent import (  # noqa: E402
+    ClaudeCodeAgent,
+    _PLUGIN_REAL_CODE_ALLOWED_TOOLS,
+    _PLUGIN_REAL_RECALL_TOOL,
+    _build_code_agent_prompt,
+)
 from memeval.claudecode.cli import ClaudeResult  # noqa: E402
 from memeval.claudecode.checkout import (  # noqa: E402
     GitResult,
@@ -96,10 +101,9 @@ def _make_fake_git(*, diff: str = _FIXED_DIFF, apply_ok: bool = True,
     return _fake_git
 
 
-#: Tool names the plugin CODE turn is allowed to allowlist (the memory MCP tools
-#: from `_seed_plugin_store_okf`). The non-plugin agentic CODE paths
-#: (off / builtin / plugin-real) must still pass the full native toolset
-#: (`allowed_tools=None`); only the plugin path may pass this memory tools list.
+#: Tool names the plugin CODE turns are allowed to allowlist. The OKF-backed plugin
+#: path may allowlist only its simulated memory tools; plugin-real may allowlist the
+#: normal code tools plus the shipping plugin's recall tool.
 _MEMORY_TOOLS = (
     "mcp__memeval-memory__memory_recall",
     "mcp__memeval-memory__memory_remember",
@@ -110,18 +114,16 @@ def _make_fake_claude(*, edited_flag: dict, edit: bool = True):
     """A fake claude runner that simulates the agent editing files in the checkout
     (writing the fixed orm.py) and flips ``edited_flag``. Asserts the agentic
     invariants: acceptEdits/bypass permission + a sanctioned toolset (either the
-    full native toolset — ``allowed_tools=None`` for off/builtin/plugin-real — or,
-    for the plugin path, ONLY the memory MCP tools)."""
+    full native toolset, the OKF plugin memory tools, or the plugin-real code tools
+    plus shipping recall)."""
 
     def _fake_claude(prompt, *, cwd, permission_mode="bypassPermissions",
                      allowed_tools=None, append_system_prompt=None, **kw) -> ClaudeResult:
         assert permission_mode in ("acceptEdits", "bypassPermissions"), permission_mode
-        # off/builtin/plugin-real CODE must use the full native toolset (None); the
-        # plugin CODE turn may allowlist ONLY the memory MCP tools. Anything else is
-        # a wiring bug.
-        assert allowed_tools is None or set(allowed_tools) <= set(_MEMORY_TOOLS), (
-            "agentic CODE must use the full native toolset, except the plugin turn "
-            f"which may allowlist only the memory tools; got {allowed_tools!r}"
+        allowed = set(_MEMORY_TOOLS) | set(_PLUGIN_REAL_CODE_ALLOWED_TOOLS)
+        assert allowed_tools is None or set(allowed_tools) <= allowed, (
+            "agentic CODE must use the full native toolset or an approved plugin "
+            f"tool allowlist; got {allowed_tools!r}"
         )
         if edit:
             (Path(cwd) / "orm.py").write_text("def filter_empty():\n    return []\n",
@@ -504,9 +506,10 @@ def test_agentic_code_plugin_real_records_retrieval() -> None:
     kinds = [s.kind for t in rr.trajectories for s in t.steps]
     assert "retrieve" in kinds      # CODE loop now exercises the SHIPPING plugin
     assert "generate" in kinds
-    # plugin-real keeps the FULL native toolset (None) — the shipping plugin supplies
-    # its own MCP tools — and keeps acceptEdits so the agent can edit files.
-    assert calls["tools"] is None
+    # plugin-real explicitly allows normal code tools plus the shipping plugin recall
+    # tool, otherwise headless Claude denies the MCP call.
+    assert calls["tools"] == _PLUGIN_REAL_CODE_ALLOWED_TOOLS
+    assert _PLUGIN_REAL_RECALL_TOOL in calls["tools"]
     assert calls["permission"] == "acceptEdits"
     # Recall fired on the first try, so the retry loop stops after one call per task
     # (2 tasks -> exactly 2 runner invocations, no wasteful retries).
