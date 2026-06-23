@@ -87,9 +87,10 @@ def _build_parser() -> argparse.ArgumentParser:
                          f"Default {_DEFAULT_LIMIT}; 0 = the whole sequence.")
     ap.add_argument("--model", default="claude-haiku-4-5")
     ap.add_argument("--code-mode", choices=["blind", "agentic"], default="agentic")
-    ap.add_argument("--grader", default="local",
-                    help="CODE grader: 'local' (host test execution; the real resolve "
-                         "rate), 'overlap' (cheap heuristic), or 'none'.")
+    ap.add_argument("--grader", default="auto",
+                    help="CODE grader: 'auto' (default: local test execution for SWE "
+                         "tasks), 'local' (host test execution; the real resolve rate), "
+                         "'overlap' (cheap heuristic), or 'none'.")
     ap.add_argument("--grader-timeout", type=int, default=1800)
     ap.add_argument("--budget-usd", type=float, default=DEFAULT_BUDGET_USD)
     ap.add_argument("--plugin-workers", type=int, default=1,
@@ -175,7 +176,7 @@ def _resolve_config(args: argparse.Namespace) -> dict:
         seq = _ask_sequence(seq)
         limit = _ask("tasks to run (0 = whole sequence)", limit, cast=int)
         model = _ask("model", model)
-        grader = _ask("grader", grader, choices=["local", "overlap", "none"])
+        grader = _ask("grader", grader, choices=["auto", "local", "overlap", "none"])
         budget = _ask("budget (USD, 0 = no cap)", budget, cast=float)
         if not args.stages:
             skip_default = "y" if skip_base else "n"
