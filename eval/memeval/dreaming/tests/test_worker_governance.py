@@ -2086,7 +2086,7 @@ def test_governance_nonce_length_8_hex() -> None:
 def test_extraction_prompt_unchanged_by_job3() -> None:
     """G-J3-extraction-prompt-unchanged."""
     h = hashlib.sha256(EXTRACTION_SYSTEM_PROMPT.encode("utf-8")).hexdigest()
-    assert h == "b928a726cc5509ee35d2c6774aa9ef0bae829ac0e2d9cca8b633add7da213e47"
+    assert h == "b2f8f69bcff40693346ee9facfeb1661f59822bac78d4e235f78d68e834a0bc3"
 
 
 def test_contradiction_prompt_unchanged_by_job3() -> None:

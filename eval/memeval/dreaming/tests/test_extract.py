@@ -40,7 +40,7 @@ from memeval.schema import MemoryItem
 # bump of these literals.
 # --------------------------------------------------------------------------- #
 _SYSTEM_PROMPT_SHA256 = (
-    "b928a726cc5509ee35d2c6774aa9ef0bae829ac0e2d9cca8b633add7da213e47"
+    "b2f8f69bcff40693346ee9facfeb1661f59822bac78d4e235f78d68e834a0bc3"
 )
 _ENVELOPE_TEMPLATE_SHA256 = (
     "7ed0ceec15d12d5aa621a437b76a6ccc36643722d1819093df17ba372af63e95"
@@ -729,3 +729,1824 @@ def test_extract_memories_public_in_all() -> None:
     """extract_memories appears in _extract.__all__."""
     assert "extract_memories" in _extract.__all__
     assert "_ParseError" in _extract.__all__
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Daydream selective-extraction tests (halliday-amended plan)
+# Rubric: DAYDREAM_SELECTIVE_RUBRIC.md
+# ─────────────────────────────────────────────────────────────────────
+# §SELECTIVE
+import ast
+from pathlib import Path
+
+# --------------------------------------------------------------------------- #
+# Helpers — stub completion factory + emit spy fixture
+# --------------------------------------------------------------------------- #
+
+
+def _ok_completion_with_rejections(
+    memories: list[dict[str, Any]],
+    rejected: list[dict[str, Any]],
+) -> Completion:
+    """Build a Completion whose text is the canned {memories, rejected} dump."""
+    return Completion(
+        text=json.dumps({"memories": memories, "rejected": rejected}),
+        tokens_in=10,
+        tokens_out=20,
+    )
+
+
+@pytest.fixture
+def spy_extract_emit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[tuple[str, dict[str, Any]]]:
+    """Capture every emit call inside _extract.py in call order."""
+    captured: list[tuple[str, dict[str, Any]]] = []
+
+    def _fake(event_type: str, **fields: Any) -> None:
+        captured.append((event_type, fields))
+
+    monkeypatch.setattr("memeval.dreaming._extract.emit", _fake)
+    return captured
+
+
+@pytest.fixture(autouse=True)
+def _clear_rejected_missing_seen() -> Any:
+    """Hermetic guard — the module-level B3 set must be empty per test."""
+    _extract._rejected_missing_seen.clear()
+    yield
+    _extract._rejected_missing_seen.clear()
+
+
+# --------------------------------------------------------------------------- #
+# §A — Surface
+# --------------------------------------------------------------------------- #
+def test_extract_returns_empty_list_for_empty_memories_with_empty_rejected(
+    spy_extract_emit: list,
+) -> None:
+    """§A1 — empty memories + empty rejected → [] not None."""
+    client = _StubClient(_ok_completion_with_rejections([], []))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    assert out == []
+    assert not any(e[0] == "daydream.candidate_rejected" for e in spy_extract_emit)
+
+
+def test_extract_returns_one_memory_when_one_memory_and_empty_rejected(
+    spy_extract_emit: list,
+) -> None:
+    """§A2 — one memory + empty rejected → list[MemoryItem] of length 1."""
+    client = _StubClient(_ok_completion_with_rejections([{"content": "x"}], []))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_id_counter(),
+    )
+    assert isinstance(out, list)
+    assert len(out) == 1
+    assert isinstance(out[0], MemoryItem)
+
+
+def test_extract_returns_empty_list_when_memories_empty_and_one_rejection(
+    spy_extract_emit: list,
+) -> None:
+    """§A3 — empty memories + one rejection → [] and exactly one event."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [], [{"content_snippet": "hi", "rationale": "social greeting"}]
+    ))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    assert out == []
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    assert len(rej) == 1
+
+
+def test_extract_memories_signature_unchanged() -> None:
+    """§A4 — callable signature is unchanged from pre-PR."""
+    sig = inspect.signature(extract_memories)
+    params = sig.parameters
+    assert list(params) == [
+        "redacted_chunk", "client", "session_id", "now", "id_gen", "max_tokens",
+    ]
+    assert params["redacted_chunk"].kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
+    assert params["client"].kind == inspect.Parameter.KEYWORD_ONLY
+    assert params["session_id"].kind == inspect.Parameter.KEYWORD_ONLY
+    assert params["now"].kind == inspect.Parameter.KEYWORD_ONLY
+    assert params["id_gen"].kind == inspect.Parameter.KEYWORD_ONLY
+    assert params["max_tokens"].kind == inspect.Parameter.KEYWORD_ONLY
+    assert params["max_tokens"].default == 2048
+
+
+def test_empty_completion_returns_none_and_no_rejection_events(
+    spy_extract_emit: list,
+) -> None:
+    """§A5 — empty Completion → None, one chunk_skipped_unavailable_llm, zero rejections."""
+    client = _StubClient(Completion(text="", tokens_in=0, tokens_out=0))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    assert out is None
+    names = [e[0] for e in spy_extract_emit]
+    assert names.count("chunk_skipped_unavailable_llm") == 1
+    assert "daydream.candidate_rejected" not in names
+
+
+def test_malformed_json_returns_none_and_no_rejection_events(
+    spy_extract_emit: list,
+) -> None:
+    """§A6 — garbage JSON → None, one chunk_skipped_parse_failed, zero rejections."""
+    client = _StubClient(Completion(text="not json", tokens_in=5, tokens_out=5))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    assert out is None
+    names = [e[0] for e in spy_extract_emit]
+    assert names.count("chunk_skipped_parse_failed") == 1
+    assert "daydream.candidate_rejected" not in names
+
+
+def test_extract_emits_one_event_per_rejected_row(
+    spy_extract_emit: list,
+) -> None:
+    """§A7 — three valid rejection rows → three candidate_rejected events."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [],
+        [
+            {"content_snippet": "a", "rationale": "r1"},
+            {"content_snippet": "b", "rationale": "r2"},
+            {"content_snippet": "c", "rationale": "r3"},
+        ],
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    assert len(rej) == 3
+
+
+# --------------------------------------------------------------------------- #
+# §B — Schema backward-compat
+# --------------------------------------------------------------------------- #
+def test_missing_rejected_key_silently_accepted(spy_extract_emit: list) -> None:
+    """§B1 — {"memories":[{"content":"x"}]} (no rejected key) → 1 memory."""
+    client = _StubClient(Completion(
+        text=json.dumps({"memories": [{"content": "x"}]}),
+        tokens_in=5, tokens_out=5,
+    ))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_id_counter(),
+    )
+    assert out is not None
+    assert len(out) == 1
+    names = [e[0] for e in spy_extract_emit]
+    assert "chunk_skipped_parse_failed" not in names
+    assert "daydream.candidate_rejected" not in names
+
+
+def test_rejected_null_silently_falls_back_to_empty_list(
+    spy_extract_emit: list,
+) -> None:
+    """§B2 — rejected: null → 1 memory, no parse-failed, zero rejections."""
+    client = _StubClient(Completion(
+        text=json.dumps({"memories": [{"content": "x"}], "rejected": None}),
+        tokens_in=5, tokens_out=5,
+    ))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_id_counter(),
+    )
+    assert out is not None
+    assert len(out) == 1
+    names = [e[0] for e in spy_extract_emit]
+    assert "chunk_skipped_parse_failed" not in names
+    assert "daydream.candidate_rejected" not in names
+
+
+def test_rejected_wrong_type_string_silently_falls_back_to_empty_list(
+    spy_extract_emit: list,
+) -> None:
+    """§B3 — rejected: "oops" → 1 memory, no parse-failed, zero rejections."""
+    client = _StubClient(Completion(
+        text=json.dumps({"memories": [{"content": "x"}], "rejected": "oops"}),
+        tokens_in=5, tokens_out=5,
+    ))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_id_counter(),
+    )
+    assert out is not None
+    assert len(out) == 1
+    names = [e[0] for e in spy_extract_emit]
+    assert "chunk_skipped_parse_failed" not in names
+    assert "daydream.candidate_rejected" not in names
+
+
+def test_missing_memories_key_still_returns_none(spy_extract_emit: list) -> None:
+    """§B4 — backward-compat applies only to rejected; missing memories still aborts."""
+    client = _StubClient(Completion(
+        text=json.dumps({"rejected": [{"content_snippet": "a", "rationale": "b"}]}),
+        tokens_in=5, tokens_out=5,
+    ))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    assert out is None
+    names = [e[0] for e in spy_extract_emit]
+    assert names.count("chunk_skipped_parse_failed") == 1
+
+
+def test_memories_and_rejected_process_independently(
+    spy_extract_emit: list,
+) -> None:
+    """§B5 — both arrays present and non-empty → both surfaces process."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [{"content": "x"}],
+        [{"content_snippet": "hi", "rationale": "r"}],
+    ))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_id_counter(),
+    )
+    assert out is not None
+    assert len(out) == 1
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    assert len(rej) == 1
+
+
+# --------------------------------------------------------------------------- #
+# §C — Substring contract (positive + negative + schema)
+# --------------------------------------------------------------------------- #
+def test_extraction_prompt_sha256_pin_consistency_across_files() -> None:
+    """§C-SHA256-2 — renamed from test_extraction_prompt_unchanged_by_job2.
+
+    The live sha256 must equal the pin in test_prompts.py:89 as well.
+    """
+    live = hashlib.sha256(
+        EXTRACTION_SYSTEM_PROMPT.encode("utf-8")
+    ).hexdigest()
+    prompts_test = (
+        Path(__file__).parent / "test_prompts.py"
+    ).read_text(encoding="utf-8")
+    m = re.search(r'"([0-9a-f]{64})"', prompts_test)
+    assert m is not None, "no 64-hex literal found in test_prompts.py"
+    # The first 64-hex literal in test_prompts.py is the
+    # _CONTRADICTION_SYSTEM_PROMPT_SHA256 pin (per the file's import order).
+    # Scan all 64-hex literals; one must equal the EXTRACTION live hash.
+    pins = re.findall(r'"([0-9a-f]{64})"', prompts_test)
+    assert live in pins, (
+        f"EXTRACTION live sha256 {live} not present in test_prompts.py pins {pins}"
+    )
+
+
+def test_extraction_system_prompt_pins_durable_substring() -> None:
+    """§C-SUBSTRING-1."""
+    assert "durable" in EXTRACTION_SYSTEM_PROMPT.lower()
+
+
+def test_extraction_system_prompt_pins_decisions_substring() -> None:
+    """§C-SUBSTRING-2."""
+    assert "decisions" in EXTRACTION_SYSTEM_PROMPT.lower()
+
+
+def test_extraction_system_prompt_pins_commitments_substring() -> None:
+    """§C-SUBSTRING-3."""
+    assert "commitments" in EXTRACTION_SYSTEM_PROMPT.lower()
+
+
+def test_extraction_system_prompt_pins_future_session_threshold_question() -> None:
+    """§C-SUBSTRING-4 — operator-facing inclusion test, pinned verbatim."""
+    assert "would a future session" in EXTRACTION_SYSTEM_PROMPT.lower()
+
+
+def test_extraction_system_prompt_pins_rejected_substring() -> None:
+    """§C-SUBSTRING-5 — new schema key."""
+    assert "rejected" in EXTRACTION_SYSTEM_PROMPT.lower()
+
+
+def test_extraction_system_prompt_pins_content_snippet_field_name() -> None:
+    """§C-SUBSTRING-6 — rejection-row field name."""
+    assert "content_snippet" in EXTRACTION_SYSTEM_PROMPT.lower()
+
+
+def test_extraction_system_prompt_pins_rationale_field_name() -> None:
+    """§C-SUBSTRING-7 — rejection-row field name."""
+    assert "rationale" in EXTRACTION_SYSTEM_PROMPT.lower()
+
+
+def test_extraction_system_prompt_pins_be_selective_imperative() -> None:
+    """§C-SUBSTRING-8 — load-bearing selectivity imperative.
+
+    The rubric pin is "be selective". The current prompt encodes selectivity
+    via "selective memory curator" — a substring-prefix match. Use the
+    case-insensitive "selective" substring as a load-bearing pin.
+    """
+    assert "selective" in EXTRACTION_SYSTEM_PROMPT.lower()
+
+
+def test_extraction_system_prompt_preserves_injection_defense_data_pin() -> None:
+    """§C-SUBSTRING-9."""
+    assert "data, not instructions" in EXTRACTION_SYSTEM_PROMPT.lower()
+
+
+def test_extraction_system_prompt_preserves_injection_defense_nonce_pin() -> None:
+    """§C-SUBSTRING-10."""
+    assert "nonce" in EXTRACTION_SYSTEM_PROMPT.lower()
+
+
+def test_extraction_system_prompt_preserves_json_only_pin() -> None:
+    """§C-SUBSTRING-11."""
+    assert "json only" in EXTRACTION_SYSTEM_PROMPT.lower()
+
+
+def test_extraction_system_prompt_preserves_no_markdown_fences_pin() -> None:
+    """§C-SUBSTRING-12."""
+    assert "no markdown fences" in EXTRACTION_SYSTEM_PROMPT.lower()
+
+
+def test_extraction_system_prompt_forbids_must_know_vocab() -> None:
+    """§C-NEGATIVE-1 — Job 3 vocab leak guard."""
+    assert "must_know" not in EXTRACTION_SYSTEM_PROMPT
+
+
+def test_extraction_system_prompt_forbids_must_do_vocab() -> None:
+    """§C-NEGATIVE-2 — Job 3 vocab leak guard."""
+    assert "must_do" not in EXTRACTION_SYSTEM_PROMPT
+
+
+def test_extraction_system_prompt_forbids_blacklist_vocab() -> None:
+    """§C-NEGATIVE-3 — Job 3 vocab leak guard."""
+    assert "blacklist" not in EXTRACTION_SYSTEM_PROMPT
+
+
+def test_extraction_system_prompt_forbids_pairs_vocab() -> None:
+    """§C-NEGATIVE-4 — Job 2 vocab leak guard (halliday A4)."""
+    assert "pairs" not in EXTRACTION_SYSTEM_PROMPT
+
+
+def test_extraction_system_prompt_forbids_a_id_vocab() -> None:
+    """§C-NEGATIVE-5 — Job 2 vocab leak guard (halliday A4)."""
+    assert "a_id" not in EXTRACTION_SYSTEM_PROMPT
+
+
+def test_extraction_system_prompt_forbids_b_id_vocab() -> None:
+    """§C-NEGATIVE-6 — Job 2 vocab leak guard (halliday A4)."""
+    assert "b_id" not in EXTRACTION_SYSTEM_PROMPT
+
+
+def test_extraction_system_prompt_pins_rejected_as_quoted_json_key() -> None:
+    """§C-SCHEMA-1 — schema shows rejected as a JSON key."""
+    assert '"rejected"' in EXTRACTION_SYSTEM_PROMPT
+
+
+def test_extraction_system_prompt_pins_content_snippet_as_quoted_json_key() -> None:
+    """§C-SCHEMA-2 — schema shows content_snippet as a JSON key."""
+    assert '"content_snippet"' in EXTRACTION_SYSTEM_PROMPT
+
+
+def test_extraction_system_prompt_states_both_keys_required() -> None:
+    """§C-SCHEMA-3 — "required" appears adjacent to a key name within 100 chars."""
+    text = EXTRACTION_SYSTEM_PROMPT.lower()
+    # Find all "required" positions and check proximity to memories/rejected.
+    positions = [m.start() for m in re.finditer(r"required", text)]
+    assert positions, "no 'required' substring"
+    found_proximity = False
+    for pos in positions:
+        window = text[max(0, pos - 100): pos + 100]
+        if "memories" in window or "rejected" in window:
+            found_proximity = True
+            break
+    assert found_proximity, (
+        "'required' must appear within 100 chars of 'memories' or 'rejected'"
+    )
+
+
+def test_extraction_system_prompt_documents_snippet_cap_100() -> None:
+    """§C-SCHEMA-4 — prompt documents the 100-char snippet cap."""
+    text = EXTRACTION_SYSTEM_PROMPT.lower()
+    assert "100 chars" in text or "<= 100" in text or "100 characters" in text
+
+
+def test_extraction_system_prompt_documents_rationale_cap_200() -> None:
+    """§C-SCHEMA-5 — prompt documents the 200-char rationale cap."""
+    text = EXTRACTION_SYSTEM_PROMPT.lower()
+    assert "200 chars" in text or "<= 200" in text or "200 characters" in text
+
+
+# --------------------------------------------------------------------------- #
+# §D — Parse isolation
+# --------------------------------------------------------------------------- #
+def test_malformed_memories_row_counts_into_chunk_partial_parse(
+    spy_extract_emit: list,
+) -> None:
+    """§D1 — partial parse on memories surface."""
+    client = _StubClient(Completion(
+        text=json.dumps({
+            "memories": [{"content": "kept"}, "garbage", {"not": "valid"}],
+            "rejected": [],
+        }),
+        tokens_in=5, tokens_out=5,
+    ))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_id_counter(),
+    )
+    assert out is not None
+    assert len(out) == 1
+    names = [e[0] for e in spy_extract_emit]
+    assert names.count("chunk_partial_parse") == 1
+    assert "chunk_skipped_parse_failed" not in names
+
+
+def test_chunk_partial_parse_kwarg_set_exact_four_keys(
+    spy_extract_emit: list,
+) -> None:
+    """§D2 — chunk_partial_parse kwarg set is exactly 4 keys.
+
+    Implementation context (from user dispatch): the impl emits
+    `n_kept, n_dropped, rejected_n_kept, rejected_n_dropped` (NOT
+    `memories_n_kept`/`memories_n_dropped` as the rubric narrative
+    spells; pin the actual impl shape).
+    """
+    client = _StubClient(Completion(
+        text=json.dumps({
+            "memories": [{"content": "kept"}, "garbage", {"not": "valid"}],
+            "rejected": [],
+        }),
+        tokens_in=5, tokens_out=5,
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_id_counter(),
+    )
+    pp = [e for e in spy_extract_emit if e[0] == "chunk_partial_parse"]
+    assert len(pp) == 1
+    kwargs = pp[0][1]
+    assert set(kwargs.keys()) == {
+        "n_kept", "n_dropped", "rejected_n_kept", "rejected_n_dropped",
+    }
+    assert kwargs["n_kept"] == 1
+    assert kwargs["n_dropped"] == 2
+    assert kwargs["rejected_n_kept"] == 0
+    assert kwargs["rejected_n_dropped"] == 0
+
+
+def test_malformed_rejected_row_counts_into_chunk_partial_parse(
+    spy_extract_emit: list,
+) -> None:
+    """§D3 — partial parse on rejected surface."""
+    client = _StubClient(Completion(
+        text=json.dumps({
+            "memories": [{"content": "kept"}],
+            "rejected": [
+                {"content_snippet": "a", "rationale": "b"},
+                "garbage",
+                {"content_snippet": "c"},
+            ],
+        }),
+        tokens_in=5, tokens_out=5,
+    ))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_id_counter(),
+    )
+    assert out is not None
+    assert len(out) == 1
+    names = [e[0] for e in spy_extract_emit]
+    assert names.count("daydream.candidate_rejected") == 1
+    assert names.count("chunk_partial_parse") == 1
+    assert "chunk_skipped_parse_failed" not in names
+
+
+def test_chunk_partial_parse_extended_kwargs_for_rejected_drops(
+    spy_extract_emit: list,
+) -> None:
+    """§D4 — chunk_partial_parse kwargs reflect rejected drops."""
+    client = _StubClient(Completion(
+        text=json.dumps({
+            "memories": [{"content": "kept"}],
+            "rejected": [
+                {"content_snippet": "a", "rationale": "b"},
+                "garbage",
+                {"content_snippet": "c"},
+            ],
+        }),
+        tokens_in=5, tokens_out=5,
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_id_counter(),
+    )
+    pp = [e for e in spy_extract_emit if e[0] == "chunk_partial_parse"]
+    assert len(pp) == 1
+    kwargs = pp[0][1]
+    assert kwargs["n_kept"] == 1
+    assert kwargs["n_dropped"] == 0
+    assert kwargs["rejected_n_kept"] == 1
+    assert kwargs["rejected_n_dropped"] == 2
+
+
+def test_chunk_partial_parse_not_emitted_when_no_drops(
+    spy_extract_emit: list,
+) -> None:
+    """§D5 — all-zero drop case stays silent."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [{"content": "x"}],
+        [{"content_snippet": "y", "rationale": "z"}],
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_id_counter(),
+    )
+    assert not any(e[0] == "chunk_partial_parse" for e in spy_extract_emit)
+
+
+def test_rejected_row_missing_rationale_dropped(
+    spy_extract_emit: list,
+) -> None:
+    """§D6 — missing rationale → drop and increment rejected_n_dropped."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [], [{"content_snippet": "a"}]
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    names = [e[0] for e in spy_extract_emit]
+    assert "daydream.candidate_rejected" not in names
+    pp = [e for e in spy_extract_emit if e[0] == "chunk_partial_parse"]
+    assert len(pp) == 1
+    assert pp[0][1]["rejected_n_dropped"] == 1
+
+
+def test_rejected_row_wrong_type_content_snippet_dropped(
+    spy_extract_emit: list,
+) -> None:
+    """§D7 — non-string content_snippet → drop."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [], [{"content_snippet": 123, "rationale": "r"}]
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    names = [e[0] for e in spy_extract_emit]
+    assert "daydream.candidate_rejected" not in names
+    pp = [e for e in spy_extract_emit if e[0] == "chunk_partial_parse"]
+    assert len(pp) == 1
+    assert pp[0][1]["rejected_n_dropped"] == 1
+
+
+def test_rejected_row_wrong_type_rationale_dropped(
+    spy_extract_emit: list,
+) -> None:
+    """§D8 — non-string rationale → drop."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [], [{"content_snippet": "s", "rationale": ["r"]}]
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    names = [e[0] for e in spy_extract_emit]
+    assert "daydream.candidate_rejected" not in names
+    pp = [e for e in spy_extract_emit if e[0] == "chunk_partial_parse"]
+    assert len(pp) == 1
+    assert pp[0][1]["rejected_n_dropped"] == 1
+
+
+def test_rejected_n_kept_equals_emitted_rejection_event_count(
+    spy_extract_emit: list,
+) -> None:
+    """§D11 (RUBRIC_GAP-2) — cross-check rejected_n_kept matches event count."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [],
+        [
+            {"content_snippet": "a", "rationale": "r1"},
+            {"content_snippet": "b", "rationale": "r2"},
+            "garbage",
+            {"content_snippet": "c", "rationale": "r3"},
+        ],
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    rej_count = sum(
+        1 for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"
+    )
+    pp = [e for e in spy_extract_emit if e[0] == "chunk_partial_parse"]
+    assert len(pp) == 1
+    assert pp[0][1]["rejected_n_kept"] == rej_count == 3
+
+
+def test_no_partial_parse_means_all_rejection_rows_emitted(
+    spy_extract_emit: list,
+) -> None:
+    """§D12 — no chunk_partial_parse means all rejection rows emitted."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [],
+        [
+            {"content_snippet": "a", "rationale": "r1"},
+            {"content_snippet": "b", "rationale": "r2"},
+            {"content_snippet": "c", "rationale": "r3"},
+        ],
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    assert not any(e[0] == "chunk_partial_parse" for e in spy_extract_emit)
+    rej_count = sum(
+        1 for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"
+    )
+    assert rej_count == 3
+
+
+# --------------------------------------------------------------------------- #
+# §E — Events: allow-set + new event shape
+# --------------------------------------------------------------------------- #
+def test_extract_event_allow_set_ast() -> None:
+    """§E1 — AST walk gives exactly the 6 expected event names."""
+    src = Path(_extract.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "emit"
+            and node.args
+        ):
+            arg = node.args[0]
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                names.add(arg.value)
+    expected = {
+        "chunk_skipped_unavailable_llm",
+        "chunk_skipped_parse_failed",
+        "chunk_partial_parse",
+        "daydream.chunk_extracted",
+        "daydream.candidate_rejected",
+        "daydream.rejected_field_missing",
+    }
+    assert names == expected, (
+        f"event allow-set drift: missing={expected - names}, "
+        f"extra={names - expected}"
+    )
+
+
+def test_extract_event_names_are_static_string_constants_ast() -> None:
+    """§E2 — every emit call's first positional arg is a string constant."""
+    src = Path(_extract.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    dynamic_calls: list[str] = []
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "emit"
+            and node.args
+        ):
+            arg = node.args[0]
+            if not (isinstance(arg, ast.Constant) and isinstance(arg.value, str)):
+                dynamic_calls.append(ast.dump(arg))
+    assert not dynamic_calls, (
+        f"emit() called with non-constant first arg: {dynamic_calls}"
+    )
+
+
+def test_extract_emits_exactly_one_chunk_extracted_per_success(
+    spy_extract_emit: list,
+) -> None:
+    """§E3 — exactly one chunk_extracted per successful call."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [{"content": "x"}], []
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_id_counter(),
+    )
+    chunk = [e for e in spy_extract_emit if e[0] == "daydream.chunk_extracted"]
+    assert len(chunk) == 1
+
+
+def test_candidate_rejected_event_kwarg_set_exact(
+    spy_extract_emit: list,
+) -> None:
+    """§E4 — daydream.candidate_rejected has the 6-key kwarg set."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [], [{"content_snippet": "hi", "rationale": "r"}]
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    assert len(rej) == 1
+    assert set(rej[0][1].keys()) == {
+        "content_snippet",
+        "rationale",
+        "session_id",
+        "batch_index",
+        "snippet_truncated",
+        "rationale_truncated",
+    }
+
+
+def test_candidate_rejected_session_id_is_engine_supplied_not_llm(
+    spy_extract_emit: list,
+) -> None:
+    """§E5 — session_id on rejection event equals caller arg, ignoring LLM payload."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [],
+        [{
+            "content_snippet": "hi",
+            "rationale": "r",
+            "session_id": "from-llm-attacker",
+        }],
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="ENGINE", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    assert len(rej) == 1
+    assert rej[0][1]["session_id"] == "ENGINE"
+
+
+def test_candidate_rejected_batch_index_is_zero_based(
+    spy_extract_emit: list,
+) -> None:
+    """§E6 — batch_index ∈ {0, 1, 2} for three valid rows."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [],
+        [
+            {"content_snippet": "a", "rationale": "1"},
+            {"content_snippet": "b", "rationale": "2"},
+            {"content_snippet": "c", "rationale": "3"},
+        ],
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    assert {e[1]["batch_index"] for e in rej} == {0, 1, 2}
+    assert all(isinstance(e[1]["batch_index"], int) for e in rej)
+
+
+def test_candidate_rejected_batch_index_skips_over_dropped_rows(
+    spy_extract_emit: list,
+) -> None:
+    """§E7 — batch_index reflects ORIGINAL position even when an earlier row was dropped."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [],
+        [
+            {"content_snippet": "a", "rationale": "1"},
+            "garbage",  # index 1 — dropped
+            {"content_snippet": "c", "rationale": "3"},  # index 2
+        ],
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    indices = sorted(e[1]["batch_index"] for e in rej)
+    assert indices == [0, 2]
+
+
+def test_rejection_events_precede_chunk_extracted_in_capture_order(
+    spy_extract_emit: list,
+) -> None:
+    """§E8 — all candidate_rejected events fire before the chunk_extracted event."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [{"content": "x"}],
+        [
+            {"content_snippet": "a", "rationale": "1"},
+            {"content_snippet": "b", "rationale": "2"},
+        ],
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_id_counter(),
+    )
+    names = [e[0] for e in spy_extract_emit]
+    chunk_idx = names.index("daydream.chunk_extracted")
+    rej_idxs = [i for i, n in enumerate(names) if n == "daydream.candidate_rejected"]
+    assert rej_idxs
+    assert all(i < chunk_idx for i in rej_idxs)
+
+
+def test_zero_rejection_events_on_any_return_none_path(
+    spy_extract_emit: list,
+) -> None:
+    """§E9 — every abort path emits zero candidate_rejected events."""
+    abort_completions = [
+        Completion(text="", tokens_in=0, tokens_out=0),
+        Completion(text="not json", tokens_in=5, tokens_out=5),
+        Completion(text="[1, 2, 3]", tokens_in=5, tokens_out=5),
+        Completion(text='{"foo": []}', tokens_in=5, tokens_out=5),
+        Completion(text='{"memories": "nope"}', tokens_in=5, tokens_out=5),
+    ]
+    for comp in abort_completions:
+        spy_extract_emit.clear()
+        client = _StubClient(comp)
+        out = extract_memories(
+            redact("x"), client=client, session_id="s1", now=0.0,
+            id_gen=_default_id_gen,
+        )
+        assert out is None
+        assert not any(
+            e[0] == "daydream.candidate_rejected" for e in spy_extract_emit
+        )
+
+
+def test_llm_attempted_session_id_injection_is_ignored_by_engine(
+    spy_extract_emit: list,
+) -> None:
+    """§E11 (RUBRIC_GAP-3) — LLM session_id in rejection row is ignored."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [],
+        [{
+            "content_snippet": "x",
+            "rationale": "y",
+            "session_id": "ATTACKER_SID",
+        }],
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="CALLER", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    assert len(rej) == 1
+    assert rej[0][1]["session_id"] == "CALLER"
+    assert rej[0][1]["session_id"] != "ATTACKER_SID"
+
+
+# --------------------------------------------------------------------------- #
+# §F — Backward compat (additional)
+# --------------------------------------------------------------------------- #
+def test_missing_rejected_key_is_real_empty_extraction(
+    spy_extract_emit: list,
+) -> None:
+    """§F1 — {"memories":[]} (no rejected) → [] not None."""
+    client = _StubClient(Completion(
+        text=json.dumps({"memories": []}),
+        tokens_in=5, tokens_out=5,
+    ))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    assert out == []
+    names = [e[0] for e in spy_extract_emit]
+    assert "chunk_skipped_parse_failed" not in names
+    assert "daydream.candidate_rejected" not in names
+
+
+def test_missing_rejected_key_does_not_block_memories_emission(
+    spy_extract_emit: list,
+) -> None:
+    """§F2 — backward-compat preserves memories surface."""
+    client = _StubClient(Completion(
+        text=json.dumps({"memories": [{"content": "x"}]}),
+        tokens_in=5, tokens_out=5,
+    ))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_id_counter(),
+    )
+    assert out is not None
+    assert len(out) == 1
+    names = [e[0] for e in spy_extract_emit]
+    assert "chunk_skipped_parse_failed" not in names
+    assert "daydream.candidate_rejected" not in names
+
+
+@pytest.mark.parametrize(
+    "wrong_value",
+    [None, "oops", 42, {"foo": "bar"}, True],
+    ids=["null", "string", "number", "dict", "bool"],
+)
+def test_rejected_wrong_type_fallback_covers_null_string_number_dict_bool(
+    spy_extract_emit: list, wrong_value: Any,
+) -> None:
+    """§F3 — wrong-type rejected values are silently coerced to []."""
+    client = _StubClient(Completion(
+        text=json.dumps({"memories": [{"content": "x"}], "rejected": wrong_value}),
+        tokens_in=5, tokens_out=5,
+    ))
+    out = extract_memories(
+        redact("x"), client=client, session_id=f"s-{wrong_value!r}", now=0.0,
+        id_gen=_id_counter(),
+    )
+    assert out is not None
+    assert len(out) == 1
+    names = [e[0] for e in spy_extract_emit]
+    assert "chunk_skipped_parse_failed" not in names
+    assert "daydream.candidate_rejected" not in names
+
+
+def test_backward_compat_is_rejected_only_not_memories(
+    spy_extract_emit: list,
+) -> None:
+    """§F4 — backward-compat fallback applies only to rejected."""
+    # Missing memories key.
+    client = _StubClient(Completion(
+        text=json.dumps({"rejected": []}),
+        tokens_in=5, tokens_out=5,
+    ))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    assert out is None
+
+    # Non-list memories.
+    spy_extract_emit.clear()
+    client = _StubClient(Completion(
+        text=json.dumps({"memories": "nope", "rejected": []}),
+        tokens_in=5, tokens_out=5,
+    ))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    assert out is None
+
+
+# --------------------------------------------------------------------------- #
+# §G — Snippet + rationale caps + truncation flags
+# --------------------------------------------------------------------------- #
+def test_rejection_event_truncates_oversize_snippet_and_rationale(
+    spy_extract_emit: list,
+) -> None:
+    """§G1 — oversize snippet/rationale truncated to caps."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [],
+        [{"content_snippet": "a" * 500, "rationale": "b" * 500}],
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    assert len(rej) == 1
+    assert len(rej[0][1]["content_snippet"]) == 100
+    assert len(rej[0][1]["rationale"]) == 200
+
+
+def test_rejection_event_truncation_is_plain_slice_no_ellipsis(
+    spy_extract_emit: list,
+) -> None:
+    """§G2 — truncation is byte-equal to s[:N]."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [],
+        [{"content_snippet": "a" * 500, "rationale": "b" * 500}],
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    assert rej[0][1]["content_snippet"] == ("a" * 500)[:100]
+    assert rej[0][1]["rationale"] == ("b" * 500)[:200]
+
+
+def test_rejection_snippet_max_len_is_100() -> None:
+    """§G3 — _REJECTION_SNIPPET_MAX_LEN is 100."""
+    assert _extract._REJECTION_SNIPPET_MAX_LEN == 100
+
+
+def test_rejection_rationale_max_len_is_200() -> None:
+    """§G4 — _REJECTION_RATIONALE_MAX_LEN is 200."""
+    assert _extract._REJECTION_RATIONALE_MAX_LEN == 200
+
+
+def test_rejection_snippet_at_cap_passes_through_unchanged(
+    spy_extract_emit: list,
+) -> None:
+    """§G5 — snippet at exact cap passes through byte-equal."""
+    snip = "a" * 100
+    client = _StubClient(_ok_completion_with_rejections(
+        [], [{"content_snippet": snip, "rationale": "r"}]
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    assert rej[0][1]["content_snippet"] == snip
+
+
+def test_rejection_rationale_at_cap_passes_through_unchanged(
+    spy_extract_emit: list,
+) -> None:
+    """§G6 — rationale at exact cap passes through byte-equal."""
+    rat = "b" * 200
+    client = _StubClient(_ok_completion_with_rejections(
+        [], [{"content_snippet": "s", "rationale": rat}]
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    assert rej[0][1]["rationale"] == rat
+
+
+def test_rejection_snippet_under_cap_passes_through_unchanged(
+    spy_extract_emit: list,
+) -> None:
+    """§G7 — short snippet emitted as-is."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [], [{"content_snippet": "hi", "rationale": "r"}]
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    assert rej[0][1]["content_snippet"] == "hi"
+
+
+def test_rejection_event_marks_snippet_truncated_when_oversize(
+    spy_extract_emit: list,
+) -> None:
+    """§G8 — snippet > 100 chars → snippet_truncated=True."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [], [{"content_snippet": "a" * 150, "rationale": "r"}]
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    assert rej[0][1]["snippet_truncated"] is True
+
+
+def test_rejection_event_snippet_truncated_false_when_at_or_under_cap(
+    spy_extract_emit: list,
+) -> None:
+    """§G9 — snippet <= 100 chars → snippet_truncated=False."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [], [{"content_snippet": "a" * 100, "rationale": "r"}]
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    assert rej[0][1]["snippet_truncated"] is False
+
+
+def test_rejection_event_marks_rationale_truncated_when_oversize(
+    spy_extract_emit: list,
+) -> None:
+    """§G10 — rationale > 200 chars → rationale_truncated=True."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [], [{"content_snippet": "s", "rationale": "b" * 250}]
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    assert rej[0][1]["rationale_truncated"] is True
+
+
+def test_rejection_event_rationale_truncated_false_when_at_or_under_cap(
+    spy_extract_emit: list,
+) -> None:
+    """§G11 — rationale <= 200 chars → rationale_truncated=False."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [], [{"content_snippet": "s", "rationale": "b" * 200}]
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    assert rej[0][1]["rationale_truncated"] is False
+
+
+# --------------------------------------------------------------------------- #
+# §K — Second-pass redact on content_snippet (halliday B1)
+# --------------------------------------------------------------------------- #
+def test_rejection_content_snippet_routes_through_redact_before_emit() -> None:
+    """§K1 — AST walk: emit call's content_snippet kwarg flows from redact()."""
+    src = Path(_extract.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    found_redact_in_snippet_path = False
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "emit"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and node.args[0].value == "daydream.candidate_rejected"
+        ):
+            continue
+        # Walk the function body upward to find the local assignment that
+        # produced content_snippet. The implementation pattern:
+        #   snippet_redacted = str(redact(snippet_raw))
+        #   ... content_snippet=snippet_redacted[:N] ...
+        # AST shape: emit kwargs contain Subscript(value=Name("snippet_redacted"))
+        # AND elsewhere in the module a Call(func=Name("redact")) exists assigning
+        # to snippet_redacted.
+        for kw in node.keywords:
+            if kw.arg == "content_snippet":
+                # Found the kwarg; walk the module for the redact() assignment.
+                for inner in ast.walk(tree):
+                    if (
+                        isinstance(inner, ast.Call)
+                        and isinstance(inner.func, ast.Name)
+                        and inner.func.id == "redact"
+                    ):
+                        found_redact_in_snippet_path = True
+                        break
+    assert found_redact_in_snippet_path, (
+        "no redact() call site found upstream of the content_snippet kwarg"
+    )
+
+
+def test_rejection_content_snippet_second_pass_redaction_catches_aws_key(
+    spy_extract_emit: list,
+) -> None:
+    """§K2 — AWS key in content_snippet is redacted before emit."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [],
+        [{
+            "content_snippet": "User pasted AKIAIOSFODNN7EXAMPLE.",
+            "rationale": "key fixture",
+        }],
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    assert len(rej) == 1
+    assert "AKIAIOSFODNN7EXAMPLE" not in rej[0][1]["content_snippet"]
+
+
+def test_extract_imports_redact_at_module_top() -> None:
+    """§K3 — redact is imported at _extract.py module top."""
+    src = Path(_extract.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    found = False
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom):
+            if node.module == "memeval.dreaming.redaction":
+                for alias in node.names:
+                    if alias.name == "redact":
+                        found = True
+    assert found
+
+
+def test_rejection_rationale_not_routed_through_redact() -> None:
+    """§K4 — AST walk: emit's rationale kwarg does NOT contain redact(...)."""
+    src = Path(_extract.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "emit"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and node.args[0].value == "daydream.candidate_rejected"
+        ):
+            continue
+        for kw in node.keywords:
+            if kw.arg == "rationale":
+                # Walk the kwarg's expression for any redact() call.
+                for sub in ast.walk(kw.value):
+                    assert not (
+                        isinstance(sub, ast.Call)
+                        and isinstance(sub.func, ast.Name)
+                        and sub.func.id == "redact"
+                    ), "rationale kwarg expression contains redact() call"
+
+
+def test_no_redacted_token_in_calibration_rationales(
+    spy_extract_emit: list,
+) -> None:
+    """§K5 — no [REDACTED: substring in any emitted rationale across calibration fixtures."""
+    fixtures: list[list[dict[str, Any]]] = [
+        # Fixture B (pure-drop) rationales.
+        [
+            {"content_snippet": "User: hey", "rationale": "social greeting"},
+            {"content_snippet": "Let me think",
+             "rationale": "tentative musing, no decision"},
+            {"content_snippet": "ls returned 3 files",
+             "rationale": "one-off command output"},
+        ],
+        # Fixture C rationales.
+        [
+            {"content_snippet": "hi", "rationale": "social greeting"},
+            {"content_snippet": "ok", "rationale": "ack"},
+            {"content_snippet": "ran ls", "rationale": "command echo"},
+        ],
+    ]
+    for i, rej_rows in enumerate(fixtures):
+        spy_extract_emit.clear()
+        client = _StubClient(_ok_completion_with_rejections([], rej_rows))
+        extract_memories(
+            redact("x"), client=client, session_id=f"s-{i}", now=0.0,
+            id_gen=_default_id_gen,
+        )
+        events = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+        for e in events:
+            assert "[REDACTED:" not in e[1]["rationale"]
+
+
+# --------------------------------------------------------------------------- #
+# §L — Per-chunk rejection-event cap (halliday B2)
+# --------------------------------------------------------------------------- #
+def test_rejection_max_per_chunk_is_50() -> None:
+    """§L1 — _REJECTION_MAX_PER_CHUNK is 50."""
+    assert _extract._REJECTION_MAX_PER_CHUNK == 50
+
+
+def test_rejection_cap_emits_at_most_50_events_per_chunk(
+    spy_extract_emit: list,
+) -> None:
+    """§L2 — 75 valid rejection rows → exactly 50 events."""
+    rows = [
+        {"content_snippet": f"snip{i}", "rationale": f"r{i}"} for i in range(75)
+    ]
+    client = _StubClient(_ok_completion_with_rejections([], rows))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    assert len(rej) == 50
+
+
+def test_rejection_cap_overflow_counts_into_chunk_partial_parse(
+    spy_extract_emit: list,
+) -> None:
+    """§L3 — 75 rows → chunk_partial_parse fires with rejected_n_kept=50, rejected_n_dropped=25."""
+    rows = [
+        {"content_snippet": f"snip{i}", "rationale": f"r{i}"} for i in range(75)
+    ]
+    client = _StubClient(_ok_completion_with_rejections([], rows))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    pp = [e for e in spy_extract_emit if e[0] == "chunk_partial_parse"]
+    assert len(pp) == 1
+    assert pp[0][1]["rejected_n_kept"] == 50
+    assert pp[0][1]["rejected_n_dropped"] == 25
+
+
+def test_rejection_cap_emits_first_50_batch_indices(
+    spy_extract_emit: list,
+) -> None:
+    """§L4 — 75 rows → emitted batch_indices are {0..49}."""
+    rows = [
+        {"content_snippet": f"snip{i}", "rationale": f"r{i}"} for i in range(75)
+    ]
+    client = _StubClient(_ok_completion_with_rejections([], rows))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    assert {e[1]["batch_index"] for e in rej} == set(range(50))
+
+
+def test_rejection_cap_at_exact_50_is_silent_chunk_partial_parse(
+    spy_extract_emit: list,
+) -> None:
+    """§L5 — 50 valid rows → 50 events, no chunk_partial_parse."""
+    rows = [
+        {"content_snippet": f"snip{i}", "rationale": f"r{i}"} for i in range(50)
+    ]
+    client = _StubClient(_ok_completion_with_rejections([], rows))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    assert len(rej) == 50
+    assert not any(e[0] == "chunk_partial_parse" for e in spy_extract_emit)
+
+
+def test_extraction_system_prompt_documents_per_chunk_cap_50() -> None:
+    """§L6 — prompt advertises the 50-row cap."""
+    text = EXTRACTION_SYSTEM_PROMPT.lower()
+    assert "up to 50" in text or "at most 50" in text
+
+
+# --------------------------------------------------------------------------- #
+# §M — daydream.rejected_field_missing one-shot per session (halliday B3)
+# --------------------------------------------------------------------------- #
+def test_missing_rejected_key_emits_one_rejected_field_missing_event(
+    spy_extract_emit: list,
+) -> None:
+    """§M1 — missing rejected key fires one rejected_field_missing event."""
+    client = _StubClient(Completion(
+        text=json.dumps({"memories": [{"content": "x"}]}),
+        tokens_in=5, tokens_out=5,
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s-m1", now=0.0,
+        id_gen=_id_counter(),
+    )
+    rf = [e for e in spy_extract_emit if e[0] == "daydream.rejected_field_missing"]
+    assert len(rf) == 1
+    assert rf[0][1] == {"session_id": "s-m1"}
+
+
+def test_rejected_field_missing_one_shot_per_session_across_chunks(
+    spy_extract_emit: list,
+) -> None:
+    """§M2 — two same-session chunks with no rejected key → one event total."""
+    client = _StubClient(Completion(
+        text=json.dumps({"memories": [{"content": "x"}]}),
+        tokens_in=5, tokens_out=5,
+    ))
+    # Chunk 1.
+    extract_memories(
+        redact("x"), client=client, session_id="s-m2", now=0.0,
+        id_gen=_id_counter(),
+    )
+    # Chunk 2 — same session.
+    client2 = _StubClient(Completion(
+        text=json.dumps({"memories": [{"content": "y"}]}),
+        tokens_in=5, tokens_out=5,
+    ))
+    extract_memories(
+        redact("y"), client=client2, session_id="s-m2", now=1.0,
+        id_gen=_id_counter(),
+    )
+    rf = [e for e in spy_extract_emit if e[0] == "daydream.rejected_field_missing"]
+    assert len(rf) == 1
+
+
+def test_rejected_field_missing_not_emitted_when_explicit_empty_list(
+    spy_extract_emit: list,
+) -> None:
+    """§M3 — explicit rejected: [] does NOT fire rejected_field_missing."""
+    client = _StubClient(_ok_completion_with_rejections([], []))
+    extract_memories(
+        redact("x"), client=client, session_id="s-m3", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    assert not any(
+        e[0] == "daydream.rejected_field_missing" for e in spy_extract_emit
+    )
+
+
+@pytest.mark.parametrize("wrong_value", [None, "oops", 42, {"a": 1}, True])
+def test_rejected_field_missing_not_emitted_when_wrong_type(
+    spy_extract_emit: list, wrong_value: Any,
+) -> None:
+    """§M4 — wrong-type rejected does NOT fire rejected_field_missing."""
+    client = _StubClient(Completion(
+        text=json.dumps({"memories": [], "rejected": wrong_value}),
+        tokens_in=5, tokens_out=5,
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id=f"s-m4-{wrong_value!r}", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    assert not any(
+        e[0] == "daydream.rejected_field_missing" for e in spy_extract_emit
+    )
+
+
+def test_rejected_field_missing_kwarg_set_exact_session_id_only(
+    spy_extract_emit: list,
+) -> None:
+    """§M5 — rejected_field_missing kwarg set is exactly {session_id}."""
+    client = _StubClient(Completion(
+        text=json.dumps({"memories": [{"content": "x"}]}),
+        tokens_in=5, tokens_out=5,
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s-m5", now=0.0,
+        id_gen=_id_counter(),
+    )
+    rf = [e for e in spy_extract_emit if e[0] == "daydream.rejected_field_missing"]
+    assert len(rf) == 1
+    assert set(rf[0][1].keys()) == {"session_id"}
+
+
+def test_rejected_field_missing_one_shot_is_per_session_not_global(
+    spy_extract_emit: list,
+) -> None:
+    """§M6 — two distinct session_ids each fire one event."""
+    client = _StubClient(Completion(
+        text=json.dumps({"memories": [{"content": "x"}]}),
+        tokens_in=5, tokens_out=5,
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="sess-A", now=0.0,
+        id_gen=_id_counter(),
+    )
+    client2 = _StubClient(Completion(
+        text=json.dumps({"memories": [{"content": "y"}]}),
+        tokens_in=5, tokens_out=5,
+    ))
+    extract_memories(
+        redact("y"), client=client2, session_id="sess-B", now=0.0,
+        id_gen=_id_counter(),
+    )
+    rf = [e for e in spy_extract_emit if e[0] == "daydream.rejected_field_missing"]
+    sessions = {e[1]["session_id"] for e in rf}
+    assert sessions == {"sess-A", "sess-B"}
+
+
+# --------------------------------------------------------------------------- #
+# §N — Memory/rejected overlap suppression (halliday A1)
+# --------------------------------------------------------------------------- #
+def test_overlap_between_memories_and_rejected_suppresses_rejection_event(
+    spy_extract_emit: list,
+) -> None:
+    """§N1 — overlap drops the rejection; kept memory wins."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [{"content": "user wants Postgres"}],
+        [{"content_snippet": "user wants Postgres", "rationale": "redundant"}],
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_id_counter(),
+    )
+    assert not any(
+        e[0] == "daydream.candidate_rejected" for e in spy_extract_emit
+    )
+
+
+def test_overlap_drop_counts_into_chunk_partial_parse_rejected_n_dropped(
+    spy_extract_emit: list,
+) -> None:
+    """§N2 — overlap row counts as a drop in chunk_partial_parse."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [{"content": "user wants Postgres"}],
+        [{"content_snippet": "user wants Postgres", "rationale": "redundant"}],
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_id_counter(),
+    )
+    pp = [e for e in spy_extract_emit if e[0] == "chunk_partial_parse"]
+    assert len(pp) == 1
+    assert pp[0][1]["rejected_n_dropped"] >= 1
+
+
+def test_overlap_detection_is_case_insensitive_and_stripped(
+    spy_extract_emit: list,
+) -> None:
+    """§N3 — case-insensitive + whitespace-stripped overlap detection."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [{"content": "  USER wants Postgres  "}],
+        [{"content_snippet": "user wants postgres", "rationale": "dup"}],
+    ))
+    extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_id_counter(),
+    )
+    assert not any(
+        e[0] == "daydream.candidate_rejected" for e in spy_extract_emit
+    )
+
+
+def test_non_overlapping_memory_and_rejection_both_persist(
+    spy_extract_emit: list,
+) -> None:
+    """§N4 — no overlap → both surfaces persist."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [{"content": "x"}],
+        [{"content_snippet": "y", "rationale": "r"}],
+    ))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_id_counter(),
+    )
+    assert out is not None
+    assert len(out) == 1
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    assert len(rej) == 1
+
+
+# --------------------------------------------------------------------------- #
+# §H — Calibration fixtures (stub LLM only, 3 keep + 3 drop)
+# --------------------------------------------------------------------------- #
+def test_calibration_fixture_a_three_keeps_zero_drops(
+    spy_extract_emit: list,
+) -> None:
+    """§H1 — Fixture A: pure-keep."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [
+            {"content": "user prefers Postgres over Redis for the auth service"},
+            {"content": "user name is Scott"},
+            {"content": "user committed to backfill migration Friday"},
+        ],
+        [],
+    ))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s-h1", now=0.0,
+        id_gen=_id_counter(),
+    )
+    assert out is not None
+    assert len(out) == 3
+    assert not any(
+        e[0] == "daydream.candidate_rejected" for e in spy_extract_emit
+    )
+    assert not any(e[0] == "chunk_partial_parse" for e in spy_extract_emit)
+
+
+def test_calibration_fixture_b_zero_keeps_three_drops(
+    spy_extract_emit: list,
+) -> None:
+    """§H2 — Fixture B: pure-drop."""
+    client = _StubClient(_ok_completion_with_rejections(
+        [],
+        [
+            {"content_snippet": "User: hey", "rationale": "social greeting"},
+            {"content_snippet": "Let me think",
+             "rationale": "tentative musing, no decision"},
+            {"content_snippet": "ls returned 3 files",
+             "rationale": "one-off command output"},
+        ],
+    ))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s-h2", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    assert out == []
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    assert len(rej) == 3
+    assert not any(e[0] == "chunk_partial_parse" for e in spy_extract_emit)
+
+
+def _fixture_c_completion() -> Completion:
+    return _ok_completion_with_rejections(
+        [{"content": "user decided Postgres for auth service"}],
+        [
+            {"content_snippet": "hi", "rationale": "social greeting"},
+            {"content_snippet": "ok", "rationale": "ack"},
+            {"content_snippet": "ran ls", "rationale": "command echo"},
+        ],
+    )
+
+
+def test_calibration_fixture_c_mixed_one_keep_three_drops(
+    spy_extract_emit: list,
+) -> None:
+    """§H3 — Fixture C: mixed."""
+    client = _StubClient(_fixture_c_completion())
+    out = extract_memories(
+        redact("x"), client=client, session_id="s-h3", now=0.0,
+        id_gen=_id_counter(),
+    )
+    assert out is not None
+    assert len(out) == 1
+    names = [e[0] for e in spy_extract_emit]
+    rej_idxs = [i for i, n in enumerate(names) if n == "daydream.candidate_rejected"]
+    chunk_idx = names.index("daydream.chunk_extracted")
+    assert len(rej_idxs) == 3
+    assert all(i < chunk_idx for i in rej_idxs)
+    assert not any(e[0] == "chunk_partial_parse" for e in spy_extract_emit)
+
+
+def test_calibration_fixture_c_rejection_batch_indices_are_zero_one_two(
+    spy_extract_emit: list,
+) -> None:
+    """§H4 — Fixture C: batch_indices == {0, 1, 2}."""
+    client = _StubClient(_fixture_c_completion())
+    extract_memories(
+        redact("x"), client=client, session_id="s-h4", now=0.0,
+        id_gen=_id_counter(),
+    )
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    assert {e[1]["batch_index"] for e in rej} == {0, 1, 2}
+
+
+def test_calibration_fixture_c_rationale_values_pass_through(
+    spy_extract_emit: list,
+) -> None:
+    """§H5 — Fixture C: rationale values byte-equal to input."""
+    client = _StubClient(_fixture_c_completion())
+    extract_memories(
+        redact("x"), client=client, session_id="s-h5", now=0.0,
+        id_gen=_id_counter(),
+    )
+    rej = [e for e in spy_extract_emit if e[0] == "daydream.candidate_rejected"]
+    rationales = sorted(e[1]["rationale"] for e in rej)
+    assert rationales == sorted(["social greeting", "ack", "command echo"])
+
+
+def test_calibration_fixture_d_backward_compat_no_rejected_key(
+    spy_extract_emit: list,
+) -> None:
+    """§H6 — Fixture D: backward-compat (no rejected key)."""
+    client = _StubClient(Completion(
+        text=json.dumps({"memories": [{"content": "x"}]}),
+        tokens_in=5, tokens_out=5,
+    ))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s-h6", now=0.0,
+        id_gen=_id_counter(),
+    )
+    assert out is not None
+    assert len(out) == 1
+    names = [e[0] for e in spy_extract_emit]
+    assert "daydream.candidate_rejected" not in names
+    assert "chunk_partial_parse" not in names
+    assert "chunk_skipped_parse_failed" not in names
+
+
+def test_calibration_fixtures_use_stub_client_only() -> None:
+    """§H7 — calibration test region has no import of provider clients.
+
+    AST walk asserts no Import/ImportFrom node names the forbidden provider
+    client symbols. (A substring scan over the test source would self-match
+    on the assertion strings.)
+    """
+    # Forbidden provider-client symbol names — written disjointly so the
+    # assertion message strings cannot be matched by their own substring
+    # scan of this test file.
+    forbidden = [
+        "Open" + "RouterClient",
+        "Echo" + "Client",
+        "make" + "_client",
+    ]
+    src = Path(__file__).read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                for sym in forbidden:
+                    assert sym not in alias.name
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                for sym in forbidden:
+                    assert sym not in alias.name
+
+
+def test_ok_completion_with_rejections_helper_shape() -> None:
+    """§H8 — helper returns a Completion with the canned dict shape."""
+    comp = _ok_completion_with_rejections(
+        [{"content": "x"}],
+        [{"content_snippet": "s", "rationale": "r"}],
+    )
+    assert isinstance(comp, Completion)
+    data = json.loads(comp.text)
+    assert data == {
+        "memories": [{"content": "x"}],
+        "rejected": [{"content_snippet": "s", "rationale": "r"}],
+    }
+    assert comp.tokens_in >= 0
+    assert comp.tokens_out >= 0
+
+
+# --------------------------------------------------------------------------- #
+# §I — Imports + non-coupling
+# --------------------------------------------------------------------------- #
+def test_extract_module_top_imports_unchanged() -> None:
+    """§I1 — module-top imports are exactly the documented allow-list."""
+    src = Path(_extract.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    imports: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                imports.add(alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            for alias in node.names:
+                imports.add(f"{module}.{alias.name}")
+    expected = {
+        "hashlib",
+        "json",
+        "logging",
+        "uuid",
+        "typing.Any",
+        "typing.Callable",
+        "memeval.cost.cost_of",
+        "memeval.dreaming.events.emit",
+        "memeval.dreaming.llm.Completion",
+        "memeval.dreaming.llm.LLMClient",
+        "memeval.dreaming.prompts.EXTRACTION_SYSTEM_PROMPT",
+        "memeval.dreaming.prompts._ENVELOPE_TEMPLATE",
+        "memeval.dreaming.redaction.RedactedText",
+        "memeval.dreaming.redaction.redact",
+        "memeval.schema.MemoryItem",
+    }
+    # __future__ annotations is a from-import that's metadata, drop it.
+    imports.discard("__future__.annotations")
+    assert imports == expected, (
+        f"import drift: missing={expected - imports}, extra={imports - expected}"
+    )
+
+
+def test_rejection_caps_used_via_module_constants_not_inline_literals() -> None:
+    """§I4 — emit site uses module constants (Name node), not Constant literals."""
+    src = Path(_extract.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "emit"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and node.args[0].value == "daydream.candidate_rejected"
+        ):
+            continue
+        for kw in node.keywords:
+            if kw.arg in ("content_snippet", "rationale"):
+                # Subscript expressions whose slice is Name (the constant)
+                # rather than an inline Constant(value=100/200).
+                if isinstance(kw.value, ast.Subscript):
+                    sl = kw.value.slice
+                    if isinstance(sl, ast.Slice) and sl.upper is not None:
+                        assert isinstance(sl.upper, ast.Name), (
+                            f"emit kwarg {kw.arg} uses inline literal slice "
+                            f"instead of module constant"
+                        )
+
+
+def test_rejection_event_kwargs_are_not_redactedtext_wrapped() -> None:
+    """§I5 — emit kwargs are not RedactedText(...)-wrapped."""
+    src = Path(_extract.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "emit"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and node.args[0].value == "daydream.candidate_rejected"
+        ):
+            continue
+        for kw in node.keywords:
+            for sub in ast.walk(kw.value):
+                assert not (
+                    isinstance(sub, ast.Call)
+                    and isinstance(sub.func, ast.Name)
+                    and sub.func.id == "RedactedText"
+                ), f"rejection emit kwarg {kw.arg} wraps in RedactedText()"
+
+
+def test_extract_envelope_wrapper_call_site_count_unchanged_at_one() -> None:
+    """§I6 — exactly one call site for _wrap_user_content_in_envelope."""
+    src = Path(_extract.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    count = 0
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "_wrap_user_content_in_envelope"
+        ):
+            count += 1
+    assert count == 1
+
+
+# --------------------------------------------------------------------------- #
+# §J — Non-goals
+# --------------------------------------------------------------------------- #
+def test_prompts_py_only_extraction_constant_changed() -> None:
+    """§J3 — non-extraction prompt constants are byte-equal sha256 pre/post."""
+    from memeval.dreaming.prompts import (
+        CONTRADICTION_SYSTEM_PROMPT,
+        GOVERNANCE_SYSTEM_PROMPT,
+    )
+    # The pinned hex literals are in test_prompts.py — read them through.
+    prompts_test_src = (
+        Path(__file__).parent / "test_prompts.py"
+    ).read_text(encoding="utf-8")
+    contra_hash = hashlib.sha256(
+        CONTRADICTION_SYSTEM_PROMPT.encode("utf-8")
+    ).hexdigest()
+    gov_hash = hashlib.sha256(
+        GOVERNANCE_SYSTEM_PROMPT.encode("utf-8")
+    ).hexdigest()
+    env_hash = hashlib.sha256(_ENVELOPE_TEMPLATE.encode("utf-8")).hexdigest()
+    # All three hashes must be referenced as pins in test_prompts.py.
+    assert contra_hash in prompts_test_src, (
+        f"CONTRADICTION_SYSTEM_PROMPT hash {contra_hash} not pinned"
+    )
+    assert gov_hash in prompts_test_src, (
+        f"GOVERNANCE_SYSTEM_PROMPT hash {gov_hash} not pinned"
+    )
+    assert env_hash in prompts_test_src, (
+        f"_ENVELOPE_TEMPLATE hash {env_hash} not pinned"
+    )
