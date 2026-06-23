@@ -25,11 +25,18 @@ D008 cascade fixture, ``test_graph_store``) behaves exactly as before: a "depend
 untyped edges via the generic fallback, and a plain "related to X" query (no relation verb) traverses
 every edge both ways. Typed filtering only narrows results when edges actually carry a type.
 
-The paid-path upgrade keeps the contract: a typed-edge graph DB (Neo4j) behind the ``uri=`` seam.
+**Durability (the ``path=`` seam).** By default the graph is in-RAM. Pass ``GraphStore(path=".../graph.db")``
+to mirror nodes to a stdlib SQLite file (WAL, mirroring :class:`SqliteVectorStore`) and reload them on
+construction — the typed edge indexes are rebuilt from each node's ``okf_links`` (nodes are the single source
+of truth; edges are derived, never separately stored). ``path=None`` is pure in-memory, byte-equivalent, and
+zero-dependency (the offline default). This makes the graph a durable backend alongside vectors/markdown for an
+end-to-end run; the paid-path upgrade keeps the contract: a typed-edge graph DB (Neo4j) behind the ``uri=`` seam.
 """
 
 from __future__ import annotations
 
+import json
+import sqlite3
 from collections import deque
 from dataclasses import replace
 from typing import Any, Optional
@@ -114,10 +121,14 @@ def _entry_rel_target(entry: Any) -> tuple:
 
 
 class GraphStore:
-    """In-memory typed/directed graph ``MemoryStore``: nodes + typed edge adjacency, seed-then-traverse."""
+    """Typed/directed graph ``MemoryStore``: nodes + typed edge adjacency, seed-then-traverse.
+
+    In-memory by default; pass ``path=`` to mirror nodes to a stdlib SQLite file and reload on construction
+    (edges rebuilt from ``okf_links``). ``path=None`` stays pure in-memory and zero-dependency.
+    """
 
     def __init__(self, uri: Optional[str] = None, *, max_depth: int = _MAX_DEPTH,
-                 embed: Optional[Any] = None, **kwargs: Any) -> None:
+                 embed: Optional[Any] = None, path: Optional[str] = None, **kwargs: Any) -> None:
         self.uri = uri  # a real graph DB (Neo4j) is the paid-path seam; v1 is in-memory
         self.config = kwargs
         # BFS hops to traverse out from a seed. Default = _MAX_DEPTH (the speed end, byte-equivalent to the
@@ -133,34 +144,111 @@ class GraphStore:
         self._order: list = []        # insertion order (for all())
         self._out: dict = {}          # item_id -> list of (target_id, relation)
         self._in: dict = {}           # item_id -> list of (source_id, relation)  (reverse index)
+        # Durable mirror (stdlib SQLite). path=None -> pure in-memory, byte-equivalent + zero-dependency
+        # (the offline default). When set, nodes are written through to the file and reloaded on
+        # construction; the typed edge indexes are REBUILT from each node's okf_links (nodes are the single
+        # source of truth — edges are derived, never separately stored), so edges can't drift from content.
+        self.path = path
+        self._closed = False  # tracked separately from _conn so a post-close write fails loud (not RAM-only)
+        self._conn: Optional[sqlite3.Connection] = None
+        if path is not None:
+            self._conn = sqlite3.connect(str(path))
+            # WAL (ADR-P2, mirroring SqliteVectorStore): fail loud for a file-backed DB if the mode didn't
+            # take (SQLite can silently fall back); ':memory:' returns 'memory', the only non-'wal' we accept.
+            mode = self._conn.execute("PRAGMA journal_mode=WAL").fetchone()[0]
+            if str(mode).lower() not in ("wal", "memory"):
+                raise RuntimeError(
+                    f"GraphStore requires WAL for a file-backed DB (ADR-P2); "
+                    f"got journal_mode={mode!r} for path {str(path)!r}"
+                )
+            self._conn.row_factory = sqlite3.Row
+            self._conn.execute(
+                "CREATE TABLE IF NOT EXISTS nodes ("
+                "item_id TEXT PRIMARY KEY, content TEXT, timestamp REAL, relevancy REAL, "
+                "session_id TEXT, source TEXT, tags TEXT, tokens INTEGER, version INTEGER, metadata TEXT)"
+            )
+            self._conn.commit()
+            self._load()
 
     # -- MemoryStore protocol ----------------------------------------------
     def write(self, item: MemoryItem) -> None:
+        if self._closed:  # a file-backed store must NOT silently accept RAM-only writes after close()
+            raise RuntimeError("write() on a closed GraphStore")
         tokens = item.tokens
         if tokens <= 0 and item.content:
             tokens = _estimate_tokens(item.content)
         node = replace(item, tokens=tokens)  # always a copy -> never alias the caller's item
+        # Atomic across RAM and the durable mirror: do EVERY failure-prone step — parse edges (a malformed
+        # okf_links raises), embed (a real embedder can raise), persist (json/disk/lock can raise) — BEFORE
+        # mutating any in-memory index, so a FAILED write leaves both RAM and disk untouched. _index() then
+        # only applies the precomputed values, so it is total (cannot raise) and goes last.
         edges = self._parse_edges(node)
-        # Embed BEFORE mutating any index. A real injected embedder can raise (network/quota); a
-        # half-applied write (node set but edges/embedding missing) would corrupt the graph. Compute the
-        # doc vector first, mutate after -> write() stays all-or-nothing.
         doc_vec = self._doc_vector(node.content) if self._embed is not None else None
+        if self._conn is not None:
+            self._persist(node)               # durable write-through (raises -> RAM never mutated)
+        self._index(node, edges, doc_vec)     # in-memory indexes last (the same path reload replays)
 
+    def _index(self, node: MemoryItem, edges: list, doc_vec: Optional[list] = None) -> None:
+        """Apply a node to the in-memory indexes (nodes, order, typed `_out`/`_in`, embedding).
+
+        Shared by :meth:`write` and reload (:meth:`_load`). TOTAL — it cannot raise: every failure-prone
+        step (parse edges, embed) is done by the CALLER and the results (``edges``, ``doc_vec``) are passed
+        in, so :meth:`write` can parse+embed+persist first and keep RAM and the durable mirror atomic on
+        failure. Only dict/list mutation happens here. ``path=None`` stays byte-equivalent.
+        """
         # If rewriting a node, retract its old out-edges' reverse-index contributions first.
-        if item.item_id in self._nodes:
-            for tgt, rel in self._out.get(item.item_id, []):
+        if node.item_id in self._nodes:
+            for tgt, rel in self._out.get(node.item_id, []):
                 back = self._in.get(tgt)
                 if back:
-                    self._in[tgt] = [e for e in back if e != (item.item_id, rel)]
+                    self._in[tgt] = [e for e in back if e != (node.item_id, rel)]
         else:
-            self._order.append(item.item_id)
+            self._order.append(node.item_id)
 
-        self._nodes[item.item_id] = node
+        self._nodes[node.item_id] = node
         if doc_vec is not None:
-            self._embeddings[item.item_id] = doc_vec
-        self._out[item.item_id] = edges
+            self._embeddings[node.item_id] = doc_vec
+        self._out[node.item_id] = edges
         for tgt, rel in edges:
-            self._in.setdefault(tgt, []).append((item.item_id, rel))
+            self._in.setdefault(tgt, []).append((node.item_id, rel))
+
+    def _persist(self, node: MemoryItem) -> None:
+        """Write-through one node to the durable mirror (latest-version-wins via INSERT OR REPLACE).
+
+        Only node fields are stored — edges live inside ``metadata['okf_links']`` and are rebuilt on load
+        (single source of truth); embeddings are recomputed on load, not stored (an embedder/dim change
+        must not resurrect stale vectors). Rolls back on any failure so a partial row never lands.
+        """
+        assert self._conn is not None  # invariant: only called from write() under `if self._conn is not None`
+        try:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO nodes (item_id, content, timestamp, relevancy, session_id, source, "
+                "tags, tokens, version, metadata) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (node.item_id, node.content, node.timestamp, node.relevancy, node.session_id, node.source,
+                 json.dumps(list(node.tags)), node.tokens, node.version, json.dumps(node.metadata or {})),
+            )
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()  # leave the mirror unchanged on any failure (atomic write-through)
+            raise
+
+    def _load(self) -> None:
+        """Rebuild the in-memory graph from the durable mirror, in insertion (rowid) order."""
+        assert self._conn is not None  # invariant: only called from __init__ under `if path is not None`
+        rows = self._conn.execute(
+            "SELECT item_id, content, timestamp, relevancy, session_id, source, tags, tokens, version, "
+            "metadata FROM nodes ORDER BY rowid"
+        ).fetchall()
+        for row in rows:
+            node = MemoryItem(
+                item_id=row["item_id"], content=row["content"], timestamp=row["timestamp"],
+                relevancy=row["relevancy"], session_id=row["session_id"], source=row["source"],
+                tags=json.loads(row["tags"] or "[]"), tokens=row["tokens"], version=row["version"],
+                metadata=json.loads(row["metadata"] or "{}"),
+            )
+            edges = self._parse_edges(node)
+            doc_vec = self._doc_vector(node.content) if self._embed is not None else None
+            self._index(node, edges, doc_vec)
 
     def get(self, item_id: str) -> Optional[MemoryItem]:
         return self._nodes.get(item_id)
@@ -225,6 +313,23 @@ class GraphStore:
 
     def all(self) -> list:
         return [self._nodes[i] for i in self._order]
+
+    def close(self) -> None:
+        """Close the store: close the durable mirror connection (a no-op for ``path=None``) and mark it
+        closed so a later ``write()`` FAILS LOUD instead of silently mutating RAM without persisting —
+        mirroring ``SqliteVectorStore``, whose post-close writes raise on the closed connection. Reads from
+        the already-loaded in-memory cache still work.
+        """
+        if self._conn is not None:
+            self._conn.close()
+            self._conn = None
+        self._closed = True
+
+    def __enter__(self) -> "GraphStore":
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        self.close()
 
     # -- helpers -----------------------------------------------------------
     def _embed_call(self, text: str, input_type: str) -> list:
