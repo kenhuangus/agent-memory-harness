@@ -2,8 +2,9 @@
 
 Exercises the three resolution rungs against a real throwaway git repo so the
 behavior is verified end to end (no subprocess mocking): exact tag on HEAD,
-nearest tag when HEAD is past it, and the MEMORY_VERSION fallback when there is
-no tag (or no git). Stdlib + pytest only.
+nearest tag when HEAD is past it, branch+commit fallback when there is no tag,
+explicit override for deliberate reuse, and the MEMORY_VERSION fallback when
+there is no git. Stdlib + pytest only.
 """
 
 from __future__ import annotations
@@ -55,12 +56,12 @@ def test_nearest_tag_when_head_is_past_it(repo):
 
 
 def test_untagged_falls_back_to_branch_name(repo):
-    # No tag, but on a branch -> key the substrate by the (sanitized) branch name,
-    # with a short hash suffix of the original branch name.
+    # No tag, but on a branch -> key the substrate by the sanitized branch name
+    # plus current commit SHA.
     info = resolve_pipeline_version(cwd=repo)
-    assert info["version"].startswith("vbranch-main-")
+    assert info["version"] == f"vbranch-main-{info['git_sha']}"
     assert info["untagged"] is True
-    assert info["source"] == "branch"
+    assert info["source"] == "branch-commit"
     assert info["branch"] == "main"
 
 
@@ -68,20 +69,35 @@ def test_branch_name_with_slashes_is_filesystem_safe(repo):
     # A feature-branch name with a slash must not create nested dirs.
     _git(repo, "checkout", "-q", "-b", "eval/swe-bench-cl-pipeline")
     info = resolve_pipeline_version(cwd=repo)
-    assert info["source"] == "branch"
+    assert info["source"] == "branch-commit"
     assert info["version"].startswith("vbranch-eval-swe-bench-cl-pipeline-")
     assert "/" not in info["version"]  # never a nested path
 
 
-def test_branches_that_sanitize_alike_get_distinct_versions(repo):
-    # Two branches whose sanitized slugs collide (feat/x and feat-x) must NOT share a
-    # substrate -- the original-name hash suffix disambiguates them.
-    _git(repo, "checkout", "-q", "-b", "feat/x")
+def test_same_branch_new_commit_gets_distinct_version(repo):
+    # Same branch, different commit -> fresh substrate by default.
     v1 = resolve_pipeline_version(cwd=repo)["version"]
-    _git(repo, "checkout", "-q", "-b", "feat-x")
+    (repo / "f.txt").write_text("new commit\n", encoding="utf-8")
+    _git(repo, "commit", "-aq", "-m", "second")
     v2 = resolve_pipeline_version(cwd=repo)["version"]
-    assert v1 != v2, f"distinct branches collided onto one version: {v1}"
-    assert v1.startswith("vbranch-feat-x-") and v2.startswith("vbranch-feat-x-")
+    assert v1 != v2
+    assert v1.startswith("vbranch-main-") and v2.startswith("vbranch-main-")
+
+
+def test_explicit_override_reuses_named_version(repo):
+    # Explicit name is the escape hatch for deliberate reuse across commits.
+    info = resolve_pipeline_version(cwd=repo, override="experiment-a")
+    assert info["version"] == "vexperiment-a"
+    assert info["untagged"] is True
+    assert info["source"] == "override"
+    assert info["git_sha"]
+
+
+def test_explicit_override_wins_over_tag(repo):
+    _git(repo, "tag", "v0.3")
+    info = resolve_pipeline_version(cwd=repo, override="experiment-a")
+    assert info["version"] == "vexperiment-a"
+    assert info["source"] == "override"
 
 
 def test_detached_head_untagged_falls_back_to_memory_version(repo):

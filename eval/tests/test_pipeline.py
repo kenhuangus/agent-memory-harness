@@ -217,6 +217,12 @@ def test_pipeline_native_cl_is_opt_in() -> None:
     assert cfg["native_cl"] is True
 
 
+def test_pipeline_results_version_override_is_configured() -> None:
+    args = P._build_parser().parse_args(["--results-version", "reuse-memory"])
+    cfg = P._resolve_config(args)
+    assert cfg["results_version"] == "reuse-memory"
+
+
 def test_summary_renders_ungraded_accuracy_as_dash() -> None:
     from memeval.claudecode import pipeline_summary as PS
 
