@@ -210,8 +210,8 @@ continual-learning story (forgetting / backward+forward transfer / AULC) is comp
   no-copy/shared-dir behavior (keep `test_drain_is_noop_under_fake_runner`). (AC1, ADR-harness-012)
 - [ ] **3. Version resolver** — `results.py::resolve_pipeline_version()` (git describe → fallback). (AC5)
 - [ ] **4. Orchestrator** — `pipeline.py`: 5-stage sequence, shared `_memory/` dir, interactive+`--yes`,
-  incremental results file, `daydream-cli dream` stage. `memeval-pipeline` console script + `make
-  pipeline`. (R1, AC4, AC6)
+  incremental results file, `daydream-cli dream` stage. Exposed as the `memeval-pipeline` console
+  script (no `make` wrapper — it takes flags, which `make` forwards poorly). (R1, AC4, AC6)
 - [ ] **5. Results + summary** — write the per-benchmark file with all stage rows (stage identity +
   git provenance via `extra=`), the top-level `pipeline` metadata block (sequence, model, dreamer
   model/provider, version, limit, stages, timestamps), the `dream` block, and the derived

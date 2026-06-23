@@ -1,4 +1,4 @@
-.PHONY: help typecheck test test-daydream test-redaction install-dev pipeline
+.PHONY: help typecheck test test-daydream test-redaction install-dev
 
 help:
 	@echo "Targets:"
@@ -7,8 +7,10 @@ help:
 	@echo "  test           - run the full pytest suite"
 	@echo "  test-daydream  - run only the dreaming-domain tests"
 	@echo "  test-redaction - run only the redaction tests"
-	@echo "  pipeline       - run the 5-stage SWE-Bench-CL live-plugin pipeline"
-	@echo "                   (interactive; pass ARGS='--yes ...' for non-interactive)"
+	@echo ""
+	@echo "Pipeline (not a make target — it takes flags, which make handles poorly):"
+	@echo "  memeval-pipeline --sequence pytest-dev_pytest_sequence --limit 3   # after install-dev"
+	@echo "  (interactive by default; add --yes for non-interactive)"
 
 install-dev:
 	pip install -e 'eval[daydream,dev]'
@@ -37,9 +39,3 @@ test-daydream:
 
 test-redaction:
 	cd eval && python -m pytest memeval/dreaming/tests/test_redaction*.py -v
-
-# Run the 5-stage SWE-Bench-CL pipeline against the live cookbook-memory plugin.
-# Interactive by default; `make pipeline ARGS="--yes --sequence pytest-dev_pytest_sequence"`
-# for a non-interactive run.
-pipeline:
-	cd eval && python -m memeval.claudecode.pipeline $(ARGS)
