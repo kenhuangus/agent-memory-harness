@@ -4,9 +4,8 @@ Covers MIGRATION_STOP_HOOK_RUBRIC.md §A (subprocess shape on Stop/PreCompact),
 §B (fail-open contract), §C (non-gated regression guard), §D (event gating),
 §F (selective env passthrough + FileNotFoundError stderr), §I (integration).
 
-All tests monkeypatch `subprocess.run` — they do NOT require `daydream-cli` to
-be installed. The end-to-end integration test that DOES require daydream-cli
-on PATH lives separately and is marked `pytest.mark.integration`.
+All tests monkeypatch `subprocess.run` — they do NOT require the daydream console
+script to be installed.
 """
 
 from __future__ import annotations
@@ -80,14 +79,14 @@ def test_handle_calls_subprocess_run_once_on_stop(monkeypatch: pytest.MonkeyPatc
     assert len(recorder.calls) == 1
 
 
-def test_subprocess_call_uses_daydream_cli_daydream_list_form(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """§A criterion 5 — first positional arg is exactly `["daydream-cli", "daydream"]`."""
+def test_subprocess_call_uses_hook_interpreter_module_form(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """§A criterion 5 — subprocess runs daydream through this hook's interpreter."""
     recorder = _Recorder()
     _patch_subprocess(monkeypatch, recorder)
     _make_settings_via_env(monkeypatch, tmp_path)
     hooks_handler.handle("Stop", {"session_id": "s1"})
     args, _kwargs = recorder.calls[0]
-    assert args[0] == ["daydream-cli", "daydream"]
+    assert args[0] == [sys.executable, "-m", "memeval.dreaming.cli", "daydream"]
 
 
 def test_subprocess_call_does_not_use_shell(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -174,8 +173,8 @@ def test_no_shell_true_in_hooks_handler() -> None:
 
 
 @pytest.mark.parametrize("exc", [
-    subprocess.TimeoutExpired(cmd=["daydream-cli", "daydream"], timeout=600),
-    subprocess.CalledProcessError(returncode=1, cmd=["daydream-cli", "daydream"]),
+    subprocess.TimeoutExpired(cmd=[sys.executable, "-m", "memeval.dreaming.cli", "daydream"], timeout=600),
+    subprocess.CalledProcessError(returncode=1, cmd=[sys.executable, "-m", "memeval.dreaming.cli", "daydream"]),
     RuntimeError("boom"),
 ])
 def test_handle_failopens_on_exception(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, exc: BaseException) -> None:
@@ -187,8 +186,8 @@ def test_handle_failopens_on_exception(monkeypatch: pytest.MonkeyPatch, tmp_path
 
 
 def test_handle_failopens_on_filenotfounderror(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """§B criterion 16 — FileNotFoundError (daydream-cli not on PATH) → handle() returns {}."""
-    recorder = _Recorder(raises=FileNotFoundError(2, "No such file or directory: 'daydream-cli'"))
+    """§B criterion 16 — FileNotFoundError launching the daydream module → handle() returns {}."""
+    recorder = _Recorder(raises=FileNotFoundError(2, "No such file or directory"))
     _patch_subprocess(monkeypatch, recorder)
     _make_settings_via_env(monkeypatch, tmp_path)
     assert hooks_handler.handle("Stop", {"session_id": "s1"}) == {}
@@ -329,13 +328,13 @@ def test_subprocess_env_drops_unknown_secrets(monkeypatch: pytest.MonkeyPatch, t
 def test_handle_writes_filenotfounderror_message_to_stderr(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """§F criterion 39 — FileNotFoundError → stderr line names `daydream-cli` (halliday F5)."""
-    recorder = _Recorder(raises=FileNotFoundError(2, "No such file: 'daydream-cli'"))
+    """§F criterion 39 — FileNotFoundError → stderr line names the daydream module."""
+    recorder = _Recorder(raises=FileNotFoundError(2, "No such file"))
     _patch_subprocess(monkeypatch, recorder)
     _make_settings_via_env(monkeypatch, tmp_path)
     hooks_handler.handle("Stop", {"session_id": "s1"})
     captured = capsys.readouterr()
-    assert "daydream-cli" in captured.err
+    assert "memeval.dreaming.cli" in captured.err
 
 
 # --------------------------------------------------------------------------- #
@@ -344,7 +343,7 @@ def test_handle_writes_filenotfounderror_message_to_stderr(
 
 
 def test_main_stop_invokes_subprocess(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """§I criteria 50, 51 — main(["Stop"]) reads stdin JSON + invokes subprocess.run with the daydream-cli command."""
+    """§I criteria 50, 51 — main(["Stop"]) reads stdin JSON + invokes the daydream module."""
     recorder = _Recorder()
     _patch_subprocess(monkeypatch, recorder)
     _make_settings_via_env(monkeypatch, tmp_path)
@@ -353,7 +352,7 @@ def test_main_stop_invokes_subprocess(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert hooks_handler.main(["Stop"]) == 0
     assert len(recorder.calls) == 1
     args, _kwargs = recorder.calls[0]
-    assert args[0] == ["daydream-cli", "daydream"]
+    assert args[0] == [sys.executable, "-m", "memeval.dreaming.cli", "daydream"]
 
 
 def test_main_stop_subprocess_input_is_verbatim_payload(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

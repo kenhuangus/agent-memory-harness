@@ -6,7 +6,7 @@ single entry point the plugin's ``hooks.json`` routes every event to.
 
 Behavior:
 
-* On ``Stop`` / ``PreCompact``: shell out to ``daydream-cli daydream`` via
+* On ``Stop`` / ``PreCompact``: shell out to ``python -m memeval.dreaming.cli daydream`` via
   ``subprocess.run`` (subprocess preserves the plugin's import-isolation seam —
   heavy deps like ``detect-secrets``/``httpx`` stay out of the hook process).
   Stdin is the verbatim payload as JSON; env is the minimum-surface allowlist.
@@ -24,8 +24,8 @@ Fail-open per ADR-harness-006: subprocess exceptions (``TimeoutExpired``,
 caught, recorded, and ``handle()`` still returns ``{}``. ``KeyboardInterrupt``
 and ``SystemExit`` propagate so tests + sync PreCompact have a clean cancel
 path. On ``FileNotFoundError`` specifically, a one-line stderr message names
-``daydream-cli`` so sync-PreCompact + manual invocations get a visible signal
-that PATH is broken.
+``memeval.dreaming.cli`` so sync-PreCompact + manual invocations get a visible
+signal that the runtime environment is broken.
 """
 
 from __future__ import annotations
@@ -68,20 +68,25 @@ _TIMEOUT_BY_EVENT = {
 
 
 def _build_subprocess_env(settings: Settings) -> dict[str, str]:
-    """Return the minimum-surface env for the daydream-cli subprocess (halliday F4)."""
+    """Return the minimum-surface env for the daydream subprocess (halliday F4)."""
     env = {k: v for k, v in os.environ.items() if k in _ALLOWED_ENV_KEYS}
     if settings.store_path is not None:
         env["MEMORY_STORE"] = str(settings.store_path)
     return env
 
 
+def _daydream_command() -> list[str]:
+    """Invoke daydream through this hook's interpreter, avoiding PATH drift."""
+    return [sys.executable, "-m", "memeval.dreaming.cli", "daydream"]
+
+
 def _fire_daydream_subprocess(
     event_name: str, payload: dict[str, Any], settings: Settings, events: EventStream
 ) -> None:
-    """Shell out to daydream-cli daydream; fail-open per ADR-harness-006."""
+    """Shell out to the daydream CLI module; fail-open per ADR-harness-006."""
     try:
         subprocess.run(
-            ["daydream-cli", "daydream"],
+            _daydream_command(),
             input=json.dumps(payload),
             capture_output=True,
             text=True,
@@ -93,8 +98,9 @@ def _fire_daydream_subprocess(
         raise
     except FileNotFoundError as exc:
         sys.stderr.write(
-            "cookbook-memory: daydream-cli not on PATH — install with "
-            "`pip install -e eval[daydream]` to enable memory extraction.\n"
+            "cookbook-memory: could not launch memeval.dreaming.cli with "
+            f"{sys.executable} — install with `pip install -e eval[daydream]` "
+            "to enable memory extraction.\n"
         )
         events.emit(
             "daydream.hook_subprocess_failed",
@@ -123,7 +129,7 @@ def handle(event_name: str, payload: dict[str, Any], *, store: Optional[str] = N
 
     Always emits a ``note`` event naming the hook (preserved from the pre-PR
     behavior). On ``Stop`` / ``PreCompact``, additionally shells out to
-    ``daydream-cli daydream`` per ADR-001. Returns ``{}`` either way — no
+    ``python -m memeval.dreaming.cli daydream`` per ADR-001. Returns ``{}`` either way — no
     ``additionalContext``, no decision, no session interference.
     """
     settings = Settings.from_env(
