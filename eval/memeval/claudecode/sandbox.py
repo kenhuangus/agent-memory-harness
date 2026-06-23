@@ -9,20 +9,28 @@ directory and the CLI keeps all its state (``.claude.json``, ``projects/``,
 ``sessions/``) there instead of ``~/.claude``, and discovers no host skills /
 agents / global ``CLAUDE.md``.
 
-The one thing a fresh config dir lacks is auth: it is logged out, and that is
-**by design** — auth is *not* seeded from the host. We investigated copying
-``~/.claude/.credentials.json`` across and it does not work: the live token is
-held in the OS keychain (macOS) bound to the default config, the on-disk file is
-a stale leftover, and headless ``claude -p`` does not refresh an expired token
-(it sends it as-is and gets a 401). Copying the live keychain secret into a
-plaintext file in the sandbox would be the only way to seed it — a credential-
-handling step we deliberately avoid. Instead the sandbox is authenticated **once,
-interactively**, and keeps its own token thereafter::
+The one thing a fresh config dir lacks is auth: it starts logged out. How that is
+resolved is platform-dependent:
+
+* **File-based-auth platforms (Linux / WSL)** — the host token is portable: it
+  lives in ``~/.claude/.credentials.json`` with the matching account in
+  ``~/.claude.json`` (``oauthAccount`` / ``userID``). :func:`seed_auth_from_host`
+  copies both into the sandbox, so a sandboxed ``claude`` runs under the same
+  subscription with no interactive step — :func:`setup_real_plugin` does this
+  automatically for the ``plugin-real`` mode. Only auth crosses over; no skills,
+  agents, MCP, or global ``CLAUDE.md`` are copied, so the host config still does
+  not leak in. (Verified against claude-haiku: a seeded sandbox returns a real
+  answer instead of "Not logged in".)
+* **Keychain platforms (macOS)** — the live token is held in the OS keychain bound
+  to the default config and the on-disk file is a stale leftover, so seeding is
+  skipped (``seed_auth_from_host`` returns ``False`` when no on-disk credential
+  exists) and the sandbox is authenticated **once, interactively**, keeping its own
+  token thereafter::
 
     CLAUDE_CONFIG_DIR=<sandbox> claude     # then run /login
 
-That mints the sandbox its own credential under its own config dir; because the
-dir is gitignored it never leaves the machine.
+Because the sandbox dir is gitignored, neither the seeded credential nor a
+freshly-minted one ever leaves the machine.
 
 Resolution order for the active sandbox (``active_config_dir``):
 
@@ -214,6 +222,17 @@ def setup_real_plugin(
     d = (config_dir or default_config_dir()).resolve()
     bundle = build_bundle(out_dir or (d / "_plugin-bundle"))
     install_plugin_bundle(bundle, config_dir=d, claude_exe=claude_exe)
+    # The sandbox is a fresh CLAUDE_CONFIG_DIR (logged out) — without auth every
+    # turn dies on "Not logged in · Please run /login". Seed the host subscription
+    # so the run is non-interactive; fall back to a one-time /login on keychain
+    # platforms where the on-disk token isn't portable.
+    if not seed_auth_from_host(d):
+        import sys
+        cmds = "  " + "\n  ".join(login_commands(d))
+        sys.stderr.write(
+            "cookbook-memory sandbox: no portable host credential found — the "
+            "sandbox is logged out and plugin-real turns will fail with "
+            "'Not logged in'. Authenticate it once:\n" + cmds + "\n")
     return plugin_runtime_env()
 
 
@@ -236,6 +255,87 @@ def build(config_dir: Optional[Path] = None, *, overwrite: bool = False) -> Path
     if overwrite or not settings.exists():
         settings.write_text(json.dumps({}) + "\n")
     return d
+
+
+def host_config_dir() -> Path:
+    """The host Claude config dir (``~/.claude``) — where a non-sandboxed CLI keeps
+    its auth. ``CLAUDE_CONFIG_DIR`` is intentionally ignored: we want the real host
+    login, not whatever sandbox may currently be active."""
+    return Path.home() / ".claude"
+
+
+def _credential_is_fresh(cred_path: Path) -> bool:
+    """True iff ``cred_path`` holds a Claude OAuth token that exists and is unexpired.
+
+    This is the macOS guard. On macOS the live token is held in the OS Keychain and an
+    on-disk ``.credentials.json`` is typically a *stale leftover*; copying it would yield
+    a sandbox that looks authenticated but isn't, suppressing the ``/login`` fallback. A
+    missing file, unreadable JSON, or an absent/past ``expiresAt`` (epoch ms) all read as
+    not-fresh, so the caller falls back to interactive login. On Linux/WSL the on-disk
+    token is the live one and is normally unexpired, so this passes."""
+    import time
+
+    try:
+        oauth = json.loads(cred_path.read_text()).get("claudeAiOauth", {})
+    except (ValueError, OSError):
+        return False
+    expires_at = oauth.get("expiresAt")
+    if not isinstance(expires_at, (int, float)):
+        return False
+    return expires_at > time.time() * 1000
+
+
+def seed_auth_from_host(
+    config_dir: Optional[Path] = None, *, host_dir: Optional[Path] = None,
+) -> bool:
+    """Copy the host's subscription auth into the sandbox so a sandboxed ``claude``
+    runs under the same login — no interactive ``/login`` required.
+
+    On file-based-auth platforms (Linux / WSL) Claude Code keeps an OAuth token in
+    ``<host>/.credentials.json`` and the matching account in ``~/.claude.json``
+    (``oauthAccount`` / ``userID``). Both are portable: this copies the credentials
+    file into the sandbox and merges the account keys into the sandbox's
+    ``.claude.json`` (creating it if absent). Only auth crosses over — no skills,
+    agents, MCP, or global ``CLAUDE.md`` — so the host config still does not leak in.
+
+    Best-effort and idempotent. Returns ``True`` only when a **live (unexpired)**
+    on-disk credential was seeded; ``False`` (seeding nothing) when the host has no
+    on-disk credential, or only a stale/expired one — e.g. a macOS Keychain platform
+    where ``.credentials.json`` is a leftover, or a host that is itself logged out — in
+    which case the caller must authenticate the sandbox interactively
+    (:func:`login_commands`). The freshness gate (:func:`_credential_is_fresh`) is what
+    makes this safe on macOS: copying an expired leftover would produce a sandbox that
+    *looks* seeded but still fails with "Not logged in" and no ``/login`` hint. Re-seeding
+    on each call refreshes the token if the host has since rotated it.
+    """
+    import shutil
+
+    d = (config_dir or default_config_dir()).resolve()
+    host = (host_dir or host_config_dir()).resolve()
+    host_cred = host / ".credentials.json"
+    if not _credential_is_fresh(host_cred):
+        return False  # no token, or a stale/expired leftover (macOS) -> caller uses /login
+
+    d.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(host_cred, d / ".credentials.json")
+
+    # Merge the account identity (oauthAccount / userID) from the host's top-level
+    # ~/.claude.json (it lives beside ~/.claude/, not inside it) into the sandbox's.
+    host_cj = host.parent / ".claude.json"
+    sb_cj = d / ".claude.json"
+
+    def _load(p: Path) -> dict:
+        try:
+            return json.loads(p.read_text()) if p.is_file() else {}
+        except (ValueError, OSError):
+            return {}
+
+    host_data, sb_data = _load(host_cj), _load(sb_cj)
+    for key in ("oauthAccount", "userID"):
+        if key in host_data:
+            sb_data[key] = host_data[key]
+    sb_cj.write_text(json.dumps(sb_data, indent=2) + "\n")
+    return True
 
 
 def login_commands(config_dir: Path, *, windows: Optional[bool] = None) -> list[str]:

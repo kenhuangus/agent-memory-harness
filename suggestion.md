@@ -164,6 +164,52 @@ contextbench's memory-quality numbers meaningful. Surfacing gold memory ids for
 contextbench tasks (so `n_gold > 0`) is a separate, mechanism-/loader-side metric
 fix the team should track distinctly from the recall-reliability work above.
 
+## Suggestion 6: plugin hooks hardcode `python3 -m cookbook_memory` → silent no-op off-venv
+
+**Keith's plugin (`plugin/cookbook_memory/adapters/claude_code/hooks/hooks.json`)
+wires every lifecycle hook as `python3 -m cookbook_memory.adapters.claude_code.hooks_handler <Event>`.
+This silently disables all memory hooks whenever the `python3` Claude Code resolves
+can't import `cookbook_memory` — which is the normal case when the plugin is installed
+into a venv.**
+
+All five hooks (`SessionStart`, `UserPromptSubmit`, `Stop`, `PreCompact`,
+`PostCompact`) use a bare `python3 -m cookbook_memory...`. That assumes (a) `python3`
+is on Claude Code's `PATH` and (b) the `cookbook_memory` package is importable by
+*that* interpreter. When the plugin is `pip install`-ed into a virtualenv (the
+documented `pip install -e 'plugin[mcp]'`) but Claude Code's `PATH` resolves to a
+*different* `python3` (the system one), `python3 -m cookbook_memory...` exits non-zero
+with `No module named 'cookbook_memory'`.
+
+Crucially this fails **silently**: a `SessionStart` hook exiting non-zero is
+non-blocking, so Claude Code continues normally — but the hook's work (the `note`
+event, and on `Stop`/`PreCompact` the Daydream extraction subprocess) never runs, with
+**no error surfaced to the user**. The symptom is "memory features quietly don't work,"
+which is far harder to diagnose than a loud failure. (Verified directly: under the
+system `python3` the `SessionStart` hook errors with `ModuleNotFoundError`, the session
+still completes, and no hook output is produced; under the venv `python3` the same hook
+returns cleanly with a `hook_response` event.)
+
+Suggested plugin-side fix (Keith's to implement — we did not edit the plugin):
+
+- Don't invoke a bare `python3 -m`. The plugin already ships a **`memory-hook`
+  console script** (it lands on `PATH` at install with the correct interpreter
+  shebang). Changing the hook commands to `memory-hook <Event>` makes them resolve to
+  the same interpreter the package was installed into, regardless of Claude Code's
+  `PATH`. Alternatives: invoke via `${CLAUDE_PLUGIN_ROOT}`-relative path, or have a
+  thin launcher resolve `sys.executable`.
+- Optionally, make a failed hook *loud* rather than silent (the handler already
+  fail-opens; a one-line stderr when the import fails would turn "memory mysteriously
+  off" into an actionable message), mirroring the existing `daydream-cli not on PATH`
+  stderr note.
+
+Note (pipeline side, already fixed — context only): this hook issue is **not** what
+blocks a `plugin-real` benchmark run. The blocker was that the isolated
+`CLAUDE_CONFIG_DIR` sandbox was never authenticated (`"Not logged in · Please run
+/login"`); the harness now seeds the host subscription into the sandbox in
+`sandbox.setup_real_plugin` (`seed_auth_from_host`, pipeline-owned). The hook fix above
+is a separate robustness issue in the plugin that affects whether memory hooks actually
+fire once the plugin *does* run.
+
 ## Evidence index
 
 - Corrected recall diagnosis and the metric table: `results/v0.1/README.md`.
