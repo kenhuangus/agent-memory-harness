@@ -180,6 +180,31 @@ def test_prepare_checkout_and_capture_diff_with_fake_git() -> None:
         assert diff.startswith("diff --git a/orm.py b/orm.py")
 
 
+def test_capture_diff_excludes_plugin_store_dir() -> None:
+    """The plugin-real store dir (.cookbook-memory) lives INSIDE the checkout; it must
+    be excluded from BOTH the stage and the diff so the prediction is the clean CODE
+    patch, never ``diff --git a/.cookbook-memory/.seeded ...`` (which corrupts the patch
+    the SWE-bench grader applies — observed as accuracy 0.0 on django-10097/10880)."""
+    calls: list = []
+
+    def _recording_git(args, cwd, *a, **kw) -> GitResult:
+        calls.append(list(args))
+        if args and args[0] == "diff":
+            return GitResult(returncode=0, stdout=_FIXED_DIFF)
+        return GitResult(returncode=0)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        diff = capture_diff(Path(tmp), git_runner=_recording_git)
+
+    assert diff == _FIXED_DIFF
+    add_calls = [c for c in calls if c and c[0] == "add"]
+    diff_calls = [c for c in calls if c and c[0] == "diff"]
+    assert add_calls and diff_calls, calls
+    # Both the stage and the diff carry the :(exclude) pathspec for the store dir.
+    assert any(":(exclude).cookbook-memory" in c for c in add_calls), add_calls
+    assert ":(exclude).cookbook-memory" in diff_calls[0], diff_calls[0]
+
+
 # --------------------------------------------------------------------------- #
 # Test A — agentic solve records a generate step + captured diff prediction
 # --------------------------------------------------------------------------- #

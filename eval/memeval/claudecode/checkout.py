@@ -145,6 +145,23 @@ def prepare_checkout(
     return dest_path.resolve()
 
 
+#: Paths excluded from the captured PREDICTION diff. The agentic CODE path runs the
+#: plugin-real memory store at ``<checkout>/.cookbook-memory`` (so the plugin's
+#: ``.mcp.json`` ``${CLAUDE_PROJECT_DIR}/.cookbook-memory`` resolves), which leaves an
+#: untracked store dir INSIDE the checkout. ``git add -A`` would stage it, so the diff
+#: would begin with ``diff --git a/.cookbook-memory/.seeded …`` — corrupting the patch
+#: the SWE-bench grader applies (seen on django-10097 / django-10880: accuracy 0.0).
+#: These are git pathspecs (``:(exclude)…``) applied to BOTH the stage and the diff so
+#: tracked AND untracked store content is kept out; real source-file changes are
+#: unaffected.
+_PREDICTION_DIFF_EXCLUDES = (".cookbook-memory",)
+
+
+def _exclude_pathspecs() -> list[str]:
+    """git ``:(exclude)`` pathspecs for :data:`_PREDICTION_DIFF_EXCLUDES`."""
+    return [f":(exclude){p}" for p in _PREDICTION_DIFF_EXCLUDES]
+
+
 def capture_diff(
     dest: str | Path,
     *,
@@ -160,13 +177,25 @@ def capture_diff(
     real commit SHA exists in the (possibly stub) checkout. An empty tree yields
     ``""`` (an honest empty patch); any runner failure also yields ``""`` — a
     missing diff is "no change", never a crash.
+
+    The plugin store dir (:data:`_PREDICTION_DIFF_EXCLUDES`, e.g. ``.cookbook-memory``)
+    is excluded from both the stage and the diff via git ``:(exclude)`` pathspecs, so
+    the prediction is the clean CODE patch — the memory store living inside the checkout
+    never pollutes it. Real source-file changes are captured in full.
     """
     dest_path = Path(dest)
+    excludes = _exclude_pathspecs()
     try:
-        add = git_runner(["add", "-A"], dest_path)
+        # Stage everything EXCEPT the store dir. "." + excludes (not "-A") so the
+        # exclude pathspec applies; "." stages new + modified + deleted under cwd.
+        add = git_runner(["add", "--", ".", *excludes], dest_path)
         if add.returncode != 0:
-            return ""
-        res = git_runner(["diff", "--cached"], dest_path)
+            # Fallback: some git versions/edge cases dislike the combined pathspec.
+            # A plain add still works; the diff-side exclude below is the real guard.
+            add = git_runner(["add", "-A"], dest_path)
+            if add.returncode != 0:
+                return ""
+        res = git_runner(["diff", "--cached", "--", ".", *excludes], dest_path)
         if res.returncode != 0:
             return ""
         return res.stdout or ""
