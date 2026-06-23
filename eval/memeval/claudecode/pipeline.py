@@ -100,13 +100,50 @@ def _build_parser() -> argparse.ArgumentParser:
     return ap
 
 
-def _prompt(label: str, default: Any) -> str:
-    """One interactive prompt with a default (Enter accepts it). Falls through to the
-    default on a non-tty (so a piped/CI invocation without --yes still works)."""
-    if not sys.stdin or not sys.stdin.isatty():
-        return str(default)
-    raw = input(f"  {label} [{default}]: ").strip()
-    return raw or str(default)
+def _interactive() -> bool:
+    """True only when we have a real TTY to prompt on (so piped/CI runs fall through)."""
+    return bool(sys.stdin and sys.stdin.isatty())
+
+
+def _ask(label: str, default: Any, *, cast=str, choices: "list[str] | None" = None) -> Any:
+    """One validated prompt with a default (Enter accepts it). Re-prompts on a bad value
+    instead of crashing; ``cast`` parses the answer (int/float/str) and ``choices``
+    constrains it. Falls through to the default on a non-tty."""
+    if not _interactive():
+        return default
+    hint = f" ({'/'.join(choices)})" if choices else ""
+    while True:
+        raw = input(f"  {label}{hint} [{default}]: ").strip()
+        if not raw:
+            return default
+        if choices and raw not in choices:
+            print(f"    ! choose one of: {', '.join(choices)}")
+            continue
+        try:
+            return cast(raw)
+        except (ValueError, TypeError):
+            print(f"    ! expected {cast.__name__}, got {raw!r}")
+
+
+def _ask_sequence(default: str) -> str:
+    """Numbered menu for the SWE-Bench-CL sequence — type a number (1-8) or the id.
+    Enter accepts the default. Non-tty -> the default."""
+    if not _interactive():
+        return default
+    seqs = list(_SEQUENCES.items())
+    print("  sequence (the SWE-Bench-CL 'domain' — type a number or id):")
+    for i, (name, size) in enumerate(seqs, 1):
+        marker = " (default)" if name == default else ""
+        print(f"    {i}. {name}  ·  {size} tasks{marker}")
+    while True:
+        raw = input(f"  sequence [{default}]: ").strip()
+        if not raw:
+            return default
+        if raw.isdigit() and 1 <= int(raw) <= len(seqs):
+            return seqs[int(raw) - 1][0]
+        if raw in _SEQUENCES:
+            return raw
+        print(f"    ! enter 1-{len(seqs)} or a valid sequence id")
 
 
 def _resolve_config(args: argparse.Namespace) -> dict:
@@ -118,14 +155,14 @@ def _resolve_config(args: argparse.Namespace) -> dict:
     grader = args.grader
     budget = args.budget_usd
 
-    if not args.yes:
-        print("Configure the 5-stage SWE-Bench-CL pipeline (Enter accepts the default):")
-        print(f"  sequences: {', '.join(f'{k}({v})' for k, v in _SEQUENCES.items())}")
-        seq = _prompt("sequence", seq)
-        limit = int(_prompt("limit (0 = whole sequence)", limit))
-        model = _prompt("model", model)
-        grader = _prompt("grader (local|overlap|none)", grader)
-        budget = float(_prompt("budget-usd", budget))
+    if not args.yes and _interactive():
+        print("\nConfigure the 5-stage SWE-Bench-CL pipeline — press Enter to accept each default.\n")
+        seq = _ask_sequence(seq)
+        limit = _ask("tasks to run (0 = whole sequence)", limit, cast=int)
+        model = _ask("model", model)
+        grader = _ask("grader", grader, choices=["local", "overlap", "none"])
+        budget = _ask("budget (USD, 0 = no cap)", budget, cast=float)
+        print()
 
     if seq not in _SEQUENCES:
         raise SystemExit(f"unknown --sequence {seq!r}; choose one of {list(_SEQUENCES)}")
@@ -421,8 +458,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         print("WARNING: 'claude' not found — plugin stages will fail until it is installed "
               "(npm install -g @anthropic-ai/claude-code).", file=sys.stderr)
 
-    if not args.yes:
-        ans = _prompt("run these 5 stages now? (y/n)", "y").lower()
+    if not args.yes and _interactive():
+        limit_txt = "whole sequence" if cfg["limit"] is None else f"{cfg['limit']} tasks"
+        budget_txt = "no cap" if not cfg["budget_usd"] else f"${cfg['budget_usd']:.0f}"
+        print("About to run the 5-stage pipeline:")
+        print(f"  sequence  {cfg['sequence']}  ·  {limit_txt}")
+        print(f"  model     {cfg['model']}  ·  grader {cfg['grader']}  ·  budget {budget_txt}")
+        print(f"  native CL {'on' if cfg['native_cl'] else 'off'}")
+        ans = _ask("run these 5 stages now?", "y", choices=["y", "n"]).lower()
         if ans not in ("y", "yes"):
             print("aborted.")
             return 0
