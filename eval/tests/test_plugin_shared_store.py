@@ -35,7 +35,7 @@ if str(_BASE_DIR) not in sys.path:
     sys.path.insert(0, str(_BASE_DIR))
 
 from memeval.claudecode import agent as A  # noqa: E402
-from memeval.claudecode.agent import ClaudeCodeAgent  # noqa: E402
+from memeval.claudecode.agent import ClaudeCodeAgent, _PLUGIN_REAL_RECALL_TOOL  # noqa: E402
 from memeval.claudecode.cli import ClaudeResult  # noqa: E402
 from memeval.claudecode.platform import ClaudeRuntime  # noqa: E402
 from memeval.schema import Benchmark, Task, TaskKind  # noqa: E402
@@ -79,13 +79,14 @@ def _make_fake_plugin_runner(turns: dict):
     store the plugin resolves (``$MEMORY_STORE``) ALREADY holds
     when the turn starts, then writes this task's marker + a recall event there."""
 
-    def fake(prompt, *, cwd, extra_env=None, **kw) -> ClaudeResult:
+    def fake(prompt, *, cwd, extra_env=None, allowed_tools=None, **kw) -> ClaudeResult:
         env = extra_env or {}
         store = Path(
             env.get("MEMORY_STORE")
             or (Path(env.get("CLAUDE_PROJECT_DIR", cwd)) / ".cookbook-memory")
         )
         store.mkdir(parents=True, exist_ok=True)
+        turns.setdefault("tools", []).append(allowed_tools)
         turns.setdefault("seen", []).append(sorted(p.name for p in store.glob("mem_*.md")))
         turns.setdefault("stores", []).append(str(store))
         marker = (prompt.split("q-")[-1].split()[0] if "q-" in prompt else "x")
@@ -125,6 +126,7 @@ def test_shared_project_dir_accumulates_memory_across_tasks() -> None:
         assert "mem_cl_1.md" in turns["seen"][1]
         # The shared store holds BOTH tasks' memory.
         assert sorted(p.name for p in store.glob("mem_*.md")) == ["mem_cl_1.md", "mem_cl_2.md"]
+        assert turns["tools"] == [[_PLUGIN_REAL_RECALL_TOOL], [_PLUGIN_REAL_RECALL_TOOL]]
         # The harness never wrote into the shared store itself -- only the (fake) plugin did.
         # Sanity: no per-task .cookbook-memory under the run tree holds the markers.
         assert turns["seen"][0] == [] and "mem_cl_1.md" in turns["seen"][1]

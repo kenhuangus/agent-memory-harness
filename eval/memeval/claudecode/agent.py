@@ -145,6 +145,24 @@ _PLUGIN_REAL_PREFIX_CODE = (
     "issue and run the tests to confirm. Do NOT output a diff or paste a patch — "
     "just make the edits.\n\n"
 )
+_PLUGIN_REAL_RECALL_TOOL = "mcp__plugin_cookbook-memory_cookbook-memory__recall"
+_CODE_ALLOWED_TOOLS = [
+    "Bash",
+    "Edit",
+    "Glob",
+    "Grep",
+    "LS",
+    "MultiEdit",
+    "NotebookEdit",
+    "NotebookRead",
+    "Read",
+    "Task",
+    "TodoWrite",
+    "WebFetch",
+    "WebSearch",
+    "Write",
+]
+_PLUGIN_REAL_CODE_ALLOWED_TOOLS = [*_CODE_ALLOWED_TOOLS, _PLUGIN_REAL_RECALL_TOOL]
 
 # Builtin mode = Claude Code's OWN memory/context mechanism. The real one is not
 # "dump the whole history into the context window" (a 200k+-token CLAUDE.md just
@@ -566,18 +584,19 @@ class ClaudeCodeAgent:
             # Drive the coding turn through the PRIMED runner with a retry-until-recall
             # backstop (mirrors the QA _solve_plugin_real loop) so the headless MCP
             # startup race no longer silently drops the shipping plugin's `recall`.
-            # allowed_tools stays None (full native toolset) — the shipping plugin
-            # provides its own MCP tools via its installed .mcp.json under
-            # CLAUDE_PROJECT_DIR; permission_mode stays acceptEdits so the agent can
-            # still edit files. Recall reach is counted via the plugin's OWN events
-            # stream (_count_recall_events), not the harness recall log.
+            # --allowedTools is restrictive, so the code turn must explicitly allow
+            # both normal edit/test tools and the shipping plugin recall tool. Without
+            # this the CLI asks for permission to use recall and the headless run denies
+            # it. Recall reach is counted via the plugin's OWN events stream
+            # (_count_recall_events), not the harness recall log.
             before_writes = _count_daydream_writes(events)
             res: Optional[ClaudeResult] = None
             for _ in range(_PLUGIN_MAX_TRIES):
                 before = _count_recall_events(events)
                 res = self._run_primed(
                     _PLUGIN_REAL_PREFIX_CODE + base_prompt, checkout,
-                    _SYS_CODE_AGENT_PLUGIN_REAL, mcp_config=None, allowed_tools=None,
+                    _SYS_CODE_AGENT_PLUGIN_REAL, mcp_config=None,
+                    allowed_tools=_PLUGIN_REAL_CODE_ALLOWED_TOOLS,
                     permission_mode="acceptEdits", extra_env=extra_env)
                 if _count_recall_events(events) > before:
                     break  # the agent reached the recall tool -> plugin MCP connected
@@ -678,7 +697,9 @@ class ClaudeCodeAgent:
         for _ in range(_PLUGIN_MAX_TRIES):
             before = _count_recall_events(events)
             res = self._run_primed(prompt, run_dir, _SYS_PLUGIN_REAL,
-                                   mcp_config=None, allowed_tools=None, extra_env=extra_env)
+                                   mcp_config=None,
+                                   allowed_tools=[_PLUGIN_REAL_RECALL_TOOL],
+                                   extra_env=extra_env)
             if _count_recall_events(events) > before:
                 break  # the agent reached the recall tool -> plugin MCP connected
         self._attribute_real_recall(events, ctx)
