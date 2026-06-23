@@ -36,6 +36,7 @@ import json
 import logging
 import os
 import re
+import tempfile
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -104,39 +105,50 @@ def _slug(s: str, *, default: str = "item") -> str:
 # --------------------------------------------------------------------------- #
 # Durable-write primitives (ported from dreaming/_state.py — ADR-013/014)
 # --------------------------------------------------------------------------- #
+def _fsync_dir(path: Path) -> None:
+    """fsync a directory so a dirent change (a create/rename/unlink within it) is durable
+    on power loss. A no-op on filesystems that don't support directory fsync."""
+    try:
+        dir_fd = os.open(str(path), os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except OSError:  # directory fsync unsupported on some filesystems — the change still landed
+        pass
+
+
 def _write_text_atomic(path: Path, text: str) -> None:
     """Atomically write ``text`` to ``path`` via ``tmp.replace(path)`` (ADR-013).
 
-    Writes to a unique temp sibling (``<name>.<pid>.tmp`` so concurrent writers don't
-    collide on one tmp name), ``fsync``s the file descriptor, ``os.replace``s it over the
-    destination (atomic on the same filesystem), then ``fsync``s the parent directory so
-    the rename itself survives power loss. A crash anywhere before the replace leaves the
-    PRIOR file intact — the destination is never opened in ``"w"`` mode directly. Stdlib-only.
+    Writes to a UNIQUE-per-call temp sibling (``tempfile.NamedTemporaryFile`` in the target's
+    dir — two writes to the same target from one process never share/truncate one tmp),
+    ``fsync``s the file descriptor, ``os.replace``s it over the destination (atomic on the same
+    filesystem), then ``fsync``s the parent directory so the rename itself survives power loss.
+    A crash anywhere before the replace leaves the PRIOR file intact — the destination is never
+    opened in ``"w"`` mode directly. Stdlib-only.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    tmp: Optional[Path] = None
     try:
-        with open(tmp, "w", encoding="utf-8") as fh:
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", dir=path.parent,
+            prefix=f"{path.name}.", suffix=".tmp", delete=False,
+        ) as fh:
+            tmp = Path(fh.name)
             fh.write(text)
             fh.flush()
             os.fsync(fh.fileno())
         os.replace(tmp, path)  # atomic same-fs rename: a crash leaves the prior doc intact
     except BaseException:
         # Best-effort cleanup so a failed write never strands a partial *.tmp.
-        try:
-            tmp.unlink(missing_ok=True)
-        except OSError:
-            pass
+        if tmp is not None:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
         raise
-    # fsync the parent directory so the rename (the new dirent) is durable on power loss.
-    try:
-        dir_fd = os.open(str(path.parent), os.O_RDONLY)
-        try:
-            os.fsync(dir_fd)
-        finally:
-            os.close(dir_fd)
-    except OSError:  # directory fsync unsupported on some filesystems — the rename still landed
-        pass
+    _fsync_dir(path.parent)  # the rename (new dirent) is durable on power loss
 
 
 @contextmanager
@@ -428,21 +440,24 @@ def import_bundle(in_dir: str | Path) -> list[MemoryItem]:
     for path in sorted(root.rglob("*.md")):
         if path.name in _RESERVED:
             continue
-        # Guard the per-file read/parse: one undecodable/torn .md (a half-written file
-        # from a crashed peer, a foreign binary) must be SKIPPED (warn + continue), not
-        # raise out and brick the whole store at construction (which would take the MCP
-        # server + Daydreamer down). Pairs with the atomic-write fix (removes most torn
-        # files at the source). ``errors='replace'`` keeps a partially-readable doc usable.
+        # Guard the WHOLE per-file read -> split -> convert path: one undecodable/torn .md (a
+        # half-written file from a crashed peer, a foreign binary) OR a readable doc with a
+        # ``type`` but invalid numeric frontmatter (``doc_to_memory_item`` can raise
+        # TypeError/ValueError) must be SKIPPED (warn + continue), not raise out and brick the
+        # whole store at construction (which would take the MCP server + Daydreamer down).
+        # Pairs with the atomic-write fix (removes most torn files at the source).
+        # ``errors='replace'`` keeps a partially-readable doc usable.
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
             fm, _ = split_doc(text)
-        except OSError as exc:
-            _logger.warning("OKF import: skipping unreadable doc %s: %s", path, exc)
+            if not fm.get("type"):
+                continue  # not a conformant concept doc
+            rel = path.relative_to(root).as_posix()
+            item = doc_to_memory_item(text, fallback_id=_slug(rel[:-3]))
+        except (OSError, TypeError, ValueError) as exc:
+            _logger.warning("OKF import: skipping unparseable doc %s: %s", path, exc)
             continue
-        if not fm.get("type"):
-            continue  # not a conformant concept doc
-        rel = path.relative_to(root).as_posix()
-        items.append(doc_to_memory_item(text, fallback_id=_slug(rel[:-3])))
+        items.append(item)
     return items
 
 
@@ -626,12 +641,14 @@ class OKFStore:
                 return False           # absent even after reconcile -> nothing to delete (idempotent)
             canonical = self.root / _doc_relpath(item)
             unlinked = False
+            unlinked_dirs: set[Path] = set()  # parent dirs whose dirent we removed -> fsync before the gen bump
             if canonical.exists():
                 # Verify the canonical file actually holds THIS id before fast-unlinking
                 # (a slug collision could put a different id at this path — fall through to
                 # the scan rather than delete a stranger's doc).
                 if self._doc_is_item(canonical, item_id):
                     canonical.unlink(missing_ok=True)
+                    unlinked_dirs.add(canonical.parent)
                     unlinked = True
             if not unlinked and self.root.exists():
                 # FALLBACK: foreign-imported filename(s). Scan + unlink every doc parsing to the id.
@@ -640,6 +657,12 @@ class OKFStore:
                         continue
                     if self._doc_is_item(path, item_id):
                         path.unlink(missing_ok=True)
+                        unlinked_dirs.add(path.parent)
+            # fsync each dir we removed a dirent from BEFORE bumping the generation: otherwise a
+            # crash after the unlinks but before the gen file's parent fsync could resurrect a
+            # deleted doc on cold import even though peers already saw the new generation.
+            for d in unlinked_dirs:
+                _fsync_dir(d)
             removed = self._mem.delete(item_id)
             self._loaded_generation = self._bump_generation()  # honest: _mem == peers + own delete applied
         return removed
@@ -649,20 +672,24 @@ class OKFStore:
 
         Uses the SAME ``fallback_id`` as :func:`import_bundle` (the root-relative slug) so a
         foreign doc lacking ``x_item_id`` resolves to the same id on disk as it did in RAM —
-        the scan can't miss a doc the autoload included.
+        the scan can't miss a doc the autoload included. The whole read -> split -> convert path
+        is guarded (``doc_to_memory_item`` can raise TypeError/ValueError on invalid numeric
+        frontmatter): a torn/unparseable doc is simply NOT this id (return False), never a raise
+        out of delete.
         """
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
+            fm, _ = split_doc(text)
+            if not fm.get("type"):
+                return False
+            try:
+                rel = path.relative_to(self.root).as_posix()
+            except ValueError:
+                rel = path.name
+            return doc_to_memory_item(text, fallback_id=_slug(rel[:-3])).item_id == item_id
+        except (OSError, TypeError, ValueError) as exc:
+            _logger.warning("OKF delete-scan: skipping unparseable doc %s: %s", path, exc)
             return False
-        fm, _ = split_doc(text)
-        if not fm.get("type"):
-            return False
-        try:
-            rel = path.relative_to(self.root).as_posix()
-        except ValueError:
-            rel = path.name
-        return doc_to_memory_item(text, fallback_id=_slug(rel[:-3])).item_id == item_id
 
     def flush_indexes(self) -> dict[str, Any]:
         """(Re)write the bundle's index.md/log.md (and re-emit every concept doc) from the

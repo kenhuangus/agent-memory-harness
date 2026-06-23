@@ -151,6 +151,7 @@ class SqliteVectorStore:
         # cursor state would corrupt). WAL still gives cross-PROCESS concurrency; the lock is
         # the intra-process guard.
         self._lock = threading.Lock()
+        self._closed = False  # lifecycle flag — checked UNDER _lock so a write can't race close()
         self._conn = sqlite3.connect(self.path, check_same_thread=False)
         # WAL journal mode (ADR-P2: mandatory) so concurrent cross-process writers/readers over one
         # file-backed $MEMORY_STORE don't block — e.g. MCP recall-path writes alongside the
@@ -195,6 +196,7 @@ class SqliteVectorStore:
         # commit — matching delete()'s hygiene (BACKEND_DURABILITY_AUDIT LOW).
         vector = json.dumps(self._embed_text(item.content, "document"))
         with self._lock:
+            self._raise_if_closed()  # under the lock: a concurrent close() can't null the conn mid-write
             try:
                 self._conn.execute(
                     "INSERT OR REPLACE INTO items (item_id, content, timestamp, relevancy, "
@@ -211,6 +213,7 @@ class SqliteVectorStore:
 
     def get(self, item_id: str) -> Optional[MemoryItem]:
         with self._lock:
+            self._raise_if_closed()
             row = self._conn.execute(
                 f"SELECT {_ITEM_COLS} FROM items WHERE item_id = ?", (item_id,)
             ).fetchone()
@@ -228,6 +231,7 @@ class SqliteVectorStore:
         if not any(q):  # empty / sub-n-gram query -> no signal -> no results (cf. MarkdownStore)
             return []
         with self._lock:  # serialize the connection access; the cosine scan is pure-Python
+            self._raise_if_closed()
             rows = self._conn.execute(f"SELECT {_ITEM_COLS}, vector FROM items").fetchall()
         scored: list = []
         for row in rows:
@@ -242,6 +246,7 @@ class SqliteVectorStore:
 
     def all(self) -> list:
         with self._lock:
+            self._raise_if_closed()
             rows = self._conn.execute(
                 f"SELECT {_ITEM_COLS} FROM items ORDER BY rowid"
             ).fetchall()
@@ -251,6 +256,7 @@ class SqliteVectorStore:
         """Delete the row for ``item_id``; return ``True`` if a row was removed (idempotent). Rolls back
         on failure so a partial change never lands."""
         with self._lock:
+            self._raise_if_closed()
             try:
                 cur = self._conn.execute("DELETE FROM items WHERE item_id = ?", (item_id,))
                 self._conn.commit()
@@ -260,6 +266,13 @@ class SqliteVectorStore:
             return cur.rowcount > 0
 
     # -- helpers -----------------------------------------------------------
+    def _raise_if_closed(self) -> None:
+        """Fail loud if the store is closed. MUST be called while holding ``_lock`` — so a
+        write that passed an un-held check can't then race a concurrent ``close()`` and mutate
+        a closed/null connection. Does NOT take the lock itself (no re-entrancy)."""
+        if self._closed:
+            raise RuntimeError("operation on a closed SqliteVectorStore")
+
     def _row_to_item(self, row) -> MemoryItem:
         return MemoryItem(
             item_id=row["item_id"], content=row["content"], timestamp=row["timestamp"],
@@ -269,8 +282,15 @@ class SqliteVectorStore:
         )
 
     def close(self) -> None:
-        """Close the underlying sqlite connection."""
-        self._conn.close()
+        """Close the underlying sqlite connection. Acquires ``_lock`` so it can't close the
+        connection out from under an in-flight write/search (which hold the same lock), then
+        marks the store closed so a later operation fails loud instead of touching a closed
+        connection. Idempotent. Must NOT call a lock-taking method (no deadlock)."""
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            self._conn.close()
 
     def __enter__(self) -> "SqliteVectorStore":
         return self

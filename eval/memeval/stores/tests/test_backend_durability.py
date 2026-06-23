@@ -74,6 +74,21 @@ def _bundle_held_noop() -> bool:
     return _okf_mod._fcntl is None
 
 
+def _reap(*procs) -> None:  # type: ignore[no-untyped-def]
+    """Guarantee every spawned child is reaped, even on timeout/failure: terminate any that
+    are still alive after a bounded join, then join again so no orphan bleeds into later tests
+    or stalls teardown. Safe to call in a ``finally``."""
+    for p in procs:
+        if p is None:
+            continue
+        try:
+            if p.is_alive():
+                p.terminate()
+            p.join(timeout=10)
+        except (OSError, ValueError):  # already-dead / never-started child
+            pass
+
+
 # --------------------------------------------------------------------------- #
 # Property 1 — Markdown atomic write [HIGH-1]
 # --------------------------------------------------------------------------- #
@@ -262,6 +277,7 @@ class MarkdownRefreshAndLockTests(unittest.TestCase):
         # one complete, parseable canonical doc — never an interleaved/torn file. If spawning
         # is unavailable in this CI, fall back to the controlled-interleaving lock proof below.
         rounds = 25
+        procs: list = []
         try:
             ctx = multiprocessing.get_context("spawn")
             procs = [ctx.Process(target=_mp_writer, args=(self.d, i, rounds)) for i in range(4)]
@@ -273,6 +289,8 @@ class MarkdownRefreshAndLockTests(unittest.TestCase):
                             f"all writer processes must exit cleanly: {[p.exitcode for p in procs]}")
         except (OSError, ValueError, RuntimeError) as exc:  # pragma: no cover - CI sandbox without spawn
             self.skipTest(f"multiprocessing spawn unavailable: {exc}")
+        finally:
+            _reap(*procs)  # never leave a hung writer behind, even on timeout/failure
 
         canonical = Path(self.d) / _doc_relpath(_item("hot", ""))
         self.assertTrue(canonical.exists())
@@ -291,16 +309,20 @@ class MarkdownRefreshAndLockTests(unittest.TestCase):
             self.skipTest("fcntl unavailable (non-POSIX) — advisory lock is a no-op here")
         ctx = multiprocessing.get_context("spawn")
         done = ctx.Event()
-        # Acquire the lock in-process and hold it across the child's attempt.
-        with _bundle_write_lock(Path(self.d)):
-            child = ctx.Process(target=_mp_lock_then_signal, args=(self.d, done))
-            child.start()
-            # The child cannot acquire the held lock; it must NOT signal within this window.
-            blocked = not done.wait(timeout=1.0)
-            self.assertTrue(blocked, "a peer must BLOCK on the held bundle lock (flock serializes)")
-        # Released now -> the child proceeds and signals.
-        self.assertTrue(done.wait(timeout=30), "the peer must proceed once the lock is released")
-        child.join(timeout=30)
+        child = None
+        try:
+            # Acquire the lock in-process and hold it across the child's attempt.
+            with _bundle_write_lock(Path(self.d)):
+                child = ctx.Process(target=_mp_lock_then_signal, args=(self.d, done))
+                child.start()
+                # The child cannot acquire the held lock; it must NOT signal within this window.
+                blocked = not done.wait(timeout=1.0)
+                self.assertTrue(blocked, "a peer must BLOCK on the held bundle lock (flock serializes)")
+            # Released now -> the child proceeds and signals.
+            self.assertTrue(done.wait(timeout=30), "the peer must proceed once the lock is released")
+            child.join(timeout=30)
+        finally:
+            _reap(child)  # reap even if an assertion above fails while the child is blocked
 
 
 # --------------------------------------------------------------------------- #
@@ -421,6 +443,22 @@ class SqliteThreadSafetyTests(unittest.TestCase):
         # All writes landed (no lost-update / interleave corruption).
         self.assertEqual(len(store.all()), 50, "every concurrent write persisted")
         store.close()
+
+    def test_post_close_write_fails_loud_and_close_is_idempotent(self) -> None:
+        # close() takes _lock then marks closed; protocol methods check _closed UNDER _lock, so
+        # a write after close fails loud instead of silently mutating a closed connection.
+        store = SqliteVectorStore(self.path)
+        store.write(_item("a", "before close", ts=1.0))
+        store.close()
+        store.close()  # idempotent — must not raise
+        with self.assertRaises(RuntimeError):
+            store.write(_item("b", "after close must fail loud", ts=2.0))
+        with self.assertRaises(RuntimeError):
+            store.all()
+        # The pre-close write persisted to disk; a fresh store reads exactly it (no phantom 'b').
+        cold = SqliteVectorStore(self.path)
+        self.assertEqual({i.item_id for i in cold.all()}, {"a"})
+        cold.close()
 
 
 # --------------------------------------------------------------------------- #
