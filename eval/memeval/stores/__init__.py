@@ -1,7 +1,7 @@
 """Storage backends — owner: **Brent** (@bgibson1618).
 
 Each backend implements :class:`memeval.protocols.MemoryStore`
-(``write`` / ``get`` / ``search`` / ``all``) so the harness, router, and
+(``write`` / ``get`` / ``search`` / ``all`` / ``delete``) so the harness, router, and
 dreaming worker use them interchangeably. The reference offline implementation
 is :class:`memeval.harness.InMemoryStore`; the real backends here are:
 
@@ -14,7 +14,7 @@ is :class:`memeval.harness.InMemoryStore`; the real backends here are:
 
 Heavy deps are lazy-imported inside the methods that need them, so importing this package stays
 stdlib-only (offline path unaffected). All three backends are **implemented** (``write`` / ``get`` /
-``search`` / ``all``); the paid-path upgrades (real embeddings / ANN, Neo4j) inject behind seams and
+``search`` / ``all`` / ``delete``); the paid-path upgrades (real embeddings / ANN, Neo4j) inject behind seams and
 never touch the default offline path.
 """
 

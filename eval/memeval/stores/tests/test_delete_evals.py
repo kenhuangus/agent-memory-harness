@@ -2,9 +2,9 @@
 
 Owner: Brent. Eval-first: written before the delete mechanism.
 
-Nothing had a delete (the frozen `MemoryStore` protocol is write/get/search/all). This adds a
-**solo-additive, duck-typed** delete (NOT a `[CONTRACT]` change — putting `delete` on the protocol is the
-follow-up): each backend removes the item (durably, where it has a file), and `Router`/`RouterStore` fan
+`delete` is part of the frozen `MemoryStore` protocol (write/get/search/all/**delete**) — it shipped
+solo-additive (duck-typed) in #93 and was promoted to the contract here. Each backend removes the item
+(durably, where it has a file), and `Router`/`RouterStore` fan
 delete out to EVERY registered backend — delete is **unconditional/complete** (base_all writes an item to
 all 3, so delete must clear all 3), and **idempotent** (a missing id is a no-op).
 

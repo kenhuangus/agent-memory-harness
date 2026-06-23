@@ -136,6 +136,9 @@ class _RecordingStore:
     def all(self) -> list:
         return []
 
+    def delete(self, item_id: str) -> bool:  # records nothing retrievable -> nothing to delete
+        return False
+
 
 @contextlib.contextmanager
 def _router_store(tmp: str, **config_kwargs):

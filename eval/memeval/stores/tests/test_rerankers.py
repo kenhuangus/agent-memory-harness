@@ -67,6 +67,11 @@ class _FixedStore:
     def all(self):
         return list(self._items)
 
+    def delete(self, item_id: str) -> bool:
+        before = len(self._items)
+        self._items = [m for m in self._items if m.item_id != item_id]
+        return len(self._items) < before
+
 
 class _FakeResponse:
     def __init__(self, body: bytes) -> None:

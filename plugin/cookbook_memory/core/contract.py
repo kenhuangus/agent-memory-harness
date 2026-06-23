@@ -33,7 +33,7 @@ def build_store(store_path: str) -> MemoryStore:
 
     This is the seam's whole job: build every backend, pick a routing **profile**, wire the
     matching classifier / embedder / cascade / fusion, and hand back ONE object satisfying the
-    :class:`~memeval.protocols.MemoryStore` four-method protocol (a :class:`RouterStore` over a
+    :class:`~memeval.protocols.MemoryStore` five-method protocol (a :class:`RouterStore` over a
     configured :class:`Router`). The plugin treats the result as a black box -- it never sees a
     profile name, an embedder, or a backend. Both paths are live through the one object: a routed
     read (``search`` dispatches per query, transparently using cascade/fusion when the profile

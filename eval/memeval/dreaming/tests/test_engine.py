@@ -316,6 +316,9 @@ def test_partial_store_write_failure_does_not_advance_criterion_84(
         def all(self) -> list[MemoryItem]:
             return []
 
+        def delete(self, item_id: str) -> bool:
+            return False
+
     store = FailingStore()
     client = StubClient(
         text='{"memories": [{"content":"a"},{"content":"b"}]}'
@@ -593,6 +596,9 @@ def test_store_write_exception_caught_and_emitted_criterion_94(
         def all(self) -> list[MemoryItem]:
             return []
 
+        def delete(self, item_id: str) -> bool:
+            return False
+
     result = daydream(
         session_id=session_id,
         log_path=log_path,
@@ -790,6 +796,9 @@ def test_lock_released_on_every_exception_path_criterion_99(
 
             def all(self) -> list[MemoryItem]:
                 return []
+
+            def delete(self, item_id: str) -> bool:
+                return False
 
         store: Any = S()
     else:
@@ -1423,6 +1432,9 @@ def test_keyboard_interrupt_propagates_with_lock_released_and_no_cursor_advance_
 
         def all(self) -> list[MemoryItem]:
             return []
+
+        def delete(self, item_id: str) -> bool:
+            return False
 
     with pytest.raises(KeyboardInterrupt):
         daydream(

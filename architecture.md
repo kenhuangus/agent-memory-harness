@@ -103,7 +103,7 @@ The single most important section — one owner per path (mirrored in
 ## 3. Frozen public interfaces (the contract)
 Defined in `eval/memeval/protocols.py` and `schema.py`:
 
-- **`MemoryStore`** — `write(item)`, `get(id)`, `search(query, k) -> list[RetrievedItem]`, `all()`.
+- **`MemoryStore`** — `write(item)`, `get(id)`, `search(query, k) -> list[RetrievedItem]`, `all()`, `delete(id) -> bool`.
 - **`ModelAdapter`** — `generate(prompt, **) -> (text, tokens_in, tokens_out)` plus `name`, `price_in`, `price_out`.
 - **`Loader`** — `load(path_or_id, **) -> list[Task]`.
 - **Data model** — `Task`, `Session`, `MemoryItem`, `RetrievedItem`, `TrajectoryStep`, `Trajectory`, `ModelConfig`, `Metrics`, `RunResult`, `Benchmark`, `TaskKind`.

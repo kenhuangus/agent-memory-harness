@@ -68,6 +68,11 @@ class _CannedStore:
     def write(self, item):  # pragma: no cover
         pass
 
+    def delete(self, item_id: str) -> bool:
+        before = len(self._ranked)
+        self._ranked = [t for t in self._ranked if t[0] != item_id]
+        return len(self._ranked) < before
+
 
 def _fusion(stores: dict, **cfg) -> _FusionRetriever:
     return _FusionRetriever(stores, Consult2Config(enabled=True, **cfg))
