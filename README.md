@@ -99,8 +99,14 @@ Run the **5-stage SWE-Bench-CL pipeline** (base → plugin/blank → plugin/accu
 dream → plugin/dreamed, with a base→final summary) from the repo root:
 
 ```bash
+# via make
 make pipeline                                    # interactive
 make pipeline ARGS="--yes --sequence pytest-dev_pytest_sequence --limit 3 --budget-usd 5"
+
+# or run the command directly (no make, no ARGS=) — uv finds ./.venv, or activate it first
+uv run memeval-pipeline                          # interactive
+uv run memeval-pipeline --yes --sequence pytest-dev_pytest_sequence --limit 3 --budget-usd 5
+memeval-pipeline --help                          # all flags
 ```
 
 For the individual `memeval-bench` commands below, prefix with `uv run` (or activate `.venv`):
