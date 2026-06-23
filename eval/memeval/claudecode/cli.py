@@ -191,7 +191,11 @@ def run_claude_primed(
         # are state/timing dependent (a re-run of the SAME task succeeds), so a
         # bounded retry of the whole primed turn clears them without masking a real
         # model error (which DOES emit a result event -> not retried here).
-        if attempt < 2 and (diag.is_mcp_config_miss or diag.is_startup_abort):
+        if attempt < 2 and (
+            diag.is_mcp_config_miss
+            or diag.is_startup_abort
+            or diag.is_connection_closed_mid_response
+        ):
             continue
         raise RuntimeError(f"claude (primed) exited {proc.returncode}: {diag.message}")
     return _parse_stream_json(proc.stdout)
@@ -212,6 +216,7 @@ class _PrimedFailure:
     message: str
     is_mcp_config_miss: bool
     is_startup_abort: bool
+    is_connection_closed_mid_response: bool
 
 
 def _diagnose_primed_failure(stdout: Optional[str], stderr: Optional[str]) -> _PrimedFailure:
@@ -220,6 +225,7 @@ def _diagnose_primed_failure(stdout: Optional[str], stderr: Optional[str]) -> _P
     err = (stderr or "").strip()
     combined = "\n".join(p for p in (out, err) if p)
     is_mcp = "MCP config" in combined
+    is_closed_mid_response = "Connection closed mid-response" in combined
     # A startup abort: stream-json began (a `hook_started`/`system` event was emitted)
     # but NO `result` event ever landed — claude exited during startup, before the real
     # turn produced an answer. A genuine model/tool error emits a result event with
@@ -242,8 +248,12 @@ def _diagnose_primed_failure(stdout: Optional[str], stderr: Optional[str]) -> _P
         message = out[-400:]
     else:
         message = "(no output on stdout or stderr)"
-    return _PrimedFailure(message=message, is_mcp_config_miss=is_mcp,
-                          is_startup_abort=is_startup_abort)
+    return _PrimedFailure(
+        message=message,
+        is_mcp_config_miss=is_mcp,
+        is_startup_abort=is_startup_abort,
+        is_connection_closed_mid_response=is_closed_mid_response,
+    )
 
 
 def _wsl_env_prefix(strip_api_key: bool,

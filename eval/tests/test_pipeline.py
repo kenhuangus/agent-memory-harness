@@ -142,6 +142,35 @@ def test_pipeline_results_path_is_version_scoped(monkeypatch) -> None:
         assert list(vd.glob("swe_bench_cl-*.json"))
 
 
+def test_interactive_config_can_skip_base(monkeypatch) -> None:
+    answers = iter(["", "", "", "", "", "y"])
+    monkeypatch.setattr(P, "_interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
+    args = P._build_parser().parse_args([])
+
+    cfg = P._resolve_config(args)
+
+    assert cfg["stages"] == ["plugin-blank", "plugin-accum", "plugin-dreamed"]
+
+
+def test_interactive_config_stages_override_skip_prompt(monkeypatch) -> None:
+    prompts: list[str] = []
+    answers = iter(["", "", "", "", ""])
+    monkeypatch.setattr(P, "_interactive", lambda: True)
+
+    def fake_input(prompt: str) -> str:
+        prompts.append(prompt)
+        return next(answers)
+
+    monkeypatch.setattr("builtins.input", fake_input)
+    args = P._build_parser().parse_args(["--stages", "plugin-blank"])
+
+    cfg = P._resolve_config(args)
+
+    assert cfg["stages"] == ["plugin-blank"]
+    assert not any("skip stage 1" in p for p in prompts)
+
+
 def test_pipeline_fails_closed_when_sandbox_not_logged_in(monkeypatch) -> None:
     # The pipeline MUST abort before any stage runs if the sandbox isn't authenticated —
     # every stage uses the isolated sandbox, never the host, so a logged-out sandbox can't

@@ -163,6 +163,7 @@ def _resolve_config(args: argparse.Namespace) -> dict:
     model = args.model
     grader = args.grader
     budget = args.budget_usd
+    skip_base = bool(args.skip_base)
 
     if not args.yes and _interactive():
         print("\nConfigure the 5-stage SWE-Bench-CL pipeline — press Enter to accept each default.\n")
@@ -171,6 +172,10 @@ def _resolve_config(args: argparse.Namespace) -> dict:
         model = _ask("model", model)
         grader = _ask("grader", grader, choices=["local", "overlap", "none"])
         budget = _ask("budget (USD, 0 = no cap)", budget, cast=float)
+        if not args.stages:
+            skip_default = "y" if skip_base else "n"
+            skip_base = _ask("skip stage 1 base run?", skip_default,
+                             choices=["y", "n"]).lower() in ("y", "yes")
         print()
 
     if seq not in _SEQUENCES:
@@ -185,7 +190,7 @@ def _resolve_config(args: argparse.Namespace) -> dict:
             raise SystemExit(f"unknown --stages {bad}; choose from {list(_EVAL_STAGES)}")
         stages = [s for s in _EVAL_STAGES if s in requested]  # canonical order, deduped
     else:
-        stages = [s for s in _EVAL_STAGES if not (args.skip_base and s == "base")]
+        stages = [s for s in _EVAL_STAGES if not (skip_base and s == "base")]
 
     return {
         "sequence": seq,
