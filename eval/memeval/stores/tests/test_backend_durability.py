@@ -30,6 +30,7 @@ Stdlib-only; run from ``eval/``:
 
 from __future__ import annotations
 
+import multiprocessing
 import os
 import sqlite3
 import tempfile
@@ -37,7 +38,7 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from memeval.okf import OKFStore, _doc_relpath, split_doc
+from memeval.okf import OKFStore, _bundle_write_lock, _doc_relpath, split_doc
 from memeval.schema import MemoryItem
 from memeval.stores.graph_store import GraphStore
 from memeval.stores.markdown_store import MarkdownStore
@@ -46,6 +47,31 @@ from memeval.stores.sqlite_store import SqliteVectorStore
 
 def _item(item_id: str, content: str, *, ts: float = 0.0, tokens: int = 0) -> MemoryItem:
     return MemoryItem(item_id=item_id, content=content, timestamp=ts, tokens=tokens)
+
+
+def _mp_writer(bundle_dir: str, idx: int, rounds: int) -> None:
+    """Module-level (picklable) worker: a SEPARATE OS process writes the same hot id many
+    times to the shared bundle. Used to genuinely exercise the cross-PROCESS flock — threads
+    + atomic-replace alone prove parseability without proving the lock serializes peers."""
+    s = OKFStore(bundle_dir)
+    for n in range(rounds):
+        s.write(_item("hot", f"process {idx} round {n} " + "x" * 300, ts=float(n)))
+
+
+def _mp_lock_then_signal(bundle_dir: str, done) -> None:  # type: ignore[no-untyped-def]
+    """Module-level (picklable) worker: acquire the bundle lock then set ``done``.
+
+    If the parent holds the lock, ``flock(LOCK_EX)`` blocks here until release, so ``done``
+    stays unset — that is what proves serialization. Once the parent releases, this proceeds."""
+    with _bundle_write_lock(Path(bundle_dir)):
+        done.set()
+
+
+def _bundle_held_noop() -> bool:
+    """True when the bundle lock is a no-op (fcntl unavailable, non-POSIX) — the
+    serialization proof can't run there."""
+    from memeval import okf as _okf_mod
+    return _okf_mod._fcntl is None
 
 
 # --------------------------------------------------------------------------- #
@@ -143,43 +169,106 @@ class MarkdownRefreshAndLockTests(unittest.TestCase):
     def tearDown(self) -> None:
         self._tmp.cleanup()
 
-    def test_peer_write_visible_after_refresh(self) -> None:
+    def test_okf_auto_refresh_on_read_without_explicit_reload(self) -> None:
+        # AUTO-refresh: A is the long-lived reader (MCP daemon), constructed BEFORE the peer
+        # write. A NEVER calls reload(). A peer instance B commits a new concept; A's plain
+        # get()/search()/all() must surface it via _maybe_refresh (the generation seam) —
+        # RED on the old mtime-after-lock code, which would (a) tie mtimes within a tick or
+        # (b) stale-ack via the post-lock sample and never reload.
+        a = OKFStore(self.d)             # frozen-at-construction reader; never reload()'d
+        b = OKFStore(self.d)             # the peer writer (a separate instance == a separate process model)
+        b.write(_item("peerdoc", "peer coined a brand new concept zylophistic", ts=1.0))
+        self.assertIsNotNone(a.get("peerdoc"),
+                             "get() must auto-refresh to a peer's committed write (no explicit reload)")
+        self.assertTrue(any(h.item_id == "peerdoc" for h in a.search("zylophistic", k=5)),
+                        "search() must auto-refresh + surface a peer's committed write")
+        self.assertIn("peerdoc", {i.item_id for i in a.all()},
+                      "all() must auto-refresh to include a peer's committed write")
+
+    def test_okf_coherence_survives_coarse_mtime_collision(self) -> None:
+        # The granularity-fragility half of gate finding #1, reproduced deterministically: when
+        # A's own write and a peer B's write fall in the SAME filesystem mtime tick (coarse
+        # st_mtime — a real case on many filesystems), an mtime-based staleness signal does not
+        # change between them, so A records the same mtime and NEVER reloads B's commit (permanent
+        # stale-serve). We simulate the coarse tick by pinning _root_mtime to a constant; a
+        # GENERATION counter is immune (it advances per write regardless of mtime), so A still
+        # detects B. RED on the old mtime code, GREEN on the generation seam.
+        #
+        # The patch targets the OLD code's signal (_root_mtime). The NEW code does not consult
+        # _root_mtime at all (it reads .okf-generation), so the patch is inert there — exactly
+        # what makes this a clean old/new distinguisher without deadlocking the in-process lock.
         a = OKFStore(self.d)
         b = OKFStore(self.d)
-        a.write(_item("seed", "seed content", ts=1.0))
-        # B is the long-lived reader (e.g. the MCP daemon); A is the peer writer
-        # (e.g. the Daydreamer). B was constructed BEFORE A's peer write below.
-        b_fresh = OKFStore(self.d)  # B sees seed at its own construction
-        a.write(_item("peer", "peer committed this concept", ts=2.0))
-        # Without a refresh seam, b_fresh is frozen at construction and never sees `peer`.
-        b_fresh.reload()
-        self.assertIsNotNone(b_fresh.get("peer"),
-                             "a peer's committed write must be visible after reload()")
-        self.assertTrue(any(h.item_id == "peer" for h in b_fresh.search("peer committed", k=5)),
-                        "refresh must update the recall path, not just get()")
+        a.write(_item("a_own", "a writes its own concept", ts=1.0))
+        # Pin the (old) mtime signal so a peer write cannot advance it — the same-tick collision.
+        if hasattr(a, "_root_mtime"):
+            a._root_mtime = lambda: 1234.0  # type: ignore[assignment,method-assign]
+            a._loaded_mtime = 1234.0        # type: ignore[attr-defined]
+        b.write(_item("b_peer", "b commits in the same mtime tick", ts=2.0))
+        # A did NOT reload() and did NOT write again; a plain read must still catch the peer commit.
+        self.assertIsNotNone(a.get("b_peer"),
+                             "a peer commit must be detected even when mtime cannot distinguish it")
+        self.assertIsNotNone(a.get("a_own"), "our own write is not lost by the refresh")
 
-    def test_concurrent_same_id_writes_do_not_corrupt_bundle(self) -> None:
-        # Two store instances over one dir hammer the SAME id; the flock serializes the
-        # tmp-write+replace so the canonical doc is always a complete, parseable doc
-        # (never an interleaved/torn file) and a fresh autoload recovers exactly one good copy.
-        stores = [OKFStore(self.d) for _ in range(2)]
+    def test_markdown_peer_write_searchable_without_explicit_reload(self) -> None:
+        # EXERCISE MarkdownStore (its inverted index must refresh in lockstep with OKF). A
+        # is the long-lived reader; B (peer) adds a doc with a COINED token absent from A's
+        # postings. A.search(token) must find it with NO explicit reload — RED on the old
+        # code where candidate_ids came from stale _postings before any refresh.
+        a = MarkdownStore(self.d)
+        b = MarkdownStore(self.d)
+        a.write(_item("seed", "seed alpha beta", ts=1.0))   # A has postings for seed's tokens only
+        b.write(_item("peerm", "qwizzlefang unique peer token", ts=2.0))  # coined token not in A's postings
+        hits = a.search("qwizzlefang", k=5)
+        self.assertTrue(any(h.item_id == "peerm" for h in hits),
+                        "MarkdownStore.search must rebuild postings for a peer's new doc (no reload)")
+        self.assertIsNotNone(a.get("peerm"), "MarkdownStore.get must auto-refresh to the peer doc")
 
-        def writer(idx: int) -> None:
-            s = stores[idx % len(stores)]
-            for n in range(20):
-                s.write(_item("hot", f"writer {idx} round {n} " + "x" * 200, ts=float(n)))
+    def test_cross_process_flock_serializes_concurrent_writers(self) -> None:
+        # Genuinely cross-PROCESS: separate OS processes (multiprocessing) hammer the SAME id.
+        # The bundle flock must serialize their tmp-write+replace so a cold reload finds exactly
+        # one complete, parseable canonical doc — never an interleaved/torn file. If spawning
+        # is unavailable in this CI, fall back to the controlled-interleaving lock proof below.
+        rounds = 25
+        try:
+            ctx = multiprocessing.get_context("spawn")
+            procs = [ctx.Process(target=_mp_writer, args=(self.d, i, rounds)) for i in range(4)]
+            for p in procs:
+                p.start()
+            for p in procs:
+                p.join(timeout=60)
+            self.assertTrue(all(p.exitcode == 0 for p in procs),
+                            f"all writer processes must exit cleanly: {[p.exitcode for p in procs]}")
+        except (OSError, ValueError, RuntimeError) as exc:  # pragma: no cover - CI sandbox without spawn
+            self.skipTest(f"multiprocessing spawn unavailable: {exc}")
 
-        with ThreadPoolExecutor(max_workers=4) as ex:
-            list(ex.map(writer, range(4)))
-
-        # A cold reload must find exactly one good, fully-parseable canonical doc for `hot`.
         canonical = Path(self.d) / _doc_relpath(_item("hot", ""))
         self.assertTrue(canonical.exists())
-        fm, body = split_doc(canonical.read_text(encoding="utf-8"))
+        fm, _ = split_doc(canonical.read_text(encoding="utf-8"))
         self.assertEqual(str(fm.get("x_item_id")), "hot",
-                         "the canonical doc must be a complete, non-torn doc after concurrent writes")
+                         "the canonical doc must be a complete, non-torn doc after concurrent processes")
         s2 = OKFStore(self.d)
-        self.assertIsNotNone(s2.get("hot"), "concurrent same-id writes leave a recoverable doc")
+        self.assertIsNotNone(s2.get("hot"), "concurrent cross-process writes leave a recoverable doc")
+
+    def test_flock_actually_serializes_held_lock_blocks_peer(self) -> None:
+        # Direct proof the flock serializes (not just that atomic-replace yields parseable
+        # files): while THIS process holds the bundle lock, a child process trying to acquire
+        # it must BLOCK until we release — it cannot complete its write meanwhile. A no-op
+        # lock (the non-POSIX fallback, or no lock at all) would let the child finish immediately.
+        if _bundle_held_noop():
+            self.skipTest("fcntl unavailable (non-POSIX) — advisory lock is a no-op here")
+        ctx = multiprocessing.get_context("spawn")
+        done = ctx.Event()
+        # Acquire the lock in-process and hold it across the child's attempt.
+        with _bundle_write_lock(Path(self.d)):
+            child = ctx.Process(target=_mp_lock_then_signal, args=(self.d, done))
+            child.start()
+            # The child cannot acquire the held lock; it must NOT signal within this window.
+            blocked = not done.wait(timeout=1.0)
+            self.assertTrue(blocked, "a peer must BLOCK on the held bundle lock (flock serializes)")
+        # Released now -> the child proceeds and signals.
+        self.assertTrue(done.wait(timeout=30), "the peer must proceed once the lock is released")
+        child.join(timeout=30)
 
 
 # --------------------------------------------------------------------------- #

@@ -483,41 +483,53 @@ class OKFStore:
         self.root = Path(path)
         self._mem = InMemoryStore()
         self._autoload = autoload
-        # mtime of the bundle root at last load — the cheap refresh trigger. A peer adding
-        # a new concept doc (the Daydreamer's dominant write) bumps the root/subdir tree;
-        # the read seam reloads when it grows stale. Content-only edits to an existing file
-        # are picked up by an explicit reload(). -1.0 == never loaded.
-        self._loaded_mtime = -1.0
+        # Persisted monotonic GENERATION counter (the cross-process coherence seam). A
+        # generation file ($BUNDLE/.okf-generation) is bumped UNDER the bundle lock on every
+        # write/delete by ANY process. Each instance records the generation it has actually
+        # loaded; a read whose on-disk generation EXCEEDS the loaded one reloads. This is
+        # immune to mtime granularity (two writes in one tick get distinct integers) and to
+        # the mtime-after-lock race (the loaded generation is set under the lock, so an
+        # instance never "acknowledges" a peer commit it did not load). 0 == never loaded.
+        self._loaded_generation = 0
         if autoload and self.root.exists():
             self._load_from_disk()
 
-    # -- refresh seam ------------------------------------------------------
-    def _root_mtime(self) -> float:
-        """Cheap staleness signal: the max mtime over the bundle root + its concept dirs.
+    # -- generation seam (cross-process coherence) -------------------------
+    @property
+    def _generation_path(self) -> Path:
+        return self.root / ".okf-generation"
 
-        Catches a peer ADDING a concept doc (new file/dir -> the containing dir's mtime
-        bumps) without an O(N) per-file stat. Returns -1.0 when the bundle dir is absent.
-        """
-        if not self.root.exists():
-            return -1.0
+    def _read_generation(self) -> int:
+        """Read the on-disk generation counter (cheap). 0 if absent/unreadable."""
         try:
-            mt = self.root.stat().st_mtime
-            for sub in self.root.iterdir():
-                if sub.is_dir():
-                    mt = max(mt, sub.stat().st_mtime)
-            return mt
-        except OSError:
-            return -1.0
+            return int(self._generation_path.read_text(encoding="utf-8").strip() or "0")
+        except (OSError, ValueError):
+            return 0
+
+    def _bump_generation(self) -> int:
+        """Increment + persist the generation counter and return the new value.
+
+        MUST be called while holding the bundle lock (callers do) so the read-modify-write
+        is serialized across processes — two concurrent writers can't collide on the same
+        next value. Atomic-write so a crash never leaves a torn counter."""
+        nxt = self._read_generation() + 1
+        _write_text_atomic(self._generation_path, str(nxt))
+        return nxt
 
     def _load_from_disk(self) -> None:
-        """Rebuild the in-memory mirror from the on-disk bundle (a cold autoload)."""
+        """Rebuild the in-memory mirror from the on-disk bundle (a cold autoload).
+
+        Snapshots the generation BEFORE reading the docs so a concurrent peer write that
+        lands mid-read advances the counter past our snapshot and the NEXT refresh reloads
+        again (never records a generation newer than the corpus we actually read)."""
         from .harness import InMemoryStore
+        gen = self._read_generation()
         mem = InMemoryStore()
         if self.root.exists():
             for it in import_bundle(self.root):
                 mem.write(it)
         self._mem = mem
-        self._loaded_mtime = self._root_mtime()
+        self._loaded_generation = gen
 
     def reload(self) -> None:
         """Explicitly re-read the bundle from disk so a long-lived reader (e.g. the MCP
@@ -526,17 +538,20 @@ class OKFStore:
         restart. Idempotent; safe to call before any read."""
         self._load_from_disk()
 
-    def _maybe_refresh(self) -> None:
-        """Reload if the bundle grew stale since the last load (a peer added a doc).
+    def _maybe_refresh(self) -> bool:
+        """Reload if a peer advanced the generation past what this instance loaded.
 
-        Single-instance behavior is unchanged: this instance's own writes update both the
-        RAM mirror AND ``_loaded_mtime`` in lockstep, so a self-write never triggers a
-        reload and reads stay byte-equivalent. Only a *peer* process's new file makes the
-        recorded mtime stale and forces a refresh."""
+        Returns ``True`` iff a reload happened (so a caller — e.g. MarkdownStore — can
+        rebuild a derived index in lockstep). Single-instance behavior is unchanged: this
+        instance's own write/delete bumps the generation AND records it under the lock, so a
+        self-write never triggers a reload and reads stay byte-equivalent. Only a *peer*
+        process's commit (a higher generation) forces a refresh."""
         if not self._autoload:
-            return
-        if self._root_mtime() != self._loaded_mtime:
+            return False
+        if self._read_generation() > self._loaded_generation:
             self._load_from_disk()
+            return True
+        return False
 
     # -- MemoryStore protocol ----------------------------------------------
     def write(self, item: MemoryItem) -> None:
@@ -546,13 +561,14 @@ class OKFStore:
 
         ``_mem.write`` runs FIRST (it populates ``item.tokens`` in place when zero) so the
         rendered doc carries ``x_tokens`` — byte-equivalent to the pre-hardening single-process
-        path. The on-disk persist is then the only step the flock + atomic-write guard."""
+        path. The generation is bumped AND recorded WHILE HOLDING THE LOCK, so this instance
+        only ever acknowledges generations it has actually loaded (a peer's later commit gets
+        a strictly higher generation and is detected on the next refresh)."""
         self._mem.write(item)  # populates item.tokens in place; the doc render below captures it
         rel = _doc_relpath(item)
         with _bundle_write_lock(self.root):
             _write_text_atomic(self.root / rel, memory_item_to_doc(item))
-        # keep the staleness signal in lockstep with our own write (no self-triggered reload).
-        self._loaded_mtime = self._root_mtime()
+            self._loaded_generation = self._bump_generation()  # under the lock -> no stale-ack race
 
     def get(self, item_id: str) -> Optional[MemoryItem]:
         self._maybe_refresh()
@@ -596,6 +612,7 @@ class OKFStore:
                         continue
                     if self._doc_is_item(path, item_id):
                         path.unlink(missing_ok=True)
+            self._loaded_generation = self._bump_generation()  # under the lock (cf. write())
         return self._mem.delete(item_id)
 
     def _doc_is_item(self, path: Path, item_id: str) -> bool:
@@ -621,7 +638,8 @@ class OKFStore:
     def flush_indexes(self) -> dict[str, Any]:
         """(Re)write the bundle's index.md/log.md from the current items."""
         result = export_bundle(self._mem.all(), self.root)
-        self._loaded_mtime = self._root_mtime()
+        with _bundle_write_lock(self.root):
+            self._loaded_generation = self._bump_generation()
         return result
 
 
