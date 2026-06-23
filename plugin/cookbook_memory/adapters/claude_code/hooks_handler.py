@@ -148,6 +148,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     """
     argv = sys.argv[1:] if argv is None else argv
     event_name = argv[0] if argv else "unknown"
+    # Load the repo-root .env so the daydream subprocess this hook fires inherits
+    # OPENROUTER_API_KEY / DREAM_* (it filters env to _ALLOWED_ENV_KEYS) and can actually
+    # extract memories. Fail-open: env loading must never break the hook.
+    try:
+        from memeval.dotenv_loader import load_root_dotenv
+        load_root_dotenv()
+    except Exception:  # noqa: BLE001
+        pass
     try:
         raw = sys.stdin.read()
         payload = json.loads(raw) if raw.strip() else {}
