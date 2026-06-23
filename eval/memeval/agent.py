@@ -297,6 +297,7 @@ def run_agent(
     grader: Optional[Callable[[Task, str], Optional[bool]]] = None,
     config: Optional[ModelConfig] = None,
     group_aware: bool = False,
+    sequence: Optional[str] = None,
     workers: int = 1,
     progress_cb: Optional[Callable[["RunResult"], None]] = None,
     k: int = 5,
@@ -328,6 +329,20 @@ def run_agent(
     started_at = clock()
     loader = get_loader(bench)
     all_tasks = loader.load(path_or_id, limit=None)
+
+    # Named-sequence filter: restrict to ONE group_id (e.g. a SWE-Bench-CL sequence),
+    # ordered by Task.order, so the pipeline runs "X tasks of sequence Y" deterministically
+    # (the shared substrate no longer records which sequence a run saw -- the caller does).
+    if sequence is not None:
+        all_tasks = sorted(
+            (t for t in all_tasks if str(t.group_id or "") == sequence),
+            key=lambda t: int(t.order),
+        )
+        if not all_tasks:
+            raise ValueError(
+                f"no tasks for sequence {sequence!r} in {bench.value}; "
+                f"check the --sequence id"
+            )
     total_available = len(all_tasks)
 
     tasks = all_tasks
