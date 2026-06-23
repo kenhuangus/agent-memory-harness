@@ -159,6 +159,34 @@ def test_interactive_config_can_skip_base(monkeypatch) -> None:
     assert cfg["stages"] == ["plugin-blank", "plugin-accum", "plugin-dreamed"]
 
 
+def test_pipeline_grader_defaults_to_auto() -> None:
+    args = P._build_parser().parse_args([])
+    cfg = P._resolve_config(args)
+    assert cfg["grader"] == "auto"
+
+
+def test_interactive_config_respects_selected_grader(monkeypatch) -> None:
+    answers = iter(["", "", "", "local", "", "n"])
+    monkeypatch.setattr(P, "_interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
+    args = P._build_parser().parse_args([])
+
+    cfg = P._resolve_config(args)
+
+    assert cfg["grader"] == "local"
+
+
+def test_interactive_config_accepts_auto_grader(monkeypatch) -> None:
+    answers = iter(["", "", "", "auto", "", "n"])
+    monkeypatch.setattr(P, "_interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
+    args = P._build_parser().parse_args(["--grader", "none"])
+
+    cfg = P._resolve_config(args)
+
+    assert cfg["grader"] == "auto"
+
+
 def test_interactive_config_stages_override_skip_prompt(monkeypatch) -> None:
     prompts: list[str] = []
     answers = iter(["", "", "", "", ""])
