@@ -7,8 +7,8 @@ whether an accumulating + dream-consolidated memory makes the agent get better o
   1. base          -- mode=off, no plugin (the baseline)
   2. plugin-blank   -- plugin-real, empty shared memory substrate
   3. plugin-accum   -- plugin-real, the SAME substrate (now holding stage-2's memory)
-  4. dream          -- the plugin's own ``daydream-cli dream`` over the substrate
-  5. plugin-dreamed -- plugin-real, the SAME substrate after the dream pass (final)
+  4. dream          -- NO-OP placeholder (whole-store consolidation not implemented yet)
+  5. plugin-dreamed -- plugin-real, the SAME substrate (final; == stage 3 until dream lands)
 
 Memory is ONE shared substrate per pipeline VERSION at ``results/v{version}/_memory/``
 (ADR-eval-003): the harness only ensures that directory exists and points
