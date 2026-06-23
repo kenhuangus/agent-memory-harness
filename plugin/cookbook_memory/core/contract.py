@@ -91,10 +91,13 @@ def build_store(store_path: str) -> MemoryStore:
         vectors = SqliteVectorStore(db_path)
         config = fusion_profile() if profile == "fusion" else speed_profile()
 
+    # All three backends persist under the store root so the graph (typed OKF links) survives a
+    # process exit like the vector and markdown layers do -- without a path, GraphStore is RAM-only
+    # and evaporates each turn, contributing nothing to a memory that accumulates across runs.
     backends: dict[str, MemoryStore] = {
         "vectors": vectors,
         "markdown": MarkdownStore(root / "markdown"),
-        "graph": GraphStore(),
+        "graph": GraphStore(path=str(root / "graph.db")),
     }
     return RouterStore(Router.with_config(backends, config))
 
