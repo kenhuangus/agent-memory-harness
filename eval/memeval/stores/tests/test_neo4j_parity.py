@@ -93,9 +93,15 @@ CORPUS = (
 # FakeBoltDriver / FakeSession / FakeTx — a stdlib stand-in for the neo4j driver.
 #
 # It interprets OUR known Cypher shapes by substring (NOT a general Cypher engine):
-#   * a node MERGE+`SET n +=`        -> upsert self.nodes[item_id] = props
-#   * a relationship MERGE `[r:REL`  -> record only (Phase-A reads rebuild edges from okf_links)
+#   * a node MERGE+`SET n +=`        -> ON CREATE: new id gets props + $seq; existing id merges props,
+#                                       PRESERVES its seq (a rewrite must not reorder all())
+#   * a relationship MERGE `[r:REL`  -> FAITHFUL endpoint-creation: a MERGE on an ABSENT :Memory endpoint
+#                                       CREATES it as a bare placeholder (no props/seq) — real Neo4j does
+#                                       this, so a reintroduced node-creating rel write surfaces a visible
+#                                       placeholder and FAILS the no-placeholder/parity guards. Phase A no
+#                                       longer emits this (dormant), but it is modeled honestly.
 #   * a `MATCH (n:Memory)` read       -> yield a record per node, honoring the $as_of and single-id filters
+#   * a max(n.seq) read               -> the highest seq (constructor seq continuation), -1 when empty
 #   * a `DETACH DELETE`               -> pop the id, yield the deleted count
 #   * a constraint/index call         -> no-op
 # Every (cypher, merged_params) is appended to self.calls so tests can assert the wire shape.
@@ -165,8 +171,19 @@ class FakeTx:
                 nodes[iid] = created
             return _FakeResult([])
 
-        # Typed relationship MERGE — record only; Phase-A reads rebuild edges from okf_links on the node.
+        # Typed relationship MERGE — `MERGE (a:Memory {item_id:$src}) MERGE (b:Memory {item_id:$tgt})
+        # MERGE (a)-[r:REL …]`. FAITHFUL Neo4j semantics: a `MERGE (x:Memory {item_id:…})` on a node that
+        # does NOT exist CREATES it — as a BARE placeholder (no props, no seq). Phase A no longer emits this
+        # (the rel-write loop was removed for the Codex R1 placeholder-node bug), so this branch is dormant.
+        # But it is modeled HONESTLY: if a node-creating rel write were reintroduced, a forward-reference
+        # target would materialize a placeholder here and the parity / no-placeholder tests would FAIL —
+        # which is exactly the regression guard. (We don't store the [:REL] edge itself; Phase-A reads never
+        # read it, and a Phase-B fake would model the relationship table separately.)
         if "[r:REL" in cypher:
+            for key in ("src", "tgt"):
+                endpoint = params.get(key)
+                if endpoint is not None and endpoint not in nodes:
+                    nodes[endpoint] = {"item_id": endpoint}  # bare placeholder — no props, no seq
             return _FakeResult([])
 
         # Read: a `MATCH (n:Memory …) … RETURN n`. The label may be followed by `)` (all/search) or an
@@ -585,10 +602,12 @@ class ConstructorRobustnessTests(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# 7. Cypher-shape assertions — the wire shape is the real Neo4j graph (Phase-B substrate)
+# 7. Cypher-shape assertions — Phase A persists :Memory NODES only (no native [:REL]; that is Phase B)
 # --------------------------------------------------------------------------- #
 class CypherShapeTests(unittest.TestCase):
-    def test_write_emits_node_merge_and_typed_rel_merge(self) -> None:
+    def test_write_emits_node_merge_and_no_rel_merge(self) -> None:
+        # Phase A writes the NODE only — NO native [:REL] relationships (dropped for the Codex R1
+        # placeholder-node bug). Edges live in okf_links inside the node props (the SSOT reads rebuild from).
         Neo4jGraphStore = _Neo4jGraphStore()
         drv = FakeBoltDriver()
         store = Neo4jGraphStore(driver=drv)
@@ -596,18 +615,24 @@ class CypherShapeTests(unittest.TestCase):
         store.write(_item("rd-hub", "Hub coordinates flows.",
                           [["depends on", "rd-alpha"], ["conflicts with", "rd-beta"]], ts=1.0))
         cyphers = [c for (c, _p) in drv.calls]
-        self.assertTrue(any("MERGE" in c and "SET n +=" in c for c in cyphers),
-                        "a node MERGE … SET n += per write")
-        rel_calls = [(c, p) for (c, p) in drv.calls if "[r:REL" in c]
-        self.assertEqual(len(rel_calls), 2, "one typed-relationship MERGE per parsed okf_links edge")
-        rels = {p.get("rel") for (_c, p) in rel_calls}
-        self.assertEqual(rels, {"depends_on", "conflicts_with"},
-                         "the edge rel_type is the CLASSIFIED relation (anchor -> closed enum)")
+        # (a) the node MERGE is emitted, ON CREATE-stamping seq and SET-merging props.
+        self.assertTrue(
+            any("MERGE" in c and "ON CREATE SET n.seq" in c and "SET n +=" in c for c in cyphers),
+            "a node MERGE … ON CREATE SET n.seq … SET n += $props per write")
+        # (b) NO typed relationship MERGE is emitted (Phase A persists nodes only).
+        self.assertEqual([c for c in cyphers if "[r:REL" in c], [],
+                         "Phase A must emit NO typed [:REL] relationship MERGE (deferred to Phase B)")
+        # (c) write emits EXACTLY ONE :Memory MERGE (the node) — no second :Memory MERGE for any target
+        # (a rel write would emit `MERGE (b:Memory {item_id:$tgt})`, creating a placeholder on real Neo4j).
+        memory_merges = [c for c in cyphers if "MERGE" in c and ":Memory {item_id" in c]
+        self.assertEqual(len(memory_merges), 1,
+                         "exactly one :Memory MERGE per write (the node) — no endpoint MERGE for a target")
         # the node props carry the metadata (incl. okf_links) as a JSON string — the SSOT for reads
         merge_calls = [p for (c, p) in drv.calls if "SET n +=" in c]
         props = merge_calls[0]["props"]
         self.assertIn("metadata", props)
-        self.assertIn("okf_links", json.loads(props["metadata"]))
+        self.assertIn("okf_links", json.loads(props["metadata"]),
+                      "okf_links is fully persisted on the node — the durable edge SSOT for Phase-A reads")
 
     def test_search_emits_match_and_delete_emits_detach_delete(self) -> None:
         Neo4jGraphStore = _Neo4jGraphStore()
@@ -646,7 +671,10 @@ class AntiTheaterTests(unittest.TestCase):
 
     def test_byte_identical_ordered_ids_across_full_corpus(self) -> None:
         # The contract: a multi-item ordered id list is byte-identical between the two stores. A silent
-        # edge mis-resolution in the Cypher round-trip would reorder/drop an id and FAIL here.
+        # edge mis-resolution in the Cypher round-trip would reorder/drop an id and FAIL here. With the
+        # FAITHFUL endpoint-modeling fake, the forward-reference links in CORPUS (e.g. td-zephyr -> td-quasar
+        # written before td-quasar) are now a REAL no-placeholder guard: a node-creating rel write would
+        # materialize a placeholder target and break this byte-identity.
         base = _baseline(max_depth=3)
         store, _drv = _neo4j(max_depth=3)
         for query in ("Zephyr dependency", "Zephyr dependents", "Hub conflict", "Hub dependency",
@@ -657,6 +685,40 @@ class AntiTheaterTests(unittest.TestCase):
             self.assertEqual(neo_ids, base_ids,
                              f"byte-identical ordered ids required for {query!r}: "
                              f"neo4j={neo_ids} != baseline={base_ids}")
+
+    def test_forward_ref_creates_no_placeholder(self) -> None:
+        # THE Codex R1 regression guard. A links to an unwritten B (forward reference). Phase A writes NODES
+        # only — no [:REL] — so NO placeholder B node is ever created. Before B is written, all()/search must
+        # return ONLY A (byte-identical to the in-memory baseline, which has no absent nodes); after B is
+        # written, B materializes with its OWN seq so all() order is (a, b). This test genuinely exercises
+        # the endpoint-modeling fake: if a node-creating rel write were reintroduced, the forward-ref MERGE
+        # would create a bare placeholder B here and EVERY assertion below would fail.
+        Neo4jGraphStore = _Neo4jGraphStore()
+        base = GraphStore()
+        store = Neo4jGraphStore(driver=FakeBoltDriver())
+
+        a = _item("a", "a", [["depends on", "b"]], ts=1.0)  # forward reference to not-yet-written "b"
+        base.write(a)
+        store.write(a)
+
+        # BEFORE b exists: only a is present in BOTH stores (no placeholder b). Byte-identical.
+        self.assertEqual([i.item_id for i in store.all()], [i.item_id for i in base.all()])
+        self.assertEqual([i.item_id for i in store.all()], ["a"],
+                         "forward-ref link must NOT create a placeholder 'b' node (Phase A writes nodes only)")
+        self.assertIsNone(store.get("b"), "the unwritten target must not exist as a placeholder")
+        self.assertEqual(_ids(store.search("a", k=5)), _ids(base.search("a", k=5)),
+                         "search sees only the real node a — identical to the baseline")
+
+        # AFTER b is written: it materializes with its own seq -> all() order is (a, b), matching baseline.
+        b = _item("b", "b", ts=2.0)
+        base.write(b)
+        store.write(b)
+        self.assertEqual([i.item_id for i in store.all()], [i.item_id for i in base.all()])
+        self.assertEqual([i.item_id for i in store.all()], ["a", "b"],
+                         "b materializes as a real node with its own seq -> insertion order (a, b)")
+        # and now the depends_on edge resolves: a -> b reachable, byte-identical to the baseline.
+        self.assertEqual(_ids(store.search("a depends", k=5)), _ids(base.search("a depends", k=5)),
+                         "the link resolves once b is a real node — identical traversal to the baseline")
 
 
 if __name__ == "__main__":

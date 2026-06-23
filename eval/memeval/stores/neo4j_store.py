@@ -12,11 +12,28 @@ It pulls the as_of-visible nodes out of Neo4j, reconstructs the :class:`MemoryIt
 in-memory scorer is what guarantees identical ids+order; reimplementing the algorithm in Cypher would
 reopen the float/order divergence the scope doc warns about (that is explicitly Phase B's job, not this).
 
-**The Neo4j graph is genuinely typed and real.** ``write`` MERGEs a ``:Memory`` node keyed on ``item_id``
-and MERGEs a typed ``[:REL {rel_type}]`` relationship per ``okf_links`` edge — so Neo4j carries the real
-typed graph (the Phase-B substrate). Phase-A READS rebuild edges from each node's ``okf_links`` (the single
-source of truth, exactly how the ``path=`` SQLite seam rebuilds them on load), so the typed relationships
-are written-but-not-yet-traversed: a faithful port first, native traversal later.
+**What Phase A persists: ``:Memory`` NODES + their ``okf_links`` (the durable edge SSOT) — nodes ONLY.**
+``write`` MERGEs a ``:Memory`` node keyed on ``item_id`` and stores its full props, INCLUDING
+``metadata.okf_links`` (the single source of truth for edges, exactly how the ``path=`` SQLite seam persists
+them). READS rebuild the typed/directional edges from ``okf_links`` via the transient in-memory
+``GraphStore`` (parity by construction). Phase A does **NOT** write the native typed ``[:REL {rel_type}]``
+graph. That was tried and DROPPED: a per-edge ``MERGE (b:Memory {item_id:$tgt})`` CREATES the target node
+on a real Neo4j, so a forward-reference link (our corpus writes ``td-zephyr -> td-quasar`` BEFORE
+``td-quasar``) materialized an empty read-visible placeholder node — which the in-memory baseline (no absent
+nodes) does not have, breaking id-set parity; and a later real write to that id MATCHed the placeholder, so
+``ON CREATE SET n.seq`` never fired and ``all()`` order broke. (The Codex R1 blocker; the in-memory-masking
+``FakeBoltDriver`` hid it.) Dropping the rel writes removes the bug with ZERO parity cost, because Phase-A
+reads never consult ``[:REL]`` — they rebuild from ``okf_links``.
+
+**Phase B (deferred — the native typed graph + the accuracy upside).** Because every node persists its FULL
+``okf_links`` set, Phase B can materialize the native typed ``[:REL {rel_type}]`` graph from that complete
+SSOT in ONE consistent pass (no forward-reference gaps — every node's whole link list is already on disk, so
+each edge's endpoints already exist as real nodes; no placeholder is ever created). It then switches
+``search`` off the transient-delegation path onto native Cypher: typed/directional path-traversal keyed on
+``rel_type`` + GDS scoring (Personalized-PageRank seeding / weighted shortest paths / the native vector
+index) — the captained-measured accuracy upside that THIS module's parity floor is the regression guard for.
+The ``okf_links`` SSOT makes that buildable at any time with NO re-ingest. (Phase B is NOT in this module —
+no dead stub here; this note records the intended path the parity floor protects.)
 
 **Lazy + fail-loud (mirrors :class:`VoyageEmbedder`).** ``neo4j`` is NOT imported at module load — it is
 imported lazily ONLY inside :meth:`connect`. A set ``uri`` with no importable ``neo4j`` raises a clear
@@ -34,9 +51,10 @@ from typing import Any, Optional
 from ..schema import MemoryItem
 from .graph_store import GraphStore, _MAX_DEPTH, _estimate_tokens
 
-# The graph node label + the relationship type. ``REL`` carries a ``rel_type`` property (the classified
-# closed-enum relation) so a single relationship type spans the whole typed vocabulary — Phase B keys
-# traversal off ``rel_type``.
+# The graph node label. Phase A persists ONLY ``:Memory`` nodes (+ their ``okf_links`` SSOT in props); it
+# does NOT write the native typed ``[:REL]`` graph (see the module docstring's Phase-A/Phase-B split — the
+# native relationships are deferred to Phase B precisely because writing them per-edge created read-visible
+# placeholder nodes on a real Neo4j, the Codex R1 blocker).
 _NODE_LABEL = "Memory"
 # seq is CREATE-ONLY (`ON CREATE SET n.seq`): a brand-new node stamps its insertion seq; a rewrite of an
 # existing node MERGEs its props but PRESERVES the original seq, so an in-place update never bumps the node
@@ -46,11 +64,6 @@ _NODE_MERGE = (
     f"MERGE (n:{_NODE_LABEL} {{item_id: $item_id}}) "
     f"ON CREATE SET n.seq = $seq "
     f"SET n += $props"
-)
-_REL_MERGE = (
-    f"MERGE (a:{_NODE_LABEL} {{item_id: $src}}) "
-    f"MERGE (b:{_NODE_LABEL} {{item_id: $tgt}}) "
-    f"MERGE (a)-[r:REL {{rel_type: $rel}}]->(b)"
 )
 _CONSTRAINT = (
     f"CREATE CONSTRAINT memory_item_id IF NOT EXISTS "
@@ -74,11 +87,14 @@ _DELETE = f"MATCH (n:{_NODE_LABEL} {{item_id: $id}}) DETACH DELETE n RETURN coun
 
 
 class Neo4jGraphStore:
-    """Typed graph ``MemoryStore`` over the Neo4j Bolt driver — a parity-floor port of ``GraphStore``.
+    """Graph ``MemoryStore`` over the Neo4j Bolt driver — the Phase-A parity-floor port of ``GraphStore``.
 
     Construct with an injected ``driver`` (a real ``neo4j`` driver OR a test fake) or a ``uri`` (lazily
-    builds a real driver via :meth:`connect`). ``search`` delegates scoring/BFS/tie-break to a transient
-    in-memory ``GraphStore`` for exact id+order parity. NO module-load ``import neo4j``.
+    builds a real driver via :meth:`connect`). Phase A persists ``:Memory`` NODES plus their ``okf_links``
+    edge SSOT (nodes only — NO native ``[:REL]`` relationships; see the module docstring for why that was
+    dropped, and for the Phase-B native-typed-graph plan). ``search`` rebuilds the typed/directional edges
+    from ``okf_links`` and delegates scoring/BFS/tie-break to a transient in-memory ``GraphStore`` for exact
+    id+order parity. NO module-load ``import neo4j``.
     """
 
     def __init__(self, uri: Optional[str] = None, *, auth: Any = None, driver: Any = None,
@@ -189,14 +205,19 @@ class Neo4jGraphStore:
 
     # -- MemoryStore protocol ----------------------------------------------
     def write(self, item: MemoryItem) -> None:
-        """Upsert the node + its typed edges in a single managed write transaction (atomic).
+        """Upsert ONE ``:Memory`` node in a single managed write transaction (atomic). NODE ONLY.
 
-        Parses the typed edges from ``okf_links`` BEFORE touching the transaction (a malformed
-        ``okf_links`` raises here, leaving the store unchanged — matching the in-memory store's
-        parse-before-mutate atomicity). Estimates ``tokens`` from content when unset (mirroring
-        ``GraphStore.write``, so ``get()``/``all()`` tokens match the in-memory baseline). The node props
-        carry ``metadata`` (incl. ``okf_links``, the edge SSOT); the insertion ``seq`` rides as its own
-        ``ON CREATE``-scoped parameter so ``all()`` reproduces insertion order AND a rewrite never reorders.
+        Phase A does NOT write the native typed ``[:REL]`` graph (that created read-visible placeholder
+        nodes on real Neo4j — the Codex R1 blocker; Phase B materializes it from the persisted ``okf_links``
+        SSOT later). ``okf_links`` rides INSIDE the node's ``metadata`` props, so edges are fully persisted
+        and reads rebuild them via the transient ``GraphStore``.
+
+        ``_parse_edges(node)`` is still called as a VALIDATION step BEFORE the persist — it raises on a
+        malformed ``okf_links`` (e.g. a non-iterable), preserving the parse-before-mutate atomicity (a bad
+        write leaves the store untouched). It no longer drives any relationship write. Estimates ``tokens``
+        from content when unset (mirroring ``GraphStore.write``, so ``get()``/``all()`` tokens match the
+        in-memory baseline). The insertion ``seq`` rides as its own ``ON CREATE``-scoped parameter so
+        ``all()`` reproduces insertion order AND a rewrite never reorders.
         """
         if self._closed:
             raise RuntimeError("write() on a closed Neo4jGraphStore")
@@ -204,14 +225,12 @@ class Neo4jGraphStore:
         if tokens <= 0 and item.content:
             tokens = _estimate_tokens(item.content)
         node = replace(item, tokens=tokens) if tokens != item.tokens else item
-        edges = _parse_edges(node)  # raises on malformed okf_links BEFORE any mutation
+        _ = _parse_edges(node)  # VALIDATION ONLY: raises on malformed okf_links BEFORE any mutation (no rel write)
         props = self._props(node)
         seq = self._seq  # the seq this write would stamp IF the node is new (ON CREATE)
 
         def _txn(tx: Any) -> None:
             tx.run(_NODE_MERGE, parameters={"item_id": node.item_id, "props": props, "seq": seq})
-            for tgt, rel in edges:
-                tx.run(_REL_MERGE, parameters={"src": node.item_id, "tgt": tgt, "rel": rel})
 
         with self._session() as session:
             session.execute_write(_txn)
@@ -323,14 +342,15 @@ class Neo4jGraphStore:
 
 
 # --------------------------------------------------------------------------- #
-# Edge parsing — REUSE the in-memory graph store's exact semantics (parity by construction). Re-deriving
-# the (target, relation) pairs any other way could drift the typed edges from what the transient GraphStore
-# rebuilds on read; instead we lean on a throwaway GraphStore instance's own parser.
+# Edge parsing — a write-time VALIDATION of ``okf_links`` (Phase A writes no relationships). Reusing the
+# in-memory graph store's own parser means a malformed-edge write is rejected by the EXACT same rule the
+# transient store applies on read, so the two never disagree about what counts as a valid link.
 # --------------------------------------------------------------------------- #
 def _parse_edges(item: MemoryItem) -> list:
-    """Typed out-edges ``[(target_id, relation)]`` from ``item.okf_links`` — via ``GraphStore._parse_edges``
-    so the typed relationships Neo4j MERGEs match the edges the transient store rebuilds on read EXACTLY.
-    Raises on a malformed ``okf_links`` (e.g. a non-iterable), before any DB mutation — atomic write.
+    """Validate ``item.okf_links`` via ``GraphStore._parse_edges`` and return the parsed
+    ``[(target_id, relation)]`` pairs. In Phase A the return value is unused (no ``[:REL]`` is written) — the
+    call exists to RAISE on a malformed ``okf_links`` (e.g. a non-iterable) BEFORE any DB mutation, keeping
+    the write atomic (parse-before-mutate). Phase B will consume these pairs to materialize the native graph.
     """
     return GraphStore(max_depth=0)._parse_edges(item)
 
