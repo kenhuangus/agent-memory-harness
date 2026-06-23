@@ -48,6 +48,7 @@ class DreamingWorker:
     """Offline memory-consolidation engine — v1: dedup detection only."""
 
     def __init__(self, store: MemoryStore) -> None:
+        """Bind the worker to the ``MemoryStore`` it will read during ``run()``."""
         self.store = store
 
     def run(self, *, trajectories_path: str | None = None, **kwargs: Any) -> dict:

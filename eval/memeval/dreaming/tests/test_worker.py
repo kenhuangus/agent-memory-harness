@@ -74,6 +74,7 @@ def spy_emit(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict[str, Any]]
     captured: list[tuple[str, dict[str, Any]]] = []
 
     def _fake(event_type: str, **fields: Any) -> None:
+        """Spy replacement for ``events.emit`` — records the call."""
         captured.append((event_type, fields))
 
     monkeypatch.setattr("memeval.dreaming.worker.emit", _fake)
@@ -100,6 +101,7 @@ def fake_make_store(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
 
 @pytest.fixture
 def empty_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Force ``sys.stdin`` to look like a TTY so the CLI's ``_read_stdin_json`` returns ``{}``."""
     stream = io.StringIO("")
     stream.isatty = lambda: True  # type: ignore[method-assign]
     monkeypatch.setattr(sys, "stdin", stream)
@@ -365,6 +367,7 @@ def test_normalization_none_content_does_not_raise() -> None:
 
 
 def _snapshot_store(store: InMemoryStore) -> set[tuple[str, int]]:
+    """Return ``{(item_id, version)}`` for every item — the §F1 invariant snapshot."""
     return {(item.item_id, item.version) for item in store.all()}
 
 
@@ -400,20 +403,25 @@ class _SpyStore:
     """Minimal MemoryStore satisfying the protocol; counts write() calls."""
 
     def __init__(self, items: list[MemoryItem]) -> None:
+        """Seed the spy with an initial item set; ``write_calls`` starts empty."""
         self._items = {i.item_id: i for i in items}
         self.write_calls: list[MemoryItem] = []
 
     def write(self, item: MemoryItem) -> None:
+        """Record the call (the §F4 invariant guard) and stash the item."""
         self.write_calls.append(item)
         self._items[item.item_id] = item
 
     def get(self, item_id: str) -> MemoryItem | None:
+        """Protocol-satisfier: return the item or ``None``."""
         return self._items.get(item_id)
 
     def search(self, query: str, *, k: int = 5, as_of: float | None = None, **kw: Any) -> list:
+        """Protocol-satisfier: search is unused in §F tests; return empty."""
         return []
 
     def all(self) -> list[MemoryItem]:
+        """Protocol-satisfier: return every seeded item (insertion order not guaranteed)."""
         return list(self._items.values())
 
 
@@ -479,10 +487,12 @@ def test_run_no_filesystem_access_to_trajectories_path(monkeypatch: pytest.Monke
     real_path_open = pathlib.Path.open
 
     def _trap_builtin_open(path, *args, **kwargs):  # type: ignore[no-untyped-def]
+        """Trap ``builtins.open`` so the test can assert no read against the bogus path."""
         open_calls.append(str(path))
         return real_open(path, *args, **kwargs)
 
     def _trap_path_open(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        """Trap ``pathlib.Path.open`` so the test can assert no read against the bogus path."""
         open_calls.append(str(self))
         return real_path_open(self, *args, **kwargs)
 
@@ -516,12 +526,14 @@ def test_dream_all_failopens_on_runtime_error(
     captured: list[tuple[str, dict[str, Any]]] = []
 
     def _fake_emit(event_type: str, **fields: Any) -> None:
+        """Spy replacement for ``events.emit`` — records ``(event_type, fields)``."""
         captured.append((event_type, fields))
 
     from memeval.dreaming import events as events_mod
     monkeypatch.setattr(events_mod, "emit", _fake_emit)
 
     def _boom(*args, **kw):
+        """Stand-in for ``worker.dream`` that simulates an internal RuntimeError."""
         raise RuntimeError("boom")
 
     monkeypatch.setattr(worker, "dream", _boom)
@@ -536,6 +548,7 @@ def test_dream_all_does_not_swallow_keyboardinterrupt(
 ) -> None:
     """H4 — KeyboardInterrupt inside worker propagates out of cli.main."""
     def _kbi(*args, **kw):
+        """Stand-in for ``worker.dream`` that simulates a user-triggered ^C."""
         raise KeyboardInterrupt
     monkeypatch.setattr(worker, "dream", _kbi)
     with pytest.raises(KeyboardInterrupt):
@@ -548,6 +561,7 @@ def test_dream_all_does_not_swallow_systemexit(
 ) -> None:
     """H5 — SystemExit inside worker propagates out of cli.main."""
     def _se(*args, **kw):
+        """Stand-in for ``worker.dream`` that simulates ``sys.exit(7)`` from a lazy-imported dep."""
         raise SystemExit(7)
     monkeypatch.setattr(worker, "dream", _se)
     with pytest.raises(SystemExit):
@@ -601,6 +615,7 @@ def test_run_concurrent_threads_same_store() -> None:
     results: dict[int, dict] = {}
 
     def _runner(idx: int) -> None:
+        """Thread target — record this run's summary under ``idx`` for the join compare."""
         results[idx] = worker.DreamingWorker(store).run()
 
     t1 = threading.Thread(target=_runner, args=(1,))
