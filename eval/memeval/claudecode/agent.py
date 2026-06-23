@@ -120,20 +120,6 @@ _PLUGIN_REAL_PREFIX = (
     "First call the recall tool with the question to retrieve relevant prior context, "
     "then answer concisely with just the final answer.\n\n"
 )
-# Seeding turn (plugin-real): drives Claude through one acknowledgement turn per
-# prior session so each Stop hook fires the daydreamer over that session's
-# substantive content (PR #77). Replaces the back-door `memory-cli remember` write,
-# so the bench measures what the daydreamer extracted — not what was hand-loaded.
-_SYS_SEED_SESSION = (
-    "You are being shown a snippet of a prior conversation for your records. "
-    "Briefly acknowledge that you've noted it — a single short sentence is enough. "
-    "Do not call any tools. Do not ask questions. Do not act on the content."
-)
-_SEED_SESSION_PREFIX = (
-    "The following is a prior conversation snippet to remember. Briefly acknowledge "
-    "that you've noted it; do not respond further.\n\n"
-    "--- prior session ---\n"
-)
 # AGENTIC CODE *plugin-real* turn: same coding-agent contract as _SYS_CODE_AGENT,
 # but the agent ALSO has the SHIPPING plugin's persistent memory. The shipping
 # plugin's model-callable tool is `recall` (NOT `memory_recall`), so this prompt
@@ -244,57 +230,19 @@ def _count_recall_events(events: Path) -> int:
     return sum(1 for rec in _read_events(events) if rec.get("op") == "recall")
 
 
-# Fix A — cross-task accumulation for the plugin-real store. SWE-Bench-CL runs the
-# tasks of a sequence (``group_id``) in chronological order; the plugin's own
-# learning (daydream writes via its real Stop-hook write path) must carry from task
-# N to task N+1 so "improvement over time" is measurable. The store is COPIED into
-# each task's per-task ``.cookbook-memory`` before the turn (restore) and copied
-# back after (persist), EXCLUDING ``events.jsonl`` so per-task recall attribution
-# (``_attribute_real_recall`` / ``_count_recall_events``) stays untouched.
+# The plugin-real store accumulates across tasks AND across pipeline stages purely
+# because its directory persists (ADR-eval-003): every plugin-real task points
+# CLAUDE_PROJECT_DIR at the same shared substrate, and the plugin's own learning
+# (daydream writes via its real Stop-hook write path) carries forward. The harness
+# never copies, seeds, or prunes the store — the plugin owns its contents
+# (ADR-harness-012). The only synchronization the harness does is wait for the async
+# daydream write to land between turns (the _drain_daydream barrier below).
 
-#: Filename never copied between the group store and a per-task store — the plugin's
-#: own recall/events stream is kept PER-TASK so recall attribution is not polluted by
-#: a prior task's events. (The accumulated *memory* — markdown/vector/graph backends,
-#: sidecars — copies; the events log does not.)
-_GROUP_STORE_EXCLUDE = ("events.jsonl",)
-#: Sentinel inside a group store marking that loader priors were already seeded for
-#: this group (so ``_seed_plugin_store`` runs only once per group, on the first task).
-_GROUP_SEEDED_SENTINEL = ".seeded"
 #: How long to wait for the plugin's async Stop-hook daydream write to land in the
-#: per-task events stream before the harness drives daydream synchronously itself.
-#: Short by default; the real-run caller can raise it toward the Stop hook's 600s
-#: ceiling via ``MEMEVAL_DAYDREAM_DRAIN_SECS``.
+#: events stream before the harness drives daydream synchronously itself. Short by
+#: default; the real-run caller can raise it toward the Stop hook's 600s ceiling via
+#: ``MEMEVAL_DAYDREAM_DRAIN_SECS``.
 _DAYDREAM_DRAIN_DEFAULT_SECS = 8.0
-
-
-def _copy_store_contents(src: Path, dst: Path,
-                         exclude: tuple[str, ...] = _GROUP_STORE_EXCLUDE) -> None:
-    """Copy every entry under ``src`` into ``dst`` (merge, overwrite), skipping any
-    top-level name in ``exclude`` (e.g. ``events.jsonl``).
-
-    Used to restore the accumulated group store INTO a per-task store and to persist
-    a per-task store BACK to the group store. Recursive dirs are merged with
-    ``dirs_exist_ok``. A missing ``src`` is a no-op (first task / nothing to copy)."""
-    if not src.is_dir():
-        return
-    dst.mkdir(parents=True, exist_ok=True)
-    for entry in src.iterdir():
-        if entry.name in exclude:
-            continue  # never carry the per-task recall/events stream across
-        target = dst / entry.name
-        if entry.is_dir():
-            shutil.copytree(entry, target, dirs_exist_ok=True)
-        else:
-            shutil.copy2(entry, target)
-
-
-def _group_store_has_memory(group_store: Optional[Path]) -> bool:
-    """True if ``group_store`` already holds accumulated memory (i.e. not the first
-    task of the group). Any entry other than the seed sentinel counts — daydream
-    writes land as markdown/vector/graph files + sidecars under the store root."""
-    if group_store is None or not group_store.is_dir():
-        return False
-    return any(e.name != _GROUP_SEEDED_SENTINEL for e in group_store.iterdir())
 
 
 #: Daydream events that mean "the plugin's write for this turn completed" — the engine
@@ -315,22 +263,6 @@ def _count_daydream_writes(events: Path) -> int:
         if name in _DAYDREAM_WRITE_OPS:
             n += 1
     return n
-
-
-def _wait_for_daydream(events: Path, baseline: int, timeout: float = 60.0,
-                       poll_interval: float = 0.25) -> bool:
-    """Block until ``_count_daydream_writes(events)`` exceeds ``baseline``, or timeout.
-
-    Returns True on observed write, False on timeout. Fail-open; never raises. The
-    plugin's Stop hook is async (CC detaches the handler), so when seeding drives one
-    Claude turn per prior session the bench must wait for each turn's daydream write to
-    land before the next turn races on the per-session flock or reads stale state."""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if _count_daydream_writes(events) > baseline:
-            return True
-        time.sleep(poll_interval)
-    return False
 
 
 def _drain_timeout_secs() -> float:
@@ -377,6 +309,7 @@ class ClaudeCodeAgent:
         transport: str = "http",
         code_mode: str = "blind",
         git_runner: Optional[GitRunner] = None,
+        project_dir: Optional[str | Path] = None,
     ) -> None:
         if memory_mode not in _MODES:
             raise ValueError(f"memory_mode must be one of {_MODES}, got {memory_mode!r}")
@@ -405,6 +338,14 @@ class ClaudeCodeAgent:
         # relative run dir would double the path ("run_dir/run_dir/.mcp.json" -> not
         # found) and every plugin task would fail. Absolute paths are cwd-independent.
         self._root = Path(workdir).resolve() if workdir else None
+        # plugin-real shared memory substrate (ADR-eval-003 / ADR-harness-012). When set,
+        # every plugin-real task points CLAUDE_PROJECT_DIR at this ONE persistent directory,
+        # so the plugin's store (${CLAUDE_PROJECT_DIR}/.cookbook-memory) accumulates across
+        # tasks AND across pipeline stages purely because the directory persists. The harness
+        # only ensures the directory exists; it never reads, writes, copies, or prunes the
+        # store -- the plugin owns its contents. None = no shared substrate (the per-task
+        # store the plugin builds under its own run dir, no cross-task carryover).
+        self._project_dir = Path(project_dir).resolve() if project_dir else None
         # plugin-real: built+installed once per agent; caches the MCP-server PATH env.
         self._real_plugin_env: Optional[dict[str, str]] = None
         self.k = k
@@ -610,15 +551,13 @@ class ClaudeCodeAgent:
             return res  # type: ignore[return-value]
         if mode == "plugin-real":
             plugin_env = self._ensure_real_plugin()
-            store_dir = checkout / ".cookbook-memory"
-            store_dir.mkdir(parents=True, exist_ok=True)
-            # Fix A: restore the group's accumulated memory into this task's store and
-            # seed loader priors once per group (the SWE-Bench-CL accumulation path).
-            # The store lives under the per-task CHECKOUT (it differs per base_commit),
-            # but the GROUP store is keyed on group_id under the run-tree root, so
-            # learning carries from task N to N+1. No group_id -> per-task seed only.
-            group_store = self._group_restore(task, store_dir, plugin_env)
-            extra_env = {**plugin_env, "CLAUDE_PROJECT_DIR": str(checkout)}
+            # The agent edits files in the per-task CHECKOUT (cwd), but the memory store
+            # points at the shared substrate (ADR-eval-003): CLAUDE_PROJECT_DIR is the
+            # persistent dir, NOT the throwaway per-base_commit checkout, so the plugin's
+            # learning accumulates across tasks/stages by directory persistence. The
+            # harness never copies the store (ADR-harness-012).
+            project_dir, store_dir = self._plugin_real_store(checkout)
+            extra_env = {**plugin_env, "CLAUDE_PROJECT_DIR": str(project_dir)}
             _add_dream_env(extra_env)  # OPENROUTER_API_KEY / DREAM_* for the daydream write path
             events = store_dir / "events.jsonl"
             # Drive the coding turn through the PRIMED runner with a retry-until-recall
@@ -640,10 +579,9 @@ class ClaudeCodeAgent:
                 if _count_recall_events(events) > before:
                     break  # the agent reached the recall tool -> plugin MCP connected
             self._attribute_real_recall(events, ctx)
-            # Fix A: drain the plugin's async daydream WRITE, then persist this task's
-            # learned memory back to the group store (excluding events.jsonl).
+            # Wait for the plugin's async daydream WRITE to land before the next
+            # task/stage touches the shared store. Pure barrier -- no copying.
             self._drain_daydream(task, res, store_dir, events, plugin_env, before_writes)
-            self._group_persist(group_store, store_dir)
             return res  # type: ignore[return-value]
         # off: no seeding, no memory.
         return self._run(_CODE_AGENT_PREFIX + base_prompt, checkout, _SYS_CODE_AGENT,
@@ -707,31 +645,24 @@ class ClaudeCodeAgent:
 
         1. ensure the plugin is built + installed into the sandbox once per agent
            (native ``claude plugin install``), capturing the PATH the MCP server needs;
-        2. seed the plugin's store at ``<run_dir>/.cookbook-memory`` by driving the
-           DAYDREAMER over each prior session's content (``_seed_plugin_store`` runs one
-           acknowledgement turn per ``task.sessions[i]`` when ``memory-cli`` is on PATH,
-           so each Stop hook fires daydream over substantive content) — the same write
-           surface a real run uses; nothing reaches into the plugin's Python API;
-        3. drive a primed ``claude`` turn with ``CLAUDE_PROJECT_DIR=<run_dir>`` so the
-           plugin's ``.mcp.json`` (``${CLAUDE_PROJECT_DIR}/.cookbook-memory``) resolves
-           to the seeded store;
+        2. point ``CLAUDE_PROJECT_DIR`` at the memory store directory (the shared
+           substrate when one is configured -- see :meth:`_plugin_real_store`) so the
+           plugin's committed ``.mcp.json``/``hooks.json`` resolve
+           ``${CLAUDE_PROJECT_DIR}/.cookbook-memory`` there;
+        3. drive a primed ``claude`` turn; the plugin reads/writes/daydreams the store
+           itself through its own router -- the harness never touches the store contents;
         4. attribute what the agent recalled to the trajectory, read from the plugin's
            own events stream (``events.jsonl``, ``meta.hits``).
 
-        Fix A — when ``task.group_id`` is set, the plugin's own learning ACCUMULATES
-        across the group: the accumulated store is copied in before the turn and the
-        post-turn (post-daydream) store is copied back, EXCLUDING ``events.jsonl`` so
-        recall attribution stays per-task. A task with no ``group_id`` keeps the exact
-        prior behavior (per-task store only).
-        """
-        plugin_env = self._ensure_real_plugin()  # install first so memory-cli is on PATH
-        store_dir = run_dir / ".cookbook-memory"
-        store_dir.mkdir(parents=True, exist_ok=True)
-        # Fix A: restore the group's accumulated memory into this per-task store and
-        # seed loader priors once per group (no group_id -> per-task seed, as before).
-        group_store = self._group_restore(task, store_dir, plugin_env)
+        Memory accumulates across tasks AND across pipeline stages purely because the
+        store directory persists (ADR-eval-003): when ``self._project_dir`` is the shared
+        substrate, every task points at the same store and the plugin's own learning
+        carries forward. The harness only ensures that directory exists; it performs no
+        store copying, seeding, or pruning (ADR-harness-012)."""
+        plugin_env = self._ensure_real_plugin()  # install first so the plugin MCP is on PATH
+        project_dir, store_dir = self._plugin_real_store(run_dir)
 
-        extra_env = {**plugin_env, "CLAUDE_PROJECT_DIR": str(run_dir)}
+        extra_env = {**plugin_env, "CLAUDE_PROJECT_DIR": str(project_dir)}
         _add_dream_env(extra_env)  # OPENROUTER_API_KEY / DREAM_* so daydream is live on WSL too
         events = store_dir / "events.jsonl"
 
@@ -744,11 +675,55 @@ class ClaudeCodeAgent:
             if _count_recall_events(events) > before:
                 break  # the agent reached the recall tool -> plugin MCP connected
         self._attribute_real_recall(events, ctx)
-        # Fix A: drain the plugin's async daydream WRITE, then persist this task's
-        # learned memory back to the group store (excluding events.jsonl).
+        # Wait for the plugin's async Stop-hook daydream WRITE to land, so the next
+        # task/stage doesn't race it on the shared store. Pure barrier -- no copying.
         self._drain_daydream(task, res, store_dir, events, plugin_env, before_writes)
-        self._group_persist(group_store, store_dir)
         return res  # type: ignore[return-value]
+
+    def _plugin_real_store(self, run_dir: Path) -> tuple[Path, Path]:
+        """Resolve (project_dir, store_dir) for a plugin-real turn, honoring the shared
+        memory substrate (ADR-eval-003 / ADR-harness-012).
+
+        When ``self._project_dir`` is set, it is the ONE persistent substrate every
+        plugin-real task points ``CLAUDE_PROJECT_DIR`` at, so the plugin's store
+        (``<project_dir>/.cookbook-memory``) accumulates across tasks AND stages purely
+        because the directory persists. The harness ONLY ensures the directory exists; it
+        never reads, copies, or prunes the store -- the plugin owns its contents. When
+        ``self._project_dir`` is unset, the per-task ``run_dir`` is the project dir (the
+        no-shared-substrate path: a fresh store per task, no carryover).
+
+        ``run_dir`` is still the subprocess ``cwd`` (for agentic CODE it is the checkout
+        the agent edits) -- only the project dir / store location is shared. ``claude``
+        runs with ``cwd=run_dir`` but ``CLAUDE_PROJECT_DIR`` in env points at the
+        substrate, and the plugin's committed ``.mcp.json``/``hooks.json`` expand
+        ``${CLAUDE_PROJECT_DIR}`` from that env (verified to win over cwd; a symlink
+        fallback is provided if a future CC build expands from cwd instead)."""
+        project_dir = self._project_dir or run_dir
+        project_dir.mkdir(parents=True, exist_ok=True)
+        store_dir = project_dir / ".cookbook-memory"
+        store_dir.mkdir(parents=True, exist_ok=True)
+        # Symlink fallback: if the plugin ever expands ${CLAUDE_PROJECT_DIR} from cwd
+        # rather than the passed env, a per-cwd .cookbook-memory pointing at the shared
+        # store keeps the substrate single. Harmless when env wins (the link is unused);
+        # only created when the substrate is shared and cwd differs from it.
+        if self._project_dir is not None and run_dir != project_dir:
+            self._link_store_into_cwd(run_dir, store_dir)
+        return project_dir, store_dir
+
+    @staticmethod
+    def _link_store_into_cwd(run_dir: Path, store_dir: Path) -> None:
+        """Best-effort symlink ``<run_dir>/.cookbook-memory`` -> the shared ``store_dir``.
+
+        Fail-open: a pre-existing real dir, a platform without symlinks, or any OS error
+        leaves the env-var path (the primary mechanism) to do the work."""
+        link = run_dir / ".cookbook-memory"
+        try:
+            run_dir.mkdir(parents=True, exist_ok=True)
+            if link.is_symlink() or link.exists():
+                return
+            link.symlink_to(store_dir, target_is_directory=True)
+        except OSError:
+            return  # env-var resolution is the primary path; the link is only a backstop
 
     def _ensure_real_plugin(self) -> dict[str, str]:
         """Build + install the real plugin into the sandbox once per agent; cache the
@@ -764,117 +739,29 @@ class ClaudeCodeAgent:
             claude_exe=(self._runtime.exe if self._runtime else None))
         return self._real_plugin_env
 
-    def _seed_plugin_store(self, task: Task, store_dir: Path,
-                           plugin_env: dict[str, str]) -> None:
-        """Seed the plugin's store from ``task.sessions`` by driving the DAYDREAMER over
-        their substantive content — the same write surface a real run uses.
-
-        When the real plugin is installed (``memory-cli`` on PATH), drive Claude through
-        one acknowledgement turn per prior session so each Stop hook fires the daydreamer
-        (PR #77) over that session's content. This replaces the old back-door
-        ``memory-cli remember`` write so the bench measures what the daydreamer
-        extracted, not what was hand-loaded.
-
-        Resolves ``memory-cli`` from the plugin runtime env (its install puts it on
-        PATH); a no-op when it isn't found, so offline tests with a fake runner (no
-        real install) skip seeding rather than fail.
-
-        Auto-scopes through :meth:`_group_restore`'s callers: QA tasks (no group) seed
-        the full ``task.sessions`` per task; SWE-Bench-CL seeds once on the first task,
-        which has no priors (empty ``task.sessions`` -> no turns), so its group store
-        builds purely from daydream-while-solving — both intended."""
-        import shutil
-
-        env = {**os.environ, **plugin_env, "MEMORY_STORE": str(store_dir)}
-        exe = shutil.which("memory-cli", path=env.get("PATH"))
-        if exe is None:
-            return  # no real plugin install (e.g. offline test) — nothing to seed
-        # store_dir is ``<run_dir>/.cookbook-memory`` (see _solve_plugin_real /
-        # _run_code_agent_turn). Derive what the seeding turns need from it so the
-        # signature stays (task, store_dir, plugin_env) for _group_restore's callers.
-        run_dir = store_dir.parent
-        events = store_dir / "events.jsonl"
-        extra_env = {**plugin_env, "CLAUDE_PROJECT_DIR": str(run_dir)}
-        _add_dream_env(extra_env)  # OPENROUTER_API_KEY / DREAM_* for the daydream write path
-        self._drive_sessions_through_daydream(task, run_dir, extra_env, events)
-
-    def _drive_sessions_through_daydream(self, task: Task, run_dir: Path,
-                                         extra_env: dict[str, str],
-                                         events: Path) -> None:
-        """Run one primed Claude turn per ``task.sessions[i]`` so each Stop hook fires
-        the daydreamer over that session's substantive content (instead of the back-door
-        ``memory-cli remember`` write). Wait for each daydream write to land before the
-        next turn — Stop is async, so otherwise the next turn races on the per-session
-        flock. Fail-open: a per-session timeout leaves a gap in seeded memory but never
-        raises; the question turn still runs and recall still attributes."""
-        for sess in task.sessions:
-            content = getattr(sess, "content", "") or ""
-            if not content.strip():
-                continue
-            baseline = _count_daydream_writes(events)
-            seed_prompt = _SEED_SESSION_PREFIX + content + "\n--- end snippet ---\n"
-            self._run_primed(seed_prompt, run_dir, _SYS_SEED_SESSION,
-                             mcp_config=None, allowed_tools=None, extra_env=extra_env)
-            _wait_for_daydream(events, baseline=baseline)
-
-    # -- plugin-real cross-task group store (Fix A) ------------------------- #
-    def _group_restore(self, task: Task, store_dir: Path,
-                       plugin_env: dict[str, str]) -> Optional[Path]:
-        """Copy the accumulated group store INTO this task's per-task ``store_dir`` and
-        seed loader priors at most once per group. Returns the group store path (or
-        ``None`` when the task has no ``group_id`` — then behavior is unchanged: the
-        per-task store is seeded as before).
-
-        Ordering: restore accumulated memory first (so a later task starts from what
-        prior tasks learned), EXCLUDING ``events.jsonl``; then seed ``task.sessions``
-        priors only on the FIRST task of the group (sentinel-guarded). For SWE-Bench-CL
-        the first task usually has no priors, so seeding is effectively empty and the
-        store builds purely from daydream — intended."""
-        group_store = self._plugin_group_store(task)
-        if group_store is None:
-            # No group: per-task store only — seed priors exactly as before.
-            self._seed_plugin_store(task, store_dir, plugin_env)
-            return None
-
-        first_task = not _group_store_has_memory(group_store)
-        # Restore accumulated memory into the per-task store (no-op on the first task).
-        _copy_store_contents(group_store, store_dir)
-        # Seed loader priors ONCE per group (sentinel guards re-seeding on task N>1).
-        seeded_sentinel = group_store / _GROUP_SEEDED_SENTINEL
-        if first_task and not seeded_sentinel.exists():
-            self._seed_plugin_store(task, store_dir, plugin_env)
-            group_store.mkdir(parents=True, exist_ok=True)
-            seeded_sentinel.write_text("", encoding="utf-8")
-        return group_store
-
-    def _group_persist(self, group_store: Optional[Path], store_dir: Path) -> None:
-        """Copy this task's per-task store BACK to the group store (persist what the
-        plugin learned this task), EXCLUDING ``events.jsonl`` so recall attribution
-        stays per-task. No-op when the task has no group."""
-        if group_store is None:
-            return
-        _copy_store_contents(store_dir, group_store)
-
     def _drain_daydream(self, task: Task, res: ClaudeResult, store_dir: Path,
                         events: Path, plugin_env: dict[str, str],
                         before_writes: int) -> None:
-        """Ensure the plugin's async Stop-hook daydream WRITE has landed before the
-        per-task store is persisted to the group store.
+        """WAIT-barrier: block until the plugin's async Stop-hook daydream WRITE has
+        landed, so the next task/stage doesn't race it on the shared store.
 
-        The shipping plugin's ``Stop`` hook is ``async: true`` and shells out to
-        ``daydream-cli daydream`` (which BLOCKS until the engine finishes) — but the CC
-        process may return from the headless turn before that subprocess completes, so
-        a naive copy-out would miss this task's new memory. Two-stage drain:
+        This is a barrier only -- it copies nothing (ADR-harness-012). The shipping
+        plugin's ``Stop`` hook is ``async: true`` and shells out to ``daydream-cli
+        daydream`` (which BLOCKS until the engine finishes), but the CC process may
+        return from the headless turn before that subprocess completes; without the
+        barrier the next turn could read the store mid-write or race the per-session
+        flock. Two stages:
 
-        1. **Poll** the per-task ``events.jsonl`` for a NEW daydream write event
+        1. **Poll** the plugin's ``events.jsonl`` for a NEW daydream write event
            (``daydream.memory_written`` or ``daydream.hook_subprocess_fired``) for up to
            ``MEMEVAL_DAYDREAM_DRAIN_SECS`` (default :data:`_DAYDREAM_DRAIN_DEFAULT_SECS`).
            A fresh event means the hook's write already completed — done.
-        2. **Backstop** — if no event lands in time, drive ``daydream-cli daydream``
-           SYNCHRONOUSLY ourselves (same engine the hook uses) with the hook's stdin
-           payload (``session_id`` + ``transcript_path`` discovered from the just-run
-           turn) and env ``MEMORY_STORE=<store_dir>`` (+ ``OPENROUTER_API_KEY`` /
-           ``DREAM_*`` when set). This guarantees the write completes before copy-out.
+        2. **Backstop** — if no event lands in time, drive the plugin's OWN
+           ``daydream-cli daydream`` synchronously (the same engine the hook uses) with
+           the hook's stdin payload (``session_id`` + ``transcript_path`` from the
+           just-run turn) and ``MEMORY_STORE=<store_dir>``, so the write COMPLETES. This
+           uses the plugin's surface and writes only the store the plugin already owns --
+           the harness still never copies or reads the store contents.
 
         No-op under the offline fake runner (no real ``daydream-cli`` / transcript);
         the drain only matters against the real CLI + plugin. If the transcript path
@@ -891,9 +778,9 @@ class ClaudeCodeAgent:
                 return  # the async hook's write already landed — drained.
             time.sleep(0.25)
 
-        # Backstop: the hook didn't finish in time (or never fired) — run the SAME
-        # daydream engine synchronously so the per-task memory is written before we
-        # persist it to the group store.
+        # Backstop: the hook didn't finish in time (or never fired) — run the plugin's
+        # OWN daydream engine synchronously so this turn's memory write completes before
+        # the next task/stage reads the shared store.
         session_id, transcript = self._discover_transcript(res, store_dir)
         if not session_id or transcript is None:
             # Transcript path could not be reliably determined for this headless turn
@@ -1012,9 +899,10 @@ class ClaudeCodeAgent:
         """Like :meth:`_run`, but drives a priming turn first (stream-json I/O) so
         the MCP connection registers before the real prompt generates. If a custom
         runner was injected (offline tests), defer to it instead — the priming flow
-        only matters against the real CLI. ``extra_env`` is forwarded to the real
-        runner (PATH / CLAUDE_PROJECT_DIR for an installed plugin); a fake runner is
-        called without it so injected test doubles keep their simple signature.
+        only matters against the real CLI. ``extra_env`` is forwarded to BOTH the real
+        and the injected runner (PATH / CLAUDE_PROJECT_DIR — the latter selects the
+        plugin's store, so a test double must see it to resolve the shared substrate;
+        the offline fakes take ``extra_env``/``**kw``).
 
         ``strict_mcp``/``permission_mode`` default to the prior hardcoded values
         (``True`` / ``bypassPermissions``) so the QA/plugin-real call sites are
@@ -1033,7 +921,7 @@ class ClaudeCodeAgent:
             allowed_tools=allowed_tools, append_system_prompt=system,
             strict_mcp=strict_mcp, strip_api_key=True,
             permission_mode=permission_mode,
-            timeout=self.timeout, runtime=self._runtime,
+            timeout=self.timeout, runtime=self._runtime, extra_env=extra_env,
         )
 
     def _effective_runtime(self) -> ClaudeRuntime:
@@ -1044,16 +932,14 @@ class ClaudeCodeAgent:
 
     def _root_dir(self) -> Path:
         """The run-tree root: the injected ``workdir`` or a stable temp dir, version-keyed
-        by ``MEMORY_VERSION``. Shared by per-task dirs (:meth:`_task_dir`) and the
-        per-group plugin-real store (:meth:`_plugin_group_store`) so both live under the
-        same tree.
+        by ``MEMORY_VERSION``. Holds the per-task SCRATCH dirs (:meth:`_task_dir` — the
+        agentic checkout, CLAUDE.md, .mcp.json, recall logs).
 
-        Version-keying ties the store's lifetime to the memory version: runs under the
-        SAME ``MEMORY_VERSION`` reuse (and accumulate into) the same per-group store, so
-        memory persists run-to-run; bumping ``MEMORY_VERSION`` (which you do per a memory
-        change, like ``results/v{MEMORY_VERSION}/``) starts a FRESH store under ``v{new}/``
-        while the prior version's memory is preserved. So memory stays the same until a
-        new version of memory is declared."""
+        The plugin-real memory STORE is NOT under here: it is the shared substrate
+        (``self._project_dir``), resolved by :meth:`_plugin_real_store` (ADR-eval-003).
+        Version-keying the scratch root mirrors ``results/v{MEMORY_VERSION}/`` so the run
+        tree is grouped per memory generation, consistent with the version-scoped
+        substrate the pipeline points ``CLAUDE_PROJECT_DIR`` at."""
         import tempfile
         base = self._root or Path(tempfile.gettempdir()) / "memeval-claudecode"
         return base / f"v{MEMORY_VERSION}"
@@ -1061,22 +947,6 @@ class ClaudeCodeAgent:
     def _task_dir(self, task: Task) -> Path:
         safe = "".join(c if c.isalnum() or c in "._-" else "-" for c in str(task.task_id))[:80]
         return self._root_dir() / self.memory_mode / safe
-
-    def _plugin_group_store(self, task: Task) -> Optional[Path]:
-        """The SHARED plugin-real store for ``task``'s group, or ``None`` when the task
-        has no ``group_id`` (then plugin-real behaves exactly as before: per-task store
-        only, no accumulation).
-
-        Keyed on ``group_id`` under ``<root>/<mode>/_groupstore/<safe(group_id)>`` so a
-        SWE-Bench-CL sequence's tasks share one accumulating store while each task keeps
-        its own per-task checkout/run dir (different base_commit). Same sanitization as
-        :meth:`_task_dir`."""
-        if not task.group_id:
-            return None
-        safe = "".join(
-            c if c.isalnum() or c in "._-" else "-" for c in str(task.group_id)
-        )[:80]
-        return self._root_dir() / self.memory_mode / "_groupstore" / safe
 
 
 def _build_prompt(task: Task) -> str:
