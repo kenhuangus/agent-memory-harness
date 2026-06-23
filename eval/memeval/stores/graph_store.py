@@ -39,6 +39,27 @@ from .relations import BOTH, IN, OUT, RELATES_TO, classify_relation, query_inten
 
 _DECAY = 0.5     # score falloff per graph hop
 _MAX_DEPTH = 2   # hops to traverse out from a seed
+# Minimum query~node cosine for a SEMANTIC seed (only when an embedder is injected). PROVISIONAL — the
+# captained real-embedder run tunes it; the offline default (embed=None) never reaches this path.
+_SEMANTIC_SEED_FLOOR = 0.6
+
+
+def _cosine(a, b) -> float:
+    """Cosine similarity of two stdlib float vectors.
+
+    Returns 0.0 if either is empty/None (a graph node may carry no embedding). Raises ``ValueError`` on a
+    dimension mismatch between two NON-empty vectors — fail-loud on embedder/dim drift, matching
+    ``SqliteVectorStore._cosine`` (a silent ``zip`` truncation could score mismatched vectors 1.0 and forge
+    a semantic seed).
+    """
+    if not a or not b:
+        return 0.0
+    if len(a) != len(b):
+        raise ValueError(f"embedding dim mismatch: {len(a)} != {len(b)}")
+    dot = sum(x * y for x, y in zip(a, b))
+    na = sum(x * x for x in a) ** 0.5
+    nb = sum(y * y for y in b) ** 0.5
+    return dot / (na * nb) if na and nb else 0.0
 
 
 def _tokenize(text: str) -> list:
@@ -95,13 +116,19 @@ def _entry_rel_target(entry: Any) -> tuple:
 class GraphStore:
     """In-memory typed/directed graph ``MemoryStore``: nodes + typed edge adjacency, seed-then-traverse."""
 
-    def __init__(self, uri: Optional[str] = None, *, max_depth: int = _MAX_DEPTH, **kwargs: Any) -> None:
+    def __init__(self, uri: Optional[str] = None, *, max_depth: int = _MAX_DEPTH,
+                 embed: Optional[Any] = None, **kwargs: Any) -> None:
         self.uri = uri  # a real graph DB (Neo4j) is the paid-path seam; v1 is in-memory
         self.config = kwargs
         # BFS hops to traverse out from a seed. Default = _MAX_DEPTH (the speed end, byte-equivalent to the
         # pre-knob store); an accuracy profile raises it for deeper multi-hop reach (the speed<->accuracy
         # spectrum, D016). Clamped >= 0 (0 = seeds only, no traversal).
         self._max_depth = max(0, int(max_depth))
+        # Optional text->vector embedder (the SAME embed= seam SqliteVectorStore / SemanticRouterClassifier
+        # use). When set, search ALSO seeds nodes whose content is cosine-similar to the query (semantic
+        # seeding, hybrid with lexical). None = lexical-only, byte-equivalent, offline zero-dependency.
+        self._embed = embed
+        self._embeddings: dict = {}   # item_id -> document embedding (populated at write when embed is set)
         self._nodes: dict = {}        # item_id -> MemoryItem
         self._order: list = []        # insertion order (for all())
         self._out: dict = {}          # item_id -> list of (target_id, relation)
@@ -114,6 +141,10 @@ class GraphStore:
             tokens = _estimate_tokens(item.content)
         node = replace(item, tokens=tokens)  # always a copy -> never alias the caller's item
         edges = self._parse_edges(node)
+        # Embed BEFORE mutating any index. A real injected embedder can raise (network/quota); a
+        # half-applied write (node set but edges/embedding missing) would corrupt the graph. Compute the
+        # doc vector first, mutate after -> write() stays all-or-nothing.
+        doc_vec = self._doc_vector(node.content) if self._embed is not None else None
 
         # If rewriting a node, retract its old out-edges' reverse-index contributions first.
         if item.item_id in self._nodes:
@@ -125,6 +156,8 @@ class GraphStore:
             self._order.append(item.item_id)
 
         self._nodes[item.item_id] = node
+        if doc_vec is not None:
+            self._embeddings[item.item_id] = doc_vec
         self._out[item.item_id] = edges
         for tgt, rel in edges:
             self._in.setdefault(tgt, []).append((item.item_id, rel))
@@ -148,7 +181,11 @@ class GraphStore:
             it = self._nodes.get(nid)
             return it is not None and not (as_of is not None and it.timestamp > as_of)
 
-        # seeds: nodes whose content shares tokens with the query (Jaccard overlap)
+        # seeds: nodes whose content shares tokens with the query (lexical Jaccard) and/or — when an
+        # embedder is injected — whose content is cosine-similar to the query (semantic seeding). HYBRID:
+        # the seed score is max(lexical, semantic), so a lexical hit is never lost and a meaning-only node
+        # the lexical path misses still enters the graph. embed=None -> lexical-only (byte-equivalent).
+        qvec = self._query_vector(query) if self._embed is not None else None
         best: dict = {}
         frontier = deque()
         for nid in self._order:
@@ -156,9 +193,13 @@ class GraphStore:
                 continue
             d = set(_tokenize(self._nodes[nid].content))
             union = len(q | d)
-            overlap = len(q & d) / union if union else 0.0
-            if overlap > 0:
-                best[nid] = overlap
+            score = len(q & d) / union if union else 0.0
+            if qvec is not None:
+                cos = _cosine(qvec, self._embeddings.get(nid))
+                if cos >= _SEMANTIC_SEED_FLOOR:
+                    score = max(score, cos)
+            if score > 0:
+                best[nid] = score
                 frontier.append((nid, 0))
         if not best:
             return []
@@ -186,6 +227,23 @@ class GraphStore:
         return [self._nodes[i] for i in self._order]
 
     # -- helpers -----------------------------------------------------------
+    def _embed_call(self, text: str, input_type: str) -> list:
+        """Embed ``text`` through the injected embedder, carrying the document/query asymmetry only when the
+        embedder's signature accepts ``input_type`` (reusing SqliteVectorStore's seam helper)."""
+        embed = self._embed
+        if embed is None:                                       # never hit live (callers guard) — type-safe
+            return []
+        from .sqlite_store import _embedder_accepts_input_type  # lazy: avoid a module-load import cycle
+        if _embedder_accepts_input_type(embed):
+            return list(embed(text, input_type=input_type))
+        return list(embed(text))
+
+    def _doc_vector(self, text: str) -> list:
+        return self._embed_call(text, "document")
+
+    def _query_vector(self, text: str) -> list:
+        return self._embed_call(text, "query")
+
     def _parse_edges(self, node: MemoryItem) -> list:
         """Typed out-edges ``[(target_id, relation)]`` from a node's ``okf_links`` (deduped, no self-loops)."""
         edges: list = []
