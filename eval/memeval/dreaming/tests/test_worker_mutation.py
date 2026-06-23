@@ -1325,3 +1325,94 @@ def test_daydream_skips_while_dream_running(
         )
     skip_events = [e for e in spy_emit if e[0] == "daydream.dream_in_progress_skipped"]
     assert len(skip_events) == 1
+
+
+# --------------------------------------------------------------------------- #
+# Integration smoke — real RouterStore via build_store (beyond rubric scope)
+# --------------------------------------------------------------------------- #
+
+
+def test_mutation_real_routerstore_end_to_end(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Integration smoke — end-to-end via real RouterStore + Router.delete fan-out.
+
+    Builds a fully-assembled engine via cookbook_memory.core.contract.build_store
+    (RouterStore over Router with markdown + vectors + graph backends), seeds it
+    with three items (two normalize to the same dedup key, one singleton), runs
+    DreamingWorker, and verifies that the loser is gone from EVERY backend
+    Router.delete fans out to — including the on-disk MarkdownStore file —
+    while the winner survives byte-identical. Closes the gap between the 83
+    unit tests (which all use _DeleteAwareStore / InMemoryStore) and the real
+    production wiring.
+    """
+    # Force the fully-offline fusion profile so build_store needs no API keys
+    # (accuracy_profile would try to instantiate VoyageEmbedder; speed_profile
+    # is explicit-only). fusion is the default offline auto-selection too, but
+    # we pin it for determinism.
+    monkeypatch.setenv("MEMORY_PROFILE", "fusion")
+    monkeypatch.delenv("VOYAGE_API_KEY", raising=False)
+    # Wire MEMORY_STORE so worker._resolve_basedir() lands the .dream.lock
+    # under tmp_path (same dir we seed build_store with).
+    monkeypatch.setenv("MEMORY_STORE", str(tmp_path))
+
+    from cookbook_memory.core.contract import build_store
+
+    store = build_store(str(tmp_path))
+
+    # Seed: two near-duplicates (cluster), one singleton (must survive).
+    # "Hello, world!" and "hello world" both normalize to "hello world".
+    # Timestamps pinned so the winner is deterministic: latest ts wins (§D5a),
+    # so ts=2.0 > ts=1.0 → winner_id = "dup-winner".
+    winner_id = "dup-winner"
+    loser_id = "dup-loser"
+    singleton_id = "unique-survivor"
+    winner_content = "Hello, world!"
+    loser_content = "hello world"
+    singleton_content = "totally distinct content"
+
+    store.write(MemoryItem(item_id=loser_id, content=loser_content, timestamp=1.0))
+    store.write(MemoryItem(item_id=winner_id, content=winner_content, timestamp=2.0))
+    store.write(MemoryItem(item_id=singleton_id, content=singleton_content, timestamp=3.0))
+
+    # Sanity: all three exist on disk via the MarkdownStore fan-out before run().
+    md_root = tmp_path / "markdown" / "memory"
+    winner_md = md_root / f"{winner_id}.md"
+    loser_md = md_root / f"{loser_id}.md"
+    singleton_md = md_root / f"{singleton_id}.md"
+    assert winner_md.exists(), "precondition: markdown fan-out wrote winner"
+    assert loser_md.exists(), "precondition: markdown fan-out wrote loser"
+    assert singleton_md.exists(), "precondition: markdown fan-out wrote singleton"
+
+    # Run the worker against the REAL RouterStore.
+    result = worker.DreamingWorker(store).run()
+
+    # Sanity on cluster shape — winner is deterministic by ts.
+    assert len(result["clusters"]) == 1
+    cluster = result["clusters"][0]
+    assert cluster["winner_id"] == winner_id
+    assert cluster["retired_ids"] == [loser_id]
+    assert result["counts"]["items_retired"] == 1
+
+    # (1) Loser gone from store.all().
+    surviving_ids = {i.item_id for i in store.all()}
+    assert loser_id not in surviving_ids
+    assert surviving_ids == {winner_id, singleton_id}
+
+    # (2) Loser gone from store.get(loser_id) → None.
+    assert store.get(loser_id) is None
+
+    # (3) Winner survives with original content (RouterStore.get returns the
+    # markdown-base copy first per _READ_ORDER).
+    survived_winner = store.get(winner_id)
+    assert survived_winner is not None
+    assert survived_winner.content == winner_content
+
+    # (4) Disk-backed markdown backend reflects the delete fan-out: the loser's
+    # on-disk doc is unlinked, the winner's persists.
+    assert not loser_md.exists(), (
+        f"markdown backend not updated: {loser_md} should have been unlinked "
+        "by Router.delete fan-out"
+    )
+    assert winner_md.exists(), "winner's markdown doc must persist"
+    assert singleton_md.exists(), "singleton's markdown doc must persist"
