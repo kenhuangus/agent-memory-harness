@@ -646,36 +646,12 @@ def test_dream_subcommand_all_is_required_boolean() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# §H — `dream --all` subcommand — fail-open carve-out (`worker.py` stub)
+# §H — `dream --all` subcommand — fail-open
 # --------------------------------------------------------------------------- #
-
-
-def test_dream_all_failopens_on_notimplementederror(
-    memory_store_dir: Path, fake_make_store: MagicMock, fake_emit: list[Any],
-) -> None:
-    """Rubric §H criterion 49 — `dream --all` returns 0 even though DreamingWorker.run raises NotImplementedError."""
-    assert cli.main(["dream", "--all"]) == 0
-
-
-def test_dream_all_emits_skipped_event(
-    memory_store_dir: Path, fake_make_store: MagicMock, fake_emit: list[Any],
-) -> None:
-    """Rubric §H criterion 50 — on NotImplementedError, CLI emits `daydream.dream_all_skipped`."""
-    cli.main(["dream", "--all"])
-    assert any(t == "daydream.dream_all_skipped" for t, _ in fake_emit)
-
-
-def test_dream_all_logs_notimplemented_visibly(
-    memory_store_dir: Path, fake_make_store: MagicMock, fake_emit: list[Any],
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Rubric §H criterion 51 — on NotImplementedError, WARNING log contains `night` or `consolidation`."""
-    caplog.set_level(logging.WARNING, logger="memeval.dreaming.cli")
-    cli.main(["dream", "--all"])
-    assert any(
-        ("night" in rec.getMessage().lower() or "consolidation" in rec.getMessage().lower())
-        for rec in caplog.records
-    )
+# PR5 §H criteria 49, 50, 51 and 53 superseded by INITIAL_DREAM_RUBRIC.md
+# (worker.py now implements Job-1 dedup detection; the NotImplementedError
+# stub path no longer exists on success). The remaining tests preserve the
+# §H 52, 54, 55 contract that survives the implementation transition.
 
 
 def test_dream_all_failopens_and_emits_error_event(
@@ -693,16 +669,6 @@ def test_dream_all_failopens_and_emits_error_event(
     assert cli.main(["dream", "--all"]) == 0
     assert any(t == "daydream.dream_all_error" for t, _ in fake_emit)
     assert any("RuntimeError" in rec.getMessage() for rec in caplog.records)
-
-
-def test_worker_unchanged() -> None:
-    """Rubric §H criterion 53 — worker.py is byte-identical to its pre-PR5 contents (PR5 does not touch night Dream)."""
-    repo_root = Path(__file__).resolve().parents[4]
-    result = subprocess.run(
-        ["git", "diff", "--name-only", "main...HEAD", "--", "eval/memeval/dreaming/worker.py"],
-        cwd=repo_root, capture_output=True, text=True,
-    )
-    assert result.stdout.strip() == ""
 
 
 def test_dream_all_threads_store_arg(
@@ -938,12 +904,22 @@ def test_rubric_test_names_all_present_pr5() -> None:
     rubric_text = rubric.read_text()
     rubric_names = set(re.findall(r"`(test_[a-zA-Z0-9_]+)`", rubric_text))
 
+    # PR5 §H criteria 49, 50, 51, 53 superseded by INITIAL_DREAM_RUBRIC.md — the
+    # NotImplementedError stub path no longer exists once worker.py implements
+    # Job-1 dedup detection. These tests are intentionally removed.
+    superseded = {
+        "test_dream_all_failopens_on_notimplementederror",
+        "test_dream_all_emits_skipped_event",
+        "test_dream_all_logs_notimplemented_visibly",
+        "test_worker_unchanged",
+    }
+
     from memeval.dreaming.tests import test_cli as _tc
     from memeval.dreaming.tests import test_plugin_manifest as _tpm
     collected = {n for n in dir(_tc) if n.startswith("test_")}
     collected |= {n for n in dir(_tpm) if n.startswith("test_")}
 
-    missing = rubric_names - collected
+    missing = rubric_names - collected - superseded
     assert not missing, f"rubric names not present: {sorted(missing)}"
 
 
