@@ -314,6 +314,40 @@ class GraphStore:
     def all(self) -> list:
         return [self._nodes[i] for i in self._order]
 
+    def delete(self, item_id: str) -> bool:
+        """Remove ``item_id`` (its node + its OWN out-edges) from the graph, durably. Idempotent (an absent
+        id -> ``False``). **Atomic**: the durable mirror is updated BEFORE RAM, so a failed durable delete
+        leaves both untouched. Preserves the ``_out``<->``_in`` mirror: OTHER nodes' edges TO this id are
+        their data — kept (they resolve to nothing while it is absent, and again if it is re-created).
+        """
+        if self._closed:
+            raise RuntimeError("delete() on a closed GraphStore")
+        if item_id not in self._nodes:
+            return False
+        if self._conn is not None:
+            self._persist_delete(item_id)            # durable first (raises -> RAM never mutated)
+        # retract this node's out-edges' reverse contributions from each target's _in.
+        for tgt, rel in self._out.get(item_id, []):
+            back = self._in.get(tgt)
+            if back:
+                self._in[tgt] = [e for e in back if e != (item_id, rel)]
+        self._out.pop(item_id, None)
+        self._nodes.pop(item_id, None)
+        if item_id in self._order:
+            self._order.remove(item_id)
+        self._embeddings.pop(item_id, None)
+        return True
+
+    def _persist_delete(self, item_id: str) -> None:
+        """Delete a node row from the durable mirror; rolls back on failure (atomic write-through)."""
+        assert self._conn is not None
+        try:
+            self._conn.execute("DELETE FROM nodes WHERE item_id = ?", (item_id,))
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
+
     def close(self) -> None:
         """Close the store: close the durable mirror connection (a no-op for ``path=None``) and mark it
         closed so a later ``write()`` FAILS LOUD instead of silently mutating RAM without persisting —
