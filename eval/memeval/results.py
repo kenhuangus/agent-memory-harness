@@ -114,6 +114,54 @@ def run_timestamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
+def resolve_pipeline_version(*, cwd: "str | Path | None" = None) -> dict[str, Any]:
+    """Resolve a pipeline run's version from the git tag on its commit (ADR-eval-004).
+
+    A pipeline keys both its results directory and its persistent memory substrate on
+    this version, so a new release starts from a fresh substrate rather than mixing two
+    code generations' memory. Resolution order:
+
+    1. ``git describe --tags --exact-match HEAD`` -- HEAD is exactly a tag -> use it.
+    2. ``git describe --tags --abbrev=0`` -- nearest reachable tag -> use it, and flag
+       that HEAD is *past* the tag (``version_exact=False``).
+    3. :data:`memeval.MEMORY_VERSION` -- no tags (or no git) -> fall back, ``untagged=True``.
+
+    Returns a dict ``{version, version_exact, untagged, git_sha, source}`` where ``version``
+    is normalized to the ``vX.Y`` directory form (:func:`normalize_version`) and ``source``
+    is ``"exact-tag" | "nearest-tag" | "memory-version"``. Never raises -- a missing git
+    checkout degrades to the ``MEMORY_VERSION`` fallback, since the resolver is metadata,
+    not metric logic.
+    """
+    import subprocess
+
+    from . import MEMORY_VERSION
+
+    def _git(*args: str) -> "str | None":
+        try:
+            out = subprocess.run(
+                ["git", *args], cwd=str(cwd) if cwd else None,
+                capture_output=True, text=True, timeout=10, check=False,
+            )
+        except Exception:
+            return None
+        return out.stdout.strip() if out.returncode == 0 and out.stdout.strip() else None
+
+    git_sha = _git("rev-parse", "--short", "HEAD") or ""
+
+    exact = _git("describe", "--tags", "--exact-match", "HEAD")
+    if exact:
+        return {"version": normalize_version(exact), "version_exact": True,
+                "untagged": False, "git_sha": git_sha, "source": "exact-tag"}
+
+    nearest = _git("describe", "--tags", "--abbrev=0")
+    if nearest:
+        return {"version": normalize_version(nearest), "version_exact": False,
+                "untagged": False, "git_sha": git_sha, "source": "nearest-tag"}
+
+    return {"version": normalize_version(MEMORY_VERSION), "version_exact": False,
+            "untagged": True, "git_sha": git_sha, "source": "memory-version"}
+
+
 def benchmark_results_path(
     benchmark: str, *, version: str, timestamp: str, root: "str | Path" = "results",
 ) -> Path:
@@ -315,6 +363,7 @@ __all__ = [
     "append_result",
     "normalize_version",
     "run_timestamp",
+    "resolve_pipeline_version",
     "benchmark_results_path",
     "write_benchmark_results",
 ]
