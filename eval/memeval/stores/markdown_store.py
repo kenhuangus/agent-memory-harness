@@ -130,5 +130,12 @@ class MarkdownStore:
     def all(self) -> list[MemoryItem]:
         return self._okf.all()
 
+    def delete(self, item_id: str) -> bool:
+        """Delete ``item_id`` from the OKF bundle (durable) and the inverted keyword index. Idempotent."""
+        removed = self._okf.delete(item_id)
+        if removed:
+            self._deindex(item_id)
+        return removed
+
 
 __all__ = ["MarkdownStore"]

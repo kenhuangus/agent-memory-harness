@@ -225,6 +225,17 @@ class SqliteVectorStore:
         ).fetchall()
         return [self._row_to_item(r) for r in rows]
 
+    def delete(self, item_id: str) -> bool:
+        """Delete the row for ``item_id``; return ``True`` if a row was removed (idempotent). Rolls back
+        on failure so a partial change never lands."""
+        try:
+            cur = self._conn.execute("DELETE FROM items WHERE item_id = ?", (item_id,))
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
+        return cur.rowcount > 0
+
     # -- helpers -----------------------------------------------------------
     def _row_to_item(self, row) -> MemoryItem:
         return MemoryItem(

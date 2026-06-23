@@ -1072,6 +1072,27 @@ class Router:
             return None  # top non-self hit is below threshold -> no near-duplicate
         return None
 
+    # -- delete (unconditional fan-out; ADR-P9 retention primitive) --------------------------
+    def delete(self, item_id: str) -> int:
+        """Delete ``item_id`` from EVERY registered backend; return how many removed it.
+
+        Write-routing is policy-driven, but delete is **unconditional and complete**: under ``base_all`` an
+        item lives in several backends, so a correct delete clears all of them. Idempotent — a backend that
+        doesn't have the id is a no-op. Duck-typed: a backend without a ``delete`` method (e.g. the
+        reference ``InMemoryStore``) is skipped, not an error. (Adding ``delete`` to the frozen
+        ``MemoryStore`` protocol is the follow-up ``[CONTRACT]`` change.)
+        """
+        removed = 0
+        seen: set = set()
+        for store in self.backends.values():
+            if id(store) in seen:           # the same store may be registered under more than one name
+                continue
+            seen.add(id(store))
+            deleter = getattr(store, "delete", None)
+            if callable(deleter) and deleter(item_id):
+                removed += 1
+        return removed
+
 
 class RouterStore:
     """A :class:`~memeval.protocols.MemoryStore` facade over a :class:`Router` — makes routed
@@ -1137,6 +1158,11 @@ class RouterStore:
                     seen.add(item.item_id)
                     out.append(item)
         return out
+
+    def delete(self, item_id: str) -> int:
+        """Delete ``item_id`` from every backend via the Router (idempotent). Returns the number of
+        backends it was removed from (0 if absent everywhere)."""
+        return self._router.delete(item_id)
 
     def _ordered_backend_names(self) -> list[str]:
         """Registered backend names in read priority (``_READ_ORDER`` first, then any extras)."""
