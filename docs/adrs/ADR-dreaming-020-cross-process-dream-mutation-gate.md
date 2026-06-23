@@ -2,19 +2,19 @@
 id: ADR-dreaming-020
 domain: dreaming
 title: v2 Dream mutation half is gated on a successor ADR resolving cross-process concurrency on `$MEMORY_STORE`
-status: Accepted
+status: Superseded
 date: 2026-06-22
 contract: true
 supersedes: none
-superseded_by: none
+superseded_by: ADR-dreaming-021
 owner: Scott B. (P4)
 origin: eval/memeval/dreaming/tests/INITIAL_DREAM_RUBRIC.md §L (jasnah + halliday review of the Dream v1 worker)
 ---
 
 # ADR-dreaming-020: v2 Dream mutation half is gated on a successor ADR resolving cross-process concurrency on `$MEMORY_STORE`
 
-**Status:** Accepted · **Date:** 2026-06-22 · **Contract:** yes
-**Supersedes:** none · **Superseded by:** none
+**Status:** Superseded by [ADR-dreaming-021](ADR-dreaming-021-dream-mutation-concurrency.md) · **Date:** 2026-06-22 · **Contract:** yes
+**Supersedes:** none · **Superseded by:** [ADR-dreaming-021](ADR-dreaming-021-dream-mutation-concurrency.md)
 
 > **What this ADR does.** It does **not** pick the v2 concurrency model. It
 > **names the gate** that the v2 mutation PR cannot ship without resolving. v1
