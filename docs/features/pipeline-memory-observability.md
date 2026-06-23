@@ -1,6 +1,6 @@
 # Feature: Pipeline Memory Observability
 
-**Status:** Building · **Date:** 2026-06-23
+**Status:** Done · **Date:** 2026-06-23
 
 ## What this delivers (before -> after)
 
@@ -24,11 +24,11 @@ No new dependency is needed. SQLite row counts use the standard library `sqlite3
 
 ## Build plan
 
-- [ ] Add store/event health helpers and tests for recall attempts, recall hits, write completion, and durable item counts.
-- [ ] Enrich pipeline stage rows with memory health, grading coverage, and warnings.
-- [ ] Render memory health and ungraded accuracy honestly in markdown and JSON summaries.
-- [ ] Add preflight/post-stage validation warnings for missing MCP recall and non-accumulating stores.
-- [ ] Run impacted tests, then the eval test slice.
+- [x] Add store/event health helpers and tests for recall attempts, recall hits, write completion, and durable item counts.
+- [x] Enrich pipeline stage rows with memory health, grading coverage, and warnings.
+- [x] Render memory health and ungraded accuracy honestly in markdown and JSON summaries.
+- [x] Add preflight/post-stage validation warnings for missing MCP recall and non-accumulating stores.
+- [x] Run impacted tests, then the eval test slice.
 
 ## Quality bars
 
@@ -40,4 +40,18 @@ Observability: warnings must be machine-readable in JSON and visible in markdown
 
 ## Decisions, assumptions & blockers
 
-Pending while building.
+Decisions made:
+
+- Store inspection is read-only and limited to event counts plus durable row counts, preserving the plugin-owned store boundary.
+- Recall attempts and recall hits are separate counters; zero-hit recalls still prove the MCP path was reached.
+- Pipeline preflight is non-blocking. It records warnings because plumbing runs can still be useful even when memory-lift interpretation is invalid.
+- CODE accuracy renders as unavailable when no tasks were graded, while the raw metric remains backward-compatible in JSON.
+
+Assumptions:
+
+- SQLite `memory.db.items` and `graph.db.nodes`, plus top-level markdown files, are sufficient durable-store signals for current plugin backends.
+- The synthetic preflight should use an isolated temporary store rather than writing sentinel data into the benchmark substrate.
+
+Deferred / blockers:
+
+- None.
