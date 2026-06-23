@@ -431,6 +431,31 @@ def _ensure_sandbox_ready() -> None:
     print(f"sandbox: {d} (logged in) — all stages use this, not the host claude.", flush=True)
 
 
+def _warn_if_memory_cannot_accumulate() -> None:
+    """Warn LOUDLY when the daydreamer can't extract memories — the whole point of the
+    pipeline is that memory accumulates, and that requires an LLM to extract it.
+
+    The plugin's daydreamer reads each session and calls an OpenRouter model to decide
+    what to remember. With ``OPENROUTER_API_KEY`` unset it fail-opens to a NO-OP
+    (ADR-dreaming-012): the store is created and daydream runs, but ZERO memories are
+    written — so every plugin stage runs on empty memory and the base→final comparison is
+    meaningless (memory never accumulates). This is the single most common reason a run
+    'works' but shows no memory lift, so flag it prominently up front."""
+    import os
+
+    provider = os.environ.get("DREAM_PROVIDER", "openrouter").strip().lower()
+    if provider == "openrouter" and not (os.environ.get("OPENROUTER_API_KEY") or "").strip():
+        print(
+            "\n" + "!" * 78 + "\n"
+            "WARNING: OPENROUTER_API_KEY is not set — the daydreamer cannot extract memories.\n"
+            "The plugin store will be created and daydream will run, but ZERO memories will be\n"
+            "written (fail-open no-op, ADR-dreaming-012). Every plugin stage then runs on EMPTY\n"
+            "memory, so the base→final comparison shows no accumulation — the experiment is a\n"
+            "no-op. Set OPENROUTER_API_KEY (or DREAM_PROVIDER) before a real run.\n"
+            + "!" * 78 + "\n",
+            file=sys.stderr, flush=True)
+
+
 def run_pipeline(cfg: dict) -> dict:
     """Run all 5 stages and write the results + summary. Returns the summary dict."""
     from ..cost import CostTracker
@@ -440,6 +465,7 @@ def run_pipeline(cfg: dict) -> dict:
     import time
 
     _ensure_sandbox_ready()  # MUST be first — every stage uses the sandbox, never the host
+    _warn_if_memory_cannot_accumulate()  # OPENROUTER_API_KEY gates daydream memory extraction
     version_info = resolve_pipeline_version()
     version = version_info["version"]
     stamp = run_timestamp()
