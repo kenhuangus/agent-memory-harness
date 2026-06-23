@@ -189,5 +189,33 @@ what wasn't explicitly saved. The pass is **fail-open** (a consolidation error
 never breaks the agent). Deep cross-session consolidation (night `Dream`) reads the
 **entire** store; the `Stop`-hook Daydream is scoped to the **current session**.
 
+### 7.4 The eval harness owns the store DIRECTORY only; the plugin owns its contents
+The eval↔memory black box (the binding principle of
+[`ADR-eval-001`](docs/adrs/ADR-eval-001-extract-memory-package.md)) is enforced on the
+filesystem, not just at import boundaries
+([`ADR-eval-003`](docs/adrs/ADR-eval-003-pipeline-shared-memory-substrate.md), contract):
+
+- The harness's **only** relationship to memory is to ensure the store **directory** exists and
+  persists, and to set **`CLAUDE_PROJECT_DIR`** to it. The plugin's own committed config
+  (`.mcp.json` + `hooks.json`) binds `MEMORY_STORE=${CLAUDE_PROJECT_DIR}/.cookbook-memory`, so
+  one env var is the entire seam — the harness never names `MEMORY_STORE` or `.cookbook-memory`.
+- The harness **never reads, writes, copies, moves, excludes, prunes, or seeds** any file inside
+  the store. The plugin's router owns all reads/writes; the Dream stage is triggered only through
+  the plugin's own `daydream-cli` surface. (Recall *attribution* may read the plugin's
+  externally-observable events stream — an output, per
+  [`ADR-harness-007`](docs/adrs/ADR-harness-007-memory-events-stream.md) — but never copies or
+  mutates it.) This deletes the prior harness-side group-store copying on the `plugin-real` path
+  ([`ADR-harness-012`](docs/adrs/ADR-harness-012-remove-harness-memory-management.md)).
+- Memory is **ONE shared substrate per pipeline version**: `results/v{version}/_memory/`, where
+  `{version}` is the git tag on the `main` commit
+  ([`ADR-eval-004`](docs/adrs/ADR-eval-004-pipeline-version-from-git-tag.md), fallback
+  `MEMORY_VERSION`). It is **not** scoped per sequence/domain/task — the hypothesis is a single
+  accumulating memory that improves the agent over everything it sees, accumulating across stages
+  **by directory persistence**, not by harness copying. Because the substrate is version-keyed,
+  the work it saw (which SWE-Bench-CL **sequence**, model, dreamer model, limit) is recorded in
+  **run metadata**, not in memory. All three store backends (`memory.db`, `markdown/`,
+  `graph.db`) persist under the directory
+  ([`ADR-storage-002`](docs/adrs/ADR-storage-002-persist-graph-backend.md)).
+
 ---
 Product rationale: [`prd.md`](prd.md) · Ownership, dependencies, change process: [`plan.md`](plan.md).
