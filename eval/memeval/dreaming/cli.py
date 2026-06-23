@@ -216,7 +216,7 @@ def _handle_daydream(args: argparse.Namespace) -> int:
 
 
 def _handle_dream(args: argparse.Namespace) -> int:
-    """Run night-dream consolidation — v1 worker is a stub; CLI emits skipped/error events."""
+    """Run night-dream consolidation — catches _DreamLockHeld + _UnsupportedFsError separately per ADR-021."""
     from memeval.dreaming import _state, worker
     from memeval.dreaming.events import emit
 
@@ -229,6 +229,20 @@ def _handle_dream(args: argparse.Namespace) -> int:
             return 0
         except (KeyboardInterrupt, SystemExit):
             raise
+        except _state._DreamLockHeld:
+            log.warning(
+                "daydream-cli: another Dream sweep holds the basedir lock; fail-open exit 0"
+            )
+            emit("dream.lock_contended", basedir=str(basedir))
+            return 0
+        except _state._UnsupportedFsError as exc:
+            log.warning(
+                "daydream-cli: $MEMORY_STORE is on an unsupported network filesystem: %s; "
+                "set DREAM_ALLOW_NETWORK_FS=1 to override; fail-open exit 0",
+                exc,
+            )
+            emit("dream.unsupported_fs", basedir=str(basedir))
+            return 0
         except NotImplementedError:
             log.warning(
                 "daydream-cli: night consolidation not yet implemented; fail-open exit 0"

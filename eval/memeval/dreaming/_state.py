@@ -35,7 +35,11 @@ __all__ = [
     "MAX_AUDIT_LINES_PER_FILE",
     "RECENT_MEMORY_CAP",
     "SidecarState",
+    "_DreamLockHeld",
     "_LockHeld",
+    "_UnsupportedFsError",
+    "_basedir_dream_lock",
+    "_is_network_fs",
     "_per_session_lock",
     "_sanity_check_cursor",
     "_touch_current_session_files",
@@ -570,3 +574,115 @@ def sweep_old_state(
 def _first_bytes_hash(data: bytes) -> str:
     """Return ``sha256(data).hexdigest()`` — convenience for the engine's F8 seam."""
     return hashlib.sha256(data).hexdigest()
+
+
+# --------------------------------------------------------------------------- #
+# Basedir flock — ADR-021 (Dream mutation concurrency)
+# --------------------------------------------------------------------------- #
+class _DreamLockHeld(Exception):
+    """Raised by :func:`_basedir_dream_lock` when another process holds the basedir lock."""
+
+
+class _UnsupportedFsError(Exception):
+    """Raised when ``$MEMORY_STORE`` is on a network filesystem (NFS/SMB) and the override is unset."""
+
+
+@contextmanager
+def _basedir_dream_lock(basedir: Path) -> Iterator[None]:
+    """Acquire the basedir-scope dream lock at ``<basedir>/.dream.lock`` (ADR-021 Decision 2).
+
+    Structural copy of :func:`_per_session_lock` lifted from session scope to
+    basedir scope. ``fcntl.flock(LOCK_EX | LOCK_NB)`` — exclusive non-blocking
+    advisory, fd-bound so it releases on process death (per ADR-014 halliday
+    F3, mirrored here). On contention emits ``dream.lock_contended`` and
+    raises :class:`_DreamLockHeld`. Distinct from :class:`_LockHeld` so the
+    CLI catches them separately (ADR-021 §Consequences §Shape).
+    """
+    target = basedir / ".dream.lock"
+    basedir.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(target), os.O_WRONLY | os.O_CREAT, 0o600)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            emit("dream.lock_contended", basedir=str(basedir))
+            raise _DreamLockHeld(str(exc)) from exc
+        try:
+            yield
+        finally:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            except OSError as exc:
+                _logger.warning("dream basedir flock LOCK_UN failed: %s", exc)
+    finally:
+        try:
+            os.close(fd)
+        except OSError as exc:
+            _logger.warning("dream basedir lock fd close failed: %s", exc)
+
+
+def _is_network_fs(path: Path) -> bool:
+    """Detect whether ``path`` resides on a network filesystem (NFS/SMB) per ADR-021 Decision 3.
+
+    Linux: read ``/proc/mounts`` and match the longest prefix; recognize
+    ``nfs``, ``nfs4``, ``cifs``, ``smb*``, ``smbfs`` as network FS.
+    Darwin: best-effort ``getattrlist`` via ``ATTR_VOL_INFO_FSTYPE`` is
+    complex stdlib; fall back to parsing ``mount`` output for ``nfs``/``smbfs``.
+    Unknown platforms log a warning and return ``False`` (jasnah Pushback 6 —
+    "false-positive preferred" applies to detector OUTPUT, not to unknown-
+    platform DEFAULT; hard-failing every BSD CI run would be hostile).
+
+    Monkeypatchable from tests per rubric §L16.
+    """
+    import sys
+
+    network_types = {"nfs", "nfs4", "cifs", "smb", "smb2", "smb3", "smbfs", "afpfs"}
+    try:
+        resolved = str(path.resolve())
+    except OSError:
+        return False
+
+    if sys.platform.startswith("linux"):
+        try:
+            with open("/proc/mounts", "r", encoding="utf-8") as f:
+                mounts = [line.split() for line in f if line.strip() and not line.startswith("#")]
+        except OSError as exc:
+            _logger.warning("_is_network_fs: /proc/mounts read failed: %s", exc)
+            return False
+        best_mount = ""
+        best_fstype = ""
+        for parts in mounts:
+            if len(parts) < 3:
+                continue
+            mount_point = parts[1]
+            fstype = parts[2]
+            if (resolved == mount_point or resolved.startswith(mount_point.rstrip("/") + "/")) and len(mount_point) > len(best_mount):
+                best_mount = mount_point
+                best_fstype = fstype
+        return best_fstype.lower() in network_types
+
+    if sys.platform == "darwin":
+        import subprocess
+        try:
+            result = subprocess.run(["mount"], capture_output=True, text=True, timeout=2.0, check=False)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            _logger.warning("_is_network_fs: darwin `mount` invocation failed: %s", exc)
+            return False
+        best_mount = ""
+        best_fstype = ""
+        for line in result.stdout.splitlines():
+            if " on " not in line or " (" not in line:
+                continue
+            try:
+                _src, rest = line.split(" on ", 1)
+                mount_point, paren = rest.split(" (", 1)
+            except ValueError:
+                continue
+            fstype = paren.split(",", 1)[0].rstrip(")").strip().lower()
+            if (resolved == mount_point or resolved.startswith(mount_point.rstrip("/") + "/")) and len(mount_point) > len(best_mount):
+                best_mount = mount_point
+                best_fstype = fstype
+        return best_fstype in network_types
+
+    _logger.warning("_is_network_fs: unknown platform %r, returning False", sys.platform)
+    return False

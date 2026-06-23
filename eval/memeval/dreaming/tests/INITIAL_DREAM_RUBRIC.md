@@ -1,5 +1,13 @@
 # INITIAL_DREAM_RUBRIC.md — first substantive `DreamingWorker.run()` body
 
+> **SUPERSEDED by [`JOB1_MUTATION_RUBRIC.md`](JOB1_MUTATION_RUBRIC.md).** Job 1
+> mutation (PR after #96) overturns this rubric's §F NO-MUTATION suite and §B
+> `mode`/`jobs_run`/`skipped_jobs` literals. The preserved sections (A, B-shape,
+> C, D, E, G, H, I, J1/J2, K non-mutation entries) are re-asserted by the
+> mutation rubric. Test file (`test_worker.py`) is removed in the mutation PR;
+> coverage moves to `test_worker_mutation.py`. This file is retained as the
+> historical detection-only contract.
+
 **Scope.** Job 1 of ADR-dreaming-002 *only*, **detection half only**: walk `store.all()`,
 group items by a normalized-content key, return a JSON-serializable governance summary
 dict. No item mutation. No retirement. No merge. No embedding. No trajectory reading.

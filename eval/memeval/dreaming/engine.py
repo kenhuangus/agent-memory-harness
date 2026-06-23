@@ -39,6 +39,8 @@ from memeval.dreaming._extract import _default_id_gen, extract_memories
 from memeval.dreaming._state import (
     RECENT_MEMORY_CAP,
     SidecarState,
+    _basedir_dream_lock,
+    _DreamLockHeld,
     _LockHeld,
     _per_session_lock,
     _sanity_check_cursor,
@@ -92,96 +94,104 @@ def daydream(
     # finding (path-traversal vector via session_id) — engine-wide guard.
     session_id = safe_session_stem(session_id)
 
-    _touch_current_session_files(effective_basedir, session_id)
-
-    try:
-        sweep_old_state(effective_basedir)
-    except Exception as exc:
-        _logger.warning("sweep_old_state failed: %s", exc)
-
     effective_id_gen: Callable[[], str] = id_gen if id_gen is not None else _default_id_gen
 
     with event_context(session_id=session_id, basedir=effective_basedir):
         cursor: int = 0
         try:
-            # Lazy client construction lives INSIDE the fail-open boundary so
-            # a misconfigured DREAM_PROVIDER (or any make_client failure) is
-            # caught by the ``except Exception`` below rather than escaping
-            # the engine. CodeRabbit PR #42 finding — fail-open contract fix.
-            if client is None:
-                from memeval.dreaming.llm import make_client
+            # Basedir lock FIRST (ADR-021 Decision 4 — load-bearing invariant):
+            # acquired BEFORE the per-session lock, BEFORE state touch + sweep,
+            # BEFORE the lazy client construction, BEFORE any store access.
+            # On contention, no state is touched and no other lock is held.
+            with _basedir_dream_lock(effective_basedir):
+                _touch_current_session_files(effective_basedir, session_id)
 
-                effective_client: LLMClient = make_client()
-            else:
-                effective_client = client
+                try:
+                    sweep_old_state(effective_basedir)
+                except Exception as exc:
+                    _logger.warning("sweep_old_state failed: %s", exc)
 
-            with _per_session_lock(effective_basedir, session_id):
-                sidecar_target = sidecar_path(effective_basedir, session_id)
-                state = load_sidecar(sidecar_target)
-                cursor = _sanity_check_cursor(state["cursor"], log_path)
+                # Lazy client construction lives INSIDE the fail-open boundary so
+                # a misconfigured DREAM_PROVIDER (or any make_client failure) is
+                # caught by the ``except Exception`` below rather than escaping
+                # the engine. CodeRabbit PR #42 finding — fail-open contract fix.
+                if client is None:
+                    from memeval.dreaming.llm import make_client
 
-                with open(log_path, "rb") as fp:
-                    fp.seek(cursor)
-                    chunk = fp.read()
-                    new_cursor = fp.tell()
-                    fp.seek(0)
-                    first_bytes = fp.read(_FIRST_BYTES_LEN)
+                    effective_client: LLMClient = make_client()
+                else:
+                    effective_client = client
 
-                if not chunk.strip():
-                    return
+                with _per_session_lock(effective_basedir, session_id):
+                    sidecar_target = sidecar_path(effective_basedir, session_id)
+                    state = load_sidecar(sidecar_target)
+                    cursor = _sanity_check_cursor(state["cursor"], log_path)
 
-                effective_now = now if now is not None else time.time()
-                chunk_text = chunk.decode(errors="replace")
-                redacted, detected = redact_with_counts(chunk_text)
+                    with open(log_path, "rb") as fp:
+                        fp.seek(cursor)
+                        chunk = fp.read()
+                        new_cursor = fp.tell()
+                        fp.seek(0)
+                        first_bytes = fp.read(_FIRST_BYTES_LEN)
 
-                _write_audit_fail_open(
-                    audit_path(effective_basedir, session_id),
-                    chunk_id=cursor,
-                    pre=chunk_text,
-                    post=str(redacted),
-                    detected=detected,
-                )
-                for plugin_name, count in detected.items():
-                    if count > 0:
+                    if not chunk.strip():
+                        return
+
+                    effective_now = now if now is not None else time.time()
+                    chunk_text = chunk.decode(errors="replace")
+                    redacted, detected = redact_with_counts(chunk_text)
+
+                    _write_audit_fail_open(
+                        audit_path(effective_basedir, session_id),
+                        chunk_id=cursor,
+                        pre=chunk_text,
+                        post=str(redacted),
+                        detected=detected,
+                    )
+                    for plugin_name, count in detected.items():
+                        if count > 0:
+                            emit(
+                                "redaction.chunk",
+                                plugin=plugin_name,
+                                count=count,
+                                chunk_id=cursor,
+                            )
+
+                    items = extract_memories(
+                        redacted,
+                        client=effective_client,
+                        session_id=session_id,
+                        now=effective_now,
+                        id_gen=effective_id_gen,
+                    )
+                    if items is None:
+                        return
+
+                    for item in items:
+                        store.write(item)
                         emit(
-                            "redaction.chunk",
-                            plugin=plugin_name,
-                            count=count,
+                            "daydream.memory_written",
+                            item_id=item.item_id,
+                            session_id=session_id,
                             chunk_id=cursor,
                         )
 
-                items = extract_memories(
-                    redacted,
-                    client=effective_client,
-                    session_id=session_id,
-                    now=effective_now,
-                    id_gen=effective_id_gen,
-                )
-                if items is None:
-                    return
-
-                for item in items:
-                    store.write(item)
-                    emit(
-                        "daydream.memory_written",
-                        item_id=item.item_id,
-                        session_id=session_id,
-                        chunk_id=cursor,
+                    new_last_summary: str | None = (
+                        items[-1].content if items else state.get("last_summary")
                     )
-
-                new_last_summary: str | None = (
-                    items[-1].content if items else state.get("last_summary")
-                )
-                prepended_ids = [item.item_id for item in items] + list(
-                    state["recent_memory_ids"]
-                )
-                new_state = SidecarState(
-                    cursor=new_cursor,
-                    last_summary=new_last_summary,
-                    recent_memory_ids=prepended_ids[:RECENT_MEMORY_CAP],
-                    first_bytes_hash=hashlib.sha256(first_bytes).hexdigest(),
-                )
-                _write_sidecar_atomic(sidecar_target, new_state)
+                    prepended_ids = [item.item_id for item in items] + list(
+                        state["recent_memory_ids"]
+                    )
+                    new_state = SidecarState(
+                        cursor=new_cursor,
+                        last_summary=new_last_summary,
+                        recent_memory_ids=prepended_ids[:RECENT_MEMORY_CAP],
+                        first_bytes_hash=hashlib.sha256(first_bytes).hexdigest(),
+                    )
+                    _write_sidecar_atomic(sidecar_target, new_state)
+        except _DreamLockHeld:
+            emit("daydream.dream_in_progress_skipped", session_id=session_id)
+            return
         except _LockHeld:
             return
         except Exception as exc:
