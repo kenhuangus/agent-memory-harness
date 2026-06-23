@@ -1,19 +1,23 @@
-"""Dreaming worker — Job 1 (dedup) detection + mutation per ADR-021.
+"""Dreaming worker — Jobs 1 (dedup) + 4 (TTL pruning) detection + mutation.
 
-v1 (PR #88) shipped detection-only: walk ``store.all()``, group items by a
-stdlib-normalized content key, return a JSON-serializable governance summary
-dict. v2 (this) extends to **mutation**: under a basedir-scope `flock`
-(ADR-021 Decision 2), the worker retires each cluster's losers via
-``Router.delete()`` (ADR-021 Decision 1) and reports `winner_id` + `retired_ids`
-per cluster.
+Layered job-by-job per ADR-002:
+- **Job 1 (dedup) detection-only** shipped in PR #88: walk ``store.all()``,
+  group items by stdlib-normalized content, return a JSON summary dict.
+- **Job 1 mutation** shipped in PR #98 per ADR-021: under a basedir
+  ``flock``, retire each cluster's losers via ``self.store.delete()`` (frozen
+  protocol per PR #99).
+- **Job 4 (TTL pruning) detection + mutation** shipped in PR after #98 per
+  ``JOB4_TTL_RUBRIC.md``: before clustering, drop items whose
+  ``(now - item.timestamp) > retention_seconds`` using the SAME basedir lock
+  and the SAME ``self.store.delete()`` primitive.
 
-The mutation contract is hard-delete, no CAS, no winner-write-back — the
-surviving item is the original cluster winner with content/relevancy/version
-unchanged. Daydream-vs-Dream race (Shape 2) is closed by ``engine.daydream``
-acquiring the same basedir lock before the per-session lock (ADR-021
-Decision 4).
+Mutation contract is hard-delete, no CAS, no winner-write-back. The
+Daydream-vs-Dream race (Shape 2) is closed by ``engine.daydream`` acquiring
+the same basedir lock before the per-session lock (ADR-021 Decision 4).
 
-Rubric: ``eval/memeval/dreaming/tests/JOB1_MUTATION_RUBRIC.md``.
+Rubrics:
+- ``eval/memeval/dreaming/tests/JOB1_MUTATION_RUBRIC.md`` (dedup half)
+- ``eval/memeval/dreaming/tests/JOB4_TTL_RUBRIC.md`` (TTL half)
 """
 
 from __future__ import annotations
@@ -22,6 +26,7 @@ import logging
 import os
 import re
 import string
+import time
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +44,52 @@ log = logging.getLogger(__name__)
 
 _PUNCT_TRANSLATION = str.maketrans("", "", string.punctuation)
 _WHITESPACE_RUN = re.compile(r"\s+")
+_SECONDS_PER_DAY: int = 86400
+_DEFAULT_ITEM_RETENTION_DAYS: int = 30
+
+
+def _now() -> float:
+    """Module-level seam for ``time.time()`` — monkeypatchable in tests (JOB4 §J-TTL-1)."""
+    return time.time()
+
+
+def _read_item_retention_days() -> int:
+    """Resolve ``$DREAM_ITEM_RETENTION_DAYS`` to an int days value.
+
+    Per JOB4 Open-contracts pin #4/#9/#10:
+    - Unset → default 30 days (pin #5).
+    - ``"0"`` → 0 (treated as DISABLED by caller; not a magic prune-everything).
+    - Negative or non-integer → 30-day default with a warning log (mirrors
+      ADR-015's ``_read_ttl_days`` bounds-check behavior).
+    """
+    raw = os.environ.get("DREAM_ITEM_RETENTION_DAYS")
+    if raw is None or raw == "":
+        return _DEFAULT_ITEM_RETENTION_DAYS
+    try:
+        value = int(raw)
+    except ValueError:
+        log.warning(
+            "DREAM_ITEM_RETENTION_DAYS=%r is not an integer; falling back to %d-day default",
+            raw, _DEFAULT_ITEM_RETENTION_DAYS,
+        )
+        return _DEFAULT_ITEM_RETENTION_DAYS
+    if value < 0:
+        log.warning(
+            "DREAM_ITEM_RETENTION_DAYS=%d is negative; falling back to %d-day default",
+            value, _DEFAULT_ITEM_RETENTION_DAYS,
+        )
+        return _DEFAULT_ITEM_RETENTION_DAYS
+    return value
+
+
+def _pick_pruned(items: list[MemoryItem], now: float, retention_seconds: int) -> list[str]:
+    """Return the lex-sorted item_ids whose age strictly exceeds retention.
+
+    JOB4 §F-TTL-3 (strictly greater) + §B13 (sorted ascending in the dict).
+    Sorting at selection time keeps the dict-field invariant locally enforced.
+    """
+    pruned = [item.item_id for item in items if (now - item.timestamp) > retention_seconds]
+    return sorted(pruned)
 
 
 def _normalize(content: Any) -> str:
@@ -75,16 +126,19 @@ class DreamingWorker:
         self.store = store
 
     def run(self, *, trajectories_path: str | None = None, **kwargs: Any) -> dict:
-        """One detection+mutation pass; returns the summary dict.
+        """One detection+mutation+pruning pass; returns the summary dict.
 
-        Order of operations (rubric §F12 — deletes complete BEFORE summary built):
-        1. Reject truthy ``trajectories_path`` BEFORE any lock or store access (rubric §G4).
-        2. NFS detection BEFORE basedir lock (rubric §L17).
-        3. Acquire basedir flock (rubric §L13/L14).
-        4. Walk ``store.all()`` and cluster by normalized content.
-        5. For every cluster, pick winner + call ``self.store.delete()`` on every loser.
-        6. Build the summary dict from the completed deletes.
-        7. Emit ``dream.summary`` event.
+        Order of operations (JOB4 Open-contracts pin #7 — TTL BEFORE dedup;
+        JOB1 §F12 — deletes complete BEFORE summary emit):
+        1. Reject truthy ``trajectories_path`` BEFORE any lock or store access.
+        2. NFS detection BEFORE basedir lock.
+        3. Acquire basedir flock.
+        4. Walk ``store.all()``.
+        5. TTL pass: select pruned ids; call ``self.store.delete()`` on each.
+        6. Re-scan surviving items + cluster by normalized content.
+        7. Dedup pass: pick winner per cluster; delete losers.
+        8. Build the summary dict from the completed deletes.
+        9. Emit ``dream.summary``.
         """
         if trajectories_path:
             raise ValueError(
@@ -109,8 +163,26 @@ class DreamingWorker:
             items: list[MemoryItem] = list(self.store.all())
             total_items = len(items)
 
+            # JOB4 §D-TTL-4: exactly one call to _now() per run().
+            retention_days = _read_item_retention_days()
+            retention_seconds = retention_days * _SECONDS_PER_DAY
+
+            # JOB4 pin #9: retention_days == 0 disables pruning.
+            if retention_days == 0:
+                pruned_ids: list[str] = []
+            else:
+                now = _now()
+                pruned_ids = _pick_pruned(items, now, retention_seconds)
+
+            # JOB4 §F-TTL-2: TTL deletes complete BEFORE dedup deletes.
+            for pid in pruned_ids:
+                self.store.delete(pid)
+
+            pruned_set = set(pruned_ids)
+            survivors = [it for it in items if it.item_id not in pruned_set]
+
             groups: dict[str, list[MemoryItem]] = {}
-            for item in items:
+            for item in survivors:
                 key = _normalize(item.content)
                 groups.setdefault(key, []).append(item)
 
@@ -131,9 +203,8 @@ class DreamingWorker:
                     }
                 )
 
-            # §F12: all deletes complete BEFORE summary dict is constructed.
-            # `delete` is part of the frozen `MemoryStore` protocol per PR #99
-            # (Brent's [CONTRACT] PR landed before this PR merged).
+            # JOB1 §F12 + JOB4 §F-TTL-13: dedup deletes after TTL deletes,
+            # both complete BEFORE summary dict is constructed.
             for cluster in cluster_specs:
                 for retired_id in cluster["retired_ids"]:
                     self.store.delete(retired_id)
@@ -141,24 +212,30 @@ class DreamingWorker:
             duplicate_clusters = len(cluster_specs)
             items_in_duplicates = sum(c["count"] for c in cluster_specs)
             items_retired = sum(len(c["retired_ids"]) for c in cluster_specs)
+            items_pruned = len(pruned_ids)
 
             summary = {
                 "schema": "dream.summary",
                 "version": 1,
-                "mode": "detection_and_mutation",
-                "jobs_run": ["dedup_detection", "dedup_merge"],
+                "mode": "detection_and_mutation_and_pruning",
+                "jobs_run": ["dedup_detection", "dedup_merge", "ttl_pruning"],
                 "skipped_jobs": [
                     "contradiction_resolution",
                     "governance",
-                    "pruning",
                 ],
                 "counts": {
                     "total_items": total_items,
                     "duplicate_clusters": duplicate_clusters,
                     "items_in_duplicates": items_in_duplicates,
                     "items_retired": items_retired,
+                    "items_pruned": items_pruned,
+                    "retention_seconds_effective": retention_seconds,
                 },
                 "clusters": cluster_specs,
+                "pruned": {
+                    "item_ids": list(pruned_ids),
+                    "retention_seconds_effective": retention_seconds,
+                },
             }
 
             emit(
@@ -167,6 +244,8 @@ class DreamingWorker:
                 total_items=total_items,
                 duplicate_clusters=duplicate_clusters,
                 items_retired=items_retired,
+                items_pruned=items_pruned,
+                retention_seconds_effective=retention_seconds,
             )
 
             return summary

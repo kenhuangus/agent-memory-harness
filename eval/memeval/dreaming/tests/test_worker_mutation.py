@@ -81,6 +81,19 @@ def _no_network_fs(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("memeval.dreaming.worker._is_network_fs", lambda path: False)
 
 
+@pytest.fixture(autouse=True)
+def _disable_ttl_in_job1_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Disable TTL pruning in Job-1 mutation tests so synthetic timestamps survive.
+
+    Job 1 tests use small literal timestamps (1.0, 2.0, etc) that are 55+ years
+    old at real time.time() — they'd be entirely pruned by Job 4's TTL pass at
+    the 30-day default. Setting DREAM_ITEM_RETENTION_DAYS=0 disables TTL per
+    JOB4 §H-TTL-2 ("0 means DISABLED, not 'prune everything'"), keeping these
+    tests focused on the dedup-only contract their rubric (JOB1_MUTATION) pins.
+    """
+    monkeypatch.setenv("DREAM_ITEM_RETENTION_DAYS", "0")
+
+
 @pytest.fixture
 def memory_store_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Create a temp MEMORY_STORE directory and set the env-var (ADR-019)."""
@@ -161,55 +174,25 @@ _EXPECTED_TOP_LEVEL_KEYS = {
 }
 
 
-def test_mutation_top_level_keys_exact(memory_store_dir: Path) -> None:
-    """B1 — top-level key set is exactly the pinned set."""
-    result = worker.DreamingWorker(_store_with(("a", "x", 1.0))).run()
-    assert set(result.keys()) == _EXPECTED_TOP_LEVEL_KEYS
+# test_mutation_top_level_keys_exact (B1) — SUPERSEDED by JOB4 §B1 (adds `pruned`).
+# test_mutation_mode_literal (B4)        — SUPERSEDED by JOB4 §B4 ("detection_and_mutation_and_pruning").
+# test_mutation_jobs_run_literal (B5)    — SUPERSEDED by JOB4 §B5 (adds "ttl_pruning").
+# test_mutation_skipped_jobs_literal (B6) — SUPERSEDED by JOB4 §B6 (removes "pruning").
+# test_mutation_counts_shape (B7)        — SUPERSEDED by JOB4 §B7 (adds items_pruned + retention_seconds_effective).
+# Coverage moves to test_worker_ttl.py.
 
 
 def test_mutation_schema_literal(memory_store_dir: Path) -> None:
-    """B2 — schema == 'dream.summary'."""
+    """B2 — schema == 'dream.summary' (PRESERVED in JOB4 §B2)."""
     result = worker.DreamingWorker(_store_with(("a", "x", 1.0))).run()
     assert result["schema"] == "dream.summary"
 
 
 def test_mutation_version_literal(memory_store_dir: Path) -> None:
-    """B3 — version == 1, type is int."""
+    """B3 — version == 1, type is int (PRESERVED in JOB4 §B3)."""
     result = worker.DreamingWorker(_store_with(("a", "x", 1.0))).run()
     assert result["version"] == 1
     assert type(result["version"]) is int
-
-
-def test_mutation_mode_literal(memory_store_dir: Path) -> None:
-    """B4 — mode == 'detection_and_mutation'."""
-    result = worker.DreamingWorker(_store_with(("a", "x", 1.0))).run()
-    assert result["mode"] == "detection_and_mutation"
-
-
-def test_mutation_jobs_run_literal(memory_store_dir: Path) -> None:
-    """B5 — jobs_run == ['dedup_detection', 'dedup_merge']."""
-    result = worker.DreamingWorker(_store_with(("a", "x", 1.0))).run()
-    assert result["jobs_run"] == ["dedup_detection", "dedup_merge"]
-
-
-def test_mutation_skipped_jobs_literal(memory_store_dir: Path) -> None:
-    """B6 — skipped_jobs list-equal, order pinned."""
-    result = worker.DreamingWorker(_store_with(("a", "x", 1.0))).run()
-    assert result["skipped_jobs"] == [
-        "contradiction_resolution",
-        "governance",
-        "pruning",
-    ]
-
-
-def test_mutation_counts_shape(memory_store_dir: Path) -> None:
-    """B7 — counts has pinned keys; all values are int (not bool, not float)."""
-    result = worker.DreamingWorker(_store_with(("a", "x", 1.0), ("b", "x", 2.0))).run()
-    assert set(result["counts"].keys()) == {
-        "total_items", "duplicate_clusters", "items_in_duplicates", "items_retired",
-    }
-    for v in result["counts"].values():
-        assert type(v) is int
 
 
 def test_mutation_cluster_element_key_set(memory_store_dir: Path) -> None:
