@@ -28,16 +28,25 @@ default stays the in-memory ``GraphStore`` (this module never touches the offlin
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from typing import Any, Optional
 
 from ..schema import MemoryItem
-from .graph_store import GraphStore, _MAX_DEPTH
+from .graph_store import GraphStore, _MAX_DEPTH, _estimate_tokens
 
 # The graph node label + the relationship type. ``REL`` carries a ``rel_type`` property (the classified
 # closed-enum relation) so a single relationship type spans the whole typed vocabulary — Phase B keys
 # traversal off ``rel_type``.
 _NODE_LABEL = "Memory"
-_NODE_MERGE = f"MERGE (n:{_NODE_LABEL} {{item_id: $item_id}}) SET n += $props"
+# seq is CREATE-ONLY (`ON CREATE SET n.seq`): a brand-new node stamps its insertion seq; a rewrite of an
+# existing node MERGEs its props but PRESERVES the original seq, so an in-place update never bumps the node
+# to the tail of all() (the seq-in-$props form did, reordering all() on rewrite). The plain `SET n += $props`
+# carries the mutable fields; seq rides as its OWN parameter so it can be ON CREATE-scoped.
+_NODE_MERGE = (
+    f"MERGE (n:{_NODE_LABEL} {{item_id: $item_id}}) "
+    f"ON CREATE SET n.seq = $seq "
+    f"SET n += $props"
+)
 _REL_MERGE = (
     f"MERGE (a:{_NODE_LABEL} {{item_id: $src}}) "
     f"MERGE (b:{_NODE_LABEL} {{item_id: $tgt}}) "
@@ -47,10 +56,17 @@ _CONSTRAINT = (
     f"CREATE CONSTRAINT memory_item_id IF NOT EXISTS "
     f"FOR (n:{_NODE_LABEL}) REQUIRE n.item_id IS UNIQUE"
 )
+# Highest seq currently in the DB (-1 when empty) -> the constructor seeds self._seq = m + 1, so a 2nd
+# instance / process restart over the SAME DB CONTINUES the sequence instead of restarting at 0 (which would
+# collide existing seqs and scramble all() order). Read once after the constraint is ensured.
+_MAX_SEQ = f"MATCH (n:{_NODE_LABEL}) RETURN coalesce(max(n.seq), -1) AS m"
 # as_of is pushed into Cypher for a real no-leak bound; the transient search honors it again (identical
 # result either way — belt and suspenders, and the parameter on the wire is what the parity eval asserts).
+# coalesce(n.timestamp, 0.0): a node with a NULL timestamp (an externally-written / Phase-B node — the store
+# itself always writes a float) is treated as ts 0.0, matching _row_to_item (ts -> 0.0) AND the in-memory
+# baseline, which treats a 0.0 timestamp as visible under any as_of >= 0.
 _SEARCH_MATCH = (
-    f"MATCH (n:{_NODE_LABEL}) WHERE $as_of IS NULL OR n.timestamp <= $as_of RETURN n"
+    f"MATCH (n:{_NODE_LABEL}) WHERE $as_of IS NULL OR coalesce(n.timestamp, 0.0) <= $as_of RETURN n"
 )
 _GET_MATCH = f"MATCH (n:{_NODE_LABEL} {{item_id: $id}}) RETURN n"
 _ALL_MATCH = f"MATCH (n:{_NODE_LABEL}) RETURN n ORDER BY n.seq"
@@ -79,17 +95,29 @@ class Neo4jGraphStore:
 
         # Driver resolution: injected driver wins (real or fake); else a uri lazily builds one; else fail
         # loud — a graph-DB backend is NOT an offline default (the offline default is the in-memory store).
+        # _owns_driver: True only when WE built the driver (uri path) -> the constructor is responsible for
+        # closing it if a later init step fails; an injected driver is the CALLER's to close (never touched).
         if driver is not None:
             self._driver = driver
+            self._owns_driver = False
         elif uri is not None:
             self._driver = self.connect()
+            self._owns_driver = True
         else:
             raise RuntimeError(
                 "Neo4jGraphStore needs a uri or an injected driver — it is not an offline default "
                 "(the offline default is the in-memory GraphStore; pass uri=/driver= for the paid path)."
             )
-        # Ensure the uniqueness constraint / MERGE-able key on item_id once (the fake no-ops it).
-        self._ensure_constraint()
+        # Ensure the uniqueness constraint, then seed _seq from the DB so a 2nd instance / restart continues
+        # the sequence. If either fails and WE own the driver, close it before re-raising so a failed
+        # constructor doesn't strand a connection pool (an injected driver is left to the caller).
+        try:
+            self._ensure_constraint()  # the fake records-and-no-ops it
+            self._seq = self._read_max_seq() + 1  # -1 when empty -> start at 0
+        except Exception:
+            if self._owns_driver:
+                self.close()
+            raise
 
     # -- driver / lifecycle ------------------------------------------------
     def connect(self) -> Any:
@@ -125,6 +153,22 @@ class Neo4jGraphStore:
         with self._session() as session:
             session.execute_write(lambda tx: tx.run(_CONSTRAINT))
 
+    def _read_max_seq(self) -> int:
+        """Highest ``seq`` already in the DB (``-1`` when empty) so the constructor can continue the
+        sequence on a 2nd instance / restart over the same DB (else a from-0 seq collides + reorders all()).
+
+        NOTE — two CONCURRENT live instances sharing one DB both seed ``_seq`` from the SAME max, so their
+        interleaved new-node seqs can tie; ``all()`` order between such interleaved nodes is then best-effort
+        (the same unspecified-order property ``SqliteVectorStore.all()`` has — consumers collapse by
+        ``item_id``). The sequential restart case (one instance, then another over the closed DB) is exact.
+        """
+        with self._session() as session:
+            rows = session.execute_read(lambda tx: list(tx.run(_MAX_SEQ)))
+        for record in rows:
+            m = record["m"]
+            return int(m) if m is not None else -1
+        return -1
+
     def close(self) -> None:
         """Close the driver (defensively — only if it exposes ``.close()``) and mark the store closed.
 
@@ -149,28 +193,42 @@ class Neo4jGraphStore:
 
         Parses the typed edges from ``okf_links`` BEFORE touching the transaction (a malformed
         ``okf_links`` raises here, leaving the store unchanged — matching the in-memory store's
-        parse-before-mutate atomicity). The node props carry ``metadata`` (incl. ``okf_links``, the
-        edge SSOT) and a monotonic ``seq`` so ``all()`` reproduces insertion order.
+        parse-before-mutate atomicity). Estimates ``tokens`` from content when unset (mirroring
+        ``GraphStore.write``, so ``get()``/``all()`` tokens match the in-memory baseline). The node props
+        carry ``metadata`` (incl. ``okf_links``, the edge SSOT); the insertion ``seq`` rides as its own
+        ``ON CREATE``-scoped parameter so ``all()`` reproduces insertion order AND a rewrite never reorders.
         """
         if self._closed:
             raise RuntimeError("write() on a closed Neo4jGraphStore")
-        edges = _parse_edges(item)  # raises on malformed okf_links BEFORE any mutation
-        props = self._props(item)
+        tokens = item.tokens
+        if tokens <= 0 and item.content:
+            tokens = _estimate_tokens(item.content)
+        node = replace(item, tokens=tokens) if tokens != item.tokens else item
+        edges = _parse_edges(node)  # raises on malformed okf_links BEFORE any mutation
+        props = self._props(node)
+        seq = self._seq  # the seq this write would stamp IF the node is new (ON CREATE)
 
         def _txn(tx: Any) -> None:
-            tx.run(_NODE_MERGE, parameters={"item_id": item.item_id, "props": props})
+            tx.run(_NODE_MERGE, parameters={"item_id": node.item_id, "props": props, "seq": seq})
             for tgt, rel in edges:
-                tx.run(_REL_MERGE, parameters={"src": item.item_id, "tgt": tgt, "rel": rel})
+                tx.run(_REL_MERGE, parameters={"src": node.item_id, "tgt": tgt, "rel": rel})
 
         with self._session() as session:
             session.execute_write(_txn)
-        self._seq += 1  # advance AFTER a successful commit (a failed write keeps seq monotonic)
+        # Advance AFTER a successful commit. A rewrite consumes a seq it doesn't use (ON CREATE kept the
+        # node's original seq) -> a harmless gap; insertion order is still strictly increasing + unique.
+        self._seq += 1
 
     def _props(self, item: MemoryItem) -> dict:
         """The node property map. Complex fields (tags, metadata) are JSON strings — Neo4j stores scalars
         and lists of scalars, not nested maps; JSON keeps the round-trip lossless and the okf_links SSOT
-        intact. ``seq`` orders ``all()``. JSON-encoding metadata also surfaces a non-serializable payload
-        as a loud ``TypeError`` at write time (parity with the SQLite seam's atomic-write contract).
+        intact. JSON-encoding metadata also surfaces a non-serializable payload as a loud ``TypeError`` at
+        write time (parity with the SQLite seam's atomic-write contract).
+
+        ``embedding`` is deliberately NOT persisted — like ``SqliteVectorStore``/``GraphStore``, it is
+        recomputed from content (an embedder/dim change must not resurrect a stale vector). ``seq`` is NOT
+        here either: it rides as an ``ON CREATE``-scoped parameter on the node MERGE (create-only), so a
+        rewrite preserves the node's original insertion order.
         """
         return {
             "item_id": item.item_id,
@@ -183,7 +241,6 @@ class Neo4jGraphStore:
             "tokens": item.tokens,
             "version": item.version,
             "metadata": json.dumps(item.metadata or {}),
-            "seq": self._seq,
         }
 
     def _row_to_item(self, props: dict) -> MemoryItem:
@@ -192,11 +249,20 @@ class Neo4jGraphStore:
         Numeric fields are coerced (``float``/``int``) with a default for a missing/``None`` value — a real
         Neo4j node could carry a null or a numeric-string property, and ``MemoryItem`` declares ``float``/
         ``int``; coercion keeps the round-trip total instead of leaking a ``None`` into a typed field.
+
+        ``tags``/``metadata`` are read as JSON strings (how :meth:`_props` writes them) BUT also tolerate
+        a NATIVE list/map — a future external/Phase-B writer might store ``tags`` as a native list of
+        scalars and ``metadata`` as a native map (both legal Neo4j property shapes). ``json.loads`` only a
+        string; otherwise coerce the native value — so the read never crashes on a non-string prop.
         """
         rel = props.get("relevancy")
         ts = props.get("timestamp")
         ver = props.get("version")
         toks = props.get("tokens")
+        raw_tags = props.get("tags")
+        raw_meta = props.get("metadata")
+        tags = json.loads(raw_tags) if isinstance(raw_tags, str) else list(raw_tags or [])
+        metadata = json.loads(raw_meta) if isinstance(raw_meta, str) else dict(raw_meta or {})
         return MemoryItem(
             item_id=props["item_id"],
             content=props.get("content") or "",
@@ -204,10 +270,10 @@ class Neo4jGraphStore:
             relevancy=float(rel) if rel is not None else 1.0,
             session_id=props.get("session_id"),
             source=props.get("source"),
-            tags=json.loads(props.get("tags") or "[]"),
+            tags=tags,
             tokens=int(toks) if toks is not None else 0,
             version=int(ver) if ver is not None else 1,
-            metadata=json.loads(props.get("metadata") or "{}"),
+            metadata=metadata,
         )
 
     def get(self, item_id: str) -> Optional[MemoryItem]:

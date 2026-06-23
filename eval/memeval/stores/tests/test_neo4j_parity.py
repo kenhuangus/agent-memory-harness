@@ -142,10 +142,27 @@ class FakeTx:
             removed = nodes.pop(params["id"], None)
             return _FakeResult([_FakeRecord({"c": 1 if removed is not None else 0})])
 
-        # Node upsert: `MERGE (n:Memory {item_id: $item_id}) SET n += $props`. Order matters — a
-        # relationship MERGE also contains "MERGE" but no `SET n +=`, so check the node form first.
+        # Max-seq read (constructor): `MATCH (n:Memory) RETURN coalesce(max(n.seq), -1) AS m`. Check
+        # BEFORE the generic node-read branch (it also has MATCH (n:Memory) but RETURNs `m`, not `n`).
+        if "max(n.seq)" in cypher:
+            seqs = [p.get("seq") for p in nodes.values() if p.get("seq") is not None]
+            return _FakeResult([_FakeRecord({"m": max(seqs) if seqs else -1})])
+
+        # Node upsert: `MERGE (n:Memory {item_id: $item_id}) ON CREATE SET n.seq = $seq SET n += $props`.
+        # Model `ON CREATE`: a NEW id gets props + the passed seq; an EXISTING id merges props but PRESERVES
+        # its original seq (so a rewrite does not reorder all()). Check before the rel-merge (which has no
+        # `SET n +=`) and before the read branches.
         if "SET n +=" in cypher:
-            nodes[params["item_id"]] = dict(params["props"])
+            iid = params["item_id"]
+            if iid in nodes:
+                preserved_seq = nodes[iid].get("seq")
+                merged = dict(params["props"])
+                merged["seq"] = preserved_seq  # ON CREATE only -> seq is sticky across a rewrite
+                nodes[iid] = merged
+            else:
+                created = dict(params["props"])
+                created["seq"] = params.get("seq")  # ON CREATE sets the seq for a brand-new node
+                nodes[iid] = created
             return _FakeResult([])
 
         # Typed relationship MERGE — record only; Phase-A reads rebuild edges from okf_links on the node.
@@ -418,7 +435,8 @@ class CrudTests(unittest.TestCase):
             (got.content, got.timestamp, got.relevancy, got.session_id, got.source,
              got.tags, got.tokens, got.version, got.metadata.get("k")),
             ("payload", 7.5, 0.3, "sess-9", "unit", ["a", "b"], 42, 4, "v"),
-            "every MemoryItem field round-trips through the Neo4j props")
+            "every PERSISTED MemoryItem field round-trips through the Neo4j props "
+            "(embedding is excluded BY DESIGN — recomputed from content like SqliteVectorStore/GraphStore)")
 
     def test_post_close_write_and_delete_fail_loud(self) -> None:
         Neo4jGraphStore = _Neo4jGraphStore()
@@ -444,6 +462,126 @@ class CrudTests(unittest.TestCase):
         with Neo4jGraphStore(driver=drv) as store:
             store.write(_item("a", "a", ts=1.0))
         self.assertTrue(drv.closed, "__exit__ closed the driver")
+
+    def test_tokens_estimated_when_zero_parity(self) -> None:
+        # An item written with tokens=0 + content gets an ESTIMATE persisted (mirrors GraphStore.write),
+        # so get()/all() tokens match the in-memory baseline instead of round-tripping a bare 0.
+        Neo4jGraphStore = _Neo4jGraphStore()
+        base = GraphStore()
+        store = Neo4jGraphStore(driver=FakeBoltDriver())
+        it = _item("tok", "some content with several words here", ts=1.0)
+        base.write(it)
+        store.write(it)
+        self.assertGreater(store.get("tok").tokens, 0, "tokens estimated from content, not left at 0")
+        self.assertEqual(store.get("tok").tokens, base.get("tok").tokens,
+                         "token estimate matches the in-memory baseline (same _estimate_tokens)")
+
+
+# --------------------------------------------------------------------------- #
+# 6b. seq ordering — create-only + DB-derived (all() insertion order survives rewrite + restart)
+# --------------------------------------------------------------------------- #
+class SeqOrderingTests(unittest.TestCase):
+    def test_rewrite_preserves_insertion_order(self) -> None:
+        # Write a,b,c then RE-WRITE b with new content. all() order must stay (a,b,c) — a rewrite must NOT
+        # bump b to the tail (seq is ON CREATE only). Parity: the in-memory baseline also keeps (a,b,c).
+        Neo4jGraphStore = _Neo4jGraphStore()
+        base = GraphStore()
+        store = Neo4jGraphStore(driver=FakeBoltDriver())
+        for it in (_item("a", "a", ts=1.0), _item("b", "b-orig", ts=2.0), _item("c", "c", ts=3.0)):
+            base.write(it)
+            store.write(it)
+        base.write(_item("b", "b-rewritten", ts=9.0))
+        store.write(_item("b", "b-rewritten", ts=9.0))
+        self.assertEqual([i.item_id for i in store.all()], [i.item_id for i in base.all()])
+        self.assertEqual([i.item_id for i in store.all()], ["a", "b", "c"],
+                         "rewriting b keeps its original seq -> insertion order (a,b,c) preserved")
+        self.assertEqual(store.get("b").content, "b-rewritten", "the rewrite content landed")
+
+    def test_restart_continues_seq_from_db(self) -> None:
+        # Two stores sharing ONE driver model a restart/2nd-instance over the SAME DB: store1 writes a,b;
+        # store2 (re-init over the same driver) writes c. all() order must be (a,b,c) — store2 must derive
+        # its starting seq from the DB max, not from 0 (which would collide a's/b's seq and scramble order).
+        Neo4jGraphStore = _Neo4jGraphStore()
+        drv = FakeBoltDriver()
+        store1 = Neo4jGraphStore(driver=drv)
+        store1.write(_item("a", "a", ts=1.0))
+        store1.write(_item("b", "b", ts=2.0))
+        store2 = Neo4jGraphStore(driver=drv)  # "restart" over the same DB
+        store2.write(_item("c", "c", ts=3.0))
+        self.assertEqual([i.item_id for i in store2.all()], ["a", "b", "c"],
+                         "store2 continued the seq from the DB max -> insertion order survives restart")
+
+
+# --------------------------------------------------------------------------- #
+# 6c. Constructor robustness — a failed constraint must not strand a driver the constructor OWNS;
+#     _row_to_item tolerates native (non-JSON-string) props a future Phase-B/external writer may emit.
+# --------------------------------------------------------------------------- #
+class _RaisingConstraintDriver(FakeBoltDriver):
+    """A driver whose constraint write RAISES — to prove the constructor cleans up after itself."""
+
+    def session(self, database=None, **kwargs):
+        return _RaisingConstraintSession(self)
+
+
+class _RaisingConstraintSession(FakeSession):
+    def execute_write(self, fn, *args, **kwargs):
+        # Only the constraint ensure goes through execute_write at construction time; make it raise.
+        raise RuntimeError("constraint creation failed (simulated)")
+
+
+class ConstructorRobustnessTests(unittest.TestCase):
+    def test_constraint_failure_closes_owned_driver(self) -> None:
+        # uri path: the constructor BUILT the driver, so a failed constraint must close it before
+        # re-raising — a failed __init__ must not strand a connection pool.
+        import sys
+        import types
+
+        built = {}
+
+        class _FakeGraphDatabase:
+            @staticmethod
+            def driver(uri, auth=None):
+                d = _RaisingConstraintDriver()
+                built["driver"] = d
+                return d
+
+        fake = types.ModuleType("neo4j")
+        fake.GraphDatabase = _FakeGraphDatabase  # type: ignore[attr-defined]
+        saved = sys.modules.get("neo4j")
+        sys.modules["neo4j"] = fake
+        try:
+            Neo4jGraphStore = _Neo4jGraphStore()
+            with self.assertRaises(RuntimeError):
+                Neo4jGraphStore(uri="bolt://localhost:7687")
+        finally:
+            if saved is not None:
+                sys.modules["neo4j"] = saved
+            else:
+                sys.modules.pop("neo4j", None)
+        self.assertTrue(built["driver"].closed,
+                        "a constructor-owned driver must be closed when the constraint ensure fails")
+
+    def test_constraint_failure_does_not_close_injected_driver(self) -> None:
+        # injected path: the CALLER owns the driver, so the constructor must NOT close it on failure.
+        Neo4jGraphStore = _Neo4jGraphStore()
+        drv = _RaisingConstraintDriver()
+        with self.assertRaises(RuntimeError):
+            Neo4jGraphStore(driver=drv)
+        self.assertFalse(drv.closed,
+                         "an injected (caller-owned) driver must NOT be closed by a failed __init__")
+
+    def test_row_to_item_tolerates_native_props(self) -> None:
+        # Phase-B-proofing: a future external/Phase-B writer might store tags as a native list and metadata
+        # as a native map (Neo4j supports lists-of-scalars natively). _row_to_item must not crash on those.
+        Neo4jGraphStore = _Neo4jGraphStore()
+        store = Neo4jGraphStore(driver=FakeBoltDriver())
+        item = store._row_to_item({
+            "item_id": "nat", "content": "c", "timestamp": 1.0, "relevancy": 0.5,
+            "session_id": "s", "source": "src", "tags": ["x", "y"], "tokens": 3,
+            "version": 2, "metadata": {"okf_title": "nat", "k": "v"},  # NATIVE list + dict, not JSON strings
+        })
+        self.assertEqual(item.tags, ["x", "y"])
+        self.assertEqual(item.metadata.get("k"), "v")
 
 
 # --------------------------------------------------------------------------- #
