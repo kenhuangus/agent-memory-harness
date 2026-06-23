@@ -169,3 +169,27 @@ def test_pipeline_disabled_sandbox_is_explicit_optout(monkeypatch) -> None:
     monkeypatch.setattr(P, "_sandbox_auth_probe", lambda *a, **k: probed.__setitem__("n", probed["n"] + 1) or True)
     P._ensure_sandbox_ready()  # must NOT raise, must NOT probe
     assert probed["n"] == 0
+
+
+def test_load_root_dotenv_sets_unset_keys_without_override(monkeypatch, tmp_path) -> None:
+    # The pipeline loads the repo-root .env so API keys are available without exporting.
+    # It must NOT override an already-set var (an explicit export wins).
+    (tmp_path / ".env").write_text(
+        "OPENROUTER_API_KEY=from_dotenv\nSOME_NEW_KEY=hello\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "explicit")  # already set -> must be preserved
+    monkeypatch.delenv("SOME_NEW_KEY", raising=False)
+
+    P._load_root_dotenv()
+
+    import os
+    assert os.environ["OPENROUTER_API_KEY"] == "explicit"   # not overridden
+    assert os.environ["SOME_NEW_KEY"] == "hello"            # unset key loaded from .env
+
+
+def test_load_root_dotenv_noop_when_absent(monkeypatch, tmp_path) -> None:
+    # No .env and no .git up the tree -> a clean no-op (never raises).
+    sub = tmp_path / "nowhere"
+    sub.mkdir()
+    monkeypatch.chdir(sub)
+    P._load_root_dotenv()  # must not raise

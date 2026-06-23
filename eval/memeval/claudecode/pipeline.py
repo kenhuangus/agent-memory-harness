@@ -595,9 +595,53 @@ def _run_one(stage: str, cfg: dict, substrate: Path, cost: Any,
     return PS.stage_row(rr, stage=stage, stage_index=idx, pipeline_meta=meta)
 
 
+def _load_root_dotenv() -> None:
+    """Load the repo-root ``.env`` so API keys (``OPENROUTER_API_KEY`` for the daydreamer,
+    etc.) are available without the user having to ``export`` them — the project keeps all
+    keys in one root ``.env``.
+
+    Walks up from the cwd to the repo root (the dir holding ``.env`` or ``.git``) and loads
+    it. Existing environment variables are NOT overridden, so an explicit ``export`` still
+    wins. Uses ``python-dotenv`` when installed; falls back to a tiny stdlib parser so a
+    missing dependency never breaks the run. No-op if no ``.env`` is found."""
+    import os
+
+    here = Path.cwd().resolve()
+    env_path = None
+    for d in (here, *here.parents):
+        cand = d / ".env"
+        if cand.is_file():
+            env_path = cand
+            break
+        if (d / ".git").exists():  # repo root with no .env -> stop (nothing to load)
+            break
+    if env_path is None:
+        return
+
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(env_path, override=False)
+    except ImportError:
+        # Minimal stdlib fallback: KEY=VALUE lines, skip comments/blanks, don't override.
+        try:
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, val = line.partition("=")
+                key = key.strip()
+                val = val.strip().strip('"').strip("'")
+                if key and key not in os.environ:
+                    os.environ[key] = val
+        except OSError:
+            return
+    print(f"loaded environment from {env_path}", flush=True)
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     from .platform import describe, detect
 
+    _load_root_dotenv()  # FIRST — so OPENROUTER_API_KEY etc. are set before any check reads them
     args = _build_parser().parse_args(argv)
     cfg = _resolve_config(args)
 
