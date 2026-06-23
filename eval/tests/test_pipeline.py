@@ -29,10 +29,14 @@ _FIXTURE = str(Path(__file__).resolve().parents[1] / "memeval" / "data"
 
 def _fake_runner(prompt, *, cwd, extra_env=None, **kw) -> ClaudeResult:
     """Stand in for the installed plugin: write a recall event into the resolved store
-    (${CLAUDE_PROJECT_DIR}/.cookbook-memory) so attribution produces a retrieve step,
-    plus a per-prompt marker memory file proving cross-stage persistence."""
-    proj = (extra_env or {}).get("CLAUDE_PROJECT_DIR", cwd)
-    store = Path(proj) / ".cookbook-memory"
+    ($MEMORY_STORE, falling back to ${CLAUDE_PROJECT_DIR}/.cookbook-memory) so
+    attribution produces a retrieve step, plus a per-prompt marker memory file proving
+    cross-stage persistence."""
+    env = extra_env or {}
+    store = Path(
+        env.get("MEMORY_STORE")
+        or (Path(env.get("CLAUDE_PROJECT_DIR", cwd)) / ".cookbook-memory")
+    )
     store.mkdir(parents=True, exist_ok=True)
     (store / f"mem_{abs(hash(prompt)) % 10000}.md").write_text("learned\n", encoding="utf-8")
     ev = {"ts": 1.0, "op": "recall", "ids": ["m1"], "query": prompt,

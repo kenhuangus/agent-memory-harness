@@ -4,8 +4,9 @@ These prove, deterministically and with no network / no real ``claude`` / no rea
 ``daydream-cli``, that:
 
 * when a shared ``project_dir`` is configured, every plugin-real task points
-  ``CLAUDE_PROJECT_DIR`` at that ONE directory, so memory accumulates across tasks
-  purely because the directory persists -- the harness copies nothing;
+  ``MEMORY_STORE`` at that ONE directory's ``.cookbook-memory`` store, so memory
+  accumulates across tasks purely because the directory persists -- the harness
+  copies nothing;
 * without a shared ``project_dir``, each task gets its own per-task store (no
   cross-task carryover) -- the no-substrate path;
 * the harness performs NO store management on the plugin-real path: the deleted
@@ -15,8 +16,8 @@ These prove, deterministically and with no network / no real ``claude`` / no rea
 * the daydream drain is a pure wait-barrier and no-ops under a fake runner.
 
 The fake runner stands in for the installed plugin: it writes a marker "memory" file
-(and a recall event) into ``${CLAUDE_PROJECT_DIR}/.cookbook-memory``, exactly where a
-real daydream write would land. Run under the swebench venv with PYTHONPATH=. from eval/.
+(and a recall event) into ``$MEMORY_STORE``, exactly where a real daydream write would
+land. Run under the swebench venv with PYTHONPATH=. from eval/.
 """
 
 from __future__ import annotations
@@ -67,11 +68,15 @@ def _read_events(store: Path) -> list[dict]:
 
 def _make_fake_plugin_runner(turns: dict):
     """Stand in for the installed plugin. Each turn records which marker files the
-    store the plugin resolves (``${CLAUDE_PROJECT_DIR}/.cookbook-memory``) ALREADY holds
+    store the plugin resolves (``$MEMORY_STORE``) ALREADY holds
     when the turn starts, then writes this task's marker + a recall event there."""
 
     def fake(prompt, *, cwd, extra_env=None, **kw) -> ClaudeResult:
-        store = Path((extra_env or {}).get("CLAUDE_PROJECT_DIR", cwd)) / ".cookbook-memory"
+        env = extra_env or {}
+        store = Path(
+            env.get("MEMORY_STORE")
+            or (Path(env.get("CLAUDE_PROJECT_DIR", cwd)) / ".cookbook-memory")
+        )
         store.mkdir(parents=True, exist_ok=True)
         turns.setdefault("seen", []).append(sorted(p.name for p in store.glob("mem_*.md")))
         turns.setdefault("stores", []).append(str(store))
@@ -162,13 +167,18 @@ def test_harness_has_no_store_management_machinery() -> None:
 
 def test_agentic_code_keeps_checkout_cwd_but_shared_store() -> None:
     # In agentic CODE the cwd is the per-task checkout, but the memory store is the
-    # shared substrate (CLAUDE_PROJECT_DIR), decoupling edits from memory location.
+    # shared substrate (MEMORY_STORE), decoupling edits from memory location.
     seen: dict = {}
 
     def fake(prompt, *, cwd, extra_env=None, **kw) -> ClaudeResult:
         seen.setdefault("cwd", []).append(str(cwd))
         seen.setdefault("project_dir", []).append((extra_env or {}).get("CLAUDE_PROJECT_DIR"))
-        store = Path((extra_env or {}).get("CLAUDE_PROJECT_DIR", cwd)) / ".cookbook-memory"
+        seen.setdefault("memory_store", []).append((extra_env or {}).get("MEMORY_STORE"))
+        env = extra_env or {}
+        store = Path(
+            env.get("MEMORY_STORE")
+            or (Path(env.get("CLAUDE_PROJECT_DIR", cwd)) / ".cookbook-memory")
+        )
         store.mkdir(parents=True, exist_ok=True)
         (store / "events.jsonl").write_text(
             json.dumps({"ts": 1.0, "op": "recall", "ids": [], "query": prompt,
@@ -191,9 +201,13 @@ def test_agentic_code_keeps_checkout_cwd_but_shared_store() -> None:
         finally:
             agmod.prepare_checkout, agmod.capture_diff = orig_prepare, orig_capture
 
-        # cwd was the per-task checkout; CLAUDE_PROJECT_DIR was the shared substrate.
+        # cwd was the per-task checkout; MEMORY_STORE was the shared store.
         resolved = str(substrate.resolve())
         assert any(resolved == pd for pd in seen["project_dir"])
+        assert any(
+            str(substrate.resolve() / ".cookbook-memory") == ms
+            for ms in seen["memory_store"]
+        )
         assert all("repo" in c for c in seen["cwd"])  # ran in the checkout
         assert (substrate.resolve() / ".cookbook-memory").is_dir()
 
