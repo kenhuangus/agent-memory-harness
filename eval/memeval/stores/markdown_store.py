@@ -55,8 +55,12 @@ class MarkdownStore:
         self._okf = OKFStore(path, autoload=autoload)
         self._postings: dict[str, set[str]] = {}     # token -> {item_id}
         self._item_tokens: dict[str, set[str]] = {}   # item_id -> its tokens (clean overwrite)
-        for item in self._okf.all():                  # index whatever autoloaded from disk
-            self._index(item)
+        self._rebuild_index()                         # index whatever autoloaded from disk
+        # The OKF generation our inverted index currently reflects. Kept in lockstep so a
+        # peer's committed write (a higher OKF generation) triggers a postings REBUILD before
+        # candidates are computed — otherwise a peer doc whose only query token is absent from
+        # the stale postings would be invisible AND never trigger a reload (the gate's HIGH-2).
+        self._indexed_generation = self._okf._loaded_generation
 
     # -- inverted-index maintenance ----------------------------------------
     def _index(self, item: MemoryItem) -> None:
@@ -75,13 +79,45 @@ class MarkdownStore:
                 if not ids:
                     del self._postings[token]
 
+    def _rebuild_index(self) -> None:
+        """Rebuild the whole inverted index from the OKF mirror's current items.
+
+        Reads ``_okf._mem.all()`` (the already-loaded mirror) directly so it does NOT
+        re-trigger an OKF refresh — :meth:`_sync` drives the refresh once, then calls this."""
+        self._postings = {}
+        self._item_tokens = {}
+        for item in self._okf._mem.all():
+            self._index(item)
+
+    def _sync(self) -> None:
+        """Refresh the OKF mirror, and if a peer advanced it, rebuild the inverted index
+        in lockstep BEFORE candidates are computed.
+
+        Single-instance byte-equivalence holds: this store's own writes index incrementally
+        and advance ``_indexed_generation`` to the OKF generation in lockstep, so nothing
+        peer-side changed -> no spurious rebuild. Only a peer process's commit (a higher OKF
+        generation) forces the rebuild."""
+        reloaded = self._okf._maybe_refresh()
+        if reloaded or self._okf._loaded_generation != self._indexed_generation:
+            self._rebuild_index()
+            self._indexed_generation = self._okf._loaded_generation
+
     # -- MemoryStore protocol ----------------------------------------------
     def write(self, item: MemoryItem) -> None:
         """Persist ``item`` as an OKF doc (idempotent on id) and (re)index it."""
-        self._okf.write(item)  # writes the bundle doc and populates item.tokens
-        self._index(item)
+        self._sync()  # absorb any peer writes first so they aren't clobbered out of the index
+        self._okf.write(item)  # writes the bundle doc, bumps the OKF generation, populates item.tokens
+        # If the OKF write RECONCILED peers under the lock (a peer landed between _sync and the
+        # write), the mirror now holds docs our incremental _index(item) wouldn't cover — rebuild
+        # the whole index from the post-write mirror so no peer is acked-but-unindexed (R2 #2).
+        if self._okf._last_mutation_reconciled:
+            self._rebuild_index()
+        else:
+            self._index(item)
+        self._indexed_generation = self._okf._loaded_generation  # lockstep with the post-write gen
 
     def get(self, item_id: str) -> Optional[MemoryItem]:
+        self._sync()
         return self._okf.get(item_id)
 
     def search(
@@ -102,13 +138,14 @@ class MarkdownStore:
         if not q:
             return []
 
+        self._sync()  # absorb peer writes + rebuild postings BEFORE candidate selection
         candidate_ids: set[str] = set()
         for token in q:
             candidate_ids |= self._postings.get(token, set())
 
         candidates: list[MemoryItem] = []
         for item_id in candidate_ids:
-            item = self._okf.get(item_id)
+            item = self._okf._mem.get(item_id)  # already synced above; read the mirror directly
             if item is None:
                 continue
             if as_of is not None and item.timestamp > as_of:
@@ -128,13 +165,20 @@ class MarkdownStore:
         ]
 
     def all(self) -> list[MemoryItem]:
+        self._sync()
         return self._okf.all()
 
     def delete(self, item_id: str) -> bool:
         """Delete ``item_id`` from the OKF bundle (durable) and the inverted keyword index. Idempotent."""
+        self._sync()  # absorb any peer writes first so the index stays coherent
         removed = self._okf.delete(item_id)
-        if removed:
+        # A delete can also reconcile peers under the lock (even on the not-found path) — if so the
+        # mirror changed; rebuild the index from it rather than only deindexing the one id (R2 #2).
+        if self._okf._last_mutation_reconciled:
+            self._rebuild_index()
+        elif removed:
             self._deindex(item_id)
+        self._indexed_generation = self._okf._loaded_generation  # lockstep with the post-delete gen
         return removed
 
 

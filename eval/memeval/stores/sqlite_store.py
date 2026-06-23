@@ -27,6 +27,7 @@ import inspect
 import json
 import math
 import sqlite3
+import threading
 from typing import Any, Callable, Optional
 
 from ..schema import MemoryItem, RetrievedItem
@@ -141,7 +142,17 @@ class SqliteVectorStore:
         self._embed = embed or _HashingEmbedder(dim)
         # Detected once: does this embedder want the query/document ``input_type`` kwarg?
         self._embed_accepts_input_type = _embedder_accepts_input_type(self._embed)
-        self._conn = sqlite3.connect(self.path)
+        # Thread-safety (BACKEND_DURABILITY_AUDIT MED): the harness's own ThreadPoolExecutor
+        # (run_agent workers>1, agent.py) hands ONE store to every worker. A default
+        # thread-affine connection (check_same_thread=True) deterministically crashes with
+        # sqlite3.ProgrammingError there. check_same_thread=False lets a single connection be
+        # shared across threads, and ``_lock`` serializes EVERY access to it (check_same_thread
+        # =False ALONE is unsafe — writes/searches would interleave on one connection and the
+        # cursor state would corrupt). WAL still gives cross-PROCESS concurrency; the lock is
+        # the intra-process guard.
+        self._lock = threading.Lock()
+        self._closed = False  # lifecycle flag — checked UNDER _lock so a write can't race close()
+        self._conn = sqlite3.connect(self.path, check_same_thread=False)
         # WAL journal mode (ADR-P2: mandatory) so concurrent cross-process writers/readers over one
         # file-backed $MEMORY_STORE don't block — e.g. MCP recall-path writes alongside the
         # Daydreamer. ENFORCED, not assumed: SQLite can fall back to another journal mode without
@@ -179,21 +190,33 @@ class SqliteVectorStore:
         tokens = item.tokens  # don't mutate the caller's item; store a local value
         if tokens <= 0 and item.content:
             tokens = _estimate_tokens(item.content)
-        self._conn.execute(
-            "INSERT OR REPLACE INTO items (item_id, content, timestamp, relevancy, "
-            "session_id, source, tags, tokens, version, metadata, vector) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (item.item_id, item.content, item.timestamp, item.relevancy,
-             item.session_id, item.source, json.dumps(list(item.tags)),
-             tokens, item.version, json.dumps(item.metadata or {}),
-             json.dumps(self._embed_text(item.content, "document"))),
-        )
-        self._conn.commit()
+        # Embed OUTSIDE the lock (a real embedder can be slow / can block); only the DB
+        # txn is serialized. Rolls back on a failed commit so a failure precisely at commit
+        # cannot strand a partial txn on the shared connection for a later write to silently
+        # commit — matching delete()'s hygiene (BACKEND_DURABILITY_AUDIT LOW).
+        vector = json.dumps(self._embed_text(item.content, "document"))
+        with self._lock:
+            self._raise_if_closed()  # under the lock: a concurrent close() can't null the conn mid-write
+            try:
+                self._conn.execute(
+                    "INSERT OR REPLACE INTO items (item_id, content, timestamp, relevancy, "
+                    "session_id, source, tags, tokens, version, metadata, vector) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    (item.item_id, item.content, item.timestamp, item.relevancy,
+                     item.session_id, item.source, json.dumps(list(item.tags)),
+                     tokens, item.version, json.dumps(item.metadata or {}), vector),
+                )
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
 
     def get(self, item_id: str) -> Optional[MemoryItem]:
-        row = self._conn.execute(
-            f"SELECT {_ITEM_COLS} FROM items WHERE item_id = ?", (item_id,)
-        ).fetchone()
+        with self._lock:
+            self._raise_if_closed()
+            row = self._conn.execute(
+                f"SELECT {_ITEM_COLS} FROM items WHERE item_id = ?", (item_id,)
+            ).fetchone()
         return self._row_to_item(row) if row else None
 
     def search(self, query: str, *, k: int = 5, as_of: Optional[float] = None,
@@ -207,7 +230,9 @@ class SqliteVectorStore:
         q = self._embed_text(query, "query")
         if not any(q):  # empty / sub-n-gram query -> no signal -> no results (cf. MarkdownStore)
             return []
-        rows = self._conn.execute(f"SELECT {_ITEM_COLS}, vector FROM items").fetchall()
+        with self._lock:  # serialize the connection access; the cosine scan is pure-Python
+            self._raise_if_closed()
+            rows = self._conn.execute(f"SELECT {_ITEM_COLS}, vector FROM items").fetchall()
         scored: list = []
         for row in rows:
             ts = row["timestamp"]
@@ -220,23 +245,34 @@ class SqliteVectorStore:
                 for r, (sc, it) in enumerate(scored[: max(0, k)])]
 
     def all(self) -> list:
-        rows = self._conn.execute(
-            f"SELECT {_ITEM_COLS} FROM items ORDER BY rowid"
-        ).fetchall()
+        with self._lock:
+            self._raise_if_closed()
+            rows = self._conn.execute(
+                f"SELECT {_ITEM_COLS} FROM items ORDER BY rowid"
+            ).fetchall()
         return [self._row_to_item(r) for r in rows]
 
     def delete(self, item_id: str) -> bool:
         """Delete the row for ``item_id``; return ``True`` if a row was removed (idempotent). Rolls back
         on failure so a partial change never lands."""
-        try:
-            cur = self._conn.execute("DELETE FROM items WHERE item_id = ?", (item_id,))
-            self._conn.commit()
-        except Exception:
-            self._conn.rollback()
-            raise
-        return cur.rowcount > 0
+        with self._lock:
+            self._raise_if_closed()
+            try:
+                cur = self._conn.execute("DELETE FROM items WHERE item_id = ?", (item_id,))
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
+            return cur.rowcount > 0
 
     # -- helpers -----------------------------------------------------------
+    def _raise_if_closed(self) -> None:
+        """Fail loud if the store is closed. MUST be called while holding ``_lock`` — so a
+        write that passed an un-held check can't then race a concurrent ``close()`` and mutate
+        a closed/null connection. Does NOT take the lock itself (no re-entrancy)."""
+        if self._closed:
+            raise RuntimeError("operation on a closed SqliteVectorStore")
+
     def _row_to_item(self, row) -> MemoryItem:
         return MemoryItem(
             item_id=row["item_id"], content=row["content"], timestamp=row["timestamp"],
@@ -246,8 +282,15 @@ class SqliteVectorStore:
         )
 
     def close(self) -> None:
-        """Close the underlying sqlite connection."""
-        self._conn.close()
+        """Close the underlying sqlite connection. Acquires ``_lock`` so it can't close the
+        connection out from under an in-flight write/search (which hold the same lock), then
+        marks the store closed so a later operation fails loud instead of touching a closed
+        connection. Idempotent. Must NOT call a lock-taking method (no deadlock)."""
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            self._conn.close()
 
     def __enter__(self) -> "SqliteVectorStore":
         return self

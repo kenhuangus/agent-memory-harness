@@ -33,12 +33,27 @@ installed for robust parsing of arbitrary external bundles.
 from __future__ import annotations
 
 import json
+import logging
+import os
 import re
+import tempfile
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Iterator, Optional
 
 from .schema import MemoryItem, RetrievedItem
+
+# ``fcntl`` is POSIX-only. Import lazily-guarded so the module still loads (and the store
+# still works single-process, just without the cross-process advisory lock) on a non-POSIX
+# platform. ADR-013/014: the atomic-write + flock primitives ported here mirror
+# ``dreaming/_state.py`` — a port, not an invention.
+try:  # pragma: no cover - exercised on POSIX; the except is the non-POSIX fallback
+    import fcntl as _fcntl
+except ImportError:  # pragma: no cover - non-POSIX (Windows) has no fcntl
+    _fcntl = None  # type: ignore[assignment]
+
+_logger = logging.getLogger(__name__)
 
 OKF_VERSION = "0.1"
 _RESERVED = {"index.md", "log.md"}
@@ -85,6 +100,88 @@ def _iso_to_epoch(s: Any) -> float:
 def _slug(s: str, *, default: str = "item") -> str:
     out = re.sub(r"[^A-Za-z0-9._-]+", "-", str(s).strip().lower()).strip("-")
     return out or default
+
+
+# --------------------------------------------------------------------------- #
+# Durable-write primitives (ported from dreaming/_state.py — ADR-013/014)
+# --------------------------------------------------------------------------- #
+def _fsync_dir(path: Path) -> None:
+    """fsync a directory so a dirent change (a create/rename/unlink within it) is durable
+    on power loss. A no-op on filesystems that don't support directory fsync."""
+    try:
+        dir_fd = os.open(str(path), os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except OSError:  # directory fsync unsupported on some filesystems — the change still landed
+        pass
+
+
+def _write_text_atomic(path: Path, text: str) -> None:
+    """Atomically write ``text`` to ``path`` via ``tmp.replace(path)`` (ADR-013).
+
+    Writes to a UNIQUE-per-call temp sibling (``tempfile.NamedTemporaryFile`` in the target's
+    dir — two writes to the same target from one process never share/truncate one tmp),
+    ``fsync``s the file descriptor, ``os.replace``s it over the destination (atomic on the same
+    filesystem), then ``fsync``s the parent directory so the rename itself survives power loss.
+    A crash anywhere before the replace leaves the PRIOR file intact — the destination is never
+    opened in ``"w"`` mode directly. Stdlib-only.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp: Optional[Path] = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", dir=path.parent,
+            prefix=f"{path.name}.", suffix=".tmp", delete=False,
+        ) as fh:
+            tmp = Path(fh.name)
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)  # atomic same-fs rename: a crash leaves the prior doc intact
+    except BaseException:
+        # Best-effort cleanup so a failed write never strands a partial *.tmp.
+        if tmp is not None:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
+    _fsync_dir(path.parent)  # the rename (new dirent) is durable on power loss
+
+
+@contextmanager
+def _bundle_write_lock(root: Path) -> Iterator[None]:
+    """Hold a blocking exclusive advisory lock for the duration of a bundle persist.
+
+    ``fcntl.flock`` (POSIX advisory, fd-bound, releases on process death — pinned over
+    ``lockf`` per ADR-014) on a per-bundle ``.okf.lock`` file so concurrent OS processes
+    (the MCP recall path and the Daydreamer) serialize their write/delete persists over
+    one shared ``$MEMORY_STORE`` and never interleave a tmp-write+replace. ``LOCK_EX``
+    (blocking) — a peer waits rather than clobbering. On a non-POSIX platform (``fcntl``
+    absent) this is a no-op: the store still works single-process.
+    """
+    if _fcntl is None:  # non-POSIX: no advisory lock available; single-process still safe
+        yield
+        return
+    root.mkdir(parents=True, exist_ok=True)
+    lock_path = root / ".okf.lock"
+    fd = os.open(str(lock_path), os.O_WRONLY | os.O_CREAT, 0o600)
+    try:
+        _fcntl.flock(fd, _fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            try:
+                _fcntl.flock(fd, _fcntl.LOCK_UN)
+            except OSError as exc:
+                _logger.warning("OKF flock LOCK_UN failed for %s: %s", root, exc)
+    finally:
+        try:
+            os.close(fd)
+        except OSError as exc:
+            _logger.warning("OKF lock fd close failed for %s: %s", root, exc)
 
 
 # --------------------------------------------------------------------------- #
@@ -297,8 +394,7 @@ def export_bundle(items: Iterable[MemoryItem], out_dir: str | Path) -> dict[str,
     by_type: dict[str, list[tuple[str, MemoryItem]]] = {}
     for it in items:
         rel = _doc_relpath(it)
-        (root / rel).parent.mkdir(parents=True, exist_ok=True)
-        (root / rel).write_text(memory_item_to_doc(it), encoding="utf-8")
+        _write_text_atomic(root / rel, memory_item_to_doc(it))
         by_type.setdefault(rel.split("/", 1)[0], []).append((rel, it))
 
     # per-type index.md
@@ -307,14 +403,14 @@ def export_bundle(items: Iterable[MemoryItem], out_dir: str | Path) -> dict[str,
         for rel, it in sorted(entries):
             title = (it.metadata or {}).get("okf_title") or it.item_id
             lines.append(f"* [{title}](/{rel}) — {_summary(it.content, 100)}")
-        (root / tdir / "index.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        _write_text_atomic(root / tdir / "index.md", "\n".join(lines) + "\n")
 
     # root index.md (the only place okf_version is permitted)
     root_lines = [f"{_FM_DELIM}", f'okf_version: "{OKF_VERSION}"', f"{_FM_DELIM}", "",
                   "# Subdirectories", ""]
     for tdir in sorted(by_type):
         root_lines.append(f"* [{tdir}](/{tdir}/index.md) — {len(by_type[tdir])} concept(s)")
-    (root / "index.md").write_text("\n".join(root_lines) + "\n", encoding="utf-8")
+    _write_text_atomic(root / "index.md", "\n".join(root_lines) + "\n")
 
     # log.md — chronological change history (newest first)
     dated = sorted(items, key=lambda x: x.timestamp or 0, reverse=True)
@@ -323,7 +419,7 @@ def export_bundle(items: Iterable[MemoryItem], out_dir: str | Path) -> dict[str,
         iso = _epoch_to_iso(it.timestamp) or "(undated)"
         rel = _doc_relpath(it)
         log.append(f"* {iso} — **v{it.version}** [{it.item_id}](/{rel})")
-    (root / "log.md").write_text("\n".join(log) + "\n", encoding="utf-8")
+    _write_text_atomic(root / "log.md", "\n".join(log) + "\n")
 
     return {
         "okf_version": OKF_VERSION,
@@ -344,12 +440,24 @@ def import_bundle(in_dir: str | Path) -> list[MemoryItem]:
     for path in sorted(root.rglob("*.md")):
         if path.name in _RESERVED:
             continue
-        text = path.read_text(encoding="utf-8")
-        fm, _ = split_doc(text)
-        if not fm.get("type"):
-            continue  # not a conformant concept doc
-        rel = path.relative_to(root).as_posix()
-        items.append(doc_to_memory_item(text, fallback_id=_slug(rel[:-3])))
+        # Guard the WHOLE per-file read -> split -> convert path: one undecodable/torn .md (a
+        # half-written file from a crashed peer, a foreign binary) OR a readable doc with a
+        # ``type`` but invalid numeric frontmatter (``doc_to_memory_item`` can raise
+        # TypeError/ValueError) must be SKIPPED (warn + continue), not raise out and brick the
+        # whole store at construction (which would take the MCP server + Daydreamer down).
+        # Pairs with the atomic-write fix (removes most torn files at the source).
+        # ``errors='replace'`` keeps a partially-readable doc usable.
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+            fm, _ = split_doc(text)
+            if not fm.get("type"):
+                continue  # not a conformant concept doc
+            rel = path.relative_to(root).as_posix()
+            item = doc_to_memory_item(text, fallback_id=_slug(rel[:-3]))
+        except (OSError, TypeError, ValueError) as exc:
+            _logger.warning("OKF import: skipping unparseable doc %s: %s", path, exc)
+            continue
+        items.append(item)
     return items
 
 
@@ -389,52 +497,214 @@ class OKFStore:
         from .harness import InMemoryStore  # local import: avoid cycle at module load
         self.root = Path(path)
         self._mem = InMemoryStore()
+        self._autoload = autoload
+        # Persisted monotonic GENERATION counter (the cross-process coherence seam). A
+        # generation file ($BUNDLE/.okf-generation) is bumped UNDER the bundle lock on every
+        # write/delete by ANY process. Each instance records the generation it has actually
+        # loaded; a read whose on-disk generation EXCEEDS the loaded one reloads. This is
+        # immune to mtime granularity (two writes in one tick get distinct integers) and to
+        # the mtime-after-lock race (the loaded generation is set under the lock, so an
+        # instance never "acknowledges" a peer commit it did not load). 0 == never loaded.
+        self._loaded_generation = 0
+        # Set by write/delete: did the last own mutation reconcile peer writes under the lock?
+        # A derived index (MarkdownStore's postings) reads this to decide between an incremental
+        # update (own item only) and a full rebuild (peers were pulled in).
+        self._last_mutation_reconciled = False
         if autoload and self.root.exists():
-            for it in import_bundle(self.root):
-                self._mem.write(it)
+            self._load_from_disk()
 
+    # -- generation seam (cross-process coherence) -------------------------
+    @property
+    def _generation_path(self) -> Path:
+        return self.root / ".okf-generation"
+
+    def _read_generation(self) -> int:
+        """Read the on-disk generation counter (cheap). 0 if absent/unreadable."""
+        try:
+            return int(self._generation_path.read_text(encoding="utf-8").strip() or "0")
+        except (OSError, ValueError):
+            return 0
+
+    def _bump_generation(self) -> int:
+        """Increment + persist the generation counter and return the new value.
+
+        MUST be called while holding the bundle lock (callers do) so the read-modify-write
+        is serialized across processes — two concurrent writers can't collide on the same
+        next value. Atomic-write so a crash never leaves a torn counter."""
+        nxt = self._read_generation() + 1
+        _write_text_atomic(self._generation_path, str(nxt))
+        return nxt
+
+    def _load_from_disk(self) -> None:
+        """Rebuild the in-memory mirror from the on-disk bundle (a cold autoload).
+
+        Snapshots the generation BEFORE reading the docs so a concurrent peer write that
+        lands mid-read advances the counter past our snapshot and the NEXT refresh reloads
+        again (never records a generation newer than the corpus we actually read)."""
+        from .harness import InMemoryStore
+        gen = self._read_generation()
+        mem = InMemoryStore()
+        if self.root.exists():
+            for it in import_bundle(self.root):
+                mem.write(it)
+        self._mem = mem
+        self._loaded_generation = gen
+
+    def reload(self) -> None:
+        """Explicitly re-read the bundle from disk so a long-lived reader (e.g. the MCP
+        daemon) reflects peers' committed writes — defeats the frozen-at-``__init__``
+        RAM mirror that would staleness-serve a peer's (Daydreamer's) memories until
+        restart. Idempotent; safe to call before any read."""
+        self._load_from_disk()
+
+    def _maybe_refresh(self) -> bool:
+        """Reload if a peer advanced the generation past what this instance loaded.
+
+        Returns ``True`` iff a reload happened (so a caller — e.g. MarkdownStore — can
+        rebuild a derived index in lockstep). Single-instance behavior is unchanged: this
+        instance's own write/delete bumps the generation AND records it under the lock, so a
+        self-write never triggers a reload and reads stay byte-equivalent. Only a *peer*
+        process's commit (a higher generation) forces a refresh."""
+        if not self._autoload:
+            return False
+        if self._read_generation() > self._loaded_generation:
+            self._load_from_disk()
+            return True
+        return False
+
+    def _reconcile_locked(self) -> bool:
+        """Pull in any peer writes BEFORE applying an own mutation — MUST be called while
+        holding the bundle lock. Returns ``True`` iff a reload happened (a derived index like
+        MarkdownStore's postings must then rebuild from the post-mutation mirror, not just the
+        own item).
+
+        Closes the WRITER-SIDE stale-ack hole (R2): without this, an own write could bump the
+        generation to N+1 and record ``_loaded_generation = N+1`` while ``_mem`` never loaded a
+        peer's gen-N doc, so future reads would see on-disk==loaded and NEVER reload — silently
+        and permanently missing the peer. Reloading first means the own mutation is applied on
+        top of a mirror that already reflects every peer, so the recorded generation is honest
+        (``_mem`` == peers loaded + own applied == on-disk state). ``_autoload=False`` opts out
+        (single-process tests that intentionally freeze the mirror)."""
+        if not self._autoload:
+            return False
+        if self._read_generation() > self._loaded_generation:
+            self._load_from_disk()
+            return True
+        return False
+
+    # -- MemoryStore protocol ----------------------------------------------
     def write(self, item: MemoryItem) -> None:
-        self._mem.write(item)
+        """Persist ``item`` as an OKF concept doc — atomic (tmp+replace+fsync, ADR-013)
+        and serialized across processes by a bundle flock (ADR-014) so concurrent peers
+        over one ``$MEMORY_STORE`` never interleave a write or torn-write a doc.
+
+        RECONCILE-UNDER-LOCK (R2): inside the critical section, BEFORE applying the local
+        write, peer writes are pulled in (``_reconcile_locked``) so ``_mem`` reflects every
+        committed peer; the own write is then applied on top, persisted, and the generation
+        bumped + recorded — all under the lock. This guarantees ``_loaded_generation`` only
+        ever names state the instance actually holds (no writer-side stale-ack). ``_mem.write``
+        also populates ``item.tokens`` in place so the rendered doc carries ``x_tokens``
+        (byte-equivalent to the single-process path)."""
         rel = _doc_relpath(item)
-        (self.root / rel).parent.mkdir(parents=True, exist_ok=True)
-        (self.root / rel).write_text(memory_item_to_doc(item), encoding="utf-8")
+        with _bundle_write_lock(self.root):
+            self._last_mutation_reconciled = self._reconcile_locked()  # pull peers FIRST so own write isn't lost
+            self._mem.write(item)              # apply own write on top; populates item.tokens in place
+            _write_text_atomic(self.root / rel, memory_item_to_doc(item))
+            self._loaded_generation = self._bump_generation()  # honest: _mem == peers + own == on-disk
 
     def get(self, item_id: str) -> Optional[MemoryItem]:
+        self._maybe_refresh()
         return self._mem.get(item_id)
 
     def search(self, query: str, *, k: int = 5, as_of: Optional[float] = None, **kw: Any) -> list[RetrievedItem]:
+        self._maybe_refresh()
         return self._mem.search(query, k=k, as_of=as_of, **kw)
 
     def all(self) -> list[MemoryItem]:
+        self._maybe_refresh()
         return self._mem.all()
 
     def delete(self, item_id: str) -> bool:
         """Remove ``item_id`` from the bundle (its on-disk doc(s) + the in-memory index). Idempotent.
 
-        Unlinks EVERY concept doc that PARSES to ``item_id`` — the canonical path :meth:`write` uses AND any
-        noncanonical filename from a foreign imported bundle — so a fresh autoload (``import_bundle``, which
-        scans ``*.md`` and skips the reserved index.md/log.md) cannot resurrect it. The in-memory view is
-        dropped via :meth:`InMemoryStore.delete` (now a ``MemoryStore`` protocol method). Returns ``False``
-        if the id was not present.
+        Fast path: the live item's deterministic canonical doc (``_doc_relpath``) is unlinked in O(1) —
+        no full bundle scan. The O(N) rglob scan is the FALLBACK, taken only when the canonical doc is
+        absent (a foreign-imported filename that does not match the slug layout), so correctness for the
+        foreign case is preserved (every doc parsing to the id is unlinked) while the common canonical
+        delete no longer goes quadratic under a Daydreamer dedup burst. Serialized + atomic via the same
+        bundle flock as :meth:`write`. Returns ``False`` if the id was not present.
         """
-        if self._mem.get(item_id) is None:
-            return False
-        if self.root.exists():
-            for path in self.root.rglob("*.md"):  # canonical AND foreign filenames both parse to an id
-                if path.name in _RESERVED:
-                    continue
-                text = path.read_text(encoding="utf-8")
-                fm, _ = split_doc(text)
-                if not fm.get("type"):
-                    continue
+        with _bundle_write_lock(self.root):
+            self._last_mutation_reconciled = self._reconcile_locked()  # pull peers FIRST (deletable + no stale-ack)
+            item = self._mem.get(item_id)
+            if item is None:
+                return False           # absent even after reconcile -> nothing to delete (idempotent)
+            canonical = self.root / _doc_relpath(item)
+            unlinked = False
+            unlinked_dirs: set[Path] = set()  # parent dirs whose dirent we removed -> fsync before the gen bump
+            if canonical.exists():
+                # Verify the canonical file actually holds THIS id before fast-unlinking
+                # (a slug collision could put a different id at this path — fall through to
+                # the scan rather than delete a stranger's doc).
+                if self._doc_is_item(canonical, item_id):
+                    canonical.unlink(missing_ok=True)
+                    unlinked_dirs.add(canonical.parent)
+                    unlinked = True
+            if not unlinked and self.root.exists():
+                # FALLBACK: foreign-imported filename(s). Scan + unlink every doc parsing to the id.
+                for path in self.root.rglob("*.md"):  # canonical AND foreign filenames both parse to an id
+                    if path.name in _RESERVED:
+                        continue
+                    if self._doc_is_item(path, item_id):
+                        path.unlink(missing_ok=True)
+                        unlinked_dirs.add(path.parent)
+            # fsync each dir we removed a dirent from BEFORE bumping the generation: otherwise a
+            # crash after the unlinks but before the gen file's parent fsync could resurrect a
+            # deleted doc on cold import even though peers already saw the new generation.
+            for d in unlinked_dirs:
+                _fsync_dir(d)
+            removed = self._mem.delete(item_id)
+            self._loaded_generation = self._bump_generation()  # honest: _mem == peers + own delete applied
+        return removed
+
+    def _doc_is_item(self, path: Path, item_id: str) -> bool:
+        """True if the concept doc at ``path`` parses to ``item_id`` (guards torn/foreign docs).
+
+        Uses the SAME ``fallback_id`` as :func:`import_bundle` (the root-relative slug) so a
+        foreign doc lacking ``x_item_id`` resolves to the same id on disk as it did in RAM —
+        the scan can't miss a doc the autoload included. The whole read -> split -> convert path
+        is guarded (``doc_to_memory_item`` can raise TypeError/ValueError on invalid numeric
+        frontmatter): a torn/unparseable doc is simply NOT this id (return False), never a raise
+        out of delete.
+        """
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+            fm, _ = split_doc(text)
+            if not fm.get("type"):
+                return False
+            try:
                 rel = path.relative_to(self.root).as_posix()
-                if doc_to_memory_item(text, fallback_id=_slug(rel[:-3])).item_id == item_id:
-                    path.unlink()
-        return self._mem.delete(item_id)
+            except ValueError:
+                rel = path.name
+            return doc_to_memory_item(text, fallback_id=_slug(rel[:-3])).item_id == item_id
+        except (OSError, TypeError, ValueError) as exc:
+            _logger.warning("OKF delete-scan: skipping unparseable doc %s: %s", path, exc)
+            return False
 
     def flush_indexes(self) -> dict[str, Any]:
-        """(Re)write the bundle's index.md/log.md from the current items."""
-        return export_bundle(self._mem.all(), self.root)
+        """(Re)write the bundle's index.md/log.md (and re-emit every concept doc) from the
+        current items.
+
+        ``export_bundle`` rewrites concept docs, not just the index/log artifacts, so it runs
+        INSIDE the bundle lock with a reconcile-first (R2) — otherwise it could overwrite a
+        peer's newer doc from a stale mirror and then publish a later generation, silently
+        losing the peer's write. Reconcile pulls peers in first; the export then reflects
+        peers + own state; the bump records that honest generation under the lock."""
+        with _bundle_write_lock(self.root):
+            self._reconcile_locked()
+            result = export_bundle(self._mem.all(), self.root)
+            self._loaded_generation = self._bump_generation()
+        return result
 
 
 __all__ = [
