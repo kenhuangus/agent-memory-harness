@@ -565,12 +565,18 @@ duration and contention windows are short.
   scoped here. Owner: Brent (storage). When it lands, the
   `Router.delete()` duck-typing layer becomes redundant; this
   ADR's policy survives the swap unchanged.
-- **Job 2 (contradiction resolution) worker shape.** Whether
-  Job 2 can ship against `Router.delete()` alone or needs a
-  consolidated-write-back primitive is a per-Job decision.
-  Forecast: `Router.delete()` is sufficient; the same
-  delete-the-loser shape works for "delete the superseded
-  version" exactly as it works for "delete the duplicate."
+- **Job 2 (contradiction resolution) worker shape.** **CLOSED 2026-06-23**
+  (per execution; closed by the Job 2 PR landing
+  `_detect_contradictions` in `eval/memeval/dreaming/worker.py` against
+  `JOB2_CONTRADICTION_RUBRIC.md`). Job 2 ships against `self.store.delete`
+  (the frozen `MemoryStore` protocol promoted by PR #99) alone — no
+  consolidated-write-back, no new mutation primitive. The forecast
+  ("`Router.delete()` is sufficient") was confirmed by execution: the same
+  delete-the-loser shape works for "delete the LLM-judged
+  superseded-version" exactly as it works for "delete the duplicate."
+  The LLM judges only whether a pair contradicts; the worker picks the
+  loser deterministically by Job 1 §D5a/D5b recency rule. No successor ADR
+  required.
 - **NFS detection heuristic robustness.** First production
   miss-detection is the first amendment. Tracked as an
   implementation-PR follow-up, not an ADR-level open item.

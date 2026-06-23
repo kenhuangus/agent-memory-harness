@@ -677,17 +677,46 @@ def test_extract_module_does_not_call_time_time() -> None:
 
 
 def test_extract_module_does_not_format_redacted_directly() -> None:
-    """No `.format(redacted=` call sites in _extract.py (rubric 159 AST-scan)."""
+    """Per JOB2 §J-J2-envelope-named (amendment A3): cross-file by-NAME audit.
+
+    Replaces the by-COUNT check that locked in "exactly one site in _extract.py."
+    Job 2 added `_wrap_batch_in_envelope` in `worker.py`; Job 3 (governance) may
+    add a third named wrapper. Assert by enclosing-FunctionDef name across the
+    dreaming module rather than by raw count.
+
+    The authorized name-set is exactly:
+        {"_wrap_user_content_in_envelope", "_wrap_batch_in_envelope"}
+    """
+    import ast
     from pathlib import Path
 
-    src = Path(_extract.__file__).read_text(encoding="utf-8")
-    # The envelope wrapper itself uses `_ENVELOPE_TEMPLATE.format(nonce=..., redacted=...)`.
-    # That is the single authorized site; the rubric forbids OTHER `.format(redacted=...)`
-    # call sites that would launder RedactedText into raw str. Confirm there is
-    # exactly one such substring in the file.
-    assert src.count(".format(nonce=") == 1
-    # And that the envelope wrapper is what holds it.
-    assert "_wrap_user_content_in_envelope" in src
+    files_to_audit = [
+        Path(_extract.__file__),
+        Path(_extract.__file__).parent / "worker.py",
+    ]
+
+    sites: set[str] = set()
+    for path in files_to_audit:
+        if not path.exists():
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for func in ast.walk(tree):
+            if not isinstance(func, ast.FunctionDef):
+                continue
+            for sub in ast.walk(func):
+                if (
+                    isinstance(sub, ast.Call)
+                    and isinstance(sub.func, ast.Attribute)
+                    and sub.func.attr == "format"
+                    and isinstance(sub.func.value, ast.Name)
+                    and sub.func.value.id == "_ENVELOPE_TEMPLATE"
+                ):
+                    sites.add(func.name)
+
+    assert sites == {
+        "_wrap_user_content_in_envelope",
+        "_wrap_batch_in_envelope",
+    }, f"unauthorized envelope-format site(s): {sites}"
 
 
 def test_parse_error_is_exception_subclass() -> None:
