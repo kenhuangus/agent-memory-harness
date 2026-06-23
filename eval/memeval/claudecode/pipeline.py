@@ -94,8 +94,8 @@ def _build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--path", default=None, help="Dataset path/id (blank = real source).")
     ap.add_argument("--results-dir", default="results",
                     help="Root for results/v{version}/ (and the shared _memory/ substrate).")
-    ap.add_argument("--native-cl", dest="native_cl", action="store_true", default=True,
-                    help="Capture paper-native CL metrics per eval stage (default on).")
+    ap.add_argument("--native-cl", dest="native_cl", action="store_true", default=False,
+                    help="Capture paper-native CL metrics per eval stage (default off).")
     ap.add_argument("--no-native-cl", dest="native_cl", action="store_false")
     ap.add_argument("--skip-base", action="store_true",
                     help="Skip stage 1 (the memoryless 'base' baseline). Useful when "

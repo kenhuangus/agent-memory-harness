@@ -171,6 +171,18 @@ def test_interactive_config_stages_override_skip_prompt(monkeypatch) -> None:
     assert not any("skip stage 1" in p for p in prompts)
 
 
+def test_pipeline_native_cl_defaults_off() -> None:
+    args = P._build_parser().parse_args([])
+    cfg = P._resolve_config(args)
+    assert cfg["native_cl"] is False
+
+
+def test_pipeline_native_cl_is_opt_in() -> None:
+    args = P._build_parser().parse_args(["--native-cl"])
+    cfg = P._resolve_config(args)
+    assert cfg["native_cl"] is True
+
+
 def test_pipeline_fails_closed_when_sandbox_not_logged_in(monkeypatch) -> None:
     # The pipeline MUST abort before any stage runs if the sandbox isn't authenticated —
     # every stage uses the isolated sandbox, never the host, so a logged-out sandbox can't
