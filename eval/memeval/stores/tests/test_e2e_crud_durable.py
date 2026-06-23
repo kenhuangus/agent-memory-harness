@@ -78,8 +78,8 @@ class E2ECrudDurableTests(unittest.TestCase):
         # ---- UPDATE (newer content wins; base_all rewrites every backend) ----
         rs.write(_item("banana", "banana fruit GREEN now", ts=4.0))
         self.assertIn("GREEN", rs.get("banana").content)
-        # ---- DELETE (fan-out to all 3) ----
-        self.assertEqual(rs.delete("cherry"), 3, "cherry removed from all 3 backends")
+        # ---- DELETE (RouterStore.delete -> bool; per-backend removal is asserted after restart below) ----
+        self.assertTrue(rs.delete("cherry"), "delete returns True when present")
         self.assertIsNone(rs.get("cherry"))
         self._close(b1)  # close the writers -> force a genuine reload from disk
 

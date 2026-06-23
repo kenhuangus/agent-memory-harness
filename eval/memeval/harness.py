@@ -237,6 +237,14 @@ class InMemoryStore:
         """Every stored item, in insertion order (used by the dreaming worker)."""
         return [self._items[i] for i in self._order]
 
+    def delete(self, item_id: str) -> bool:
+        """Remove ``item_id``; return ``True`` if it was present (idempotent)."""
+        if item_id not in self._items:
+            return False
+        del self._items[item_id]
+        self._order.remove(item_id)
+        return True
+
 
 # --------------------------------------------------------------------------- #
 # Prompt construction

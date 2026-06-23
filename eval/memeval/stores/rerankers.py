@@ -231,5 +231,9 @@ class RerankedStore:
     def all(self) -> list:
         return self._inner.all()
 
+    def delete(self, item_id: str) -> bool:
+        """Delete ``item_id`` from the inner store (reranking is read-only; delete just delegates)."""
+        return self._inner.delete(item_id)
+
 
 __all__ = ["MockReranker", "VoyageReranker", "rerank_items", "RerankedStore"]
