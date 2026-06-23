@@ -121,6 +121,10 @@ daydream-cli = "memeval.dreaming.cli:main"
 # `memeval-native run --benchmark longmemeval --mode echo` is the short form of
 # `python -m memeval.native.cli run …`. Offline path is stdlib-only.
 memeval-native = "memeval.native.cli:main"
+# The 5-stage SWE-Bench-CL pipeline driven by the live cookbook-memory plugin
+# (base -> plugin/blank -> plugin/accumulated -> dream -> plugin/dreamed), sharing ONE
+# persistent per-version memory substrate. `memeval-pipeline` (interactive) / `--yes`.
+memeval-pipeline = "memeval.claudecode.pipeline:main"
 
 # --------------------------------------------------------------------------- #
 # setuptools packaging

@@ -813,9 +813,9 @@ def test_claudecode_agent_plugin_real_records_retrieval_from_events() -> None:
     # plugin's own events stream, exactly as the cookbook-memory MCP server would,
     # and the agent attributes that retrieval to the trajectory from meta.hits.
     #
-    # Stdlib-only: plugin-real seeds through `memory-cli` (a subprocess that no-ops
-    # when the plugin isn't installed) and uses a fake runner, so no `cookbook_memory`
-    # import and no real `claude` — this runs in CI as written.
+    # Stdlib-only: plugin-real uses a fake runner (no real `claude`, no `cookbook_memory`
+    # import) and the harness never touches the store — the plugin owns it — so this runs
+    # in CI as written. With no shared substrate configured, the store is the per-task dir.
     import json as _json
     from memeval.claudecode.agent import ClaudeCodeAgent
     from memeval.claudecode.cli import ClaudeResult
@@ -847,125 +847,6 @@ def test_claudecode_agent_plugin_real_records_retrieval_from_events() -> None:
     assert "retrieve" in kinds and "generate" in kinds      # attributed from meta.hits
     # the run executed in the per-task dir, where the plugin's store/events live
     assert seen["cwd"]
-
-
-def test_solve_plugin_real_drives_sessions_through_daydream_when_memory_cli_installed() -> None:
-    # When memory-cli is on PATH (real-plugin install case), seeding now drives Claude
-    # through one primed turn per task.sessions[i] so each Stop hook fires the daydreamer
-    # over substantive session content (PR #77), then a final question turn. Before this
-    # reconciliation, sessions were back-doored via `memory-cli remember` and daydream
-    # only saw the trivial question turn. The daydream-driving lives in
-    # `_seed_plugin_store` (reached via `_group_restore`), so it auto-scopes through Fix
-    # A's group logic.
-    #
-    # The fake runner stands in for the installed plugin's Stop-hook chain: for each
-    # seeding turn it writes a `daydream.hook_subprocess_fired` event (what the plugin's
-    # handler emits AFTER the daydream-cli subprocess returns, per PR #77) so the poll in
-    # `_wait_for_daydream` (over `_count_daydream_writes`) sees the write and proceeds.
-    # The question turn writes a `recall` event so the existing attribution path produces
-    # a retrieve step.
-    import json as _json
-    import shutil as _shutil
-    from unittest.mock import patch
-    from memeval.claudecode.agent import ClaudeCodeAgent
-    from memeval.claudecode.cli import ClaudeResult
-    from memeval.claudecode.platform import ClaudeRuntime
-
-    seen_prompts: list[str] = []
-    seen_systems: list[str] = []
-
-    def fake(prompt, *, cwd, **kw):
-        seen_prompts.append(prompt)
-        seen_systems.append(kw.get("append_system_prompt", ""))
-        store = Path(cwd) / ".cookbook-memory"
-        store.mkdir(parents=True, exist_ok=True)
-        evfile = store / "events.jsonl"
-        # Question turn (uses recall) vs seeding turn (acknowledgement over a session).
-        if "call the recall tool" in prompt.lower():
-            rec = {"ts": 1.0, "op": "recall", "ids": ["m1"], "query": prompt,
-                   "meta": {"hits": [{"id": "m1", "content": "berlin", "score": 0.9,
-                                      "rank": 0, "tokens": 1, "timestamp": 1.0}]}}
-        else:
-            # Seeding turn: simulate the plugin's hooks handler emitting the fired event
-            # AFTER its daydream-cli subprocess completes (PR #77). `_count_daydream_writes`
-            # recognizes `daydream.hook_subprocess_fired`, so `_wait_for_daydream` proceeds.
-            rec = {"ts": 1.0, "op": "daydream.hook_subprocess_fired",
-                   "session_id": "seed", "meta": {"hook": "Stop"}}
-        with evfile.open("a", encoding="utf-8") as fh:
-            fh.write(_json.dumps(rec) + "\n")
-        return ClaudeResult(text="ack", tokens_in=10, tokens_out=2)
-
-    native = ClaudeRuntime(kind="native", exe="claude", python="python")
-    # Pretend memory-cli is on PATH so seeding takes the daydream-driving branch.
-    real_which = _shutil.which
-    with tempfile.TemporaryDirectory() as tmp:
-        with patch.object(_shutil, "which",
-                          side_effect=lambda name, **kw: "/fake/memory-cli"
-                          if name == "memory-cli" else real_which(name, **kw)):
-            agent = ClaudeCodeAgent(memory_mode="plugin-real", runner=fake,
-                                    runtime=native, workdir=tmp)
-            rr = run_agent(Benchmark.MEMORY_AGENT_BENCH, agent, memory=True,
-                           path_or_id=_fixture("memoryagentbench.json"), limit=1,
-                           seed_sessions=False)
-
-    # The memoryagentbench fixture's first task has multiple non-empty prior sessions.
-    # Expect: N seeding turns + at least one question-turn try (up to _PLUGIN_MAX_TRIES).
-    seed_calls = [p for p in seen_prompts if "prior session" in p]
-    assert len(seed_calls) >= 1, (
-        "expected at least one seeding turn driving a session through a Claude turn (so "
-        "its Stop hook fires daydream over substantive content); got "
-        f"{seen_prompts!r}"
-    )
-    # Each seeding turn used the seed-system prompt, not the question-system.
-    for sys_p in seen_systems[: len(seed_calls)]:
-        assert "noted it" in sys_p or "Briefly acknowledge" in sys_p, (
-            f"seeding turn used wrong system prompt: {sys_p!r}"
-        )
-    # The final turn(s) ran with the question-targeted system prompt + a recall happened.
-    kinds = [s.kind for t in rr.trajectories for s in t.steps]
-    assert "retrieve" in kinds and "generate" in kinds
-
-
-def test_solve_plugin_real_falls_back_to_back_door_when_memory_cli_missing() -> None:
-    # Offline / fake-runner case: memory-cli is NOT on PATH. `_seed_plugin_store` no-ops
-    # (no real install), so the existing offline plugin-real path stays green. Behavior
-    # baseline: no seeding turns — only the question turn(s) run.
-    import json as _json
-    import shutil as _shutil
-    from unittest.mock import patch
-    from memeval.claudecode.agent import ClaudeCodeAgent
-    from memeval.claudecode.cli import ClaudeResult
-    from memeval.claudecode.platform import ClaudeRuntime
-
-    seen_prompts: list[str] = []
-
-    def fake(prompt, *, cwd, **kw):
-        seen_prompts.append(prompt)
-        store = Path(cwd) / ".cookbook-memory"
-        store.mkdir(parents=True, exist_ok=True)
-        rec = {"ts": 1.0, "op": "recall", "ids": ["m1"], "query": prompt,
-               "meta": {"hits": [{"id": "m1", "content": "x", "score": 0.9,
-                                  "rank": 0, "tokens": 1, "timestamp": 1.0}]}}
-        (store / "events.jsonl").write_text(_json.dumps(rec) + "\n")
-        return ClaudeResult(text="x", tokens_in=10, tokens_out=2)
-
-    native = ClaudeRuntime(kind="native", exe="claude", python="python")
-    # Pretend memory-cli is NOT on PATH — seeding must NOT drive any session turns.
-    real_which = _shutil.which
-    with tempfile.TemporaryDirectory() as tmp:
-        with patch.object(_shutil, "which",
-                          side_effect=lambda name, **kw: None
-                          if name == "memory-cli" else real_which(name, **kw)):
-            agent = ClaudeCodeAgent(memory_mode="plugin-real", runner=fake,
-                                    runtime=native, workdir=tmp)
-            run_agent(Benchmark.MEMORY_AGENT_BENCH, agent, memory=True,
-                      path_or_id=_fixture("memoryagentbench.json"), limit=1,
-                      seed_sessions=False)
-    seed_calls = [p for p in seen_prompts if "prior session" in p]
-    assert seed_calls == [], (
-        "without memory-cli the seeding turns must NOT engage; got "
-        f"{seen_prompts!r}"
-    )
 
 
 def test_claudecode_platform_path_translation_and_argv() -> None:

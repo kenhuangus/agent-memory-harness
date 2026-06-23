@@ -10,6 +10,9 @@ dist/
 .venv/
 venv/
 env/
+# uv lockfiles (these are libraries, not apps — installs are resolved fresh)
+uv.lock
+**/uv.lock
 
 # Test / type / lint caches
 .pytest_cache/

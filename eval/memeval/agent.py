@@ -297,6 +297,7 @@ def run_agent(
     grader: Optional[Callable[[Task, str], Optional[bool]]] = None,
     config: Optional[ModelConfig] = None,
     group_aware: bool = False,
+    sequence: Optional[str] = None,
     workers: int = 1,
     progress_cb: Optional[Callable[["RunResult"], None]] = None,
     k: int = 5,
@@ -328,6 +329,20 @@ def run_agent(
     started_at = clock()
     loader = get_loader(bench)
     all_tasks = loader.load(path_or_id, limit=None)
+
+    # Named-sequence filter: restrict to ONE group_id (e.g. a SWE-Bench-CL sequence),
+    # ordered by Task.order, so the pipeline runs "X tasks of sequence Y" deterministically
+    # (the shared substrate no longer records which sequence a run saw -- the caller does).
+    if sequence is not None:
+        all_tasks = sorted(
+            (t for t in all_tasks if str(t.group_id or "") == sequence),
+            key=lambda t: int(t.order),
+        )
+        if not all_tasks:
+            raise ValueError(
+                f"no tasks for sequence {sequence!r} in {bench.value}; "
+                f"check the --sequence id"
+            )
     total_available = len(all_tasks)
 
     tasks = all_tasks
@@ -454,10 +469,20 @@ def run_agent(
             _stop.set()
             return
         except Exception as exc:  # noqa: BLE001 - any other failure -> count as a miss
-            print(f"  task {task.task_id} errored ({type(exc).__name__}): "
-                  f"{str(exc)[:160]}", flush=True)
-            err_note = {"task_id": task.task_id, "stage": "task",
-                        "error": f"{type(exc).__name__}: {str(exc)[:200]}"}
+            import subprocess as _sp
+            if isinstance(exc, _sp.TimeoutExpired):
+                # A per-task timeout is expected for some long agentic CODE tasks; print a
+                # clean skip line (not the giant TimeoutExpired command string) and move on.
+                secs = int(getattr(exc, "timeout", 0) or 0)
+                print(f"  task {task.task_id} timed out (>{secs}s) — skipped, run continues",
+                      flush=True)
+                err_note = {"task_id": task.task_id, "stage": "task",
+                            "error": f"TimeoutExpired: exceeded {secs}s"}
+            else:
+                print(f"  task {task.task_id} errored ({type(exc).__name__}): "
+                      f"{str(exc)[:160]}", flush=True)
+                err_note = {"task_id": task.task_id, "stage": "task",
+                            "error": f"{type(exc).__name__}: {str(exc)[:200]}"}
             traj.prediction = ""
             traj.success = False
         traj.ended_at = clock()

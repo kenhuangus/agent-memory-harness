@@ -41,7 +41,10 @@ the move).
 |-----|----------|--------|----------|
 | [ADR-eval-001](ADR-eval-001-extract-memory-package.md) | Extract the memory system into its own package; `memeval` stays pure eval | Accepted | no |
 | [ADR-eval-002](ADR-eval-002-docker-free-code-grading.md) | Docker removed entirely: Claude Code CLI is the coding agent; `LocalExecGrader` / retrieval replace the SWE-bench Docker grader | Accepted | no |
+| [ADR-eval-003](ADR-eval-003-pipeline-shared-memory-substrate.md) | The eval pipeline owns only the memory store DIRECTORY; ONE shared substrate per pipeline version, touched only by the plugin | Proposed | **yes** |
+| [ADR-eval-004](ADR-eval-004-pipeline-version-from-git-tag.md) | A pipeline run's version is the git tag on its `main` commit (fallback `MEMORY_VERSION`) | Proposed | no |
 | [ADR-storage-001](ADR-storage-001-orchestrator-in-process-library.md) | Orchestrator is an in-process library; store-by-`$MEMORY_STORE`, no daemon | Accepted | **yes** |
+| [ADR-storage-002](ADR-storage-002-persist-graph-backend.md) | The graph backend is constructed with a durable path under `$MEMORY_STORE`, not in-memory | Proposed | no |
 | [ADR-harness-001](ADR-harness-001-claude-code-plugin-shape.md) | Claude Code plugin = bundled MCP server + hooks + skills | Accepted | no |
 | [ADR-harness-002](ADR-harness-002-recall-remember-mcp-tools.md) | `recall`/`remember` are MCP tools that call the Orchestrator | Superseded by [ADR-harness-008](ADR-harness-008-recall-only-conscious-surface.md) | **yes** |
 | [ADR-dreaming-001](ADR-dreaming-001-daydreaming-stop-fired.md) | Daydreaming = in-session capture, auto `Stop`/`PreCompact`-fired (day scope) — its own entrypoint | Accepted | **yes** |
@@ -74,6 +77,7 @@ the move).
 | [ADR-harness-009](ADR-harness-009-client-agnostic-skills.md) | One canonical skill, materialized into each harness's native bundle by a build step (single native install) | Accepted (one clause superseded by [ADR-harness-010](ADR-harness-010-commit-release-bundle.md)) | no |
 | [ADR-harness-010](ADR-harness-010-commit-release-bundle.md) | Commit the materialized release bundle + a root `marketplace.json` so the plugin installs from git (no clone) | Accepted | no |
 | [ADR-harness-011](ADR-harness-011-plugin-dumb-client-auto-profile.md) | Plugin is a dumb client of the router (one opaque `build_store()` → `RouterStore`); the engine auto-selects the routing profile (fusion offline, accuracy with a key) | Accepted | no |
+| [ADR-harness-012](ADR-harness-012-remove-harness-memory-management.md) | Remove harness-side memory management from the plugin-real path; accumulation is by persistent shared directory only (records + reverses the never-ADR'd "Fix A") | Proposed | no |
 
 > **Provenance.** These eleven ADRs were extracted from the consolidated ADR-P1…P11
 > series in

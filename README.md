@@ -87,11 +87,32 @@ The evaluation code lives in [`eval/`](eval/) — a stdlib-first Python package
 memory** vs **our plugin memory**, on your Claude Code **subscription** (no API
 key, no API billing). Installing puts a **`memeval-bench`** command on your PATH.
 
+Set up once with [`uv`](https://docs.astral.sh/uv/) (Python 3.13; same on macOS / Linux /
+WSL — see [`eval/README.md` → Setup](eval/README.md#setup-one-command--macos-linux-wsl)):
+
+```bash
+make setup                                       # .venv on 3.13 + harness + plugin (via uv)
+npm install -g @anthropic-ai/claude-code         # the `claude` CLI (the agent under test)
+```
+
+Run the **5-stage SWE-Bench-CL pipeline** (base → plugin/blank → plugin/accumulated →
+dream → plugin/dreamed, with a base→final summary) from the repo root:
+
+```bash
+# via make
+make pipeline                                    # interactive
+make pipeline ARGS="--yes --sequence pytest-dev_pytest_sequence --limit 3 --budget-usd 5"
+
+# or run the command directly (no make, no ARGS=) — uv finds ./.venv, or activate it first
+uv run memeval-pipeline                          # interactive
+uv run memeval-pipeline --yes --sequence pytest-dev_pytest_sequence --limit 3 --budget-usd 5
+memeval-pipeline --help                          # all flags
+```
+
+For the individual `memeval-bench` commands below, prefix with `uv run` (or activate `.venv`):
+
 ```bash
 cd eval
-pip install -e ".[claudecode,hf]"               # harness + MCP memory plugin + dataset loaders
-npm install -g @anthropic-ai/claude-code         # the `claude` CLI (the agent under test)
-
 memeval-bench --list-benchmarks                  # see the five ids (offline, no claude)
 
 # 1) offline smoke first (free, no claude, bundled fixtures):
