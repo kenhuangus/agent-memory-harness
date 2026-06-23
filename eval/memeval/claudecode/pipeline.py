@@ -30,6 +30,7 @@ import json
 import os
 import sqlite3
 import sys
+import tempfile
 import types
 from pathlib import Path
 from typing import Any, Optional
@@ -397,8 +398,43 @@ def _stage_warnings(stage: str, cfg: dict, rr: Any, before: dict[str, Any],
     return warnings
 
 
-def _preflight_warnings(cfg: dict, substrate: Path, active: list[str]) -> list[dict[str, str]]:
+def _plugin_memory_probe() -> dict[str, Any]:
+    """Best-effort plugin runtime + synthetic memory round-trip check."""
+    from . import sandbox
+
+    try:
+        sandbox._require_plugin_mcp_runtime()
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "ok": False,
+            "code": "plugin_mcp_runtime_unavailable",
+            "message": str(exc)[:240],
+        }
+    try:
+        from cookbook_memory.core import MemoryClient
+
+        with tempfile.TemporaryDirectory(prefix="cookbook-memory-preflight-") as tmp:
+            client = MemoryClient(store=tmp)
+            mem_id = client.remember("cookbook memory preflight sentinel",
+                                     tags=["preflight"], ts=1.0)
+            hits = client.recall("preflight sentinel", k=3, ts=2.0)
+        return {
+            "ok": bool(mem_id and hits),
+            "code": "plugin_memory_round_trip_failed" if not (mem_id and hits) else "ok",
+            "remembered": bool(mem_id),
+            "hits": len(hits),
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "ok": False,
+            "code": "plugin_memory_round_trip_error",
+            "message": f"{type(exc).__name__}: {str(exc)[:200]}",
+        }
+
+
+def _preflight(cfg: dict, substrate: Path, active: list[str]) -> dict[str, Any]:
     warnings: list[dict[str, str]] = []
+    probe: Optional[dict[str, Any]] = None
     provider = os.environ.get("DREAM_PROVIDER", "openrouter").strip().lower()
     if provider == "openrouter" and not (os.environ.get("OPENROUTER_API_KEY") or "").strip():
         warnings.append({
@@ -417,7 +453,14 @@ def _preflight_warnings(cfg: dict, substrate: Path, active: list[str]) -> list[d
                 "code": "shared_store_not_blank",
                 "message": "plugin-blank stage is starting with an existing shared store",
             })
-    return warnings
+    if any(_STAGE_MODE.get(stage) == "plugin-real" for stage in active):
+        probe = _plugin_memory_probe()
+        if not probe.get("ok"):
+            warnings.append({
+                "code": str(probe.get("code") or "plugin_preflight_failed"),
+                "message": str(probe.get("message") or "plugin synthetic memory preflight failed"),
+            })
+    return {"warnings": warnings, "plugin_memory_probe": probe}
 
 
 def _make_progress_cb(stage: str, total: int, on_task=None, cost_base: float = 0.0):
@@ -708,7 +751,7 @@ def run_pipeline(cfg: dict) -> dict:
 
     active = cfg.get("stages") or list(_EVAL_STAGES)
     meta["stages_run"] = active
-    meta["preflight"] = {"warnings": _preflight_warnings(cfg, substrate, active)}
+    meta["preflight"] = _preflight(cfg, substrate, active)
     cost = CostTracker(budget_usd=cfg["budget_usd"]) if cfg["budget_usd"] and cfg["budget_usd"] > 0 else None
     total = _stage_task_total(cfg)
     meta["n_tasks"] = total
