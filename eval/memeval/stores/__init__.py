@@ -10,10 +10,14 @@ is :class:`memeval.harness.InMemoryStore`; the real backends here are:
   cosine (v1, stdlib); a real dense embedder (Voyage/bge) injects via ``embed=`` and an ANN index
   (HNSW/FAISS) is a deferred paid-path upgrade
 * :class:`graph_store.GraphStore`         — in-memory OKF-link graph, seed-then-traverse (v1, stdlib);
-  a typed-edge graph DB (Neo4j) is a deferred paid-path seam (``uri=``)
+  a typed-edge graph DB (Neo4j) is the paid-path seam (``uri=``)
+* :class:`neo4j_store.Neo4jGraphStore`    — the ``uri=`` upgrade of ``GraphStore``: a typed-edge graph DB
+  over the Neo4j Bolt driver. **Phase A** is a parity FLOOR — ``search`` delegates scoring/BFS/tie-break
+  to a transient in-memory ``GraphStore`` for EXACT id+order parity. ``neo4j`` is imported lazily inside
+  ``connect()`` only (never at module load); a set ``uri`` with no driver fails loud.
 
 Heavy deps are lazy-imported inside the methods that need them, so importing this package stays
-stdlib-only (offline path unaffected). All three backends are **implemented** (``write`` / ``get`` /
+stdlib-only (offline path unaffected). All backends are **implemented** (``write`` / ``get`` /
 ``search`` / ``all`` / ``delete``); the paid-path upgrades (real embeddings / ANN, Neo4j) inject behind seams and
 never touch the default offline path.
 """
@@ -22,7 +26,7 @@ from __future__ import annotations
 
 from typing import Any
 
-__all__ = ["MarkdownStore", "SqliteVectorStore", "GraphStore"]
+__all__ = ["MarkdownStore", "SqliteVectorStore", "GraphStore", "Neo4jGraphStore"]
 
 
 def __getattr__(name: str) -> Any:  # lazy re-export; keeps package import cheap
@@ -35,4 +39,10 @@ def __getattr__(name: str) -> Any:  # lazy re-export; keeps package import cheap
     if name == "GraphStore":
         from .graph_store import GraphStore
         return GraphStore
+    if name == "Neo4jGraphStore":
+        # The paid-path graph-DB seam (the uri= upgrade of GraphStore). Lazy, like the others — and
+        # neo4j_store itself imports neo4j only inside connect(), so this stays stdlib-only at package
+        # import (offline/CI path unaffected; importing the package never pulls in neo4j).
+        from .neo4j_store import Neo4jGraphStore
+        return Neo4jGraphStore
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
