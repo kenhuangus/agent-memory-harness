@@ -133,9 +133,14 @@ include = ["memeval*"]
 exclude = ["tests*"]
 
 [tool.setuptools.package-data]
-# Ship the example sharded-key config and the Claude Code plugin assets inside the
-# wheel (load_key_config + the memeval-memory plugin both read these at runtime).
-memeval = ["config/*.json"]
+# Ship the example sharded-key config, the vendored SWE-Bench-CL dataset, and the
+# Claude Code plugin assets inside the wheel (load_key_config, the offline-first
+# SWE-Bench-CL loader, and the memeval-memory plugin all read these at runtime).
+memeval = [
+    "config/*.json",
+    "data/swe_bench_cl/*.json",
+    "data/swe_bench_cl/*.md",
+]
 "memeval.claudecode" = ["plugin/.mcp.json", "plugin/README.md", "plugin/.claude-plugin/*.json"]
 
 # --------------------------------------------------------------------------- #

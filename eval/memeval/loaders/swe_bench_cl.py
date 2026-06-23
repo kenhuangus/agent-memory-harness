@@ -30,14 +30,30 @@ Each issue (a SWE-bench instance) becomes one :class:`Task` (``TaskKind.CODE``):
 Offline parsing of a local JSON path / fixture is stdlib-only; the remote path
 lazily imports ``datasets`` (HF mirror) or falls back to a GitHub JSON download
 via ``requests``.
+
+Source precedence (offline-first): an explicit path/source wins, else the
+vendored in-tree copy (``data/swe_bench_cl/SWE-Bench-CL.json``) is used when
+present, else the HuggingFace remote. See :meth:`SWEBenchCLLoader.load`.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Optional
 
 from ..schema import Benchmark, Session, Task, TaskKind
-from .base import BaseLoader, first_present, rows_of, to_epoch
+from .base import BaseLoader, file_exists, first_present, rows_of, to_epoch
+
+#: Package-relative path to the vendored dataset copy
+#: (``eval/memeval/data/swe_bench_cl/SWE-Bench-CL.json``). Resolved from this
+#: module's location so it works from a source checkout AND an installed wheel
+#: (the file ships as package data -- see ``eval/pyproject.toml``).
+_VENDORED = (
+    Path(__file__).resolve().parent.parent
+    / "data"
+    / "swe_bench_cl"
+    / "SWE-Bench-CL.json"
+)
 
 
 class SWEBenchCLLoader(BaseLoader):
@@ -48,6 +64,36 @@ class SWEBenchCLLoader(BaseLoader):
     kind: TaskKind = TaskKind.CODE
     #: The single JSON file the HF dataset repo ships.
     _hf_file: str = "SWE-Bench-CL.json"
+
+    def load(
+        self,
+        path_or_id: Optional[str] = None,
+        *,
+        limit: Optional[int] = None,
+        split: str = "test",
+        **kwargs: Any,
+    ) -> list[Task]:
+        """Return tasks, preferring the vendored copy on the default path.
+
+        Source precedence (offline-first):
+
+        1. **Explicit ``path_or_id``** -- used as-is, so an explicit local file
+           parses offline and an explicit HF id / URL hits the remote path.
+           Behaviour is unchanged from :meth:`BaseLoader.load`.
+        2. **Vendored local copy** (:data:`_VENDORED`) -- when no source is
+           given and the vendored ``SWE-Bench-CL.json`` exists, parse it
+           offline (no network, no ``datasets``/``huggingface_hub`` import).
+        3. **HuggingFace remote** (:attr:`default_source`) -- fallback only
+           when the vendored file is absent.
+
+        Only step 2 is added here; everything else defers to the base loader's
+        local-vs-remote dispatch.
+        """
+        if path_or_id is None and file_exists(str(_VENDORED)):
+            path_or_id = str(_VENDORED)
+        return super().load(
+            path_or_id, limit=limit, split=split, **kwargs
+        )
 
     def _load_local(
         self, path: str, *, limit: Optional[int] = None, **kwargs: Any
