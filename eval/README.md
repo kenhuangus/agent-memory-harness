@@ -100,7 +100,8 @@ without `make` (same result):
 ```bash
 uv venv --python 3.13
 uv pip install -e 'eval[claudecode,daydream,hf,dev]'
-uv pip install --no-deps -e plugin
+uv pip install --no-deps -e plugin   # --no-deps so the plugin's git `eval` dep doesn't clobber the local one
+uv pip install 'mcp>=1.0'            # the plugin's MCP runtime — plugin-real turns need it
 ```
 
 After setup, the console scripts (`memeval`, `memeval-bench`, `memeval-pipeline`,

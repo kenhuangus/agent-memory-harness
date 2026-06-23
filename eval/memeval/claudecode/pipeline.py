@@ -97,6 +97,15 @@ def _build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--native-cl", dest="native_cl", action="store_true", default=True,
                     help="Capture paper-native CL metrics per eval stage (default on).")
     ap.add_argument("--no-native-cl", dest="native_cl", action="store_false")
+    ap.add_argument("--skip-base", action="store_true",
+                    help="Skip stage 1 (the memoryless 'base' baseline). Useful when "
+                         "iterating on the plugin path — base is slow and unaffected by "
+                         "plugin/memory changes. Its results row is omitted (no base→final "
+                         "delta in the summary).")
+    ap.add_argument("--stages", default=None,
+                    help="Comma-separated subset of eval stages to run, in order "
+                         "(base,plugin-blank,plugin-accum,plugin-dreamed). Overrides "
+                         "--skip-base. E.g. --stages plugin-blank,plugin-accum.")
     return ap
 
 
@@ -167,6 +176,17 @@ def _resolve_config(args: argparse.Namespace) -> dict:
     if seq not in _SEQUENCES:
         raise SystemExit(f"unknown --sequence {seq!r}; choose one of {list(_SEQUENCES)}")
 
+    # Which eval stages to run (in canonical order). --stages wins; else --skip-base drops
+    # the memoryless baseline.
+    if args.stages:
+        requested = [s.strip() for s in args.stages.split(",") if s.strip()]
+        bad = [s for s in requested if s not in _EVAL_STAGES]
+        if bad:
+            raise SystemExit(f"unknown --stages {bad}; choose from {list(_EVAL_STAGES)}")
+        stages = [s for s in _EVAL_STAGES if s in requested]  # canonical order, deduped
+    else:
+        stages = [s for s in _EVAL_STAGES if not (args.skip_base and s == "base")]
+
     return {
         "sequence": seq,
         "limit": None if int(limit) <= 0 else int(limit),
@@ -180,6 +200,7 @@ def _resolve_config(args: argparse.Namespace) -> dict:
         "path": args.path,
         "results_dir": args.results_dir,
         "native_cl": args.native_cl,
+        "stages": stages,
     }
 
 
@@ -431,6 +452,31 @@ def _ensure_sandbox_ready() -> None:
     print(f"sandbox: {d} (logged in) — all stages use this, not the host claude.", flush=True)
 
 
+def _warn_if_memory_cannot_accumulate() -> None:
+    """Warn LOUDLY when the daydreamer can't extract memories — the whole point of the
+    pipeline is that memory accumulates, and that requires an LLM to extract it.
+
+    The plugin's daydreamer reads each session and calls an OpenRouter model to decide
+    what to remember. With ``OPENROUTER_API_KEY`` unset it fail-opens to a NO-OP
+    (ADR-dreaming-012): the store is created and daydream runs, but ZERO memories are
+    written — so every plugin stage runs on empty memory and the base→final comparison is
+    meaningless (memory never accumulates). This is the single most common reason a run
+    'works' but shows no memory lift, so flag it prominently up front."""
+    import os
+
+    provider = os.environ.get("DREAM_PROVIDER", "openrouter").strip().lower()
+    if provider == "openrouter" and not (os.environ.get("OPENROUTER_API_KEY") or "").strip():
+        print(
+            "\n" + "!" * 78 + "\n"
+            "WARNING: OPENROUTER_API_KEY is not set — the daydreamer cannot extract memories.\n"
+            "The plugin store will be created and daydream will run, but ZERO memories will be\n"
+            "written (fail-open no-op, ADR-dreaming-012). Every plugin stage then runs on EMPTY\n"
+            "memory, so the base→final comparison shows no accumulation — the experiment is a\n"
+            "no-op. Set OPENROUTER_API_KEY (or DREAM_PROVIDER) before a real run.\n"
+            + "!" * 78 + "\n",
+            file=sys.stderr, flush=True)
+
+
 def run_pipeline(cfg: dict) -> dict:
     """Run all 5 stages and write the results + summary. Returns the summary dict."""
     from ..cost import CostTracker
@@ -440,6 +486,7 @@ def run_pipeline(cfg: dict) -> dict:
     import time
 
     _ensure_sandbox_ready()  # MUST be first — every stage uses the sandbox, never the host
+    _warn_if_memory_cannot_accumulate()  # OPENROUTER_API_KEY gates daydream memory extraction
     version_info = resolve_pipeline_version()
     version = version_info["version"]
     stamp = run_timestamp()
@@ -486,33 +533,40 @@ def run_pipeline(cfg: dict) -> dict:
                                           stage_index=_STAGE_INDEX[stage], pipeline_meta=meta)
         _write_partial()
 
+    active = cfg.get("stages") or list(_EVAL_STAGES)
+    meta["stages_run"] = active
     cost = CostTracker(budget_usd=cfg["budget_usd"]) if cfg["budget_usd"] and cfg["budget_usd"] > 0 else None
     total = _stage_task_total(cfg)
     meta["n_tasks"] = total
     nat = " + native-CL passes" if cfg["native_cl"] else ""
-    print(f"running 4 eval stages × {total} tasks{nat} (plugin stages run "
-          f"{cfg['plugin_workers']} at a time)…", flush=True)
+    skipped = [s for s in _EVAL_STAGES if s not in active]
+    skip_note = f" (skipping: {', '.join(skipped)})" if skipped else ""
+    print(f"running {len(active)} eval stage(s){skip_note} × {total} tasks{nat} "
+          f"(plugin stages run {cfg['plugin_workers']} at a time)…", flush=True)
     _write_partial()  # create the results file immediately (header + pipeline metadata)
     print(f"results file: {PS.benchmark_results_path(_BENCHMARK, version=version, timestamp=stamp, root=str(results_root))}",
           flush=True)
 
+    # Pre-dream eval stages (base / plugin-blank / plugin-accum), in canonical order.
     for stage in ("base", "plugin-blank", "plugin-accum"):
+        if stage not in active:
+            continue
         row = _run_one(stage, cfg, substrate, cost, native_by_stage, meta, total,
                        on_task=lambda p, s=stage: _on_task(s, p))
         rows.append(row)
         in_progress["row"] = None  # stage finished -> its final row is in `rows`
         _write_partial()
 
-    # Stage 4: dream consolidation through the plugin's own surface.
-    print("\n── stage 4/5 · dream ──────────", flush=True)
-    print("  no-op placeholder — whole-store consolidation not implemented yet", flush=True)
-    dream = _run_dream_stage(substrate)
-    _write_partial()
+    # Stage 4 (dream) + stage 5 (plugin-dreamed) only run if the final stage is selected.
+    if "plugin-dreamed" in active:
+        print("\n── stage 4/5 · dream ──────────", flush=True)
+        print("  no-op placeholder — whole-store consolidation not implemented yet", flush=True)
+        dream = _run_dream_stage(substrate)
+        _write_partial()
 
-    # Stage 5: final eval on the dream-consolidated substrate.
-    rows.append(_run_one("plugin-dreamed", cfg, substrate, cost, native_by_stage, meta, total,
-                         on_task=lambda p: _on_task("plugin-dreamed", p)))
-    in_progress["row"] = None
+        rows.append(_run_one("plugin-dreamed", cfg, substrate, cost, native_by_stage, meta, total,
+                             on_task=lambda p: _on_task("plugin-dreamed", p)))
+        in_progress["row"] = None
     meta["ended_at"] = time.time()
 
     path = PS.write_pipeline_results(benchmark=_BENCHMARK, version=version, timestamp=stamp,
@@ -570,8 +624,10 @@ def _run_one(stage: str, cfg: dict, substrate: Path, cost: Any,
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    from ..dotenv_loader import load_root_dotenv
     from .platform import describe, detect
 
+    load_root_dotenv(verbose=True)  # FIRST — set OPENROUTER_API_KEY etc. before any check reads them
     args = _build_parser().parse_args(argv)
     cfg = _resolve_config(args)
 
