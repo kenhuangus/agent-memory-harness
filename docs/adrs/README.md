@@ -45,6 +45,13 @@ the move).
 | [ADR-eval-004](ADR-eval-004-pipeline-version-from-git-tag.md) | A pipeline run's version is the git tag on its `main` commit (fallback `MEMORY_VERSION`) | Proposed | no |
 | [ADR-storage-001](ADR-storage-001-orchestrator-in-process-library.md) | Orchestrator is an in-process library; store-by-`$MEMORY_STORE`, no daemon | Accepted | **yes** |
 | [ADR-storage-002](ADR-storage-002-persist-graph-backend.md) | The graph backend is constructed with a durable path under `$MEMORY_STORE`, not in-memory | Proposed | no |
+| [ADR-storage-003](ADR-storage-003-router-profile-spectrum-fusion-default.md) | The router is a profile-driven speed↔accuracy spectrum; the shipped default is cross-backend fan-out-and-fuse | Accepted | no |
+| [ADR-storage-004](ADR-storage-004-router-owns-write-path-routerstore-seam.md) | The router owns the write path (where/how to store); `base_all` is the recall-safe default; `RouterStore` is the live store facade | Accepted | no |
+| [ADR-storage-005](ADR-storage-005-dedup-on-write-default-off.md) | Dedup-on-write ships default-OFF: offline lexical similarity cannot separate near-dups from distinct-but-similar (false-merge = silent data loss) | Accepted | no |
+| [ADR-storage-006](ADR-storage-006-typed-directional-graph-edges-okf-anchor-tuple.md) | The graph backend has typed + directional edges; `okf.py` captures the link anchor and emits `okf_links` as `(anchor, target)` tuples | Accepted | no |
+| [ADR-storage-007](ADR-storage-007-neo4j-bolt-phase-a-parity-floor.md) | A fourth backend, `Neo4jGraphStore`, ships over the Bolt driver as a Phase-A parity floor (nodes + okf_links SSOT; native typed graph deferred to Phase B) | Accepted | no |
+| [ADR-storage-008](ADR-storage-008-cross-backend-delete-fan-out.md) | Cross-backend delete is unconditional and complete: `Router.delete` fans out to every backend and returns a count; `RouterStore.delete` returns bool | Accepted | no |
+| [ADR-storage-009](ADR-storage-009-backend-durability-audit-hardening-arc.md) | Backend durability audit: both durable backends rate `needs-hardening` (markdown/OKF ≈ POC persistence with HIGH live-path data-loss risks); a hardening arc is queued | Accepted | no |
 | [ADR-harness-001](ADR-harness-001-claude-code-plugin-shape.md) | Claude Code plugin = bundled MCP server + hooks + skills | Accepted | no |
 | [ADR-harness-002](ADR-harness-002-recall-remember-mcp-tools.md) | `recall`/`remember` are MCP tools that call the Orchestrator | Superseded by [ADR-harness-008](ADR-harness-008-recall-only-conscious-surface.md) | **yes** |
 | [ADR-dreaming-001](ADR-dreaming-001-daydreaming-stop-fired.md) | Daydreaming = in-session capture, auto `Stop`/`PreCompact`-fired (day scope) — its own entrypoint | Accepted | **yes** |
