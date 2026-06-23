@@ -248,13 +248,15 @@ def _native_cl_for_stage(stage: str, cfg: dict, substrate: Path) -> Optional[dic
 
 
 def _run_dream_stage(substrate: Path) -> dict:
-    """Trigger consolidation through the plugin's OWN surface (daydream-cli dream) over
+    """Trigger consolidation through the plugin's OWN surface (``daydream-cli dream``) over
     the shared store, and return the summary read from the plugin's events stream.
 
-    The harness never calls the worker directly or reads the store contents (ADR-eval-003):
-    it shells the plugin CLI with MEMORY_STORE pointed at the substrate and reads the
-    ``daydream.summary`` / skip / error event the CLI emits."""
-    import json
+    The harness never calls the dreaming worker directly or reads/mutates the store
+    contents (ADR-eval-003): it shells the plugin CLI, passing the store via the CLI's
+    own ``--store`` argument (the same public surface a user uses), then reads the
+    ``daydream.summary`` / skip / error EVENT the CLI emits -- an observable output, not
+    the store itself. The store path is the plugin's ``${CLAUDE_PROJECT_DIR}/.cookbook-memory``
+    convention, which the harness only ensures exists."""
     import shutil
     import subprocess
 
@@ -267,16 +269,20 @@ def _run_dream_stage(substrate: Path) -> dict:
     if exe is None:
         return {"status": "skipped", "reason": "daydream-cli not on PATH"}
 
-    env = {**os.environ, "MEMORY_STORE": str(store), "CLAUDE_PROJECT_DIR": str(substrate)}
     try:
-        subprocess.run([exe, "dream", "--all"], env=env, capture_output=True,
-                       text=True, timeout=600, check=False)
+        subprocess.run([exe, "dream", "--all", "--store", str(store)],
+                       capture_output=True, text=True, timeout=600, check=False)
     except Exception as exc:  # fail-open: a dream error never aborts the pipeline
         return {"status": "error", "error_type": type(exc).__name__}
 
-    summary = _read_new_dream_event(events, before)
+    # The dream pass ran through the plugin's CLI. v1's night-dream is detection-only and
+    # does not surface a consumable summary event (it writes a session-scoped diary and the
+    # CLI discards the worker's return), so absent an observable summary we record that it
+    # ran, flagged WIP -- honest about why the stage-3->5 delta is ~0 today.
+    summary = _scan_for_dream_summary(store, events, before)
     if summary is None:
-        return {"status": "ran", "note": "no dream summary event emitted",
+        return {"status": "ran", "note": "no observable dream summary (v1 night-dream is "
+                "detection-only; CLI emits no summary event)",
                 "dream_consolidation": "detection-only (WIP)"}
     summary["dream_consolidation"] = "detection-only (WIP)"
     return summary
@@ -289,22 +295,40 @@ def _event_count(events: Path) -> int:
         return 0
 
 
-def _read_new_dream_event(events: Path, before: int) -> Optional[dict]:
-    """Return the dream summary from the NEW events the CLI appended, if any."""
+def _scan_for_dream_summary(store: Path, events: Path, before: int) -> Optional[dict]:
+    """Look for a ``dream.summary`` event in the plugin's observable outputs: first the new
+    lines of the store's ``events.jsonl``, then the dream diary files
+    (``<store>/dream/*.daydream-events.jsonl``). Returns the matching record, or None.
+    Reads the plugin's emitted events only -- never the store's memory contents."""
     import json
 
-    try:
-        lines = [ln for ln in events.read_text().splitlines() if ln.strip()]
-    except OSError:
+    def _match(lines: list[str], start: int = 0) -> Optional[dict]:
+        for ln in lines[start:]:
+            try:
+                rec = json.loads(ln)
+            except ValueError:
+                continue
+            name = rec.get("event") or rec.get("type") or rec.get("op") or ""
+            if "dream" in name and ("summary" in name or "skipped" in name or "error" in name):
+                return rec
         return None
-    for ln in lines[before:]:
-        try:
-            rec = json.loads(ln)
-        except ValueError:
-            continue
-        name = rec.get("event") or rec.get("type") or rec.get("op") or ""
-        if "dream" in name and ("summary" in name or "skipped" in name or "error" in name):
-            return rec
+
+    try:
+        hit = _match([ln for ln in events.read_text().splitlines() if ln.strip()], before)
+        if hit is not None:
+            return hit
+    except OSError:
+        pass
+
+    diary_dir = store / "dream"
+    if diary_dir.is_dir():
+        for diary in sorted(diary_dir.glob("*.daydream-events.jsonl")):
+            try:
+                hit = _match([ln for ln in diary.read_text().splitlines() if ln.strip()])
+            except OSError:
+                continue
+            if hit is not None:
+                return hit
     return None
 
 
