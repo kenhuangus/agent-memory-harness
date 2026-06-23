@@ -249,8 +249,8 @@ def test_ungrouped_task_creates_no_group_store() -> None:
         assert agent._plugin_group_store(t) is None   # no group store for ungrouped
         agent.solve(t, _Ctx())
 
-        # No _groupstore tree exists under the run root.
-        groupstore_root = Path(tmp) / "plugin-real" / "_groupstore"
+        # No _groupstore tree exists under the (version-keyed) run root.
+        groupstore_root = agent._root_dir() / "plugin-real" / "_groupstore"
         assert not groupstore_root.exists()
         # Per-task store still got its own (per-task) seed — behavior unchanged.
         assert seed_calls == ["solo"]
@@ -296,6 +296,33 @@ def test_discover_transcript_resolves_sandbox() -> None:
         result = agent._discover_transcript(
             ClaudeResult(text="", raw={"session_id": "sess-xyz"}), store)
         assert isinstance(result, tuple) and len(result) == 2
+
+
+def test_store_root_is_version_keyed() -> None:
+    """Memory persists across runs under the SAME MEMORY_VERSION, and a version bump
+    starts a FRESH store — i.e. 'same memory until a new version of memory'.
+
+    The store root is keyed by MEMORY_VERSION (mirroring results/v{MEMORY_VERSION}/),
+    so two runs at the same version resolve to the IDENTICAL per-group store dir (the
+    plugin's learning accumulates run-to-run), while bumping the version resolves to a
+    different dir (the prior version's memory is left untouched)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        agent = ClaudeCodeAgent(memory_mode="plugin-real",
+                                runner=_make_fake_plugin_runner({}),
+                                runtime=_NATIVE, workdir=tmp)
+        t = _qa_task("x", group_id="g")
+        orig = A.MEMORY_VERSION
+        try:
+            A.MEMORY_VERSION = "0.1"
+            gs_v1a = agent._plugin_group_store(t)
+            gs_v1b = agent._plugin_group_store(t)   # same version -> identical path (reuse)
+            A.MEMORY_VERSION = "0.2"
+            gs_v2 = agent._plugin_group_store(t)     # bumped version -> fresh path
+        finally:
+            A.MEMORY_VERSION = orig
+        assert gs_v1a == gs_v1b                      # reused across runs at same version
+        assert "v0.1" in str(gs_v1a) and "v0.2" in str(gs_v2)
+        assert gs_v1a != gs_v2                       # version bump => separate memory
 
 
 # --------------------------------------------------------------------------- #
