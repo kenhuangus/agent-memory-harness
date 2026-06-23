@@ -182,11 +182,68 @@ def run_claude_primed(
                               input=stdin_data)
         if proc.returncode == 0:
             return _parse_stream_json(proc.stdout)
-        err = (proc.stderr or proc.stdout or "").strip()
-        if "MCP config" in err and attempt < 2:
-            continue  # transient DrvFs read miss — retry
-        raise RuntimeError(f"claude (primed) exited {proc.returncode}: {err[:400]}")
+        diag = _diagnose_primed_failure(proc.stdout, proc.stderr)
+        # Retry transient startup failures, NOT a model/tool error. Two known
+        # transients: (1) the .mcp.json read miss on the WSL DrvFs mount; (2) a
+        # non-zero exit during session STARTUP whose stdout's first stream-json line
+        # is a `hook_started` event (the SessionStart hook firing) with no result
+        # event ever emitted — claude died mid-startup before the real turn. Both
+        # are state/timing dependent (a re-run of the SAME task succeeds), so a
+        # bounded retry of the whole primed turn clears them without masking a real
+        # model error (which DOES emit a result event -> not retried here).
+        if attempt < 2 and (diag.is_mcp_config_miss or diag.is_startup_abort):
+            continue
+        raise RuntimeError(f"claude (primed) exited {proc.returncode}: {diag.message}")
     return _parse_stream_json(proc.stdout)
+
+
+@dataclass(slots=True)
+class _PrimedFailure:
+    """Classification + a *useful* error message for a non-zero primed exit.
+
+    The naive ``(proc.stderr or proc.stdout)[:400]`` discards the real reason in two
+    common ways: (1) when stdout is non-empty, stderr — where claude writes its crash
+    traceback — is never looked at; (2) the truncation keeps only the FIRST stream-json
+    line, which on a startup abort is the ``SessionStart`` ``hook_started`` system
+    event, making every such failure *look* like a hook bug when the hook returns 0 and
+    the abort is elsewhere. ``message`` therefore folds in BOTH streams and prefers the
+    tail (where the failure surfaces) over the head."""
+
+    message: str
+    is_mcp_config_miss: bool
+    is_startup_abort: bool
+
+
+def _diagnose_primed_failure(stdout: Optional[str], stderr: Optional[str]) -> _PrimedFailure:
+    """Build a :class:`_PrimedFailure` from a non-zero primed run's output streams."""
+    out = (stdout or "").strip()
+    err = (stderr or "").strip()
+    combined = "\n".join(p for p in (out, err) if p)
+    is_mcp = "MCP config" in combined
+    # A startup abort: stream-json began (a `hook_started`/`system` event was emitted)
+    # but NO `result` event ever landed — claude exited during startup, before the real
+    # turn produced an answer. A genuine model/tool error emits a result event with
+    # `is_error`, which we do NOT treat as a transient startup abort.
+    saw_result = '"type":"result"' in combined or '"type": "result"' in combined
+    saw_startup = (
+        '"subtype":"hook_started"' in combined
+        or '"subtype": "hook_started"' in combined
+        or '"hook_event":"SessionStart"' in combined
+        or '"hook_event": "SessionStart"' in combined
+        or '"type":"system"' in combined
+        or '"type": "system"' in combined
+    )
+    is_startup_abort = saw_startup and not saw_result
+    # Prefer stderr (the crash reason) then the TAIL of stdout (the last events before
+    # exit), not just the first 400 chars of stdout (which is the misleading hook event).
+    if err:
+        message = err[-400:]
+    elif out:
+        message = out[-400:]
+    else:
+        message = "(no output on stdout or stderr)"
+    return _PrimedFailure(message=message, is_mcp_config_miss=is_mcp,
+                          is_startup_abort=is_startup_abort)
 
 
 def _wsl_env_prefix(strip_api_key: bool,
