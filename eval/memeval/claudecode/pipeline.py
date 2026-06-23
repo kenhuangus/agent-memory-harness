@@ -7,8 +7,10 @@ whether an accumulating + dream-consolidated memory makes the agent get better o
   1. base          -- mode=off, no plugin (the baseline)
   2. plugin-blank   -- plugin-real, empty shared memory substrate
   3. plugin-accum   -- plugin-real, the SAME substrate (now holding stage-2's memory)
-  4. dream          -- NO-OP placeholder (whole-store consolidation not implemented yet)
-  5. plugin-dreamed -- plugin-real, the SAME substrate (final; == stage 3 until dream lands)
+  4. dream          -- one real whole-store consolidation pass over the shared substrate
+                       (memeval.dreaming.worker.dream, the daydream-cli dream --all surface);
+                       a no-op in practice until the TTL/contradiction/governance knobs are on
+  5. plugin-dreamed -- plugin-real, the SAME substrate (final; reflects any dream mutations)
 
 Memory is ONE shared substrate per pipeline VERSION at ``results/v{version}/_memory/``
 (ADR-eval-003): the harness only ensures that directory exists and points
@@ -370,21 +372,55 @@ def _native_cl_for_stage(stage: str, cfg: dict, substrate: Path) -> Optional[dic
 
 
 def _run_dream_stage(substrate: Path) -> dict:
-    """Dream stage -- a NO-OP placeholder until consolidation is actually implemented.
+    """Dream stage -- run ONE real whole-store consolidation pass over the shared substrate.
 
-    Whole-store consolidation ("night dream") is not implemented (the v1 dreaming worker
-    is detection-only and mutation is gated -- ADR-dreaming-020). The pipeline keeps this
-    stage as a structural slot so the 5-stage shape and the base->final comparison are in
-    place, but it does NOT touch the shared substrate: no subprocess, no store read, no
-    side effects. When real consolidation lands behind the plugin's own surface, this stage
-    invokes it (and ONLY through that surface); for now stage 5 runs on the same substrate
-    stage 3 left, so the stage-3->5 delta is expected to be ~0.
+    Wired to the SAME surface the plugin's ``daydream-cli dream --all`` uses: build the
+    RouterStore for the store dir (``cookbook_memory.core.contract.build_store`` via the
+    dreaming CLI's ``_make_store`` seam, ADR-harness-011) and run
+    ``memeval.dreaming.worker.dream`` against it under the basedir dream-lock. The worker
+    is real (Jobs 1-4: TTL prune, dedup, contradiction, governance) and returns a
+    ``dream.summary`` dict, which the pipeline summary renders.
 
-    ``substrate`` is accepted for signature stability but intentionally unused."""
-    return {"status": "not-implemented",
-            "note": "whole-store dream consolidation is not implemented yet "
-                    "(ADR-dreaming-020); this stage is a no-op placeholder",
-            "dream_consolidation": "not-implemented (no-op)"}
+    "Stub no-op in practice": with the destructive passes disabled by default
+    (``DREAM_ITEM_RETENTION_DAYS=0`` / ``DREAM_CONTRADICTION_MAX_CALLS=0`` /
+    ``DREAM_GOVERNANCE_MAX_CALLS=0``, or simply no ``OPENROUTER_API_KEY`` for the LLM
+    passes), a single pass over the accumulated store deletes nothing but exercises the
+    full wiring and records a real summary -- so the stage-3->5 delta stays ~0 until those
+    knobs are turned on, but the consolidation surface is now genuinely invoked.
+
+    The store dir is ``<substrate>/.cookbook-memory`` -- the SAME path the plugin stages
+    write to (``ClaudeCodeAgent._plugin_real_store`` sets ``MEMORY_STORE`` there); the
+    worker resolves its basedir from ``$MEMORY_STORE`` (ADR-dreaming-019). Fail-open: any
+    failure (lock contended, unsupported FS, worker error) returns a structured
+    ``skipped``/``error`` dict and NEVER aborts the pipeline."""
+    import os
+
+    from ..dreaming import _state, worker
+    from ..dreaming.cli import _make_store
+
+    store_dir = (substrate / ".cookbook-memory").resolve()
+    store_dir.mkdir(parents=True, exist_ok=True)
+
+    prev = os.environ.get("MEMORY_STORE")
+    os.environ["MEMORY_STORE"] = str(store_dir)
+    try:
+        store = _make_store(store_dir)
+        return worker.dream(store=store)
+    except _state._DreamLockHeld:
+        return {"status": "skipped", "reason": "dream basedir lock contended",
+                "store": str(store_dir)}
+    except _state._UnsupportedFsError as exc:
+        return {"status": "skipped",
+                "reason": f"unsupported filesystem ({exc}); set DREAM_ALLOW_NETWORK_FS=1",
+                "store": str(store_dir)}
+    except Exception as exc:  # noqa: BLE001 -- dreaming must never abort the pipeline
+        return {"status": "error", "error_type": type(exc).__name__,
+                "reason": str(exc)[:200], "store": str(store_dir)}
+    finally:
+        if prev is None:
+            os.environ.pop("MEMORY_STORE", None)
+        else:
+            os.environ["MEMORY_STORE"] = prev
 
 
 def _sandbox_auth_probe(config_dir: Path, *, timeout: int = 60) -> bool:
@@ -565,8 +601,20 @@ def run_pipeline(cfg: dict) -> dict:
     # Stage 4 (dream) + stage 5 (plugin-dreamed) only run if the final stage is selected.
     if "plugin-dreamed" in active:
         print("\n── stage 4/5 · dream ──────────", flush=True)
-        print("  no-op placeholder — whole-store consolidation not implemented yet", flush=True)
+        print("  running whole-store consolidation (daydream-cli dream --all surface)…",
+              flush=True)
         dream = _run_dream_stage(substrate)
+        _dream_status = dream.get("status") or dream.get("mode") or "ok"
+        _dream_counts = dream.get("counts") or {}
+        if _dream_counts:
+            print(f"  ✓ dream: {_dream_status} · {_dream_counts.get('total_items', 0)} items · "
+                  f"{_dream_counts.get('items_retired', 0)} deduped · "
+                  f"{_dream_counts.get('items_pruned', 0)} pruned · "
+                  f"{_dream_counts.get('items_contradicted', 0)} contradicted · "
+                  f"{_dream_counts.get('items_blacklisted', 0)} blacklisted", flush=True)
+        else:
+            print(f"  dream: {_dream_status} — {dream.get('reason', 'no consolidation')}",
+                  flush=True)
         _write_partial()
 
         rows.append(_run_one("plugin-dreamed", cfg, substrate, cost, native_by_stage, meta, total,

@@ -44,10 +44,15 @@ R3. Memory is ONE shared substrate per pipeline version (`results/v{tag}/_memory
    substrate, additive); stage 5 runs on that substrate after the dream pass.
 R4. Stages 2/3/5 run the real plugin (`plugin-real`, native install), agentic CODE mode, graded by
    local test execution (`LocalExecGrader`).
-R5. The dream stage (4) is a NO-OP placeholder with no side effects — whole-store consolidation
-   is not implemented yet (ADR-dreaming-020). It records `status: not-implemented` so the 5-stage
-   shape + base→final comparison stand; when real consolidation lands it is invoked ONLY through the
-   plugin's own surface. Stage 5 runs on the same substrate stage 3 left (delta ~0 today).
+R5. The dream stage (4) runs ONE real whole-store consolidation pass over the shared substrate,
+   invoked ONLY through the dreaming surface (`memeval.dreaming.worker.dream` built via the same
+   `cookbook_memory.core.contract.build_store` seam as `daydream-cli dream --all`, ADR-harness-011).
+   It records the real `dream.summary` (jobs run, items pruned/deduped/contradicted/blacklisted). It
+   is a no-op IN PRACTICE until the destructive knobs are turned on (`DREAM_ITEM_RETENTION_DAYS`,
+   `DREAM_CONTRADICTION_MAX_CALLS`, `DREAM_GOVERNANCE_MAX_CALLS` — and `OPENROUTER_API_KEY` for the
+   LLM passes), so stage 5's delta over stage 3 stays ~0 by default while the wiring is genuinely
+   exercised. Fail-open: any failure (lock contended, unsupported FS, worker error) records a
+   `skipped`/`error` dream block and never aborts the pipeline.
 R6. Pipeline version = git tag on the commit; on an untagged commit it falls back to the
    (sanitized) **branch name** (`vbranch-<branch>`), then to `MEMORY_VERSION` (detached HEAD /
    no git). So local iteration on a feature branch keys the substrate by that branch.
