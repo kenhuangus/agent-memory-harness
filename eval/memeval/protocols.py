@@ -62,6 +62,14 @@ class MemoryStore(Protocol):
         """Return every stored item (order unspecified). Used by dreaming."""
         ...
 
+    def delete(self, item_id: str) -> bool:
+        """Remove the item with this id; return ``True`` if it was present, else ``False``.
+
+        Idempotent: deleting an absent id is a no-op that returns ``False`` (never raises). The
+        retention/version primitive (ADR-P9; version-highest-wins) the persistence layer builds on.
+        """
+        ...
+
 
 @runtime_checkable
 class ModelAdapter(Protocol):

@@ -696,6 +696,12 @@ class _GraphVectorCascade:
             "write to the underlying graph/vector backends directly."
         )
 
+    def delete(self, item_id: str) -> bool:
+        raise NotImplementedError(
+            "_GraphVectorCascade is the retrieval-only view returned by Router.route(); "
+            "delete from the underlying graph/vector backends directly (or via Router.delete)."
+        )
+
     # -- gate + projection -------------------------------------------------
     def gate(self, query: str, *, k: int = 5, as_of: Optional[float] = None) -> GateResult:
         """Introspect the accept/fall-through verdict without retrieving (testable seam)."""
@@ -841,6 +847,11 @@ class _FusionRetriever:
         raise NotImplementedError(
             "_FusionRetriever is the retrieval-only view returned by Router.route(); "
             "write to the underlying backends directly.")
+
+    def delete(self, item_id: str) -> bool:
+        raise NotImplementedError(
+            "_FusionRetriever is the retrieval-only view returned by Router.route(); "
+            "delete from the underlying backends directly (or via Router.delete).")
 
     # -- fusion ------------------------------------------------------------
     def _fan_out_names(self) -> list:
@@ -1078,9 +1089,10 @@ class Router:
 
         Write-routing is policy-driven, but delete is **unconditional and complete**: under ``base_all`` an
         item lives in several backends, so a correct delete clears all of them. Idempotent — a backend that
-        doesn't have the id is a no-op. Duck-typed: a backend without a ``delete`` method (e.g. the
-        reference ``InMemoryStore``) is skipped, not an error. (Adding ``delete`` to the frozen
-        ``MemoryStore`` protocol is the follow-up ``[CONTRACT]`` change.)
+        doesn't have the id is a no-op. ``delete`` is now part of the ``MemoryStore`` protocol, so every
+        registered backend implements it; the ``getattr`` check below stays only as defense for a non-store
+        object placed in ``backends``. Returns the per-backend count; the ``MemoryStore`` facade
+        (:meth:`RouterStore.delete`) collapses it to a bool.
         """
         removed = 0
         seen: set = set()
@@ -1159,10 +1171,12 @@ class RouterStore:
                     out.append(item)
         return out
 
-    def delete(self, item_id: str) -> int:
-        """Delete ``item_id`` from every backend via the Router (idempotent). Returns the number of
-        backends it was removed from (0 if absent everywhere)."""
-        return self._router.delete(item_id)
+    def delete(self, item_id: str) -> bool:
+        """Delete ``item_id`` from every backend via the Router; return ``True`` if it was present in any
+        (idempotent). The ``MemoryStore`` contract is a bool "was it there"; the per-backend COUNT is on
+        :meth:`Router.delete` — mirroring write (``Router.write`` returns a ``WriteReceipt`` while
+        ``RouterStore.write`` returns ``None``)."""
+        return self._router.delete(item_id) > 0
 
     def _ordered_backend_names(self) -> list[str]:
         """Registered backend names in read priority (``_READ_ORDER`` first, then any extras)."""

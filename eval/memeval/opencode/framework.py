@@ -76,6 +76,12 @@ class MemoryFramework:
     def all(self) -> list[MemoryItem]:
         raise NotImplementedError("MemoryFramework.all — TODO(keith)")
 
+    def delete(self, item_id: str) -> bool:
+        """Delete ``item_id`` via the Router/RouterStore. (stub)"""
+        raise NotImplementedError(
+            "MemoryFramework.delete — TODO(keith): RouterStore.delete(item_id)"
+        )
+
     # -- consolidation (Scott B.'s dreaming) ------------------------------ #
     def maybe_dream(self, **kwargs: Any) -> Optional[dict]:
         """Run a dreaming pass when the cadence is hit; return its summary. (stub)"""

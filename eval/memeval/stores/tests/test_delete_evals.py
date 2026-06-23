@@ -132,7 +132,8 @@ class RouterDeleteTests(unittest.TestCase):
             VECTORS: SqliteVectorStore(os.path.join(d, "v.db")),
             GRAPH: GraphStore(path=os.path.join(d, "g.db")),
         }
-        self.rs = RouterStore(Router.with_config(backends=self.backends, config=RouterConfig()))
+        self.router = Router.with_config(backends=self.backends, config=RouterConfig())
+        self.rs = RouterStore(self.router)  # RouterStore.delete -> bool; self.router.delete -> count
 
     def tearDown(self) -> None:
         self.backends[VECTORS].close()
@@ -143,7 +144,7 @@ class RouterDeleteTests(unittest.TestCase):
         self.rs.write(_item("x", "xray content"))  # base_all -> x lands in all 3
         for name in (MARKDOWN, VECTORS, GRAPH):
             self.assertIsNotNone(self.backends[name].get("x"), f"{name} should have x after write")
-        self.assertEqual(self.rs.delete("x"), 3, "delete fanned out to all 3 backends")
+        self.assertTrue(self.rs.delete("x"), "RouterStore.delete -> True when present")
         for name in (MARKDOWN, VECTORS, GRAPH):
             self.assertIsNone(self.backends[name].get("x"), f"{name} should NOT have x after delete")
         self.assertIsNone(self.rs.get("x"))
@@ -151,14 +152,34 @@ class RouterDeleteTests(unittest.TestCase):
 
     def test_delete_is_idempotent(self) -> None:
         self.rs.write(_item("x", "xray content"))
-        self.assertEqual(self.rs.delete("x"), 3)
-        self.assertEqual(self.rs.delete("x"), 0, "a second delete removes from nothing")
-        self.assertEqual(self.rs.delete("never"), 0)
+        self.assertTrue(self.rs.delete("x"))
+        self.assertFalse(self.rs.delete("x"), "a second delete removes from nothing -> False")
+        self.assertFalse(self.rs.delete("never"), "absent id -> False")
 
-    def test_delete_counts_only_backends_that_had_it(self) -> None:
-        self.backends[GRAPH].write(_item("solo", "solo"))  # written to ONLY the graph backend
-        self.assertEqual(self.rs.delete("solo"), 1, "only the graph backend had it")
-        self.assertEqual(self.rs.delete("solo"), 0)
+    def test_router_delete_count_vs_routerstore_bool(self) -> None:
+        # Router.delete returns the per-backend COUNT (it is NOT a MemoryStore); RouterStore.delete (the
+        # protocol facade) collapses it to a bool. Written to ONLY the graph backend -> count 1.
+        self.backends[GRAPH].write(_item("solo", "solo"))
+        self.assertEqual(self.router.delete("solo"), 1, "Router.delete: only the graph backend had it")
+        self.assertEqual(self.router.delete("solo"), 0, "Router.delete: idempotent count -> 0")
+        self.backends[GRAPH].write(_item("solo2", "solo2"))
+        self.assertIs(self.rs.delete("solo2"), True, "RouterStore.delete: bool True when present")
+        self.assertIs(self.rs.delete("solo2"), False, "RouterStore.delete: bool False when absent")
+
+
+class ReferenceStoreDeleteTests(unittest.TestCase):
+    # The frozen MemoryStore protocol now declares delete; the reference InMemoryStore implements it
+    # (in-memory only, no tempfile -> runs anywhere).
+    def test_inmemory_store_delete(self) -> None:
+        from memeval.harness import InMemoryStore
+        s = InMemoryStore()
+        s.write(_item("a", "alpha"))
+        s.write(_item("b", "bravo"))
+        self.assertTrue(s.delete("a"))
+        self.assertIsNone(s.get("a"))
+        self.assertEqual({i.item_id for i in s.all()}, {"b"}, "delete drops it from all()/insertion order")
+        self.assertFalse(s.delete("a"), "idempotent: second delete -> False")
+        self.assertFalse(s.delete("missing"), "absent id -> False")
 
 
 if __name__ == "__main__":
