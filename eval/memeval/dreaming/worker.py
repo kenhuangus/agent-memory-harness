@@ -64,6 +64,11 @@ _CONTRADICTION_BATCH_SIZE: int = 10
 _CONTRADICTION_MAX_TOKENS: int = 1024
 _RATIONALE_MAX_LEN: int = 200
 
+# Job 3 governance constants. `_RATIONALE_MAX_LEN` REUSED — no duplication.
+_DEFAULT_GOVERNANCE_MAX_CALLS: int = 20
+_GOVERNANCE_BATCH_SIZE: int = 10
+_GOVERNANCE_MAX_TOKENS: int = 1024
+
 
 def _now() -> float:
     """Module-level seam for ``time.time()`` — monkeypatchable in tests (JOB4 §J-TTL-1)."""
@@ -147,6 +152,30 @@ def _read_contradiction_max_calls() -> int:
     return max(0, value)
 
 
+def _read_governance_max_calls() -> int:
+    """Resolve ``$DREAM_GOVERNANCE_MAX_CALLS`` to an int.
+
+    Per JOB3 Open-contracts pin (mirrors Job 2's contradiction cap):
+    - Unset → default 20.
+    - ``"0"`` → 0 (treated as DISABLED — no LLM call at all). Footgun protection
+      matching Job 4 §H-TTL-2 + Job 2.
+    - Negative → clamped to 0 (disable).
+    - Non-integer → 20 default with a warning log.
+    """
+    raw = os.environ.get("DREAM_GOVERNANCE_MAX_CALLS")
+    if raw is None or raw == "":
+        return _DEFAULT_GOVERNANCE_MAX_CALLS
+    try:
+        value = int(raw)
+    except ValueError:
+        log.warning(
+            "DREAM_GOVERNANCE_MAX_CALLS=%r is not an integer; falling back to %d default",
+            raw, _DEFAULT_GOVERNANCE_MAX_CALLS,
+        )
+        return _DEFAULT_GOVERNANCE_MAX_CALLS
+    return max(0, value)
+
+
 def _pick_pruned(items: list[MemoryItem], now: float, retention_seconds: int) -> list[str]:
     """Return the lex-sorted item_ids whose age strictly exceeds retention.
 
@@ -209,6 +238,32 @@ class ContradictionResult(NamedTuple):
     pairs_examined_estimate: int
 
 
+class GovernanceTag(NamedTuple):
+    """One LLM-classification for the governance pass.
+
+    ``batch_index`` is internal — used for the per-id ``dream.governance_blacklisted``
+    audit emit (halliday A3) but PROJECTED OUT at summary construction time
+    (rubric §B16 fixes summary entries to ``{item_id, rationale}``).
+    """
+
+    item_id: str
+    rationale: str
+    batch_index: int
+
+
+class GovernanceResult(NamedTuple):
+    """Output of the governance pass — three class lists + cost metrics."""
+
+    must_know: list[GovernanceTag]
+    must_do: list[GovernanceTag]
+    blacklisted: list[GovernanceTag]
+    llm_calls: int
+    tokens_in: int
+    tokens_out: int
+    cost_usd: float
+    items_examined_estimate: int
+
+
 def _wrap_batch_in_envelope(payload: str, *, session_id: str, now: float, batch_idx: int) -> Any:
     """Wrap a batch JSON payload in the same nonce-tagged transcript envelope
     Daydream's ``_extract._wrap_user_content_in_envelope`` uses.
@@ -224,6 +279,25 @@ def _wrap_batch_in_envelope(payload: str, *, session_id: str, now: float, batch_
     from .prompts import _ENVELOPE_TEMPLATE
     from .redaction import RedactedText
     nonce_seed = f"{session_id}|{now}|{batch_idx}"
+    nonce = hashlib.sha256(nonce_seed.encode("utf-8")).hexdigest()[:8]
+    wrapped = _ENVELOPE_TEMPLATE.format(nonce=nonce, redacted=payload)
+    return RedactedText(wrapped)
+
+
+def _wrap_governance_batch_in_envelope(payload: str, *, session_id: str, now: float, batch_idx: int) -> Any:
+    """Wrap a governance batch JSON payload in the shared nonce-tagged envelope.
+
+    Per rubric §J-J3-envelope-named (extends Job 2 §J-J2-envelope-named): this
+    is the THIRD named envelope-format call site in the dreaming module. The
+    ``test_extract.py`` AST audit allow-set is extended to authorize this name
+    alongside ``_wrap_user_content_in_envelope`` and ``_wrap_batch_in_envelope``.
+
+    Nonce derivation uses a ``gov`` discriminator to prevent accidental
+    nonce-collision with Job 2's contradiction batches (Pushback M).
+    """
+    from .prompts import _ENVELOPE_TEMPLATE
+    from .redaction import RedactedText
+    nonce_seed = f"{session_id}|{now}|{batch_idx}|gov"
     nonce = hashlib.sha256(nonce_seed.encode("utf-8")).hexdigest()[:8]
     wrapped = _ENVELOPE_TEMPLATE.format(nonce=nonce, redacted=payload)
     return RedactedText(wrapped)
@@ -501,6 +575,338 @@ def _get_contradiction_system_prompt() -> Any:
     return RedactedText(CONTRADICTION_SYSTEM_PROMPT)
 
 
+def _get_governance_system_prompt() -> Any:
+    """Lazy-load and ``RedactedText``-wrap the ``GOVERNANCE_SYSTEM_PROMPT`` (ADR-010 bypass)."""
+    from .prompts import GOVERNANCE_SYSTEM_PROMPT
+    from .redaction import RedactedText
+    return RedactedText(GOVERNANCE_SYSTEM_PROMPT)
+
+
+def _dedup_first_seen(tags: list[GovernanceTag]) -> list[GovernanceTag]:
+    """Within-class dedup. First-seen by ``item_id`` wins; silent (no event)."""
+    seen: set[str] = set()
+    out: list[GovernanceTag] = []
+    for t in tags:
+        if t.item_id not in seen:
+            seen.add(t.item_id)
+            out.append(t)
+    return out
+
+
+def _resolve_governance_collisions(
+    raw_must_know: list[GovernanceTag],
+    raw_must_do: list[GovernanceTag],
+    raw_blacklisted: list[GovernanceTag],
+    *,
+    protected_ids: set[str],
+) -> tuple[list[GovernanceTag], list[GovernanceTag], list[GovernanceTag]]:
+    """Apply cross-class precedence → protected-id drops → within-class dedup.
+
+    Per halliday B2: emits a SINGLE unified ``dream.governance_classification_dropped``
+    event with ``reason ∈ {"protected","collision"}`` (replaces two parallel event
+    names from the original plan).
+
+    Precedence: ``must_know > must_do > blacklist`` (conservative; never delete an
+    item the LLM also flagged as important — Pushback A).
+
+    Ordering pinned by rubric §F-J3-resolver-ordering (halliday A5):
+      1. Cross-class precedence first (so blacklist on a must_know id emits
+         ``reason="collision"``, NOT ``reason="protected"``).
+      2. Protected-id drops next (applies only to blacklist entries that
+         survived precedence).
+      3. Within-class dedup last (silent; first-seen wins).
+    """
+    must_know_ids = {t.item_id for t in raw_must_know}
+
+    # Step 1: cross-class precedence — must_do entries colliding with must_know.
+    surviving_must_do: list[GovernanceTag] = []
+    for t in raw_must_do:
+        if t.item_id in must_know_ids:
+            emit(
+                "dream.governance_classification_dropped",
+                item_id=t.item_id,
+                dropped_class="must_do",
+                reason="collision",
+                kept_class="must_know",
+            )
+        else:
+            surviving_must_do.append(t)
+
+    surviving_must_do_ids = {t.item_id for t in surviving_must_do}
+
+    # Step 1 continued: blacklist colliding with must_know (priority 1) or must_do (priority 2).
+    surviving_blacklisted: list[GovernanceTag] = []
+    for t in raw_blacklisted:
+        if t.item_id in must_know_ids:
+            emit(
+                "dream.governance_classification_dropped",
+                item_id=t.item_id,
+                dropped_class="blacklist",
+                reason="collision",
+                kept_class="must_know",
+            )
+        elif t.item_id in surviving_must_do_ids:
+            emit(
+                "dream.governance_classification_dropped",
+                item_id=t.item_id,
+                dropped_class="blacklist",
+                reason="collision",
+                kept_class="must_do",
+            )
+        else:
+            surviving_blacklisted.append(t)
+
+    # Step 2: protected-id drops (blacklist only — must_know/must_do can co-exist with winners).
+    after_protected_blacklist: list[GovernanceTag] = []
+    for t in surviving_blacklisted:
+        if t.item_id in protected_ids:
+            emit(
+                "dream.governance_classification_dropped",
+                item_id=t.item_id,
+                dropped_class="blacklist",
+                reason="protected",
+            )
+        else:
+            after_protected_blacklist.append(t)
+
+    # Step 3: within-class dedup (silent; first-seen wins).
+    final_must_know = _dedup_first_seen(raw_must_know)
+    final_must_do = _dedup_first_seen(surviving_must_do)
+    final_blacklisted = _dedup_first_seen(after_protected_blacklist)
+
+    return final_must_know, final_must_do, final_blacklisted
+
+
+_GOVERNANCE_CLASSES: frozenset[str] = frozenset({"none", "must_know", "must_do", "blacklist"})
+
+
+def _detect_governance(
+    items: list[MemoryItem],
+    client: Any,
+    *,
+    batch_size: int,
+    max_calls: int,
+    model: str,
+    session_id: str,
+    now: float,
+    protected_ids: set[str] | None = None,
+) -> GovernanceResult:
+    """LLM-driven governance classification over the post-TTL/post-dedup/post-contradiction set.
+
+    Per halliday B2: ``protected_ids`` is accepted in the signature for API
+    symmetry with ``_detect_contradictions``, but the drop logic now lives
+    entirely in ``_resolve_governance_collisions`` (called by the worker).
+    This function returns the RAW LLM verdict — the resolver applies precedence,
+    protected drops, and dedup downstream.
+
+    Algorithm:
+      1. Empty items OR ``max_calls <= 0`` → empty result (no event).
+      2. Hour-bucketed shuffle seeded by ``sha256(session_id || hour_bucket || 'gov')``.
+      3. NON-OVERLAPPING window: each item in at most one batch per run.
+      4. Per batch: redact + JSON-serialize + envelope-wrap + ``client.complete()``.
+      5. Empty completion / exception → ``dream.governance_skipped_unavailable_llm``.
+      6. JSON parse failure → ``dream.governance_batch_parse_failed``.
+      7. Per classification: validate types + class ∈ {none, must_know, must_do, blacklist}
+         + ``item_id`` ∈ batch id-set (else ``dream.governance_invalid_id_dropped``).
+         ``"none"`` is the conservative default — kept but added to NO class list.
+      8. ``dream.governance_partial_parse`` if any drops.
+      9. ``dream.governance_batch_complete`` per successful batch with
+         ``n_classifications`` = RAW LLM count (PRE-resolver-drop per halliday B2).
+     10. ``dream.governance_call_cap_reached`` if cap > 0 AND batches still pending.
+    """
+    if not items or max_calls <= 0:
+        return GovernanceResult(
+            must_know=[], must_do=[], blacklisted=[],
+            llm_calls=0, tokens_in=0, tokens_out=0,
+            cost_usd=0.0, items_examined_estimate=0,
+        )
+
+    # Lazy imports (rubric §J-J3-2 / §J-J3-3).
+    from ..cost import cost_of
+    from .redaction import redact
+
+    # Step 2: deterministic shuffle, hour-bucketed seed with 'gov' discriminator.
+    hour_bucket = int(now // _SECONDS_PER_HOUR)
+    seed_str = f"{session_id}|{hour_bucket}|gov"
+    seed_int = int(hashlib.sha256(seed_str.encode("utf-8")).hexdigest()[:16], 16)
+    rng = random.Random(seed_int)
+    shuffled = list(items)
+    rng.shuffle(shuffled)
+
+    # Step 3: non-overlapping batches.
+    total_batches_needed = (len(shuffled) + batch_size - 1) // batch_size
+    batches_to_run = min(max_calls, total_batches_needed)
+    batches_skipped = total_batches_needed - batches_to_run
+
+    raw_must_know: list[GovernanceTag] = []
+    raw_must_do: list[GovernanceTag] = []
+    raw_blacklisted: list[GovernanceTag] = []
+
+    llm_calls = 0
+    total_tokens_in = 0
+    total_tokens_out = 0
+    items_examined = 0
+
+    for batch_idx in range(batches_to_run):
+        batch = shuffled[batch_idx * batch_size : (batch_idx + 1) * batch_size]
+        batch_id_set = {it.item_id for it in batch}
+
+        # Step 4: redact every per-item value, JSON-serialize.
+        batch_payload = json.dumps([
+            {
+                "id": str(redact(it.item_id)),
+                "content": str(redact(it.content)) if it.content is not None else "",
+                "timestamp": it.timestamp,
+                "tags": [str(redact(t)) for t in it.tags],
+            }
+            for it in batch
+        ])
+        wrapped = _wrap_governance_batch_in_envelope(
+            batch_payload, session_id=session_id, now=now, batch_idx=batch_idx,
+        )
+        system_prompt = _get_governance_system_prompt()
+
+        # Step 5: fail-open on empty completion OR exception.
+        try:
+            completion = client.complete(
+                wrapped, system=system_prompt, max_tokens=_GOVERNANCE_MAX_TOKENS,
+            )
+        except Exception as exc:  # noqa: BLE001 — Pushback H: fail-open inherited
+            emit(
+                "dream.governance_skipped_unavailable_llm",
+                batch_index=batch_idx,
+                reason=f"{type(exc).__name__}: {exc}",
+            )
+            llm_calls += 1
+            continue
+
+        llm_calls += 1
+        if not completion.text:
+            emit(
+                "dream.governance_skipped_unavailable_llm",
+                batch_index=batch_idx,
+                reason="empty completion text",
+            )
+            continue
+
+        # Step 6: parse JSON, fail-open on parse error.
+        try:
+            data = json.loads(completion.text)
+        except json.JSONDecodeError as exc:
+            emit(
+                "dream.governance_batch_parse_failed",
+                batch_index=batch_idx,
+                reason=str(exc),
+            )
+            continue
+        if not isinstance(data, dict) or "classifications" not in data:
+            emit(
+                "dream.governance_batch_parse_failed",
+                batch_index=batch_idx,
+                reason="missing or bad 'classifications' key",
+            )
+            continue
+        raw_classifications = data["classifications"]
+        if not isinstance(raw_classifications, list):
+            emit(
+                "dream.governance_batch_parse_failed",
+                batch_index=batch_idx,
+                reason=f"'classifications' not list: {type(raw_classifications).__name__}",
+            )
+            continue
+
+        # Step 7: per-classification validation + accumulation.
+        n_kept = 0
+        n_dropped = 0
+        for raw in raw_classifications:
+            if not isinstance(raw, dict):
+                n_dropped += 1
+                continue
+            item_id = raw.get("item_id")
+            cls = raw.get("class")
+            rationale = raw.get("rationale", "")
+            if not isinstance(item_id, str) or not isinstance(cls, str):
+                n_dropped += 1
+                continue
+            if not isinstance(rationale, str):
+                rationale = ""
+            if cls not in _GOVERNANCE_CLASSES:
+                n_dropped += 1
+                continue
+            if item_id not in batch_id_set:
+                # Hallucinated id — emit with the LLM's claimed class for forensics.
+                # 'class' is a Python keyword so passed via dict-unpack.
+                emit(
+                    "dream.governance_invalid_id_dropped",
+                    batch_index=batch_idx,
+                    item_id=item_id,
+                    **{"class": cls},
+                )
+                continue
+            if cls == "none":
+                # Conservative default — counts as kept; added to NO class list.
+                n_kept += 1
+                continue
+            tag = GovernanceTag(
+                item_id=item_id,
+                rationale=rationale[:_RATIONALE_MAX_LEN],
+                batch_index=batch_idx,
+            )
+            if cls == "must_know":
+                raw_must_know.append(tag)
+            elif cls == "must_do":
+                raw_must_do.append(tag)
+            else:  # cls == "blacklist"
+                raw_blacklisted.append(tag)
+            n_kept += 1
+
+        if n_dropped:
+            emit(
+                "dream.governance_partial_parse",
+                batch_index=batch_idx,
+                n_kept=n_kept,
+                n_dropped=n_dropped,
+            )
+
+        # Step 9: per-batch cost emit — n_classifications is RAW LLM count (PRE-drop).
+        batch_cost = cost_of(model, completion.tokens_in, completion.tokens_out)
+        emit(
+            "dream.governance_batch_complete",
+            batch_index=batch_idx,
+            tokens_in=completion.tokens_in,
+            tokens_out=completion.tokens_out,
+            cost_usd=batch_cost,
+            n_classifications=len(raw_classifications),
+        )
+
+        total_tokens_in += completion.tokens_in
+        total_tokens_out += completion.tokens_out
+        items_examined += len(batch)
+
+    # Step 10: cap-reached event (only when max_calls > 0 AND cap hit).
+    if max_calls > 0 and batches_skipped > 0:
+        items_skipped = max(0, len(shuffled) - batches_to_run * batch_size)
+        emit(
+            "dream.governance_call_cap_reached",
+            max_calls=max_calls,
+            batches_completed=batches_to_run,
+            batches_skipped=batches_skipped,
+            items_skipped=items_skipped,
+        )
+
+    total_cost = cost_of(model, total_tokens_in, total_tokens_out)
+    return GovernanceResult(
+        must_know=raw_must_know,
+        must_do=raw_must_do,
+        blacklisted=raw_blacklisted,
+        llm_calls=llm_calls,
+        tokens_in=total_tokens_in,
+        tokens_out=total_tokens_out,
+        cost_usd=total_cost,
+        items_examined_estimate=items_examined,
+    )
+
+
 def _disjointness_check(named_sets: list[tuple[str, set[str]]]) -> None:
     """Raise ``RuntimeError`` if any two sets share an element.
 
@@ -514,37 +920,46 @@ def _disjointness_check(named_sets: list[tuple[str, set[str]]]) -> None:
             overlap = named_sets[i][1] & named_sets[j][1]
             if overlap:
                 raise RuntimeError(
-                    "Job 2 pass outputs not pairwise disjoint: "
+                    "Dream worker pass outputs not pairwise disjoint: "
                     f"{named_sets[i][0]} ∩ {named_sets[j][0]} = {sorted(overlap)!r}"
                 )
 
 
 class DreamingWorker:
-    """Offline memory-consolidation engine — Jobs 1 (dedup) + 4 (TTL) + 2 (contradiction)."""
+    """Offline memory-consolidation engine — Jobs 1 (dedup) + 4 (TTL) + 2 (contradiction) + 3 (governance)."""
 
     def __init__(self, store: MemoryStore) -> None:
         """Bind the worker to the ``MemoryStore`` it will read + mutate during ``run()``."""
         self.store = store
 
     def run(self, *, trajectories_path: str | None = None, **kwargs: Any) -> dict:
-        """One detection+mutation+pruning+contradiction pass; returns the summary dict.
+        """One pass through all four ADR-002 jobs; returns the summary dict.
 
-        Order of operations (rubric Open-contracts pin #8 — TTL → dedup →
-        contradiction; JOB1 §F12 + JOB4 §F-TTL-13 + JOB2 §F-J2-3 — all
-        deletes complete BEFORE summary emit):
+        Order of operations (TTL → dedup → contradiction → governance;
+        JOB1 §F12 + JOB4 §F-TTL-13 + JOB2 §F-J2-3 + JOB3 §F-J3 — all
+        deletes complete BEFORE the single ``dream.summary`` emit):
 
-        1. Reject truthy ``trajectories_path`` BEFORE any lock or store access.
-        2. NFS detection BEFORE basedir lock.
-        3. Acquire basedir flock.
-        4. Walk ``store.all()``.
-        5. TTL pass: select pruned ids; ``self.store.delete()`` each.
-        6. Re-scan surviving items + cluster by normalized content.
-        7. Dedup pass: pick winner per cluster; ``self.store.delete()`` losers.
-        8. Contradiction pass: batch surviving items through LLM;
-           ``self.store.delete()`` losers (Job 2).
-        9. Pairwise-disjoint hard check; raise ``RuntimeError`` on violation.
-       10. Build the summary dict from the completed deletes.
-       11. Emit ``dream.summary``.
+         1. Reject truthy ``trajectories_path`` BEFORE any lock or store access.
+         2. NFS detection BEFORE basedir lock.
+         3. Acquire basedir flock.
+         4. Walk ``store.all()``.
+         5. TTL pass: select pruned ids; ``self.store.delete()`` each (Job 4).
+         6. Re-scan surviving items + cluster by normalized content.
+         7. Dedup pass: pick winner per cluster; ``self.store.delete()`` losers (Job 1).
+         8. Contradiction pass: batch surviving items through LLM;
+            ``self.store.delete()`` losers (Job 2).
+         9. Governance pass: batch surviving items through LLM; resolve
+            class collisions + protected-id drops; ``self.store.delete()``
+            blacklist tags (Job 3). must_know/must_do are SOFT (advisory) —
+            no mutation; surfaced in the ``governance`` summary block.
+        10. Advisory backstop (halliday B5): if a refactor breaks the
+            ``must_know ⊥ blacklisted`` resolver guarantee, emit
+            ``dream.governance_advisory_invariant_violated`` and drop the
+            blacklist.
+        11. Pairwise-disjoint hard check over 5 mutation-affecting sets;
+            raise ``RuntimeError`` on violation.
+        12. Build the summary dict from the completed deletes.
+        13. Emit ``dream.summary``.
         """
         if trajectories_path:
             raise ValueError(
@@ -572,11 +987,12 @@ class DreamingWorker:
             retention_days = _read_item_retention_days()
             retention_seconds = retention_days * _SECONDS_PER_DAY
             max_calls = _read_contradiction_max_calls()
+            max_governance_calls = _read_governance_max_calls()
 
             # JOB4 §D-TTL-4 cardinality contract: at most one _now() call per run.
-            # Both TTL (Job 4) and contradiction (Job 2) share the same cached value.
+            # TTL (Job 4) + contradiction (Job 2) + governance (Job 3) share the cached value.
             now_cached: float = 0.0
-            if retention_days > 0 or max_calls > 0:
+            if retention_days > 0 or max_calls > 0 or max_governance_calls > 0:
                 now_cached = _now()
 
             # JOB4 pin #9: retention_days == 0 disables TTL pruning.
@@ -647,14 +1063,101 @@ class DreamingWorker:
                 protected_ids=cluster_winners_set,
             )
 
-            # JOB2 §F-J2-3: contradiction deletes complete BEFORE summary emit.
+            # JOB2 §F-J2-3: contradiction deletes complete BEFORE governance pass.
             contradicted_loser_ids: set[str] = set()
             for pair in contradiction_result.pairs:
                 self.store.delete(pair.loser_id)
                 contradicted_loser_ids.add(pair.loser_id)
 
-            # JOB2 §F-J2-disjointness-raises: hard invariant, RuntimeError not assert
-            # (assertions disappear under `python -O`).
+            # ── JOB 3 governance pass ───────────────────────────────────────
+            # Working set excludes all prior-pass retirements.
+            governance_survivors = [
+                it for it in items
+                if it.item_id not in pruned_set
+                and it.item_id not in retired_ids_set
+                and it.item_id not in contradicted_loser_ids
+            ]
+            # Protected ids = cluster_winners ∪ contradiction_winners. The
+            # resolver drops blacklist tags targeting protected ids (halliday B2);
+            # must_know / must_do on protected ids are KEPT (no mutation).
+            contradiction_winners_set: set[str] = {
+                p.winner_id for p in contradiction_result.pairs
+            }
+            protected_for_governance: set[str] = (
+                cluster_winners_set | contradiction_winners_set
+            )
+            governance_raw = _detect_governance(
+                governance_survivors,
+                llm_client,
+                batch_size=_GOVERNANCE_BATCH_SIZE,
+                max_calls=max_governance_calls,
+                model=getattr(llm_client, "model", "unknown"),
+                session_id=_session_id_for_dream(basedir),
+                now=now_cached,
+                protected_ids=protected_for_governance,
+            )
+
+            # Resolver (halliday B2): precedence → protected-id drops → dedup;
+            # emits single unified `dream.governance_classification_dropped`.
+            (
+                resolved_must_know,
+                resolved_must_do,
+                resolved_blacklisted,
+            ) = _resolve_governance_collisions(
+                governance_raw.must_know,
+                governance_raw.must_do,
+                governance_raw.blacklisted,
+                protected_ids=protected_for_governance,
+            )
+
+            # JOB3 §F-J3-advisory-backstop (halliday B5): the resolver guarantees
+            # must_know_ids ⊥ blacklisted_ids and must_do_ids ⊥ blacklisted_ids
+            # by construction. This backstop catches refactor drift — runs BEFORE
+            # the delete loop so violating ids never reach `self.store.delete`
+            # (otherwise the store is left in a partial-mutation state). Emits a
+            # WARNING event (not RuntimeError, since advisory drift is not a
+            # mutation-correctness failure that requires aborting the run).
+            must_know_ids_set = {t.item_id for t in resolved_must_know}
+            must_do_ids_set = {t.item_id for t in resolved_must_do}
+            resolved_blacklisted_ids = {t.item_id for t in resolved_blacklisted}
+            adv_violations = (must_know_ids_set | must_do_ids_set) & resolved_blacklisted_ids
+            for vid in sorted(adv_violations):
+                advisory_class = "must_know" if vid in must_know_ids_set else "must_do"
+                emit(
+                    "dream.governance_advisory_invariant_violated",
+                    item_id=vid,
+                    advisory_class=advisory_class,
+                    dropped_blacklist=True,
+                )
+            safe_blacklisted = [
+                t for t in resolved_blacklisted if t.item_id not in adv_violations
+            ]
+
+            # JOB3 §F-J3-3 + §I-J3-blacklisted-per-id (halliday B3 + A3): mutate
+            # ONLY for blacklist tags that survived the advisory backstop; filter
+            # to delete-True; per-id audit emit.
+            delete_succeeded: list[GovernanceTag] = []
+            for tag in safe_blacklisted:
+                if self.store.delete(tag.item_id):
+                    delete_succeeded.append(tag)
+                    emit(
+                        "dream.governance_blacklisted",
+                        item_id=tag.item_id,
+                        rationale=tag.rationale,
+                        batch_index=tag.batch_index,
+                    )
+                else:
+                    emit(
+                        "dream.governance_blacklist_delete_failed",
+                        item_id=tag.item_id,
+                        rationale=tag.rationale,
+                    )
+
+            blacklisted_ids_set: set[str] = {t.item_id for t in delete_succeeded}
+
+            # JOB3 §C-J3-disjoint + halliday B5: 5-set mutation-disjoint check.
+            # Advisory sets (must_know_ids / must_do_ids) are NOT in the check —
+            # they may overlap with all_winners (advisory is non-mutating).
             all_winners = (
                 {p.winner_id for p in contradiction_result.pairs}
                 | {c["winner_id"] for c in cluster_specs}
@@ -663,6 +1166,7 @@ class DreamingWorker:
                 ("pruned_ids", pruned_set),
                 ("retired_ids", retired_ids_set),
                 ("contradicted_loser_ids", contradicted_loser_ids),
+                ("blacklisted_ids", blacklisted_ids_set),
                 ("all_winners", all_winners),
             ])
 
@@ -671,18 +1175,27 @@ class DreamingWorker:
             items_retired = sum(len(c["retired_ids"]) for c in cluster_specs)
             items_pruned = len(pruned_ids)
             items_contradicted = len(contradiction_result.pairs)
+            items_blacklisted = len(delete_succeeded)
+            items_must_known = len(resolved_must_know)
+            items_must_done = len(resolved_must_do)
+
+            # Summary lists sorted by item_id ascending (§B19/B20/B21).
+            sorted_must_know = sorted(resolved_must_know, key=lambda t: t.item_id)
+            sorted_must_do = sorted(resolved_must_do, key=lambda t: t.item_id)
+            sorted_blacklisted = sorted(delete_succeeded, key=lambda t: t.item_id)
 
             summary = {
                 "schema": "dream.summary",
                 "version": 1,
-                "mode": "detection_and_mutation_and_pruning_and_contradiction",
+                "mode": "detection_and_mutation_and_pruning_and_contradiction_and_governance",
                 "jobs_run": [
                     "dedup_detection",
                     "dedup_merge",
                     "ttl_pruning",
                     "contradiction_resolution",
+                    "governance",
                 ],
-                "skipped_jobs": ["governance"],
+                "skipped_jobs": [],
                 "counts": {
                     "total_items": total_items,
                     "duplicate_clusters": duplicate_clusters,
@@ -696,6 +1209,14 @@ class DreamingWorker:
                     "contradiction_output_tokens": contradiction_result.tokens_out,
                     "contradiction_cost_usd_estimate": contradiction_result.cost_usd,
                     "contradiction_pairs_examined_estimate": contradiction_result.pairs_examined_estimate,
+                    "items_blacklisted": items_blacklisted,
+                    "items_must_known": items_must_known,
+                    "items_must_done": items_must_done,
+                    "governance_llm_calls": governance_raw.llm_calls,
+                    "governance_input_tokens": governance_raw.tokens_in,
+                    "governance_output_tokens": governance_raw.tokens_out,
+                    "governance_cost_usd_estimate": governance_raw.cost_usd,
+                    "governance_items_examined_estimate": governance_raw.items_examined_estimate,
                 },
                 "clusters": cluster_specs,
                 "pruned": {
@@ -710,6 +1231,21 @@ class DreamingWorker:
                             "rationale": p.rationale,
                         }
                         for p in contradiction_result.pairs
+                    ],
+                    "model": getattr(llm_client, "model", "unknown"),
+                },
+                "governance": {
+                    "must_know": [
+                        {"item_id": t.item_id, "rationale": t.rationale}
+                        for t in sorted_must_know
+                    ],
+                    "must_do": [
+                        {"item_id": t.item_id, "rationale": t.rationale}
+                        for t in sorted_must_do
+                    ],
+                    "blacklisted": [
+                        {"item_id": t.item_id, "rationale": t.rationale}
+                        for t in sorted_blacklisted
                     ],
                     "model": getattr(llm_client, "model", "unknown"),
                 },
@@ -729,6 +1265,14 @@ class DreamingWorker:
                 contradiction_output_tokens=contradiction_result.tokens_out,
                 contradiction_cost_usd_estimate=contradiction_result.cost_usd,
                 contradiction_pairs_examined_estimate=contradiction_result.pairs_examined_estimate,
+                items_blacklisted=items_blacklisted,
+                items_must_known=items_must_known,
+                items_must_done=items_must_done,
+                governance_llm_calls=governance_raw.llm_calls,
+                governance_input_tokens=governance_raw.tokens_in,
+                governance_output_tokens=governance_raw.tokens_out,
+                governance_cost_usd_estimate=governance_raw.cost_usd,
+                governance_items_examined_estimate=governance_raw.items_examined_estimate,
             )
 
             return summary
@@ -739,4 +1283,11 @@ def dream(store: MemoryStore, **kwargs: Any) -> dict:
     return DreamingWorker(store).run(**kwargs)
 
 
-__all__ = ["DreamingWorker", "dream", "ContradictionPair", "ContradictionResult"]
+__all__ = [
+    "DreamingWorker",
+    "dream",
+    "ContradictionPair",
+    "ContradictionResult",
+    "GovernanceTag",
+    "GovernanceResult",
+]
