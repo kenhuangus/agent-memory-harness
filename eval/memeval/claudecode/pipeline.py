@@ -16,7 +16,9 @@ Memory is ONE shared substrate per pipeline VERSION at ``results/v{version}/_mem
 (ADR-eval-003): the harness only ensures that directory exists and points
 ``CLAUDE_PROJECT_DIR`` at it; the plugin owns everything inside. Accumulation across
 stages 2->3->5 happens purely because the directory persists -- the harness never copies,
-seeds, or prunes the store. The version is the git tag on HEAD (ADR-eval-004).
+seeds, or prunes the store. The version is the git tag on HEAD, or branch+commit SHA for
+untagged runs unless ``--results-version`` explicitly names a reusable bucket
+(ADR-eval-004).
 
 The wrapper is interactive by default (offer + confirm the defaults) with a
 non-interactive ``--yes`` mode for CI/scripts. Drives the SAME machinery the per-dev
@@ -100,6 +102,10 @@ def _build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--path", default=None, help="Dataset path/id (blank = real source).")
     ap.add_argument("--results-dir", default="results",
                     help="Root for results/v{version}/ (and the shared _memory/ substrate).")
+    ap.add_argument("--results-version", default=None,
+                    help="Explicit reusable results/memory version bucket. By default, "
+                         "untagged runs use branch name + commit SHA for fresh memory "
+                         "per commit; pass this when you intentionally want reuse.")
     ap.add_argument("--native-cl", dest="native_cl", action="store_true", default=False,
                     help="Capture paper-native CL metrics per eval stage (default off).")
     ap.add_argument("--no-native-cl", dest="native_cl", action="store_false")
@@ -210,6 +216,7 @@ def _resolve_config(args: argparse.Namespace) -> dict:
         "timeout": args.timeout,
         "path": args.path,
         "results_dir": args.results_dir,
+        "results_version": args.results_version,
         "native_cl": args.native_cl,
         "stages": stages,
     }
@@ -721,7 +728,7 @@ def run_pipeline(cfg: dict) -> dict:
 
     _ensure_sandbox_ready()  # MUST be first — every stage uses the sandbox, never the host
     _warn_if_memory_cannot_accumulate()  # OPENROUTER_API_KEY gates daydream memory extraction
-    version_info = resolve_pipeline_version()
+    version_info = resolve_pipeline_version(override=cfg.get("results_version"))
     version = version_info["version"]
     stamp = run_timestamp()
     results_root = Path(cfg["results_dir"])
@@ -735,10 +742,14 @@ def run_pipeline(cfg: dict) -> dict:
     print(f"shared memory substrate: {substrate}")
     if version_info.get("untagged"):
         src = version_info.get("source")
-        if src == "branch":
+        if src == "branch-commit":
             note = (f"NOTE: HEAD is untagged -> version keyed by branch "
-                    f"'{version_info.get('branch')}' ({version}). This branch's memory "
-                    f"accumulates here; tag the commit for an archival, comparable run.")
+                    f"'{version_info.get('branch')}' plus commit {version_info.get('git_sha')} "
+                    f"({version}). Use --results-version to intentionally reuse a memory "
+                    f"substrate across commits; tag the commit for an archival, comparable run.")
+        elif src == "override":
+            note = (f"NOTE: HEAD is untagged -> using explicit reusable results version "
+                    f"{version}.")
         else:
             note = ("NOTE: HEAD is untagged and detached/branchless -> version fell back to "
                     f"MEMORY_VERSION (v{MEMORY_VERSION}); tag the commit for a comparable run.")

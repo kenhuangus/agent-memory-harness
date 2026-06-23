@@ -118,26 +118,29 @@ def run_timestamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
-def resolve_pipeline_version(*, cwd: "str | Path | None" = None) -> dict[str, Any]:
+def resolve_pipeline_version(
+    *, cwd: "str | Path | None" = None, override: "str | None" = None,
+) -> dict[str, Any]:
     """Resolve a pipeline run's version from the git tag on its commit (ADR-eval-004).
 
     A pipeline keys both its results directory and its persistent memory substrate on
     this version, so a new release starts from a fresh substrate rather than mixing two
     code generations' memory. Resolution order:
 
-    1. ``git describe --tags --exact-match HEAD`` -- HEAD is exactly a tag -> use it.
-    2. ``git describe --tags --abbrev=0`` -- nearest reachable tag -> use it, and flag
+    1. Explicit ``override`` -> use that reusable name as-is after normalizing it.
+    2. ``git describe --tags --exact-match HEAD`` -- HEAD is exactly a tag -> use it.
+    3. ``git describe --tags --abbrev=0`` -- nearest reachable tag -> use it, and flag
        that HEAD is *past* the tag (``version_exact=False``).
-    3. The current **branch name** (when on an untagged commit) -> use a sanitized,
-       filesystem-safe form so a WIP branch's substrate accumulates across local runs
-       without colliding with a released version's. Flagged ``untagged=True``.
-    4. :data:`memeval.MEMORY_VERSION` -- detached HEAD / no branch / no git -> final fallback.
+    4. The current **branch name + commit SHA** (when on an untagged commit) -> use
+       a sanitized, filesystem-safe branch form plus the short SHA so local runs on
+       different commits get fresh memory by default. Flagged ``untagged=True``.
+    5. :data:`memeval.MEMORY_VERSION` -- detached HEAD / no branch / no git -> final fallback.
 
     Returns a dict ``{version, version_exact, untagged, git_sha, branch, source}`` where
     ``version`` is normalized to the ``vX.Y``-style directory form (:func:`normalize_version`)
-    and ``source`` is ``"exact-tag" | "nearest-tag" | "branch" | "memory-version"``. Never
-    raises -- a missing git checkout degrades to the ``MEMORY_VERSION`` fallback, since the
-    resolver is metadata, not metric logic.
+    and ``source`` is ``"exact-tag" | "nearest-tag" | "override" | "branch-commit" |
+    "memory-version"``. Never raises -- a missing git checkout degrades to the
+    ``MEMORY_VERSION`` fallback, since the resolver is metadata, not metric logic.
     """
     import subprocess
 
@@ -156,6 +159,10 @@ def resolve_pipeline_version(*, cwd: "str | Path | None" = None) -> dict[str, An
     git_sha = _git("rev-parse", "--short", "HEAD") or ""
     branch = _git("rev-parse", "--abbrev-ref", "HEAD")  # "HEAD" when detached
 
+    if override:
+        return {"version": normalize_version(override), "version_exact": False,
+                "untagged": True, "git_sha": git_sha, "branch": branch, "source": "override"}
+
     exact = _git("describe", "--tags", "--exact-match", "HEAD")
     if exact:
         return {"version": normalize_version(exact), "version_exact": True,
@@ -166,34 +173,34 @@ def resolve_pipeline_version(*, cwd: "str | Path | None" = None) -> dict[str, An
         return {"version": normalize_version(nearest), "version_exact": False,
                 "untagged": False, "git_sha": git_sha, "branch": branch, "source": "nearest-tag"}
 
-    # Untagged commit: key the substrate by the branch name so this branch's memory
-    # accumulates across local runs (and stays separate from a released version's),
-    # rather than every untagged branch sharing the one MEMORY_VERSION bucket.
+    # Untagged commit: key the substrate by branch + commit so every untagged code
+    # generation gets fresh memory by default. Use --results-version when deliberate
+    # reuse across commits is desired.
     if branch and branch != "HEAD":
-        return {"version": _branch_version(branch), "version_exact": False,
-                "untagged": True, "git_sha": git_sha, "branch": branch, "source": "branch"}
+        return {"version": _branch_version(branch, git_sha), "version_exact": False,
+                "untagged": True, "git_sha": git_sha, "branch": branch,
+                "source": "branch-commit"}
 
     return {"version": normalize_version(MEMORY_VERSION), "version_exact": False,
             "untagged": True, "git_sha": git_sha, "branch": branch, "source": "memory-version"}
 
 
-def _branch_version(branch: str) -> str:
+def _branch_version(branch: str, git_sha: str) -> str:
     """A filesystem-safe directory token for a branch-keyed substrate, e.g.
-    ``eval/swe-bench-cl-pipeline`` -> ``vbranch-eval-swe-bench-cl-pipeline-1a2b3c4d``.
+    ``eval/swe-bench-cl-pipeline`` at ``1a2b3c4`` ->
+    ``vbranch-eval-swe-bench-cl-pipeline-1a2b3c4``.
 
     Slashes and any non ``[A-Za-z0-9._-]`` char become ``-`` (so the version never
     creates nested dirs), collapsed runs of ``-`` are squeezed, and a ``branch-`` prefix
-    plus the ``v`` from :func:`normalize_version` keep it distinct from a real ``vX.Y``
-    tag bucket. A short hash of the ORIGINAL branch name is appended so two distinct
-    branches that sanitize to the same slug (e.g. ``feat/x`` and ``feat-x``) still get
-    SEPARATE substrates rather than silently sharing one. Capped at a sane length."""
-    import hashlib
+    plus the ``v`` from :func:`normalize_version` keep it distinct from a real tag
+    bucket. The short commit SHA is appended so repeated runs on the same branch get
+    fresh memory when the code changes. Capped at a sane length."""
     import re
 
     safe = re.sub(r"[^A-Za-z0-9._-]+", "-", branch).strip("-")
     safe = re.sub(r"-{2,}", "-", safe)[:48] or "unknown"
-    digest = hashlib.sha1(branch.encode("utf-8")).hexdigest()[:8]
-    return normalize_version(f"branch-{safe}-{digest}")
+    suffix = re.sub(r"[^A-Za-z0-9._-]+", "-", git_sha).strip("-") or "unknown"
+    return normalize_version(f"branch-{safe}-{suffix}")
 
 
 def benchmark_results_path(
