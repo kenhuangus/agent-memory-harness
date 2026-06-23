@@ -28,6 +28,7 @@ from typing import Any, Callable, Optional
 
 import re
 
+from .. import MEMORY_VERSION
 from ..cost import price_for
 from ..schema import MemoryItem, RetrievedItem, Task, TaskKind
 from . import checkout as _checkout
@@ -1042,11 +1043,20 @@ class ClaudeCodeAgent:
             kind="native", exe="claude", python=sys.executable or "python")
 
     def _root_dir(self) -> Path:
-        """The run-tree root: the injected ``workdir`` or a stable temp dir. Shared by
-        per-task dirs (:meth:`_task_dir`) and the per-group plugin-real store
-        (:meth:`_plugin_group_store`) so both live under the same tree."""
+        """The run-tree root: the injected ``workdir`` or a stable temp dir, version-keyed
+        by ``MEMORY_VERSION``. Shared by per-task dirs (:meth:`_task_dir`) and the
+        per-group plugin-real store (:meth:`_plugin_group_store`) so both live under the
+        same tree.
+
+        Version-keying ties the store's lifetime to the memory version: runs under the
+        SAME ``MEMORY_VERSION`` reuse (and accumulate into) the same per-group store, so
+        memory persists run-to-run; bumping ``MEMORY_VERSION`` (which you do per a memory
+        change, like ``results/v{MEMORY_VERSION}/``) starts a FRESH store under ``v{new}/``
+        while the prior version's memory is preserved. So memory stays the same until a
+        new version of memory is declared."""
         import tempfile
-        return self._root or Path(tempfile.gettempdir()) / "memeval-claudecode"
+        base = self._root or Path(tempfile.gettempdir()) / "memeval-claudecode"
+        return base / f"v{MEMORY_VERSION}"
 
     def _task_dir(self, task: Task) -> Path:
         safe = "".join(c if c.isalnum() or c in "._-" else "-" for c in str(task.task_id))[:80]
