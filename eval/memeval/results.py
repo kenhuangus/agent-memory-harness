@@ -175,17 +175,21 @@ def resolve_pipeline_version(*, cwd: "str | Path | None" = None) -> dict[str, An
 
 def _branch_version(branch: str) -> str:
     """A filesystem-safe directory token for a branch-keyed substrate, e.g.
-    ``eval/swe-bench-cl-pipeline`` -> ``vbranch-eval-swe-bench-cl-pipeline``.
+    ``eval/swe-bench-cl-pipeline`` -> ``vbranch-eval-swe-bench-cl-pipeline-1a2b3c4d``.
 
     Slashes and any non ``[A-Za-z0-9._-]`` char become ``-`` (so the version never
     creates nested dirs), collapsed runs of ``-`` are squeezed, and a ``branch-`` prefix
     plus the ``v`` from :func:`normalize_version` keep it distinct from a real ``vX.Y``
-    tag bucket. Capped at a sane length."""
+    tag bucket. A short hash of the ORIGINAL branch name is appended so two distinct
+    branches that sanitize to the same slug (e.g. ``feat/x`` and ``feat-x``) still get
+    SEPARATE substrates rather than silently sharing one. Capped at a sane length."""
+    import hashlib
     import re
 
     safe = re.sub(r"[^A-Za-z0-9._-]+", "-", branch).strip("-")
-    safe = re.sub(r"-{2,}", "-", safe)[:60] or "unknown"
-    return normalize_version(f"branch-{safe}")
+    safe = re.sub(r"-{2,}", "-", safe)[:48] or "unknown"
+    digest = hashlib.sha1(branch.encode("utf-8")).hexdigest()[:8]
+    return normalize_version(f"branch-{safe}-{digest}")
 
 
 def benchmark_results_path(

@@ -158,9 +158,13 @@ Windows→WSL). Each run writes a **per-benchmark, versioned result file**:
 results/{vX.Y}/{bench-name}-{timestamp}.json
 ```
 
-- **`vX.Y`** is the **memory-system version** (`memeval.MEMORY_VERSION`, starts
-  `v0.1`; bump by `0.1` whenever the memory code/storage changes and you re-run, so
-  each generation's results live in their own `v{X.Y}/` directory).
+- **`vX.Y`** is the **memory-system version**. For `memeval-bench` (the per-dev runner)
+  this is `memeval.MEMORY_VERSION` (starts `v0.1`; bump by `0.1` whenever the memory
+  code/storage changes and you re-run). The **5-stage pipeline** (§7.4) resolves it
+  instead from the git tag on the commit (then the branch name, then `MEMORY_VERSION` —
+  [ADR-eval-004](docs/adrs/ADR-eval-004-pipeline-version-from-git-tag.md)) so a tagged
+  release keys its own substrate automatically. Either way, each generation's results +
+  memory live in their own `v{…}/` directory.
 - **`{timestamp}`** is one UTC stamp per sweep, shared by that sweep's files.
 - Each file is self-describing — `{schema, memory_version, benchmark, timestamp,
   runs:[…]}` — and holds that benchmark's runs across modes.

@@ -249,7 +249,18 @@ def _stage_task_total(cfg: dict) -> int:
     return min(n, cfg["limit"]) if cfg["limit"] else n
 
 
-def _make_progress_cb(stage: str, total: int, on_task=None):
+def _rebase_cost(rr: Any, cost_base: float) -> Any:
+    """Subtract the pre-stage cumulative spend so ``rr.cost_usd`` is THIS stage's cost,
+    not the running pipeline total (the CostTracker is shared for one budget cap).
+    Tokens are already per-stage (summed from the run's own trajectories)."""
+    try:
+        rr.cost_usd = max(0.0, rr.cost_usd - cost_base)
+    except Exception:  # noqa: BLE001
+        pass
+    return rr
+
+
+def _make_progress_cb(stage: str, total: int, on_task=None, cost_base: float = 0.0):
     """A run_agent progress callback that, after EACH completed task, (1) prints
     ``[N/total] stage … resolved · $cost`` so a long stage isn't a silent wait, and
     (2) calls ``on_task(partial)`` so the caller can persist the in-progress results to
@@ -265,6 +276,7 @@ def _make_progress_cb(stage: str, total: int, on_task=None):
         if done <= state["last"]:
             return  # only act on forward progress (callback may fire on each worker)
         state["last"] = done
+        _rebase_cost(partial, cost_base)  # show THIS stage's cost, not the pipeline total
         elapsed = int(time.monotonic() - state["t0"])
         resolved = sum(1 for t in partial.trajectories if t.success)
         print(f"  [{done}/{total}] {stage}: {resolved} resolved · "
@@ -280,10 +292,12 @@ def _make_progress_cb(stage: str, total: int, on_task=None):
 
 
 def _run_eval_stage(stage: str, cfg: dict, substrate: Path, *, cost: Any,
-                    total: int, on_task=None) -> Any:
+                    total: int, on_task=None, cost_base: float = 0.0) -> Any:
     """Run one eval stage through ``run_agent`` (the same machinery memeval-bench uses)
     and return its ``RunResult``. Prints per-task progress and (via ``on_task``) lets the
-    caller write partial results after each task so the results file appears early."""
+    caller write partial results after each task so the results file appears early.
+    ``cost_base`` is the cumulative spend at stage start, subtracted so reported cost is
+    per-stage (the CostTracker is shared for one budget cap)."""
     from ..agent import run_agent
 
     agent = _make_agent(stage, cfg, substrate)
@@ -293,7 +307,7 @@ def _run_eval_stage(stage: str, cfg: dict, substrate: Path, *, cost: Any,
         memory=(_STAGE_MODE[stage] != "off"),
         limit=cfg["limit"], sequence=cfg["sequence"],
         path_or_id=cfg["path"], cost=cost, grader=_grader(cfg),
-        progress_cb=_make_progress_cb(stage, total, on_task=on_task),
+        progress_cb=_make_progress_cb(stage, total, on_task=on_task, cost_base=cost_base),
         seed_sessions=False, workers=workers,
     )
 
@@ -455,9 +469,15 @@ def _run_one(stage: str, cfg: dict, substrate: Path, cost: Any,
 
     idx = _STAGE_INDEX[stage]
     t0 = time.monotonic()
+    # The CostTracker is shared across stages (one --budget-usd cap for the whole run),
+    # so its spent_usd is CUMULATIVE. Subtract the spend at stage start so each stage's
+    # cost reflects only THAT stage, not the running pipeline total.
+    cost_base = cost.spent_usd if cost is not None else 0.0
     print(f"\n── stage {idx}/5 · {stage} (mode={_STAGE_MODE[stage]}) · {total} tasks "
           f"──────────", flush=True)
-    rr = _run_eval_stage(stage, cfg, substrate, cost=cost, total=total, on_task=on_task)
+    rr = _run_eval_stage(stage, cfg, substrate, cost=cost, total=total, on_task=on_task,
+                         cost_base=cost_base)
+    _rebase_cost(rr, cost_base)
     m = rr.metrics
     secs = int(time.monotonic() - t0)
     resolved = sum(1 for t in rr.trajectories if t.success)

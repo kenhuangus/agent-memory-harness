@@ -22,6 +22,7 @@ real daydream write would land. Run under the swebench venv with PYTHONPATH=. fr
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -29,8 +30,6 @@ from pathlib import Path
 # Make the package importable when run directly.
 _THIS = Path(__file__).resolve()
 _BASE_DIR = _THIS.parent.parent
-import sys
-
 if str(_BASE_DIR) not in sys.path:
     sys.path.insert(0, str(_BASE_DIR))
 

@@ -55,9 +55,10 @@ def test_nearest_tag_when_head_is_past_it(repo):
 
 
 def test_untagged_falls_back_to_branch_name(repo):
-    # No tag, but on a branch -> key the substrate by the (sanitized) branch name.
+    # No tag, but on a branch -> key the substrate by the (sanitized) branch name,
+    # with a short hash suffix of the original branch name.
     info = resolve_pipeline_version(cwd=repo)
-    assert info["version"] == "vbranch-main"
+    assert info["version"].startswith("vbranch-main-")
     assert info["untagged"] is True
     assert info["source"] == "branch"
     assert info["branch"] == "main"
@@ -68,8 +69,19 @@ def test_branch_name_with_slashes_is_filesystem_safe(repo):
     _git(repo, "checkout", "-q", "-b", "eval/swe-bench-cl-pipeline")
     info = resolve_pipeline_version(cwd=repo)
     assert info["source"] == "branch"
-    assert info["version"] == "vbranch-eval-swe-bench-cl-pipeline"
+    assert info["version"].startswith("vbranch-eval-swe-bench-cl-pipeline-")
     assert "/" not in info["version"]  # never a nested path
+
+
+def test_branches_that_sanitize_alike_get_distinct_versions(repo):
+    # Two branches whose sanitized slugs collide (feat/x and feat-x) must NOT share a
+    # substrate -- the original-name hash suffix disambiguates them.
+    _git(repo, "checkout", "-q", "-b", "feat/x")
+    v1 = resolve_pipeline_version(cwd=repo)["version"]
+    _git(repo, "checkout", "-q", "-b", "feat-x")
+    v2 = resolve_pipeline_version(cwd=repo)["version"]
+    assert v1 != v2, f"distinct branches collided onto one version: {v1}"
+    assert v1.startswith("vbranch-feat-x-") and v2.startswith("vbranch-feat-x-")
 
 
 def test_detached_head_untagged_falls_back_to_memory_version(repo):
