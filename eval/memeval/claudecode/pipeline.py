@@ -202,9 +202,43 @@ def _grader(cfg: dict):
     return _make_grader(_BENCHMARK, shim)
 
 
-def _run_eval_stage(stage: str, cfg: dict, substrate: Path, *, cost: Any) -> Any:
+def _stage_task_total(cfg: dict) -> int:
+    """How many tasks this stage will run — the sequence's size capped by ``--limit`` —
+    so progress can be shown as ``[done/total]`` (the loader does the same selection)."""
+    from ..loaders import get_loader
+
+    n = sum(1 for t in get_loader(Benchmark.from_str(_BENCHMARK)).load(cfg["path"], limit=None)
+            if str(t.group_id or "") == cfg["sequence"])
+    return min(n, cfg["limit"]) if cfg["limit"] else n
+
+
+def _make_progress_cb(stage: str, total: int):
+    """A run_agent progress callback that prints one line per completed task:
+    ``[N/total] stage … done · resolved=R · $cost`` so a long stage isn't a silent wait.
+    run_agent invokes it after EACH task with the partial RunResult (n_tasks = completed)."""
+    import sys
+    import time
+
+    state = {"last": 0, "t0": time.monotonic()}
+
+    def cb(partial: Any) -> None:
+        done = partial.n_tasks
+        if done <= state["last"]:
+            return  # only print on forward progress (callback may fire on each worker)
+        state["last"] = done
+        elapsed = int(time.monotonic() - state["t0"])
+        resolved = sum(1 for t in partial.trajectories if t.success)
+        print(f"  [{done}/{total}] {stage}: {resolved} resolved · "
+              f"${partial.cost_usd:.4f} · {elapsed}s elapsed", flush=True)
+        sys.stdout.flush()
+
+    return cb
+
+
+def _run_eval_stage(stage: str, cfg: dict, substrate: Path, *, cost: Any,
+                    total: int) -> Any:
     """Run one eval stage through ``run_agent`` (the same machinery memeval-bench uses)
-    and return its ``RunResult``."""
+    and return its ``RunResult``. Prints per-task progress so the stage isn't silent."""
     from ..agent import run_agent
 
     agent = _make_agent(stage, cfg, substrate)
@@ -214,6 +248,7 @@ def _run_eval_stage(stage: str, cfg: dict, substrate: Path, *, cost: Any) -> Any
         memory=(_STAGE_MODE[stage] != "off"),
         limit=cfg["limit"], sequence=cfg["sequence"],
         path_or_id=cfg["path"], cost=cost, grader=_grader(cfg),
+        progress_cb=_make_progress_cb(stage, total),
         seed_sessions=False, workers=workers,
     )
 
@@ -308,22 +343,24 @@ def run_pipeline(cfg: dict) -> dict:
                                   root=str(results_root))
 
     cost = CostTracker(budget_usd=cfg["budget_usd"]) if cfg["budget_usd"] and cfg["budget_usd"] > 0 else None
+    total = _stage_task_total(cfg)
+    meta["n_tasks"] = total
+    nat = " + native-CL passes" if cfg["native_cl"] else ""
+    print(f"running 4 eval stages × {total} tasks{nat} (plugin stages run "
+          f"{cfg['plugin_workers']} at a time)…", flush=True)
 
     for stage in ("base", "plugin-blank", "plugin-accum"):
-        row = _run_one(stage, cfg, substrate, cost, native_by_stage, meta)
-        rows.append(row)
-        # Record the actual task count once (the substrate no longer records the run).
-        if meta.get("n_tasks") is None:
-            meta["n_tasks"] = row.get("n_tasks")
+        rows.append(_run_one(stage, cfg, substrate, cost, native_by_stage, meta, total))
         _write_partial()
 
     # Stage 4: dream consolidation through the plugin's own surface.
-    print("stage 4 (dream): no-op placeholder — consolidation not implemented yet")
+    print("\n── stage 4/5 · dream ──────────", flush=True)
+    print("  no-op placeholder — whole-store consolidation not implemented yet", flush=True)
     dream = _run_dream_stage(substrate)
     _write_partial()
 
     # Stage 5: final eval on the dream-consolidated substrate.
-    rows.append(_run_one("plugin-dreamed", cfg, substrate, cost, native_by_stage, meta))
+    rows.append(_run_one("plugin-dreamed", cfg, substrate, cost, native_by_stage, meta, total))
     meta["ended_at"] = time.time()
 
     path = PS.write_pipeline_results(benchmark=_BENCHMARK, version=version, timestamp=stamp,
@@ -341,24 +378,35 @@ def run_pipeline(cfg: dict) -> dict:
 
 
 def _run_one(stage: str, cfg: dict, substrate: Path, cost: Any,
-             native_by_stage: dict, meta: dict) -> dict:
-    """Run one eval stage (standard metrics + optional native CL) and return its row."""
+             native_by_stage: dict, meta: dict, total: int) -> dict:
+    """Run one eval stage (standard metrics + optional native CL) and return its row.
+    Prints a stage banner, per-task progress (via run_agent's callback), and a summary."""
+    import time
+
     from . import pipeline_summary as PS
 
     idx = _STAGE_INDEX[stage]
-    print(f"stage {idx} ({stage}): mode={_STAGE_MODE[stage]}")
-    rr = _run_eval_stage(stage, cfg, substrate, cost=cost)
+    t0 = time.monotonic()
+    print(f"\n── stage {idx}/5 · {stage} (mode={_STAGE_MODE[stage]}) · {total} tasks "
+          f"──────────", flush=True)
+    rr = _run_eval_stage(stage, cfg, substrate, cost=cost, total=total)
     m = rr.metrics
-    print(f"  acc={m.accuracy:.3f} rel={m.relevancy:.3f} rec={m.recency:.3f} "
-          f"eff={m.efficiency:.3f} n={rr.n_tasks} ${rr.cost_usd:.4f}")
+    secs = int(time.monotonic() - t0)
+    resolved = sum(1 for t in rr.trajectories if t.success)
+    print(f"  ✓ stage {idx} done · {resolved}/{rr.n_tasks} resolved · acc={m.accuracy:.3f} "
+          f"rel={m.relevancy:.3f} eff={m.efficiency:.3f} · ${rr.cost_usd:.4f} · {secs}s",
+          flush=True)
     if cfg["native_cl"]:
+        print(f"  computing native CL metrics for stage {idx} "
+              f"(mem-on / re-test / mem-off passes)…", flush=True)
         try:
             report = _native_cl_for_stage(stage, cfg, substrate)
             if report is not None:
                 native_by_stage[stage] = report
+                print(f"  ✓ native CL captured for stage {idx}", flush=True)
         except Exception as exc:  # native CL is supplementary -- never abort the stage
             print(f"  native CL skipped: {type(exc).__name__}: {str(exc)[:120]}",
-                  file=sys.stderr)
+                  file=sys.stderr, flush=True)
     return PS.stage_row(rr, stage=stage, stage_index=idx, pipeline_meta=meta)
 
 
