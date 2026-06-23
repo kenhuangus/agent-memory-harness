@@ -130,8 +130,9 @@ def prepare_checkout(
     # stale checkout so each run starts from a clean tree (also clears a stale index
     # / FETCH_HEAD). Guarded on a *real* ``.git`` so the offline stub-runner path —
     # where the injected runner writes files into a dest that has no real ``.git`` —
-    # is untouched. Safe: the plugin store under the checkout is restored from the
-    # group store each run (agent.py ``_group_restore``), so nothing durable is lost.
+    # is untouched. Safe: the plugin memory store does NOT live under the checkout — it
+    # is the shared substrate the plugin resolves from ``CLAUDE_PROJECT_DIR`` (ADR-eval-003),
+    # so wiping the checkout never touches memory.
     if (dest_path / ".git").exists():
         shutil.rmtree(dest_path, ignore_errors=True)
         dest_path.mkdir(parents=True, exist_ok=True)
