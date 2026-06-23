@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from collections import deque
 from dataclasses import replace
 from typing import Any, Optional
@@ -151,8 +152,16 @@ class GraphStore:
         self.path = path
         self._closed = False  # tracked separately from _conn so a post-close write fails loud (not RAM-only)
         self._conn: Optional[sqlite3.Connection] = None
+        # Thread-safety (BACKEND_DURABILITY_AUDIT): the same ThreadPoolExecutor path that
+        # crashes SqliteVectorStore's thread-affine connection applies here when path= is set.
+        # ``check_same_thread=False`` lets the mirror connection be shared across threads and
+        # ``_lock`` (a re-entrant lock) serializes EVERY access to it AND the in-RAM indexes
+        # (_nodes/_order/_out/_in/_embeddings) so concurrent write/delete can't interleave a
+        # cursor or corrupt the dicts. RLock because write()/delete() span persist + index under
+        # one lock. path=None stays single-connection-less; the lock is cheap and harmless.
+        self._lock = threading.RLock()
         if path is not None:
-            self._conn = sqlite3.connect(str(path))
+            self._conn = sqlite3.connect(str(path), check_same_thread=False)
             # WAL (ADR-P2, mirroring SqliteVectorStore): fail loud for a file-backed DB if the mode didn't
             # take (SQLite can silently fall back); ':memory:' returns 'memory', the only non-'wal' we accept.
             mode = self._conn.execute("PRAGMA journal_mode=WAL").fetchone()[0]
@@ -181,12 +190,15 @@ class GraphStore:
         # Atomic across RAM and the durable mirror: do EVERY failure-prone step — parse edges (a malformed
         # okf_links raises), embed (a real embedder can raise), persist (json/disk/lock can raise) — BEFORE
         # mutating any in-memory index, so a FAILED write leaves both RAM and disk untouched. _index() then
-        # only applies the precomputed values, so it is total (cannot raise) and goes last.
-        edges = self._parse_edges(node)
-        doc_vec = self._doc_vector(node.content) if self._embed is not None else None
-        if self._conn is not None:
-            self._persist(node)               # durable write-through (raises -> RAM never mutated)
-        self._index(node, edges, doc_vec)     # in-memory indexes last (the same path reload replays)
+        # only applies the precomputed values, so it is total (cannot raise) and goes last. The whole
+        # persist+index runs under _lock so concurrent threads serialize on both the mirror connection and
+        # the in-RAM indexes.
+        with self._lock:
+            edges = self._parse_edges(node)
+            doc_vec = self._doc_vector(node.content) if self._embed is not None else None
+            if self._conn is not None:
+                self._persist(node)               # durable write-through (raises -> RAM never mutated)
+            self._index(node, edges, doc_vec)     # in-memory indexes last (the same path reload replays)
 
     def _index(self, node: MemoryItem, edges: list, doc_vec: Optional[list] = None) -> None:
         """Apply a node to the in-memory indexes (nodes, order, typed `_out`/`_in`, embedding).
@@ -251,13 +263,22 @@ class GraphStore:
             self._index(node, edges, doc_vec)
 
     def get(self, item_id: str) -> Optional[MemoryItem]:
-        return self._nodes.get(item_id)
+        with self._lock:
+            return self._nodes.get(item_id)
 
     def search(self, query: str, *, k: int = 5, as_of: Optional[float] = None,
                **kwargs: Any) -> list:
         q = set(_tokenize(query))
         if not q:
             return []
+        with self._lock:
+            return self._search_locked(query, q, k=k, as_of=as_of, **kwargs)
+
+    def _search_locked(self, query: str, q: set, *, k: int, as_of: Optional[float],
+                       **kwargs: Any) -> list:
+        """Seed-then-traverse search over a CONSISTENT snapshot of the in-RAM graph (the
+        caller holds ``_lock`` so no concurrent write mutates ``_order``/``_nodes``/``_out``
+        /``_in`` mid-traversal)."""
         rel, direction = query_intent(query)
         # Per-call traversal-depth override (the cascade / accuracy profile injects this per query; the
         # default is the store's construction-time self._max_depth). Lets a profile traverse deeper for
@@ -312,31 +333,34 @@ class GraphStore:
                 for r, (sc, it) in enumerate(scored[: max(0, k)])]
 
     def all(self) -> list:
-        return [self._nodes[i] for i in self._order]
+        with self._lock:
+            return [self._nodes[i] for i in self._order]
 
     def delete(self, item_id: str) -> bool:
         """Remove ``item_id`` (its node + its OWN out-edges) from the graph, durably. Idempotent (an absent
         id -> ``False``). **Atomic**: the durable mirror is updated BEFORE RAM, so a failed durable delete
         leaves both untouched. Preserves the ``_out``<->``_in`` mirror: OTHER nodes' edges TO this id are
         their data — kept (they resolve to nothing while it is absent, and again if it is re-created).
+        Serialized under ``_lock`` (mirror connection + in-RAM indexes) for thread safety.
         """
         if self._closed:
             raise RuntimeError("delete() on a closed GraphStore")
-        if item_id not in self._nodes:
-            return False
-        if self._conn is not None:
-            self._persist_delete(item_id)            # durable first (raises -> RAM never mutated)
-        # retract this node's out-edges' reverse contributions from each target's _in.
-        for tgt, rel in self._out.get(item_id, []):
-            back = self._in.get(tgt)
-            if back:
-                self._in[tgt] = [e for e in back if e != (item_id, rel)]
-        self._out.pop(item_id, None)
-        self._nodes.pop(item_id, None)
-        if item_id in self._order:
-            self._order.remove(item_id)
-        self._embeddings.pop(item_id, None)
-        return True
+        with self._lock:
+            if item_id not in self._nodes:
+                return False
+            if self._conn is not None:
+                self._persist_delete(item_id)            # durable first (raises -> RAM never mutated)
+            # retract this node's out-edges' reverse contributions from each target's _in.
+            for tgt, rel in self._out.get(item_id, []):
+                back = self._in.get(tgt)
+                if back:
+                    self._in[tgt] = [e for e in back if e != (item_id, rel)]
+            self._out.pop(item_id, None)
+            self._nodes.pop(item_id, None)
+            if item_id in self._order:
+                self._order.remove(item_id)
+            self._embeddings.pop(item_id, None)
+            return True
 
     def _persist_delete(self, item_id: str) -> None:
         """Delete a node row from the durable mirror; rolls back on failure (atomic write-through)."""
