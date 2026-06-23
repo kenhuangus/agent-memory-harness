@@ -361,6 +361,76 @@ def _run_dream_stage(substrate: Path) -> dict:
             "dream_consolidation": "not-implemented (no-op)"}
 
 
+def _sandbox_auth_probe(config_dir: Path, *, timeout: int = 60) -> bool:
+    """Actually verify the sandbox is authenticated by driving ``claude -p "ok"`` against
+    it. This is the only reliable check on keychain platforms (macOS), where the token is
+    NOT an on-disk file — so a stale/absent token isn't caught by inspecting files. API-key
+    env vars are stripped so the CLI uses the OAuth subscription, not an API key. Returns
+    True only on a clean exit whose output isn't a 'not logged in' error."""
+    import os
+    import subprocess
+
+    from .platform import detect
+
+    rt = detect()
+    exe = rt.exe if rt else "claude"
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")}
+    env["CLAUDE_CONFIG_DIR"] = str(config_dir.resolve())
+    try:
+        proc = subprocess.run([exe, "-p", "ok"], env=env, timeout=timeout,
+                              capture_output=True, text=True, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    out = (proc.stdout + proc.stderr).lower()
+    if proc.returncode != 0:
+        return False
+    return "not logged in" not in out and "/login" not in out and "invalid api key" not in out
+
+
+def _ensure_sandbox_ready() -> None:
+    """Make EVERY stage use the isolated sandbox CLAUDE_CONFIG_DIR — never the host — and
+    FAIL CLOSED before running anything if it isn't authenticated.
+
+    The harness sandboxes ``claude`` so a run never picks up the host's skills / agents /
+    CLAUDE.md / auth. But ``active_config_dir()`` only returns the sandbox once it has been
+    BUILT (its ``settings.json`` exists), and the sandbox was previously built lazily inside
+    the first plugin-real stage — so stage 1 (base) ran against the HOST config. Build it up
+    front here so all 5 stages resolve to the sandbox, then PROBE the sandbox's auth with a
+    real ``claude -p`` turn and abort if it's logged out (a file check alone is a false
+    positive on macOS, where the token lives in the keychain, not on disk).
+
+    Skipped when the sandbox is explicitly disabled (``MEMEVAL_SANDBOX=0``) — an intentional
+    opt-out — or when ``MEMEVAL_PIPELINE_SKIP_AUTH_PROBE`` is set (offline tests)."""
+    import os
+
+    from . import sandbox
+
+    # Honor an explicit disable (the user opted out of the default sandbox).
+    if (os.environ.get(sandbox.ENV_TOGGLE) or "").strip().lower() in {"0", "false", "no", "off"}:
+        print("MEMEVAL_SANDBOX is off — running against the host claude config (not sandboxed).",
+              file=sys.stderr)
+        return
+
+    d = Path(sandbox.active_config_dir() or sandbox.default_config_dir())
+    if not sandbox.exists(d):
+        sandbox.build(d)  # writes the minimal settings.json so active_config_dir() returns it
+
+    if os.environ.get("MEMEVAL_PIPELINE_SKIP_AUTH_PROBE"):
+        return  # offline tests: skip the network probe
+
+    print(f"sandbox: {d} — verifying login before any stage runs…", flush=True)
+    if not _sandbox_auth_probe(d):
+        cmds = "\n  ".join(sandbox.login_commands(d))
+        raise SystemExit(
+            "\nThe benchmark sandbox is NOT logged in — aborting before any stage runs.\n\n"
+            "Every pipeline stage runs against an ISOLATED claude config (never your host "
+            "login), so the sandbox needs its own one-time authentication. It then PERSISTS "
+            "across all future runs (one-time per machine, not per run):\n\n  " + cmds + "\n"
+        )
+    print(f"sandbox: {d} (logged in) — all stages use this, not the host claude.", flush=True)
+
+
 def run_pipeline(cfg: dict) -> dict:
     """Run all 5 stages and write the results + summary. Returns the summary dict."""
     from ..cost import CostTracker
@@ -369,6 +439,7 @@ def run_pipeline(cfg: dict) -> dict:
 
     import time
 
+    _ensure_sandbox_ready()  # MUST be first — every stage uses the sandbox, never the host
     version_info = resolve_pipeline_version()
     version = version_info["version"]
     stamp = run_timestamp()

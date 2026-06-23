@@ -61,6 +61,9 @@ def _install_fakes(monkeypatch, substrate_seen: list):
     monkeypatch.setattr(ClaudeCodeAgent, "__init__", patched_init)
     monkeypatch.setattr(agmod, "prepare_checkout", lambda *a, **k: None)
     monkeypatch.setattr(agmod, "capture_diff", lambda *a, **k: "")
+    # The pipeline probes the sandbox login with a real `claude -p` turn before stage 1;
+    # offline tests use a fake runner and must NOT make that network/subprocess call.
+    monkeypatch.setenv("MEMEVAL_PIPELINE_SKIP_AUTH_PROBE", "1")
 
 
 def _cfg(tmp: str) -> dict:
@@ -133,3 +136,36 @@ def test_pipeline_results_path_is_version_scoped(monkeypatch) -> None:
         vd = version_dirs[0]
         assert (vd / "_memory").is_dir()
         assert list(vd.glob("swe_bench_cl-*.json"))
+
+
+def test_pipeline_fails_closed_when_sandbox_not_logged_in(monkeypatch) -> None:
+    # The pipeline MUST abort before any stage runs if the sandbox isn't authenticated —
+    # every stage uses the isolated sandbox, never the host, so a logged-out sandbox can't
+    # silently fall through. The auth probe returning False => SystemExit, no stage runs.
+    import memeval.claudecode.sandbox as sb
+
+    monkeypatch.delenv("MEMEVAL_SANDBOX", raising=False)
+    monkeypatch.delenv("MEMEVAL_PIPELINE_SKIP_AUTH_PROBE", raising=False)
+    # Sandbox exists (built) but the real auth probe says "not logged in".
+    monkeypatch.setattr(sb, "exists", lambda *a, **k: True)
+    monkeypatch.setattr(P, "_sandbox_auth_probe", lambda *a, **k: False)
+
+    ran = {"stage": False}
+    monkeypatch.setattr(P, "_run_one", lambda *a, **k: ran.__setitem__("stage", True))
+
+    import pytest
+    with pytest.raises(SystemExit) as exc:
+        P.run_pipeline(_cfg("/tmp/should-not-be-written"))
+    assert "not logged in" in str(exc.value).lower()
+    assert ran["stage"] is False, "a stage ran despite the logged-out sandbox"
+
+
+def test_pipeline_disabled_sandbox_is_explicit_optout(monkeypatch) -> None:
+    # MEMEVAL_SANDBOX=0 is an intentional opt-out: no probe, no abort (runs on host).
+    import memeval.claudecode.sandbox as sb
+
+    monkeypatch.setenv("MEMEVAL_SANDBOX", "0")
+    probed = {"n": 0}
+    monkeypatch.setattr(P, "_sandbox_auth_probe", lambda *a, **k: probed.__setitem__("n", probed["n"] + 1) or True)
+    P._ensure_sandbox_ready()  # must NOT raise, must NOT probe
+    assert probed["n"] == 0
