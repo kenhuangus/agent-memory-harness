@@ -152,8 +152,9 @@ class FakeTx:
         if "[r:REL" in cypher:
             return _FakeResult([])
 
-        # Read: `MATCH (n:Memory) … RETURN n`. Honor a single-id filter (get) and the $as_of bound (search).
-        if "MATCH (n:Memory)" in cypher and "RETURN n" in cypher:
+        # Read: a `MATCH (n:Memory …) … RETURN n`. The label may be followed by `)` (all/search) or an
+        # inline id filter `{item_id: $id})` (get) — match on the label prefix so both shapes are read.
+        if "MATCH (n:Memory" in cypher and "RETURN n" in cypher:
             target_id = params.get("id")
             as_of = params.get("as_of")
             rows = []
