@@ -70,8 +70,9 @@ langfuse = ["langfuse>=3.0"]
 
 # Run the benchmarks through the Claude Code CLI with our memory plugin
 # (memeval.claudecode.*). Needs the MCP SDK for the memory server; the `claude`
-# CLI is installed separately via npm.
-claudecode = ["mcp>=1.0"]
+# CLI is installed separately via npm. python-dotenv loads API keys (e.g.
+# OPENROUTER_API_KEY for the daydreamer) from the repo-root .env at pipeline start.
+claudecode = ["mcp>=1.0", "python-dotenv>=1.0"]
 
 # v1 Daydream inline secret redaction (memeval.dreaming.redaction). Pinned to
 # the spike-validated version per ADR-dreaming-005; upgrades follow the
