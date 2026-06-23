@@ -222,6 +222,8 @@ def render_summary_md(summary: dict) -> str:
     lines.append("")
     if status == "not-run":
         lines.append("_not run_")
+    elif status == "not-implemented":
+        lines.append(f"_not implemented — no-op_ ({dream.get('note', '')})")
     elif status in ("skipped", "error"):
         reason = dream.get("reason") or dream.get("error_type") or status
         lines.append(f"_{status}: {reason}_")

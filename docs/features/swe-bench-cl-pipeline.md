@@ -44,8 +44,10 @@ R3. Memory is ONE shared substrate per pipeline version (`results/v{tag}/_memory
    substrate, additive); stage 5 runs on that substrate after the dream pass.
 R4. Stages 2/3/5 run the real plugin (`plugin-real`, native install), agentic CODE mode, graded by
    local test execution (`LocalExecGrader`).
-R5. The dream stage (4) is triggered through the plugin's own surface (`daydream-cli dream`), never
-   by the harness calling the worker or touching files; its summary is recorded.
+R5. The dream stage (4) is a NO-OP placeholder with no side effects — whole-store consolidation
+   is not implemented yet (ADR-dreaming-020). It records `status: not-implemented` so the 5-stage
+   shape + base→final comparison stand; when real consolidation lands it is invoked ONLY through the
+   plugin's own surface. Stage 5 runs on the same substrate stage 3 left (delta ~0 today).
 R6. Pipeline version = git tag on the `main` commit (fallback: `MEMORY_VERSION`).
 R7. The wrapper is interactive by default (offer/override defaults, confirm) with a non-interactive
    `--yes` mode taking flags/defaults.

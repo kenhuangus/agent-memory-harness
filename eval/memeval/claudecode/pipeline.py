@@ -177,6 +177,8 @@ def _pipeline_meta(cfg: dict, version_info: dict, substrate: Path, stamp: str) -
         "n_eval_stages": len(_EVAL_STAGES),
         "stages": ["base", "plugin-blank", "plugin-accum", "dream", "plugin-dreamed"],
         "timestamp": stamp,
+        "started_at": None,                    # epoch seconds, set when the run starts
+        "ended_at": None,                      # epoch seconds, set when the run ends
     }
 
 
@@ -248,88 +250,21 @@ def _native_cl_for_stage(stage: str, cfg: dict, substrate: Path) -> Optional[dic
 
 
 def _run_dream_stage(substrate: Path) -> dict:
-    """Trigger consolidation through the plugin's OWN surface (``daydream-cli dream``) over
-    the shared store, and return the summary read from the plugin's events stream.
+    """Dream stage -- a NO-OP placeholder until consolidation is actually implemented.
 
-    The harness never calls the dreaming worker directly or reads/mutates the store
-    contents (ADR-eval-003): it shells the plugin CLI, passing the store via the CLI's
-    own ``--store`` argument (the same public surface a user uses), then reads the
-    ``daydream.summary`` / skip / error EVENT the CLI emits -- an observable output, not
-    the store itself. The store path is the plugin's ``${CLAUDE_PROJECT_DIR}/.cookbook-memory``
-    convention, which the harness only ensures exists."""
-    import shutil
-    import subprocess
+    Whole-store consolidation ("night dream") is not implemented (the v1 dreaming worker
+    is detection-only and mutation is gated -- ADR-dreaming-020). The pipeline keeps this
+    stage as a structural slot so the 5-stage shape and the base->final comparison are in
+    place, but it does NOT touch the shared substrate: no subprocess, no store read, no
+    side effects. When real consolidation lands behind the plugin's own surface, this stage
+    invokes it (and ONLY through that surface); for now stage 5 runs on the same substrate
+    stage 3 left, so the stage-3->5 delta is expected to be ~0.
 
-    store = substrate / ".cookbook-memory"
-    store.mkdir(parents=True, exist_ok=True)
-    events = store / "events.jsonl"
-    before = _event_count(events)
-
-    exe = shutil.which("daydream-cli")
-    if exe is None:
-        return {"status": "skipped", "reason": "daydream-cli not on PATH"}
-
-    try:
-        subprocess.run([exe, "dream", "--all", "--store", str(store)],
-                       capture_output=True, text=True, timeout=600, check=False)
-    except Exception as exc:  # fail-open: a dream error never aborts the pipeline
-        return {"status": "error", "error_type": type(exc).__name__}
-
-    # The dream pass ran through the plugin's CLI. v1's night-dream is detection-only and
-    # does not surface a consumable summary event (it writes a session-scoped diary and the
-    # CLI discards the worker's return), so absent an observable summary we record that it
-    # ran, flagged WIP -- honest about why the stage-3->5 delta is ~0 today.
-    summary = _scan_for_dream_summary(store, events, before)
-    if summary is None:
-        return {"status": "ran", "note": "no observable dream summary (v1 night-dream is "
-                "detection-only; CLI emits no summary event)",
-                "dream_consolidation": "detection-only (WIP)"}
-    summary["dream_consolidation"] = "detection-only (WIP)"
-    return summary
-
-
-def _event_count(events: Path) -> int:
-    try:
-        return sum(1 for ln in events.read_text().splitlines() if ln.strip())
-    except OSError:
-        return 0
-
-
-def _scan_for_dream_summary(store: Path, events: Path, before: int) -> Optional[dict]:
-    """Look for a ``dream.summary`` event in the plugin's observable outputs: first the new
-    lines of the store's ``events.jsonl``, then the dream diary files
-    (``<store>/dream/*.daydream-events.jsonl``). Returns the matching record, or None.
-    Reads the plugin's emitted events only -- never the store's memory contents."""
-    import json
-
-    def _match(lines: list[str], start: int = 0) -> Optional[dict]:
-        for ln in lines[start:]:
-            try:
-                rec = json.loads(ln)
-            except ValueError:
-                continue
-            name = rec.get("event") or rec.get("type") or rec.get("op") or ""
-            if "dream" in name and ("summary" in name or "skipped" in name or "error" in name):
-                return rec
-        return None
-
-    try:
-        hit = _match([ln for ln in events.read_text().splitlines() if ln.strip()], before)
-        if hit is not None:
-            return hit
-    except OSError:
-        pass
-
-    diary_dir = store / "dream"
-    if diary_dir.is_dir():
-        for diary in sorted(diary_dir.glob("*.daydream-events.jsonl")):
-            try:
-                hit = _match([ln for ln in diary.read_text().splitlines() if ln.strip()])
-            except OSError:
-                continue
-            if hit is not None:
-                return hit
-    return None
+    ``substrate`` is accepted for signature stability but intentionally unused."""
+    return {"status": "not-implemented",
+            "note": "whole-store dream consolidation is not implemented yet "
+                    "(ADR-dreaming-020); this stage is a no-op placeholder",
+            "dream_consolidation": "not-implemented (no-op)"}
 
 
 def run_pipeline(cfg: dict) -> dict:
@@ -337,6 +272,8 @@ def run_pipeline(cfg: dict) -> dict:
     from ..cost import CostTracker
     from ..results import resolve_pipeline_version, run_timestamp
     from . import pipeline_summary as PS
+
+    import time
 
     version_info = resolve_pipeline_version()
     version = version_info["version"]
@@ -346,6 +283,7 @@ def run_pipeline(cfg: dict) -> dict:
     substrate.mkdir(parents=True, exist_ok=True)  # the harness's ONLY store responsibility
 
     meta = _pipeline_meta(cfg, version_info, substrate, stamp)
+    meta["started_at"] = time.time()
     print(f"pipeline v{version.lstrip('v')} · sequence {cfg['sequence']} · "
           f"limit {cfg['limit']} · model {cfg['model']}")
     print(f"shared memory substrate: {substrate}")
@@ -373,12 +311,13 @@ def run_pipeline(cfg: dict) -> dict:
         _write_partial()
 
     # Stage 4: dream consolidation through the plugin's own surface.
-    print("stage 4 (dream): daydream-cli dream --all over the substrate")
+    print("stage 4 (dream): no-op placeholder — consolidation not implemented yet")
     dream = _run_dream_stage(substrate)
     _write_partial()
 
     # Stage 5: final eval on the dream-consolidated substrate.
     rows.append(_run_one("plugin-dreamed", cfg, substrate, cost, native_by_stage, meta))
+    meta["ended_at"] = time.time()
 
     path = PS.write_pipeline_results(benchmark=_BENCHMARK, version=version, timestamp=stamp,
                                      rows=rows, pipeline_meta=meta, dream=dream,
