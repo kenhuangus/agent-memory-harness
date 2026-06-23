@@ -20,7 +20,9 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
+import time
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -225,6 +227,107 @@ def _read_events(events: Path) -> list[dict]:
 def _count_recall_events(events: Path) -> int:
     """Number of recall events in the plugin's own events stream."""
     return sum(1 for rec in _read_events(events) if rec.get("op") == "recall")
+
+
+# Fix A — cross-task accumulation for the plugin-real store. SWE-Bench-CL runs the
+# tasks of a sequence (``group_id``) in chronological order; the plugin's own
+# learning (daydream writes via its real Stop-hook write path) must carry from task
+# N to task N+1 so "improvement over time" is measurable. The store is COPIED into
+# each task's per-task ``.cookbook-memory`` before the turn (restore) and copied
+# back after (persist), EXCLUDING ``events.jsonl`` so per-task recall attribution
+# (``_attribute_real_recall`` / ``_count_recall_events``) stays untouched.
+
+#: Filename never copied between the group store and a per-task store — the plugin's
+#: own recall/events stream is kept PER-TASK so recall attribution is not polluted by
+#: a prior task's events. (The accumulated *memory* — markdown/vector/graph backends,
+#: sidecars — copies; the events log does not.)
+_GROUP_STORE_EXCLUDE = ("events.jsonl",)
+#: Sentinel inside a group store marking that loader priors were already seeded for
+#: this group (so ``_seed_plugin_store`` runs only once per group, on the first task).
+_GROUP_SEEDED_SENTINEL = ".seeded"
+#: How long to wait for the plugin's async Stop-hook daydream write to land in the
+#: per-task events stream before the harness drives daydream synchronously itself.
+#: Short by default; the real-run caller can raise it toward the Stop hook's 600s
+#: ceiling via ``MEMEVAL_DAYDREAM_DRAIN_SECS``.
+_DAYDREAM_DRAIN_DEFAULT_SECS = 8.0
+
+
+def _copy_store_contents(src: Path, dst: Path,
+                         exclude: tuple[str, ...] = _GROUP_STORE_EXCLUDE) -> None:
+    """Copy every entry under ``src`` into ``dst`` (merge, overwrite), skipping any
+    top-level name in ``exclude`` (e.g. ``events.jsonl``).
+
+    Used to restore the accumulated group store INTO a per-task store and to persist
+    a per-task store BACK to the group store. Recursive dirs are merged with
+    ``dirs_exist_ok``. A missing ``src`` is a no-op (first task / nothing to copy)."""
+    if not src.is_dir():
+        return
+    dst.mkdir(parents=True, exist_ok=True)
+    for entry in src.iterdir():
+        if entry.name in exclude:
+            continue  # never carry the per-task recall/events stream across
+        target = dst / entry.name
+        if entry.is_dir():
+            shutil.copytree(entry, target, dirs_exist_ok=True)
+        else:
+            shutil.copy2(entry, target)
+
+
+def _group_store_has_memory(group_store: Optional[Path]) -> bool:
+    """True if ``group_store`` already holds accumulated memory (i.e. not the first
+    task of the group). Any entry other than the seed sentinel counts — daydream
+    writes land as markdown/vector/graph files + sidecars under the store root."""
+    if group_store is None or not group_store.is_dir():
+        return False
+    return any(e.name != _GROUP_SEEDED_SENTINEL for e in group_store.iterdir())
+
+
+#: Daydream events that mean "the plugin's write for this turn completed" — the engine
+#: emits ``daydream.memory_written`` per item, and the hook shim emits
+#: ``daydream.hook_subprocess_fired`` once the (blocking) subprocess returns.
+_DAYDREAM_WRITE_OPS = ("daydream.memory_written", "daydream.hook_subprocess_fired")
+
+
+def _count_daydream_writes(events: Path) -> int:
+    """Number of daydream write-completion events in the plugin's events stream.
+
+    The plugin's events use an ``event``/``type`` key for daydream diary events (vs the
+    ``op`` key used for recall), so check both shapes to be robust to the stream
+    schema."""
+    n = 0
+    for rec in _read_events(events):
+        name = rec.get("event") or rec.get("type") or rec.get("op")
+        if name in _DAYDREAM_WRITE_OPS:
+            n += 1
+    return n
+
+
+def _drain_timeout_secs() -> float:
+    """Daydream-drain poll window (seconds). ``MEMEVAL_DAYDREAM_DRAIN_SECS`` overrides
+    the short default so a real run can wait toward the Stop hook's 600s ceiling."""
+    raw = os.environ.get("MEMEVAL_DAYDREAM_DRAIN_SECS")
+    if raw:
+        try:
+            return max(0.0, float(raw))
+        except ValueError:
+            pass
+    return _DAYDREAM_DRAIN_DEFAULT_SECS
+
+
+def _add_dream_env(extra_env: dict[str, str]) -> None:
+    """Add the daydream WRITE-path env (``OPENROUTER_API_KEY`` + any ``DREAM_*``) to
+    ``extra_env`` IN PLACE, from the process environment, when set.
+
+    On WSL only ``extra_env`` crosses the Windows->WSL boundary (``_wsl_env_prefix``),
+    so without this the in-WSL plugin Stop hook can't reach OpenRouter and its daydream
+    write is empty. Never hardcodes a secret value — it forwards whatever is already in
+    the environment, or nothing."""
+    ork = os.environ.get("OPENROUTER_API_KEY")
+    if ork:
+        extra_env["OPENROUTER_API_KEY"] = ork
+    for k, v in os.environ.items():
+        if k.startswith("DREAM_"):
+            extra_env[k] = v
 
 
 class ClaudeCodeAgent:
@@ -478,8 +581,14 @@ class ClaudeCodeAgent:
             plugin_env = self._ensure_real_plugin()
             store_dir = checkout / ".cookbook-memory"
             store_dir.mkdir(parents=True, exist_ok=True)
-            self._seed_plugin_store(task, store_dir, plugin_env)
+            # Fix A: restore the group's accumulated memory into this task's store and
+            # seed loader priors once per group (the SWE-Bench-CL accumulation path).
+            # The store lives under the per-task CHECKOUT (it differs per base_commit),
+            # but the GROUP store is keyed on group_id under the run-tree root, so
+            # learning carries from task N to N+1. No group_id -> per-task seed only.
+            group_store = self._group_restore(task, store_dir, plugin_env)
             extra_env = {**plugin_env, "CLAUDE_PROJECT_DIR": str(checkout)}
+            _add_dream_env(extra_env)  # OPENROUTER_API_KEY / DREAM_* for the daydream write path
             events = store_dir / "events.jsonl"
             # Drive the coding turn through the PRIMED runner with a retry-until-recall
             # backstop (mirrors the QA _solve_plugin_real loop) so the headless MCP
@@ -489,6 +598,7 @@ class ClaudeCodeAgent:
             # CLAUDE_PROJECT_DIR; permission_mode stays acceptEdits so the agent can
             # still edit files. Recall reach is counted via the plugin's OWN events
             # stream (_count_recall_events), not the harness recall log.
+            before_writes = _count_daydream_writes(events)
             res: Optional[ClaudeResult] = None
             for _ in range(_PLUGIN_MAX_TRIES):
                 before = _count_recall_events(events)
@@ -499,6 +609,10 @@ class ClaudeCodeAgent:
                 if _count_recall_events(events) > before:
                     break  # the agent reached the recall tool -> plugin MCP connected
             self._attribute_real_recall(events, ctx)
+            # Fix A: drain the plugin's async daydream WRITE, then persist this task's
+            # learned memory back to the group store (excluding events.jsonl).
+            self._drain_daydream(task, res, store_dir, events, plugin_env, before_writes)
+            self._group_persist(group_store, store_dir)
             return res  # type: ignore[return-value]
         # off: no seeding, no memory.
         return self._run(_CODE_AGENT_PREFIX + base_prompt, checkout, _SYS_CODE_AGENT,
@@ -570,15 +684,25 @@ class ClaudeCodeAgent:
            to the seeded store;
         4. attribute what the agent recalled to the trajectory, read from the plugin's
            own events stream (``events.jsonl``, ``meta.hits``).
+
+        Fix A — when ``task.group_id`` is set, the plugin's own learning ACCUMULATES
+        across the group: the accumulated store is copied in before the turn and the
+        post-turn (post-daydream) store is copied back, EXCLUDING ``events.jsonl`` so
+        recall attribution stays per-task. A task with no ``group_id`` keeps the exact
+        prior behavior (per-task store only).
         """
         plugin_env = self._ensure_real_plugin()  # install first so memory-cli is on PATH
         store_dir = run_dir / ".cookbook-memory"
         store_dir.mkdir(parents=True, exist_ok=True)
-        self._seed_plugin_store(task, store_dir, plugin_env)
+        # Fix A: restore the group's accumulated memory into this per-task store and
+        # seed loader priors once per group (no group_id -> per-task seed, as before).
+        group_store = self._group_restore(task, store_dir, plugin_env)
 
         extra_env = {**plugin_env, "CLAUDE_PROJECT_DIR": str(run_dir)}
+        _add_dream_env(extra_env)  # OPENROUTER_API_KEY / DREAM_* so daydream is live on WSL too
         events = store_dir / "events.jsonl"
 
+        before_writes = _count_daydream_writes(events)
         res: Optional[ClaudeResult] = None
         for _ in range(_PLUGIN_MAX_TRIES):
             before = _count_recall_events(events)
@@ -587,6 +711,10 @@ class ClaudeCodeAgent:
             if _count_recall_events(events) > before:
                 break  # the agent reached the recall tool -> plugin MCP connected
         self._attribute_real_recall(events, ctx)
+        # Fix A: drain the plugin's async daydream WRITE, then persist this task's
+        # learned memory back to the group store (excluding events.jsonl).
+        self._drain_daydream(task, res, store_dir, events, plugin_env, before_writes)
+        self._group_persist(group_store, store_dir)
         return res  # type: ignore[return-value]
 
     def _ensure_real_plugin(self) -> dict[str, str]:
@@ -626,6 +754,156 @@ class ClaudeCodeAgent:
                 args += ["--tags", tags]
             subprocess.run(args, env=env, capture_output=True, text=True,
                            timeout=60, check=False)
+
+    # -- plugin-real cross-task group store (Fix A) ------------------------- #
+    def _group_restore(self, task: Task, store_dir: Path,
+                       plugin_env: dict[str, str]) -> Optional[Path]:
+        """Copy the accumulated group store INTO this task's per-task ``store_dir`` and
+        seed loader priors at most once per group. Returns the group store path (or
+        ``None`` when the task has no ``group_id`` — then behavior is unchanged: the
+        per-task store is seeded as before).
+
+        Ordering: restore accumulated memory first (so a later task starts from what
+        prior tasks learned), EXCLUDING ``events.jsonl``; then seed ``task.sessions``
+        priors only on the FIRST task of the group (sentinel-guarded). For SWE-Bench-CL
+        the first task usually has no priors, so seeding is effectively empty and the
+        store builds purely from daydream — intended."""
+        group_store = self._plugin_group_store(task)
+        if group_store is None:
+            # No group: per-task store only — seed priors exactly as before.
+            self._seed_plugin_store(task, store_dir, plugin_env)
+            return None
+
+        first_task = not _group_store_has_memory(group_store)
+        # Restore accumulated memory into the per-task store (no-op on the first task).
+        _copy_store_contents(group_store, store_dir)
+        # Seed loader priors ONCE per group (sentinel guards re-seeding on task N>1).
+        seeded_sentinel = group_store / _GROUP_SEEDED_SENTINEL
+        if first_task and not seeded_sentinel.exists():
+            self._seed_plugin_store(task, store_dir, plugin_env)
+            group_store.mkdir(parents=True, exist_ok=True)
+            seeded_sentinel.write_text("", encoding="utf-8")
+        return group_store
+
+    def _group_persist(self, group_store: Optional[Path], store_dir: Path) -> None:
+        """Copy this task's per-task store BACK to the group store (persist what the
+        plugin learned this task), EXCLUDING ``events.jsonl`` so recall attribution
+        stays per-task. No-op when the task has no group."""
+        if group_store is None:
+            return
+        _copy_store_contents(store_dir, group_store)
+
+    def _drain_daydream(self, task: Task, res: ClaudeResult, store_dir: Path,
+                        events: Path, plugin_env: dict[str, str],
+                        before_writes: int) -> None:
+        """Ensure the plugin's async Stop-hook daydream WRITE has landed before the
+        per-task store is persisted to the group store.
+
+        The shipping plugin's ``Stop`` hook is ``async: true`` and shells out to
+        ``daydream-cli daydream`` (which BLOCKS until the engine finishes) — but the CC
+        process may return from the headless turn before that subprocess completes, so
+        a naive copy-out would miss this task's new memory. Two-stage drain:
+
+        1. **Poll** the per-task ``events.jsonl`` for a NEW daydream write event
+           (``daydream.memory_written`` or ``daydream.hook_subprocess_fired``) for up to
+           ``MEMEVAL_DAYDREAM_DRAIN_SECS`` (default :data:`_DAYDREAM_DRAIN_DEFAULT_SECS`).
+           A fresh event means the hook's write already completed — done.
+        2. **Backstop** — if no event lands in time, drive ``daydream-cli daydream``
+           SYNCHRONOUSLY ourselves (same engine the hook uses) with the hook's stdin
+           payload (``session_id`` + ``transcript_path`` discovered from the just-run
+           turn) and env ``MEMORY_STORE=<store_dir>`` (+ ``OPENROUTER_API_KEY`` /
+           ``DREAM_*`` when set). This guarantees the write completes before copy-out.
+
+        No-op under the offline fake runner (no real ``daydream-cli`` / transcript);
+        the drain only matters against the real CLI + plugin. If the transcript path
+        cannot be discovered, the synchronous backstop is skipped (poll-only) — see the
+        comment at the discovery site."""
+        # Offline / fake-runner: nothing real to drain. _ensure_real_plugin returns {}
+        # in that case (no install), which is the cheapest signal that this is a test.
+        if self._runner is not run_claude:
+            return
+
+        deadline = time.monotonic() + _drain_timeout_secs()
+        while time.monotonic() < deadline:
+            if _count_daydream_writes(events) > before_writes:
+                return  # the async hook's write already landed — drained.
+            time.sleep(0.25)
+
+        # Backstop: the hook didn't finish in time (or never fired) — run the SAME
+        # daydream engine synchronously so the per-task memory is written before we
+        # persist it to the group store.
+        session_id, transcript = self._discover_transcript(res, store_dir)
+        if not session_id or transcript is None:
+            # Transcript path could not be reliably determined for this headless turn
+            # (e.g. the session_id wasn't in the result envelope, or no matching
+            # <session_id>.jsonl exists under the sandbox projects tree). Drain is
+            # POLL-ONLY here — we do NOT silently pretend it drained. Documented
+            # limitation: a slow async hook past the poll window may not be captured
+            # for this task; raise MEMEVAL_DAYDREAM_DRAIN_SECS on the real run.
+            return
+        self._run_daydream_cli(session_id, transcript, store_dir, plugin_env)
+
+    def _discover_transcript(self, res: ClaudeResult,
+                             store_dir: Path) -> tuple[Optional[str], Optional[Path]]:
+        """Best-effort (session_id, transcript_path) for the just-completed headless
+        turn, for the synchronous daydream backstop.
+
+        ``claude -p``'s JSON/stream-json result envelope carries ``session_id`` (kept on
+        :attr:`ClaudeResult.raw`). Claude Code records that turn's transcript at
+        ``<CLAUDE_CONFIG_DIR>/projects/<cwd-slug>/<session_id>.jsonl``. The slug
+        encoding is CC-internal and platform-dependent (and differs under WSL), so
+        rather than reconstruct it we GLOB for ``<session_id>.jsonl`` anywhere under the
+        sandbox ``projects/`` tree — robust to the slug format. Returns ``(None, None)``
+        when the session_id or the file can't be found."""
+        raw = res.raw if isinstance(res.raw, dict) else {}
+        session_id = raw.get("session_id") or raw.get("sessionId")
+        if not session_id:
+            return None, None
+        cfg = sandbox.active_config_dir()
+        if not cfg:
+            return None, None
+        projects = Path(cfg) / "projects"
+        if not projects.is_dir():
+            return str(session_id), None
+        matches = list(projects.glob(f"**/{session_id}.jsonl"))
+        if not matches:
+            return str(session_id), None
+        # Prefer the newest match if the id somehow appears twice.
+        transcript = max(matches, key=lambda p: p.stat().st_mtime)
+        return str(session_id), transcript
+
+    def _run_daydream_cli(self, session_id: str, transcript: Path, store_dir: Path,
+                          plugin_env: dict[str, str]) -> None:
+        """Drive ``daydream-cli daydream`` synchronously — the SAME engine the plugin's
+        Stop hook uses — with the hook's stdin payload and ``MEMORY_STORE=<store_dir>``.
+
+        Passes ``OPENROUTER_API_KEY`` and any ``DREAM_*`` vars through from the process
+        environment when set (the daydream write path needs them); never hardcodes a
+        secret. No-op if ``daydream-cli`` isn't on PATH (so this stays safe even outside
+        a full real install)."""
+        import subprocess
+
+        env = {**os.environ, **plugin_env, "MEMORY_STORE": str(store_dir)}
+        ork = os.environ.get("OPENROUTER_API_KEY")
+        if ork:
+            env["OPENROUTER_API_KEY"] = ork
+        for k, v in os.environ.items():
+            if k.startswith("DREAM_"):
+                env[k] = v
+        exe = shutil.which("daydream-cli", path=env.get("PATH"))
+        if exe is None:
+            return  # no daydream-cli (e.g. partial install) — poll-only drain stands.
+        payload = json.dumps({
+            "session_id": session_id,
+            "transcript_path": str(transcript),
+            "hook_event_name": "Stop",
+        })
+        try:
+            subprocess.run([exe, "daydream"], input=payload, env=env,
+                           capture_output=True, text=True, timeout=self.timeout,
+                           check=False)
+        except Exception:
+            return  # fail-open: a backstop failure must not crash the benchmark run.
 
     def _attribute_real_recall(self, events: Path, ctx: Any) -> None:
         """Record each recall the agent performed (from the plugin's events stream)
@@ -701,11 +979,32 @@ class ClaudeCodeAgent:
         return self._runtime or detect() or ClaudeRuntime(
             kind="native", exe="claude", python=sys.executable or "python")
 
-    def _task_dir(self, task: Task) -> Path:
+    def _root_dir(self) -> Path:
+        """The run-tree root: the injected ``workdir`` or a stable temp dir. Shared by
+        per-task dirs (:meth:`_task_dir`) and the per-group plugin-real store
+        (:meth:`_plugin_group_store`) so both live under the same tree."""
         import tempfile
-        root = self._root or Path(tempfile.gettempdir()) / "memeval-claudecode"
+        return self._root or Path(tempfile.gettempdir()) / "memeval-claudecode"
+
+    def _task_dir(self, task: Task) -> Path:
         safe = "".join(c if c.isalnum() or c in "._-" else "-" for c in str(task.task_id))[:80]
-        return root / self.memory_mode / safe
+        return self._root_dir() / self.memory_mode / safe
+
+    def _plugin_group_store(self, task: Task) -> Optional[Path]:
+        """The SHARED plugin-real store for ``task``'s group, or ``None`` when the task
+        has no ``group_id`` (then plugin-real behaves exactly as before: per-task store
+        only, no accumulation).
+
+        Keyed on ``group_id`` under ``<root>/<mode>/_groupstore/<safe(group_id)>`` so a
+        SWE-Bench-CL sequence's tasks share one accumulating store while each task keeps
+        its own per-task checkout/run dir (different base_commit). Same sanitization as
+        :meth:`_task_dir`."""
+        if not task.group_id:
+            return None
+        safe = "".join(
+            c if c.isalnum() or c in "._-" else "-" for c in str(task.group_id)
+        )[:80]
+        return self._root_dir() / self.memory_mode / "_groupstore" / safe
 
 
 def _build_prompt(task: Task) -> str:
