@@ -71,10 +71,38 @@ echo-model CLI with nothing else installed.
 
 ---
 
+## Setup: virtual environment (macOS, Linux, WSL)
+
+Work in a **virtual environment** on **Python 3.13** (the targeted version; `>=3.11`
+is the floor). This is the cross-platform standard — the same commands on macOS,
+Linux, and WSL — and it avoids two common traps: a system Python that only ships
+`python3`/`pip3` (no bare `pip`), and Homebrew/Debian's *externally-managed* Python
+(PEP 668) that refuses a direct `pip install`. We use [`uv`](https://docs.astral.sh/uv/)
+(install: `brew install uv`, or `curl -LsSf https://astral.sh/uv/install.sh | sh`),
+which picks the right interpreter for you and is identical across platforms:
+
+```bash
+# from the repo root
+uv venv --python 3.13                     # creates ./.venv on Python 3.13
+source .venv/bin/activate                  # Windows (non-WSL): .venv\Scripts\activate
+uv pip install -e 'eval[daydream,dev]'     # the harness + dreaming + test deps
+uv pip install --no-deps -e plugin         # the cookbook-memory plugin (for plugin-real runs)
+```
+
+Once activated, plain `python` / `pip` / the console scripts (`memeval`, `memeval-bench`,
+`memeval-pipeline`, `daydream-cli`) are on your PATH. Prefer **uv**, but a stdlib venv
+works too: `python3.13 -m venv .venv && source .venv/bin/activate && pip install -e 'eval[...]'`.
+
+> The `Makefile` targets (`make test`, `make install-dev`) call bare `pip`/`python`, so
+> run them only from inside an activated venv. The `Install` commands below assume the
+> same.
+
+---
+
 ## Install
 
 ```bash
-# from the eval/ directory (this README's directory)
+# from the eval/ directory (this README's directory) — inside an activated venv
 pip install -e .                 # offline path only — stdlib, zero extra deps
 ```
 

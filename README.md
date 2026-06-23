@@ -87,6 +87,13 @@ The evaluation code lives in [`eval/`](eval/) — a stdlib-first Python package
 memory** vs **our plugin memory**, on your Claude Code **subscription** (no API
 key, no API billing). Installing puts a **`memeval-bench`** command on your PATH.
 
+First set up a virtual environment on Python 3.13 — the one standard way across
+macOS / Linux / WSL (see [`eval/README.md` → Setup](eval/README.md#setup-virtual-environment-macos-linux-wsl)):
+
+```bash
+uv venv --python 3.13 && source .venv/bin/activate    # or: python3.13 -m venv .venv && source .venv/bin/activate
+```
+
 ```bash
 cd eval
 pip install -e ".[claudecode,hf]"               # harness + MCP memory plugin + dataset loaders
