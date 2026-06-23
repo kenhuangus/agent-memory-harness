@@ -99,6 +99,94 @@ class BuildSandbox(unittest.TestCase):
             self.assertEqual(json.loads((d / "settings.json").read_text()), {})
 
 
+class SeedAuthFromHost(unittest.TestCase):
+    """Copying the host's file-based OAuth login into a sandbox (Linux/WSL)."""
+
+    def _make_host(self, td: Path):
+        """A fake host: ~/.claude/.credentials.json + ~/.claude.json (account)."""
+        host = td / "host" / ".claude"
+        host.mkdir(parents=True)
+        (host / ".credentials.json").write_text(json.dumps(
+            {"claudeAiOauth": {"accessToken": "tok", "expiresAt": 9999999999999},
+             "trustedDeviceToken": "dev"}))
+        (host.parent / ".claude.json").write_text(json.dumps(
+            {"oauthAccount": {"emailAddress": "x@y.z"}, "userID": "u1",
+             "unrelated": "stays-on-host"}))
+        return host
+
+    def test_seeds_credentials_and_account(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td)
+            host = self._make_host(tdp)
+            sbx = tdp / "sbx"
+            sandbox.build(sbx)
+            self.assertTrue(sandbox.seed_auth_from_host(sbx, host_dir=host))
+            # credential file copied verbatim
+            self.assertEqual(
+                json.loads((sbx / ".credentials.json").read_text())["claudeAiOauth"]["accessToken"],
+                "tok")
+            # account identity merged; unrelated host keys NOT pulled in
+            sb_cj = json.loads((sbx / ".claude.json").read_text())
+            self.assertEqual(sb_cj["oauthAccount"], {"emailAddress": "x@y.z"})
+            self.assertEqual(sb_cj["userID"], "u1")
+            self.assertNotIn("unrelated", sb_cj)
+            self.assertTrue(sandbox.is_logged_in(sbx))
+
+    def test_preserves_existing_sandbox_claude_json(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td)
+            host = self._make_host(tdp)
+            sbx = tdp / "sbx"
+            sandbox.build(sbx)
+            (sbx / ".claude.json").write_text(json.dumps({"enabledPlugins": {"cookbook": True}}))
+            self.assertTrue(sandbox.seed_auth_from_host(sbx, host_dir=host))
+            sb_cj = json.loads((sbx / ".claude.json").read_text())
+            self.assertEqual(sb_cj["enabledPlugins"], {"cookbook": True})  # install state kept
+            self.assertEqual(sb_cj["userID"], "u1")                        # account merged
+
+    def test_returns_false_when_host_has_no_file_credential(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td)
+            host = tdp / "host" / ".claude"  # keychain platform: no .credentials.json
+            host.mkdir(parents=True)
+            sbx = tdp / "sbx"
+            sandbox.build(sbx)
+            self.assertFalse(sandbox.seed_auth_from_host(sbx, host_dir=host))
+            self.assertFalse((sbx / ".credentials.json").exists())
+
+    def test_returns_false_for_stale_expired_credential(self) -> None:
+        # macOS guard: an on-disk .credentials.json that has EXPIRED (the Keychain holds
+        # the live token) must NOT be copied — else the sandbox looks seeded but fails
+        # "Not logged in" with no /login hint.
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td)
+            host = tdp / "host" / ".claude"
+            host.mkdir(parents=True)
+            (host / ".credentials.json").write_text(json.dumps(
+                {"claudeAiOauth": {"accessToken": "stale", "expiresAt": 1}}))  # 1970 -> expired
+            sbx = tdp / "sbx"
+            sandbox.build(sbx)
+            self.assertFalse(sandbox.seed_auth_from_host(sbx, host_dir=host))
+            self.assertFalse((sbx / ".credentials.json").exists())
+
+    def test_returns_false_for_credential_without_expiry(self) -> None:
+        # No expiresAt -> can't vouch for freshness -> don't seed (fall back to /login).
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td)
+            host = tdp / "host" / ".claude"
+            host.mkdir(parents=True)
+            (host / ".credentials.json").write_text(json.dumps(
+                {"claudeAiOauth": {"accessToken": "no-exp"}}))
+            sbx = tdp / "sbx"
+            sandbox.build(sbx)
+            self.assertFalse(sandbox.seed_auth_from_host(sbx, host_dir=host))
+
+
 class LoginCommands(unittest.TestCase):
     def test_posix_form(self) -> None:
         cmds = sandbox.login_commands(Path("/x/sbx"), windows=False)
