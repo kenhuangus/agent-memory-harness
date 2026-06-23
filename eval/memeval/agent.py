@@ -406,6 +406,18 @@ def run_agent(
                 "memory_reached": sum(
                     1 for t in trajs if any(s.kind == "retrieve" for s in t.steps)
                 ),
+                "memory_hit": sum(
+                    1 for t in trajs
+                    if any(s.kind == "retrieve" and s.retrieved for s in t.steps)
+                ),
+                "recall_attempted": sum(
+                    1 for t in trajs if any(s.kind == "retrieve" for s in t.steps)
+                ),
+                "recall_with_hits": sum(
+                    1 for t in trajs
+                    if any(s.kind == "retrieve" and s.retrieved for s in t.steps)
+                ),
+                "graded_n": sum(1 for t in trajs if t.success is not None),
             },
         )
 

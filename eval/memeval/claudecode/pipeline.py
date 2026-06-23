@@ -26,7 +26,9 @@ non-interactive ``--yes`` mode for CI/scripts. Drives the SAME machinery the per
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import sqlite3
 import sys
 import types
 from pathlib import Path
@@ -286,6 +288,136 @@ def _rebase_cost(rr: Any, cost_base: float) -> Any:
     except Exception:  # noqa: BLE001
         pass
     return rr
+
+
+def _sqlite_count(path: Path, table: str) -> Optional[int]:
+    """Return a SQLite table count, or ``None`` when the store/table is absent."""
+    if not path.is_file():
+        return None
+    try:
+        with sqlite3.connect(str(path)) as db:
+            row = db.execute(f"select count(*) from {table}").fetchone()
+    except sqlite3.Error:
+        return None
+    return int(row[0]) if row else None
+
+
+def _event_name(rec: dict) -> str:
+    return str(rec.get("op") or rec.get("event_type") or rec.get("event") or rec.get("type") or "")
+
+
+def _read_store_events(store_dir: Path) -> list[dict]:
+    events = store_dir / "events.jsonl"
+    if not events.is_file():
+        return []
+    out: list[dict] = []
+    try:
+        lines = events.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            continue
+    return out
+
+
+def _store_health(substrate: Path) -> dict[str, Any]:
+    """Read-only observability snapshot for the plugin-owned shared store."""
+    store_dir = substrate / ".cookbook-memory"
+    events = _read_store_events(store_dir)
+    recall_events = [r for r in events if _event_name(r) == "recall"]
+    recall_with_hits = [
+        r for r in recall_events
+        if (r.get("ids") or (r.get("meta") or {}).get("hits"))
+    ]
+    names = [_event_name(r) for r in events]
+    memory_items = _sqlite_count(store_dir / "memory.db", "items")
+    graph_nodes = _sqlite_count(store_dir / "graph.db", "nodes")
+    markdown_items = len(list(store_dir.glob("*.md"))) if store_dir.is_dir() else 0
+    durable_counts = [n for n in (memory_items, graph_nodes, markdown_items) if n is not None]
+    return {
+        "store_dir": str(store_dir),
+        "events": len(events),
+        "recall_events": len(recall_events),
+        "recall_with_hits": len(recall_with_hits),
+        "recall_zero_hits": len(recall_events) - len(recall_with_hits),
+        "recall_errors": sum(
+            1 for r in events
+            if _event_name(r) == "error" and (r.get("meta") or {}).get("op_attempted") == "recall"
+        ),
+        "daydream_completed": sum(
+            1 for n in names
+            if n in {"daydream.hook_subprocess_fired", "daydream.chunk_extracted"}
+        ),
+        "daydream_memory_written": sum(1 for n in names if n == "daydream.memory_written"),
+        "memory_items": memory_items,
+        "graph_nodes": graph_nodes,
+        "markdown_items": markdown_items,
+        "durable_items": max(durable_counts) if durable_counts else 0,
+    }
+
+
+def _health_delta(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key, after_v in after.items():
+        before_v = before.get(key)
+        if isinstance(after_v, int) and isinstance(before_v, int):
+            out[key] = after_v - before_v
+    return out
+
+
+def _stage_warnings(stage: str, cfg: dict, rr: Any, before: dict[str, Any],
+                    after: dict[str, Any], delta: dict[str, Any]) -> list[dict[str, str]]:
+    warnings: list[dict[str, str]] = []
+    if _STAGE_MODE[stage] == "plugin-real":
+        if delta.get("recall_events", 0) <= 0:
+            warnings.append({
+                "code": "memory_recall_not_observed",
+                "message": "plugin-real stage produced no recall events",
+            })
+        if stage in {"plugin-accum", "plugin-dreamed"} and after.get("durable_items", 0) <= 0:
+            warnings.append({
+                "code": "memory_store_empty",
+                "message": "shared store has no durable memories after accumulation stage",
+            })
+        if delta.get("daydream_completed", 0) > 0 and delta.get("daydream_memory_written", 0) <= 0:
+            warnings.append({
+                "code": "daydream_completed_without_writes",
+                "message": "daydream completed but wrote no durable memories",
+            })
+    if cfg["grader"] == "none" or rr.metadata.get("graded_n", 0) == 0:
+        warnings.append({
+            "code": "accuracy_ungraded",
+            "message": "no graded tasks; accuracy is not a resolve-rate measurement",
+        })
+    return warnings
+
+
+def _preflight_warnings(cfg: dict, substrate: Path, active: list[str]) -> list[dict[str, str]]:
+    warnings: list[dict[str, str]] = []
+    provider = os.environ.get("DREAM_PROVIDER", "openrouter").strip().lower()
+    if provider == "openrouter" and not (os.environ.get("OPENROUTER_API_KEY") or "").strip():
+        warnings.append({
+            "code": "dreamer_key_missing",
+            "message": "OPENROUTER_API_KEY is not set; daydream extraction may write no memories",
+        })
+    if cfg["grader"] == "none":
+        warnings.append({
+            "code": "grader_none",
+            "message": "CODE accuracy will be ungraded",
+        })
+    if "plugin-blank" in active:
+        initial = _store_health(substrate)
+        if initial.get("durable_items", 0) > 0 or initial.get("events", 0) > 0:
+            warnings.append({
+                "code": "shared_store_not_blank",
+                "message": "plugin-blank stage is starting with an existing shared store",
+            })
+    return warnings
 
 
 def _make_progress_cb(stage: str, total: int, on_task=None, cost_base: float = 0.0):
@@ -576,6 +708,7 @@ def run_pipeline(cfg: dict) -> dict:
 
     active = cfg.get("stages") or list(_EVAL_STAGES)
     meta["stages_run"] = active
+    meta["preflight"] = {"warnings": _preflight_warnings(cfg, substrate, active)}
     cost = CostTracker(budget_usd=cfg["budget_usd"]) if cfg["budget_usd"] and cfg["budget_usd"] > 0 else None
     total = _stage_task_total(cfg)
     meta["n_tasks"] = total
@@ -651,10 +784,14 @@ def _run_one(stage: str, cfg: dict, substrate: Path, cost: Any,
     # so its spent_usd is CUMULATIVE. Subtract the spend at stage start so each stage's
     # cost reflects only THAT stage, not the running pipeline total.
     cost_base = cost.spent_usd if cost is not None else 0.0
+    memory_before = _store_health(substrate)
     print(f"\n── stage {idx}/5 · {stage} (mode={_STAGE_MODE[stage]}) · {total} tasks "
           f"──────────", flush=True)
     rr = _run_eval_stage(stage, cfg, substrate, cost=cost, total=total, on_task=on_task,
                          cost_base=cost_base)
+    memory_after = _store_health(substrate)
+    memory_delta = _health_delta(memory_before, memory_after)
+    warnings = _stage_warnings(stage, cfg, rr, memory_before, memory_after, memory_delta)
     _rebase_cost(rr, cost_base)
     m = rr.metrics
     secs = int(time.monotonic() - t0)
@@ -673,7 +810,20 @@ def _run_one(stage: str, cfg: dict, substrate: Path, cost: Any,
         except Exception as exc:  # native CL is supplementary -- never abort the stage
             print(f"  native CL skipped: {type(exc).__name__}: {str(exc)[:120]}",
                   file=sys.stderr, flush=True)
-    return PS.stage_row(rr, stage=stage, stage_index=idx, pipeline_meta=meta)
+    return PS.stage_row(
+        rr,
+        stage=stage,
+        stage_index=idx,
+        pipeline_meta=meta,
+        extra={
+            "memory_health": {
+                "before": memory_before,
+                "after": memory_after,
+                "delta": memory_delta,
+            },
+            "warnings": warnings,
+        },
+    )
 
 
 def main(argv: Optional[list[str]] = None) -> int:

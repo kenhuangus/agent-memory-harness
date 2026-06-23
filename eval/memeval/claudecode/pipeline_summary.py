@@ -30,19 +30,29 @@ from ..results import (
 _SUMMARY_METRICS = ("accuracy", "relevancy", "recency", "efficiency")
 
 
-def stage_row(rr: Any, *, stage: str, stage_index: int, pipeline_meta: dict) -> dict:
+def stage_row(
+    rr: Any,
+    *,
+    stage: str,
+    stage_index: int,
+    pipeline_meta: dict,
+    extra: Optional[dict] = None,
+) -> dict:
     """Flatten a stage's ``RunResult`` into a ledger row, stamped with stage identity
     and git provenance via the existing ``extra=`` channel."""
+    row_extra = {
+        "pipeline_stage": stage,
+        "stage_index": stage_index,
+        "git_sha": pipeline_meta.get("git_sha", ""),
+        "git_tag": pipeline_meta.get("version", ""),
+    }
+    if extra:
+        row_extra.update(extra)
     return result_record(
         rr,
         run_id=f"pipeline-{stage}",
         notes=f"5-stage SWE-Bench-CL pipeline · stage {stage_index} ({stage})",
-        extra={
-            "pipeline_stage": stage,
-            "stage_index": stage_index,
-            "git_sha": pipeline_meta.get("git_sha", ""),
-            "git_tag": pipeline_meta.get("version", ""),
-        },
+        extra=row_extra,
     )
 
 
@@ -108,13 +118,30 @@ def build_summary(
     stages_out = []
     for r in rows:
         stage = r.get("pipeline_stage")
+        reliability = r.get("reliability") or {}
+        memory_health = r.get("memory_health") or {}
+        memory_delta = memory_health.get("delta") or {}
+        memory_after = memory_health.get("after") or {}
         entry = {
             "stage": stage,
             "stage_index": r.get("stage_index"),
             "metrics": {k: _metrics_of(r).get(k) for k in _SUMMARY_METRICS},
             "n_tasks": r.get("n_tasks"),
             "cost_usd": r.get("cost_usd"),
-            "memory_reached": (r.get("reliability") or {}).get("memory_reached"),
+            "graded_n": reliability.get("graded_n"),
+            "memory_reached": reliability.get("memory_reached"),
+            "memory_hit": reliability.get("memory_hit"),
+            "recall_attempted": reliability.get("recall_attempted"),
+            "recall_with_hits": reliability.get("recall_with_hits"),
+            "memory_health": {
+                "recall_events": memory_delta.get("recall_events"),
+                "recall_with_hits": memory_delta.get("recall_with_hits"),
+                "recall_zero_hits": memory_delta.get("recall_zero_hits"),
+                "daydream_completed": memory_delta.get("daydream_completed"),
+                "daydream_memory_written": memory_delta.get("daydream_memory_written"),
+                "durable_items_after": memory_after.get("durable_items"),
+            },
+            "warnings": list(r.get("warnings") or []),
         }
         if stage in native_by_stage:
             entry["native_cl"] = _native_headline(native_by_stage[stage])
@@ -161,6 +188,12 @@ def _fmt(v: Any, *, signed: bool = False) -> str:
     return str(v)
 
 
+def _metric_cell(stage: dict, key: str) -> str:
+    if key == "accuracy" and stage.get("graded_n") == 0:
+        return "—"
+    return _fmt((stage.get("metrics") or {}).get(key))
+
+
 def render_summary_md(summary: dict) -> str:
     """Render the human-readable SUMMARY markdown from :func:`build_summary` output."""
     pm = summary.get("pipeline", {})
@@ -179,17 +212,41 @@ def render_summary_md(summary: dict) -> str:
     )
     lines.append("")
 
+    preflight_warnings = ((pm.get("preflight") or {}).get("warnings") or [])
+    if preflight_warnings:
+        lines.append("## Preflight")
+        lines.append("")
+        for warning in preflight_warnings:
+            lines.append(f"- `{warning.get('code')}`: {warning.get('message')}")
+        lines.append("")
+
     # Per-stage metric table.
     header = "| Stage | " + " | ".join(_SUMMARY_METRICS) + " | n | cost |"
     sep = "|" + "---|" * (len(_SUMMARY_METRICS) + 3)
     lines.append(header)
     lines.append(sep)
     for s in summary.get("stages", []):
-        m = s.get("metrics", {})
-        cells = " | ".join(_fmt(m.get(k)) for k in _SUMMARY_METRICS)
+        cells = " | ".join(_metric_cell(s, k) for k in _SUMMARY_METRICS)
         cost = s.get("cost_usd")
         cost_cell = f"${cost:.4f}" if isinstance(cost, (int, float)) else "—"
         lines.append(f"| {s.get('stage')} | {cells} | {s.get('n_tasks')} | {cost_cell} |")
+    lines.append("")
+
+    # Memory/reliability table.
+    lines.append("## Memory health")
+    lines.append("")
+    lines.append("| Stage | recall tasks | recall events | hit events | writes | durable after | graded | warnings |")
+    lines.append("|---|---|---|---|---|---|---|---|")
+    for s in summary.get("stages", []):
+        mh = s.get("memory_health") or {}
+        warns = ", ".join(w.get("code", "") for w in s.get("warnings", []) if w.get("code"))
+        lines.append(
+            f"| {s.get('stage')} | {_fmt(s.get('recall_attempted'))} | "
+            f"{_fmt(mh.get('recall_events'))} | {_fmt(mh.get('recall_with_hits'))} | "
+            f"{_fmt(mh.get('daydream_memory_written'))} | "
+            f"{_fmt(mh.get('durable_items_after'))} | {_fmt(s.get('graded_n'))} | "
+            f"{warns or '—'} |"
+        )
     lines.append("")
 
     # Deltas (base -> final the headline).

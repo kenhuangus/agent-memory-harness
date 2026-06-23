@@ -119,6 +119,10 @@ def test_pipeline_end_to_end_offline(monkeypatch) -> None:
         # Four eval-stage rows, in order, each stamped with its stage identity.
         stages = [r["pipeline_stage"] for r in doc["runs"]]
         assert stages == ["base", "plugin-blank", "plugin-accum", "plugin-dreamed"]
+        plugin_rows = [r for r in doc["runs"] if r["pipeline_stage"].startswith("plugin-")]
+        assert all("memory_health" in r for r in plugin_rows)
+        assert all((r["memory_health"]["delta"]["recall_events"] >= 1) for r in plugin_rows)
+        assert all((r["reliability"]["recall_attempted"] >= 1) for r in plugin_rows)
 
         # SUMMARY written (md + json) with base->final deltas.
         md = list(Path(tmp).rglob("SUMMARY-swe_bench_cl-*.md"))
@@ -126,6 +130,8 @@ def test_pipeline_end_to_end_offline(monkeypatch) -> None:
         assert len(md) == 1 and len(js) == 1
         sj = json.loads(js[0].read_text())
         assert "base_to_final" in sj["deltas"]
+        assert "Memory health" in md[0].read_text()
+        assert sj["stages"][1]["memory_health"]["recall_events"] >= 1
         assert summary["benchmark"] == "swe_bench_cl"
 
 
@@ -181,6 +187,33 @@ def test_pipeline_native_cl_is_opt_in() -> None:
     args = P._build_parser().parse_args(["--native-cl"])
     cfg = P._resolve_config(args)
     assert cfg["native_cl"] is True
+
+
+def test_summary_renders_ungraded_accuracy_as_dash() -> None:
+    from memeval.claudecode import pipeline_summary as PS
+
+    md = PS.render_summary_md({
+        "benchmark": "swe_bench_cl",
+        "pipeline": {"version": "vtest", "sequence": "s", "model": "m", "n_tasks": 1,
+                     "n_stages": 5, "dream": {"provider": "p", "model": "d"},
+                     "grader": "none", "git_sha": "abc"},
+        "stages": [{
+            "stage": "plugin-blank",
+            "metrics": {"accuracy": 0.0, "relevancy": 0.0, "recency": 0.0, "efficiency": 0.0},
+            "n_tasks": 1,
+            "cost_usd": 0.0,
+            "graded_n": 0,
+            "recall_attempted": 1,
+            "memory_health": {"recall_events": 1, "recall_with_hits": 0,
+                              "daydream_memory_written": 0, "durable_items_after": 0},
+            "warnings": [{"code": "accuracy_ungraded", "message": "no graded tasks"}],
+        }],
+        "deltas": {},
+        "dream": {"status": "not-run"},
+    })
+
+    assert "| plugin-blank | — | 0.0000 | 0.0000 | 0.0000 | 1 | $0.0000 |" in md
+    assert "accuracy_ungraded" in md
 
 
 def test_pipeline_fails_closed_when_sandbox_not_logged_in(monkeypatch) -> None:
