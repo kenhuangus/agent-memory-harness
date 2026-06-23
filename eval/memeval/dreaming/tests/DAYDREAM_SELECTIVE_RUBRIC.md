@@ -12,9 +12,9 @@ that:
 3. Extends `extract_memories` (`_extract.py:80-160`) to parse the `rejected`
    array, emit one `daydream.candidate_rejected` event per surviving rejection
    row, and account malformed rejection rows into the existing
-   `chunk_partial_parse` event (extended with `memories_n_kept`,
-   `memories_n_dropped`, `rejected_n_kept`, `rejected_n_dropped` kwargs —
-   the kwarg rename is a documented breaking change).
+   `chunk_partial_parse` event (preserved `n_kept` / `n_dropped` for
+   memories-side; new `rejected_n_kept` / `rejected_n_dropped` added
+   additively — extension is backward-compatible).
 4. Rotates `_SYSTEM_PROMPT_SHA256` literals in BOTH `tests/test_extract.py:43`
    AND `tests/test_prompts.py:89`.
 5. Adds calibration fixtures (stub LLM only — NOT real LLM judgment),
@@ -103,9 +103,9 @@ contract violation, not a cosmetic one.
   the LLM-call seam, not at the event-emit seam).
 - New env var. No `DAYDREAM_*` config knob is introduced by this PR.
 - A separate `daydream.chunk_partial_parse_rejected` event. The single
-  `chunk_partial_parse` event is EXTENDED with new kwargs (plan §3.4); this
-  is a deliberate, documented breaking change to the kwarg shape (plan §5
-  decision #9).
+  `chunk_partial_parse` event is EXTENDED with new kwargs (plan §3.4)
+  while preserving the existing `n_kept` / `n_dropped` kwargs —
+  backward-compatible additive extension (plan §5 decision #9).
 - Bench claim. The PR framing is "may improve, may not" (plan §2 dispatcher
   #10).
 - A new top-level third-party import in `_extract.py`. Stdlib +
@@ -122,27 +122,27 @@ contract violation, not a cosmetic one.
   - `_REJECTION_SNIPPET_MAX_LEN: int = 100`
   - `_REJECTION_RATIONALE_MAX_LEN: int = 200`
   - `_REJECTION_MAX_PER_CHUNK: int = 50` (halliday B2 cap)
-  `chunk_partial_parse` kwargs RENAMED in place: `n_kept` →
-  `memories_n_kept`, `n_dropped` → `memories_n_dropped`; two new kwargs
-  added: `rejected_n_kept`, `rejected_n_dropped`. A second `redact()`
+  `chunk_partial_parse` kwargs EXTENDED additively: existing `n_kept`
+  and `n_dropped` preserved (memories-side semantics unchanged); two
+  new kwargs added: `rejected_n_kept`, `rejected_n_dropped`. A second `redact()`
   call is invoked on `content_snippet` BEFORE truncation and emit
   (halliday B1 — second-pass redaction at emit seam).
 - `eval/memeval/dreaming/tests/test_extract.py` — `_SYSTEM_PROMPT_SHA256`
   literal at line 43 ROTATED. New tests added under a `# §SELECTIVE` banner.
-  The existing partial-parse test updated for the kwarg rename.
+  The existing partial-parse test updated for the additive kwargs.
 - `eval/memeval/dreaming/tests/test_prompts.py` — mirror sha256 literal at
   line 89 ROTATED. The `test_extraction_prompt_unchanged_by_job2` test
   RENAMED to `test_extraction_prompt_sha256_pin_consistency_across_files`.
 
 **Supersedes.** This is a new rubric with no predecessor. The single
-breaking change that supersedes existing test infrastructure:
+test-infrastructure update needed:
 
-- The `chunk_partial_parse` kwarg shape changes from `(n_kept, n_dropped)`
-  to `(memories_n_kept, memories_n_dropped, rejected_n_kept,
-  rejected_n_dropped)`. The single existing consumer site
-  (`test_extract.py` partial-parse test) MUST be updated in lockstep with
-  the `_extract.py` rename. No `n_kept`/`n_dropped` literal remains in
-  the production source after this PR.
+- The `chunk_partial_parse` kwarg shape EXTENDS from `(n_kept, n_dropped)`
+  to `(n_kept, n_dropped, rejected_n_kept, rejected_n_dropped)` — purely
+  additive. Existing consumers reading only `n_kept`/`n_dropped` continue
+  to work unchanged; new consumers can additionally read the rejected-side
+  counters. The single existing consumer site (`test_extract.py`
+  partial-parse test) is updated to assert the four-kwarg shape.
 
 **Preserved** (NOT changed by this PR — same surface as today):
 
@@ -199,11 +199,11 @@ plan §2 + §5 decisions):
 5. **Rationale cap = 200 chars.** Mirrors Job 2 `_RATIONALE_MAX_LEN` for
    surface symmetry. Pinned by §G + §H.
 6. **Partial-parse signal — extend, do not parallel.** The existing
-   `chunk_partial_parse` event is EXTENDED with `rejected_n_kept` and
-   `rejected_n_dropped` kwargs and the existing `n_kept`/`n_dropped`
-   kwargs are RENAMED to `memories_n_kept`/`memories_n_dropped`. One
-   event name to grep; one event-allow-set entry; single-emit-per-chunk
-   discipline preserved. The rename is a documented breaking change.
+   `chunk_partial_parse` event is EXTENDED additively with
+   `rejected_n_kept` and `rejected_n_dropped` kwargs while preserving
+   the existing `n_kept` / `n_dropped` kwargs (memories-side semantics
+   unchanged). One event name to grep; one event-allow-set entry;
+   single-emit-per-chunk discipline preserved. Backward-compatible.
    Pinned by §D.
 7. **Rejection events fire BEFORE the chunk-extracted summary.** Operator
    reading the diary sees per-drop reasoning, then chunk-level totals.
@@ -451,7 +451,7 @@ plan §2 + §5 decisions):
       ADR-013 cursor still advances). **Verify:** unit test
       `test_malformed_memories_row_counts_into_chunk_partial_parse`.
 - [ ] **D2.** The `chunk_partial_parse` event emitted in §D1 has kwargs
-      `{memories_n_kept: 1, memories_n_dropped: 2, rejected_n_kept: 0,
+      `{n_kept: 1, n_dropped: 2, rejected_n_kept: 0,
       rejected_n_dropped: 0}`. The kwarg set is exactly those four keys.
       **Verify:** unit test
       `test_chunk_partial_parse_kwarg_set_exact_four_keys`.
@@ -462,7 +462,7 @@ plan §2 + §5 decisions):
       `chunk_skipped_parse_failed` events. **Verify:** unit test
       `test_malformed_rejected_row_counts_into_chunk_partial_parse`.
 - [ ] **D4.** The `chunk_partial_parse` event emitted in §D3 has kwargs
-      `{memories_n_kept: 1, memories_n_dropped: 0, rejected_n_kept: 1,
+      `{n_kept: 1, n_dropped: 0, rejected_n_kept: 1,
       rejected_n_dropped: 2}`. **Verify:** unit test
       `test_chunk_partial_parse_extended_kwargs_for_rejected_drops`.
 - [ ] **D5.** When BOTH `memories` AND `rejected` parse without per-row
@@ -482,9 +482,11 @@ plan §2 + §5 decisions):
       is not a string (e.g. `[{"content_snippet":"s","rationale":["r"]}]`),
       the worker drops the row. **Verify:** unit test
       `test_rejected_row_wrong_type_rationale_dropped`.
-- [ ] **D9.** Source contains zero `n_kept=` or `n_dropped=` literal kwarg
-      sites in `_extract.py` (the rename is complete). **Verify:** shell
-      command `! grep -nE 'n_kept[[:space:]]*=|n_dropped[[:space:]]*=' eval/memeval/dreaming/_extract.py`.
+- [ ] **D9.** The emit call site in `_extract.py` preserves both `n_kept`
+      and `n_dropped` as literal kwargs (the additive extension preserves
+      backward compatibility — the original kwargs are NOT renamed).
+      **Verify:** shell command
+      `grep -qE '\bn_kept[[:space:]]*=' eval/memeval/dreaming/_extract.py && grep -qE '\bn_dropped[[:space:]]*=' eval/memeval/dreaming/_extract.py`.
 - [ ] **D10.** Source contains exactly one `chunk_partial_parse` emit site
       in `_extract.py`. **Verify:** shell command
       `test "$(grep -c 'chunk_partial_parse' eval/memeval/dreaming/_extract.py)" -eq 1`.
@@ -852,9 +854,11 @@ plan §2 + §5 decisions):
       `os.environ`/`os.getenv` reference compared to pre-PR. **Verify:**
       shell command
       `test "$(grep -cE 'os\\.(environ|getenv)' eval/memeval/dreaming/_extract.py)" -eq "$(git show origin/main:eval/memeval/dreaming/_extract.py | grep -cE 'os\\.(environ|getenv)')"`.
-- [ ] **J6.** No new `daydream.*` event NAME other than
-      `daydream.candidate_rejected`. **Verify:** covered by §E1 +
-      §E10.
+- [ ] **J6.** The new `daydream.*` event names are exactly two:
+      `daydream.candidate_rejected` (per-rejection audit) and
+      `daydream.rejected_field_missing` (halliday B3 one-shot
+      regression-masking warning). No other new `daydream.*` event NAME
+      is introduced. **Verify:** covered by §E1 + §E10.
 - [ ] **J7.** No change to the Job 3 governance prompt
       (`GOVERNANCE_SYSTEM_PROMPT` if present), no change to its sha256
       pin, no change to Job 3 event-allow-set. **Verify:** shell command
@@ -1044,9 +1048,11 @@ A `MISMATCH` is a BLOCKER. The pins MUST be rotated together.
 ### Check 3 — Event-allow-set AST audit (no rogue event names in `_extract.py`)
 
 The full set of `emit("...")` first-arg string literals in
-`_extract.py` MUST equal the five-name set pinned by §E1. This is the
-mechanical version of §E1's unit test, re-run by the grader as a
-gate-check independent of the test suite.
+`_extract.py` MUST equal the six-name set pinned by §E1 (the original
+four pre-existing names + the two new names: `daydream.candidate_rejected`
++ `daydream.rejected_field_missing`). This is the mechanical version of
+§E1's unit test, re-run by the grader as a gate-check independent of
+the test suite.
 
 ```bash
 python3 -c "
