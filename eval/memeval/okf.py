@@ -33,12 +33,26 @@ installed for robust parsing of arbitrary external bundles.
 from __future__ import annotations
 
 import json
+import logging
+import os
 import re
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Iterator, Optional
 
 from .schema import MemoryItem, RetrievedItem
+
+# ``fcntl`` is POSIX-only. Import lazily-guarded so the module still loads (and the store
+# still works single-process, just without the cross-process advisory lock) on a non-POSIX
+# platform. ADR-013/014: the atomic-write + flock primitives ported here mirror
+# ``dreaming/_state.py`` — a port, not an invention.
+try:  # pragma: no cover - exercised on POSIX; the except is the non-POSIX fallback
+    import fcntl as _fcntl
+except ImportError:  # pragma: no cover - non-POSIX (Windows) has no fcntl
+    _fcntl = None  # type: ignore[assignment]
+
+_logger = logging.getLogger(__name__)
 
 OKF_VERSION = "0.1"
 _RESERVED = {"index.md", "log.md"}
@@ -85,6 +99,77 @@ def _iso_to_epoch(s: Any) -> float:
 def _slug(s: str, *, default: str = "item") -> str:
     out = re.sub(r"[^A-Za-z0-9._-]+", "-", str(s).strip().lower()).strip("-")
     return out or default
+
+
+# --------------------------------------------------------------------------- #
+# Durable-write primitives (ported from dreaming/_state.py — ADR-013/014)
+# --------------------------------------------------------------------------- #
+def _write_text_atomic(path: Path, text: str) -> None:
+    """Atomically write ``text`` to ``path`` via ``tmp.replace(path)`` (ADR-013).
+
+    Writes to a unique temp sibling (``<name>.<pid>.tmp`` so concurrent writers don't
+    collide on one tmp name), ``fsync``s the file descriptor, ``os.replace``s it over the
+    destination (atomic on the same filesystem), then ``fsync``s the parent directory so
+    the rename itself survives power loss. A crash anywhere before the replace leaves the
+    PRIOR file intact — the destination is never opened in ``"w"`` mode directly. Stdlib-only.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    try:
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)  # atomic same-fs rename: a crash leaves the prior doc intact
+    except BaseException:
+        # Best-effort cleanup so a failed write never strands a partial *.tmp.
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+    # fsync the parent directory so the rename (the new dirent) is durable on power loss.
+    try:
+        dir_fd = os.open(str(path.parent), os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except OSError:  # directory fsync unsupported on some filesystems — the rename still landed
+        pass
+
+
+@contextmanager
+def _bundle_write_lock(root: Path) -> Iterator[None]:
+    """Hold a blocking exclusive advisory lock for the duration of a bundle persist.
+
+    ``fcntl.flock`` (POSIX advisory, fd-bound, releases on process death — pinned over
+    ``lockf`` per ADR-014) on a per-bundle ``.okf.lock`` file so concurrent OS processes
+    (the MCP recall path and the Daydreamer) serialize their write/delete persists over
+    one shared ``$MEMORY_STORE`` and never interleave a tmp-write+replace. ``LOCK_EX``
+    (blocking) — a peer waits rather than clobbering. On a non-POSIX platform (``fcntl``
+    absent) this is a no-op: the store still works single-process.
+    """
+    if _fcntl is None:  # non-POSIX: no advisory lock available; single-process still safe
+        yield
+        return
+    root.mkdir(parents=True, exist_ok=True)
+    lock_path = root / ".okf.lock"
+    fd = os.open(str(lock_path), os.O_WRONLY | os.O_CREAT, 0o600)
+    try:
+        _fcntl.flock(fd, _fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            try:
+                _fcntl.flock(fd, _fcntl.LOCK_UN)
+            except OSError as exc:
+                _logger.warning("OKF flock LOCK_UN failed for %s: %s", root, exc)
+    finally:
+        try:
+            os.close(fd)
+        except OSError as exc:
+            _logger.warning("OKF lock fd close failed for %s: %s", root, exc)
 
 
 # --------------------------------------------------------------------------- #
@@ -297,8 +382,7 @@ def export_bundle(items: Iterable[MemoryItem], out_dir: str | Path) -> dict[str,
     by_type: dict[str, list[tuple[str, MemoryItem]]] = {}
     for it in items:
         rel = _doc_relpath(it)
-        (root / rel).parent.mkdir(parents=True, exist_ok=True)
-        (root / rel).write_text(memory_item_to_doc(it), encoding="utf-8")
+        _write_text_atomic(root / rel, memory_item_to_doc(it))
         by_type.setdefault(rel.split("/", 1)[0], []).append((rel, it))
 
     # per-type index.md
@@ -307,14 +391,14 @@ def export_bundle(items: Iterable[MemoryItem], out_dir: str | Path) -> dict[str,
         for rel, it in sorted(entries):
             title = (it.metadata or {}).get("okf_title") or it.item_id
             lines.append(f"* [{title}](/{rel}) — {_summary(it.content, 100)}")
-        (root / tdir / "index.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        _write_text_atomic(root / tdir / "index.md", "\n".join(lines) + "\n")
 
     # root index.md (the only place okf_version is permitted)
     root_lines = [f"{_FM_DELIM}", f'okf_version: "{OKF_VERSION}"', f"{_FM_DELIM}", "",
                   "# Subdirectories", ""]
     for tdir in sorted(by_type):
         root_lines.append(f"* [{tdir}](/{tdir}/index.md) — {len(by_type[tdir])} concept(s)")
-    (root / "index.md").write_text("\n".join(root_lines) + "\n", encoding="utf-8")
+    _write_text_atomic(root / "index.md", "\n".join(root_lines) + "\n")
 
     # log.md — chronological change history (newest first)
     dated = sorted(items, key=lambda x: x.timestamp or 0, reverse=True)
@@ -323,7 +407,7 @@ def export_bundle(items: Iterable[MemoryItem], out_dir: str | Path) -> dict[str,
         iso = _epoch_to_iso(it.timestamp) or "(undated)"
         rel = _doc_relpath(it)
         log.append(f"* {iso} — **v{it.version}** [{it.item_id}](/{rel})")
-    (root / "log.md").write_text("\n".join(log) + "\n", encoding="utf-8")
+    _write_text_atomic(root / "log.md", "\n".join(log) + "\n")
 
     return {
         "okf_version": OKF_VERSION,
@@ -344,8 +428,17 @@ def import_bundle(in_dir: str | Path) -> list[MemoryItem]:
     for path in sorted(root.rglob("*.md")):
         if path.name in _RESERVED:
             continue
-        text = path.read_text(encoding="utf-8")
-        fm, _ = split_doc(text)
+        # Guard the per-file read/parse: one undecodable/torn .md (a half-written file
+        # from a crashed peer, a foreign binary) must be SKIPPED (warn + continue), not
+        # raise out and brick the whole store at construction (which would take the MCP
+        # server + Daydreamer down). Pairs with the atomic-write fix (removes most torn
+        # files at the source). ``errors='replace'`` keeps a partially-readable doc usable.
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+            fm, _ = split_doc(text)
+        except OSError as exc:
+            _logger.warning("OKF import: skipping unreadable doc %s: %s", path, exc)
+            continue
         if not fm.get("type"):
             continue  # not a conformant concept doc
         rel = path.relative_to(root).as_posix()
@@ -389,52 +482,147 @@ class OKFStore:
         from .harness import InMemoryStore  # local import: avoid cycle at module load
         self.root = Path(path)
         self._mem = InMemoryStore()
+        self._autoload = autoload
+        # mtime of the bundle root at last load — the cheap refresh trigger. A peer adding
+        # a new concept doc (the Daydreamer's dominant write) bumps the root/subdir tree;
+        # the read seam reloads when it grows stale. Content-only edits to an existing file
+        # are picked up by an explicit reload(). -1.0 == never loaded.
+        self._loaded_mtime = -1.0
         if autoload and self.root.exists():
-            for it in import_bundle(self.root):
-                self._mem.write(it)
+            self._load_from_disk()
 
+    # -- refresh seam ------------------------------------------------------
+    def _root_mtime(self) -> float:
+        """Cheap staleness signal: the max mtime over the bundle root + its concept dirs.
+
+        Catches a peer ADDING a concept doc (new file/dir -> the containing dir's mtime
+        bumps) without an O(N) per-file stat. Returns -1.0 when the bundle dir is absent.
+        """
+        if not self.root.exists():
+            return -1.0
+        try:
+            mt = self.root.stat().st_mtime
+            for sub in self.root.iterdir():
+                if sub.is_dir():
+                    mt = max(mt, sub.stat().st_mtime)
+            return mt
+        except OSError:
+            return -1.0
+
+    def _load_from_disk(self) -> None:
+        """Rebuild the in-memory mirror from the on-disk bundle (a cold autoload)."""
+        from .harness import InMemoryStore
+        mem = InMemoryStore()
+        if self.root.exists():
+            for it in import_bundle(self.root):
+                mem.write(it)
+        self._mem = mem
+        self._loaded_mtime = self._root_mtime()
+
+    def reload(self) -> None:
+        """Explicitly re-read the bundle from disk so a long-lived reader (e.g. the MCP
+        daemon) reflects peers' committed writes — defeats the frozen-at-``__init__``
+        RAM mirror that would staleness-serve a peer's (Daydreamer's) memories until
+        restart. Idempotent; safe to call before any read."""
+        self._load_from_disk()
+
+    def _maybe_refresh(self) -> None:
+        """Reload if the bundle grew stale since the last load (a peer added a doc).
+
+        Single-instance behavior is unchanged: this instance's own writes update both the
+        RAM mirror AND ``_loaded_mtime`` in lockstep, so a self-write never triggers a
+        reload and reads stay byte-equivalent. Only a *peer* process's new file makes the
+        recorded mtime stale and forces a refresh."""
+        if not self._autoload:
+            return
+        if self._root_mtime() != self._loaded_mtime:
+            self._load_from_disk()
+
+    # -- MemoryStore protocol ----------------------------------------------
     def write(self, item: MemoryItem) -> None:
-        self._mem.write(item)
+        """Persist ``item`` as an OKF concept doc — atomic (tmp+replace+fsync, ADR-013)
+        and serialized across processes by a bundle flock (ADR-014) so concurrent peers
+        over one ``$MEMORY_STORE`` never interleave a write or torn-write a doc.
+
+        ``_mem.write`` runs FIRST (it populates ``item.tokens`` in place when zero) so the
+        rendered doc carries ``x_tokens`` — byte-equivalent to the pre-hardening single-process
+        path. The on-disk persist is then the only step the flock + atomic-write guard."""
+        self._mem.write(item)  # populates item.tokens in place; the doc render below captures it
         rel = _doc_relpath(item)
-        (self.root / rel).parent.mkdir(parents=True, exist_ok=True)
-        (self.root / rel).write_text(memory_item_to_doc(item), encoding="utf-8")
+        with _bundle_write_lock(self.root):
+            _write_text_atomic(self.root / rel, memory_item_to_doc(item))
+        # keep the staleness signal in lockstep with our own write (no self-triggered reload).
+        self._loaded_mtime = self._root_mtime()
 
     def get(self, item_id: str) -> Optional[MemoryItem]:
+        self._maybe_refresh()
         return self._mem.get(item_id)
 
     def search(self, query: str, *, k: int = 5, as_of: Optional[float] = None, **kw: Any) -> list[RetrievedItem]:
+        self._maybe_refresh()
         return self._mem.search(query, k=k, as_of=as_of, **kw)
 
     def all(self) -> list[MemoryItem]:
+        self._maybe_refresh()
         return self._mem.all()
 
     def delete(self, item_id: str) -> bool:
         """Remove ``item_id`` from the bundle (its on-disk doc(s) + the in-memory index). Idempotent.
 
-        Unlinks EVERY concept doc that PARSES to ``item_id`` — the canonical path :meth:`write` uses AND any
-        noncanonical filename from a foreign imported bundle — so a fresh autoload (``import_bundle``, which
-        scans ``*.md`` and skips the reserved index.md/log.md) cannot resurrect it. The in-memory view is
-        dropped via :meth:`InMemoryStore.delete` (now a ``MemoryStore`` protocol method). Returns ``False``
-        if the id was not present.
+        Fast path: the live item's deterministic canonical doc (``_doc_relpath``) is unlinked in O(1) —
+        no full bundle scan. The O(N) rglob scan is the FALLBACK, taken only when the canonical doc is
+        absent (a foreign-imported filename that does not match the slug layout), so correctness for the
+        foreign case is preserved (every doc parsing to the id is unlinked) while the common canonical
+        delete no longer goes quadratic under a Daydreamer dedup burst. Serialized + atomic via the same
+        bundle flock as :meth:`write`. Returns ``False`` if the id was not present.
         """
-        if self._mem.get(item_id) is None:
+        item = self._mem.get(item_id)
+        if item is None:
             return False
-        if self.root.exists():
-            for path in self.root.rglob("*.md"):  # canonical AND foreign filenames both parse to an id
-                if path.name in _RESERVED:
-                    continue
-                text = path.read_text(encoding="utf-8")
-                fm, _ = split_doc(text)
-                if not fm.get("type"):
-                    continue
-                rel = path.relative_to(self.root).as_posix()
-                if doc_to_memory_item(text, fallback_id=_slug(rel[:-3])).item_id == item_id:
-                    path.unlink()
+        with _bundle_write_lock(self.root):
+            canonical = self.root / _doc_relpath(item)
+            unlinked = False
+            if canonical.exists():
+                # Verify the canonical file actually holds THIS id before fast-unlinking
+                # (a slug collision could put a different id at this path — fall through to
+                # the scan rather than delete a stranger's doc).
+                if self._doc_is_item(canonical, item_id):
+                    canonical.unlink(missing_ok=True)
+                    unlinked = True
+            if not unlinked and self.root.exists():
+                # FALLBACK: foreign-imported filename(s). Scan + unlink every doc parsing to the id.
+                for path in self.root.rglob("*.md"):  # canonical AND foreign filenames both parse to an id
+                    if path.name in _RESERVED:
+                        continue
+                    if self._doc_is_item(path, item_id):
+                        path.unlink(missing_ok=True)
         return self._mem.delete(item_id)
+
+    def _doc_is_item(self, path: Path, item_id: str) -> bool:
+        """True if the concept doc at ``path`` parses to ``item_id`` (guards torn/foreign docs).
+
+        Uses the SAME ``fallback_id`` as :func:`import_bundle` (the root-relative slug) so a
+        foreign doc lacking ``x_item_id`` resolves to the same id on disk as it did in RAM —
+        the scan can't miss a doc the autoload included.
+        """
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return False
+        fm, _ = split_doc(text)
+        if not fm.get("type"):
+            return False
+        try:
+            rel = path.relative_to(self.root).as_posix()
+        except ValueError:
+            rel = path.name
+        return doc_to_memory_item(text, fallback_id=_slug(rel[:-3])).item_id == item_id
 
     def flush_indexes(self) -> dict[str, Any]:
         """(Re)write the bundle's index.md/log.md from the current items."""
-        return export_bundle(self._mem.all(), self.root)
+        result = export_bundle(self._mem.all(), self.root)
+        self._loaded_mtime = self._root_mtime()
+        return result
 
 
 __all__ = [
