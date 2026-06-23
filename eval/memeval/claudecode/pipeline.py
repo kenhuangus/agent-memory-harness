@@ -97,6 +97,15 @@ def _build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--native-cl", dest="native_cl", action="store_true", default=True,
                     help="Capture paper-native CL metrics per eval stage (default on).")
     ap.add_argument("--no-native-cl", dest="native_cl", action="store_false")
+    ap.add_argument("--skip-base", action="store_true",
+                    help="Skip stage 1 (the memoryless 'base' baseline). Useful when "
+                         "iterating on the plugin path — base is slow and unaffected by "
+                         "plugin/memory changes. Its results row is omitted (no base→final "
+                         "delta in the summary).")
+    ap.add_argument("--stages", default=None,
+                    help="Comma-separated subset of eval stages to run, in order "
+                         "(base,plugin-blank,plugin-accum,plugin-dreamed). Overrides "
+                         "--skip-base. E.g. --stages plugin-blank,plugin-accum.")
     return ap
 
 
@@ -167,6 +176,17 @@ def _resolve_config(args: argparse.Namespace) -> dict:
     if seq not in _SEQUENCES:
         raise SystemExit(f"unknown --sequence {seq!r}; choose one of {list(_SEQUENCES)}")
 
+    # Which eval stages to run (in canonical order). --stages wins; else --skip-base drops
+    # the memoryless baseline.
+    if args.stages:
+        requested = [s.strip() for s in args.stages.split(",") if s.strip()]
+        bad = [s for s in requested if s not in _EVAL_STAGES]
+        if bad:
+            raise SystemExit(f"unknown --stages {bad}; choose from {list(_EVAL_STAGES)}")
+        stages = [s for s in _EVAL_STAGES if s in requested]  # canonical order, deduped
+    else:
+        stages = [s for s in _EVAL_STAGES if not (args.skip_base and s == "base")]
+
     return {
         "sequence": seq,
         "limit": None if int(limit) <= 0 else int(limit),
@@ -180,6 +200,7 @@ def _resolve_config(args: argparse.Namespace) -> dict:
         "path": args.path,
         "results_dir": args.results_dir,
         "native_cl": args.native_cl,
+        "stages": stages,
     }
 
 
@@ -512,33 +533,40 @@ def run_pipeline(cfg: dict) -> dict:
                                           stage_index=_STAGE_INDEX[stage], pipeline_meta=meta)
         _write_partial()
 
+    active = cfg.get("stages") or list(_EVAL_STAGES)
+    meta["stages_run"] = active
     cost = CostTracker(budget_usd=cfg["budget_usd"]) if cfg["budget_usd"] and cfg["budget_usd"] > 0 else None
     total = _stage_task_total(cfg)
     meta["n_tasks"] = total
     nat = " + native-CL passes" if cfg["native_cl"] else ""
-    print(f"running 4 eval stages × {total} tasks{nat} (plugin stages run "
-          f"{cfg['plugin_workers']} at a time)…", flush=True)
+    skipped = [s for s in _EVAL_STAGES if s not in active]
+    skip_note = f" (skipping: {', '.join(skipped)})" if skipped else ""
+    print(f"running {len(active)} eval stage(s){skip_note} × {total} tasks{nat} "
+          f"(plugin stages run {cfg['plugin_workers']} at a time)…", flush=True)
     _write_partial()  # create the results file immediately (header + pipeline metadata)
     print(f"results file: {PS.benchmark_results_path(_BENCHMARK, version=version, timestamp=stamp, root=str(results_root))}",
           flush=True)
 
+    # Pre-dream eval stages (base / plugin-blank / plugin-accum), in canonical order.
     for stage in ("base", "plugin-blank", "plugin-accum"):
+        if stage not in active:
+            continue
         row = _run_one(stage, cfg, substrate, cost, native_by_stage, meta, total,
                        on_task=lambda p, s=stage: _on_task(s, p))
         rows.append(row)
         in_progress["row"] = None  # stage finished -> its final row is in `rows`
         _write_partial()
 
-    # Stage 4: dream consolidation through the plugin's own surface.
-    print("\n── stage 4/5 · dream ──────────", flush=True)
-    print("  no-op placeholder — whole-store consolidation not implemented yet", flush=True)
-    dream = _run_dream_stage(substrate)
-    _write_partial()
+    # Stage 4 (dream) + stage 5 (plugin-dreamed) only run if the final stage is selected.
+    if "plugin-dreamed" in active:
+        print("\n── stage 4/5 · dream ──────────", flush=True)
+        print("  no-op placeholder — whole-store consolidation not implemented yet", flush=True)
+        dream = _run_dream_stage(substrate)
+        _write_partial()
 
-    # Stage 5: final eval on the dream-consolidated substrate.
-    rows.append(_run_one("plugin-dreamed", cfg, substrate, cost, native_by_stage, meta, total,
-                         on_task=lambda p: _on_task("plugin-dreamed", p)))
-    in_progress["row"] = None
+        rows.append(_run_one("plugin-dreamed", cfg, substrate, cost, native_by_stage, meta, total,
+                             on_task=lambda p: _on_task("plugin-dreamed", p)))
+        in_progress["row"] = None
     meta["ended_at"] = time.time()
 
     path = PS.write_pipeline_results(benchmark=_BENCHMARK, version=version, timestamp=stamp,

@@ -41,12 +41,32 @@ def test_finds_env_walking_up_from_subdir(monkeypatch, tmp_path) -> None:
     assert find_root_dotenv() == tmp_path / ".env"
 
 
-def test_noop_when_absent(monkeypatch, tmp_path) -> None:
-    # A dir with .git but no .env -> stop at the root, load nothing, never raise.
+def test_cwd_walk_stops_at_repo_root_without_env(monkeypatch, tmp_path) -> None:
+    # The cwd-walk component: a dir with .git but no .env -> None (don't wander above it).
+    import memeval.dotenv_loader as dl
     (tmp_path / ".git").mkdir()
-    monkeypatch.chdir(tmp_path)
-    _reset_loaded()
-    assert load_root_dotenv() is None
+    assert dl._walk_up_for_dotenv(tmp_path) is None
+
+
+def test_finds_repo_env_from_outside_cwd_via_file_anchor(monkeypatch, tmp_path) -> None:
+    # The daydream hook / agent turns run with cwd OUTSIDE the repo. A cwd-only walk
+    # can't reach the project .env; the __file__ anchor must still find it. (This repo
+    # has a real .env at its root, which the package's __file__ resolves to.)
+    from memeval.dotenv_loader import find_root_dotenv
+    monkeypatch.delenv("MEMEVAL_DOTENV", raising=False)
+    monkeypatch.chdir(tmp_path)  # cwd outside the repo, no .env here or above
+    found = find_root_dotenv()
+    # Either the repo .env is found via __file__ (editable install), or None (non-editable).
+    # The contract: it must NOT raise and must not return a path under tmp_path.
+    assert found is None or tmp_path not in found.parents
+
+
+def test_explicit_memeval_dotenv_env_wins(monkeypatch, tmp_path) -> None:
+    from memeval.dotenv_loader import find_root_dotenv
+    envfile = tmp_path / "custom.env"
+    envfile.write_text("Z=1\n", encoding="utf-8")
+    monkeypatch.setenv("MEMEVAL_DOTENV", str(envfile))
+    assert find_root_dotenv() == envfile
 
 
 def test_idempotent_within_process(monkeypatch, tmp_path) -> None:

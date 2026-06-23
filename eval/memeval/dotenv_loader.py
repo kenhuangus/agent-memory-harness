@@ -20,11 +20,8 @@ from typing import Optional
 _LOADED: set[str] = set()  # resolved .env paths already loaded this process
 
 
-def find_root_dotenv(start: "str | Path | None" = None) -> Optional[Path]:
-    """Walk up from ``start`` (default cwd) to the repo root and return the ``.env`` path,
-    or ``None``. Stops at the first dir holding ``.env``; otherwise stops at the repo root
-    (a dir with ``.git``) so it never wanders above the project."""
-    here = Path(start or Path.cwd()).resolve()
+def _walk_up_for_dotenv(here: Path) -> Optional[Path]:
+    """Walk up from ``here`` returning the first ``.env``, or ``None`` at the repo root."""
     for d in (here, *here.parents):
         cand = d / ".env"
         if cand.is_file():
@@ -32,6 +29,25 @@ def find_root_dotenv(start: "str | Path | None" = None) -> Optional[Path]:
         if (d / ".git").exists():
             return None
     return None
+
+
+def find_root_dotenv(start: "str | Path | None" = None) -> Optional[Path]:
+    """Return the repo-root ``.env`` path, or ``None``.
+
+    Searches from ``start`` (default cwd) up to the repo root, then — crucially — ALSO
+    from this module's own location. The daydream hook subprocess and per-task agent
+    turns run with ``cwd`` set to a temp checkout OUTSIDE the repo, where a cwd-only walk
+    can't reach the project ``.env``; anchoring to ``__file__`` (which lives under the repo
+    at ``eval/memeval/``) finds it regardless of cwd. An explicit ``MEMEVAL_DOTENV`` path
+    wins over both."""
+    explicit = os.environ.get("MEMEVAL_DOTENV")
+    if explicit:
+        p = Path(explicit).expanduser()
+        return p if p.is_file() else None
+    cwd_hit = _walk_up_for_dotenv(Path(start or Path.cwd()).resolve())
+    if cwd_hit is not None:
+        return cwd_hit
+    return _walk_up_for_dotenv(Path(__file__).resolve().parent)
 
 
 def load_root_dotenv(*, start: "str | Path | None" = None, verbose: bool = False) -> Optional[Path]:
