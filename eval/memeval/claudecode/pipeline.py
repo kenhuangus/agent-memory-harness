@@ -249,10 +249,12 @@ def _stage_task_total(cfg: dict) -> int:
     return min(n, cfg["limit"]) if cfg["limit"] else n
 
 
-def _make_progress_cb(stage: str, total: int):
-    """A run_agent progress callback that prints one line per completed task:
-    ``[N/total] stage … done · resolved=R · $cost`` so a long stage isn't a silent wait.
-    run_agent invokes it after EACH task with the partial RunResult (n_tasks = completed)."""
+def _make_progress_cb(stage: str, total: int, on_task=None):
+    """A run_agent progress callback that, after EACH completed task, (1) prints
+    ``[N/total] stage … resolved · $cost`` so a long stage isn't a silent wait, and
+    (2) calls ``on_task(partial)`` so the caller can persist the in-progress results to
+    disk. run_agent invokes it after each task with the partial RunResult
+    (n_tasks = completed so far)."""
     import sys
     import time
 
@@ -261,21 +263,27 @@ def _make_progress_cb(stage: str, total: int):
     def cb(partial: Any) -> None:
         done = partial.n_tasks
         if done <= state["last"]:
-            return  # only print on forward progress (callback may fire on each worker)
+            return  # only act on forward progress (callback may fire on each worker)
         state["last"] = done
         elapsed = int(time.monotonic() - state["t0"])
         resolved = sum(1 for t in partial.trajectories if t.success)
         print(f"  [{done}/{total}] {stage}: {resolved} resolved · "
               f"${partial.cost_usd:.4f} · {elapsed}s elapsed", flush=True)
         sys.stdout.flush()
+        if on_task is not None:
+            try:  # persisting partial results must never break the run
+                on_task(partial)
+            except Exception:  # noqa: BLE001
+                pass
 
     return cb
 
 
 def _run_eval_stage(stage: str, cfg: dict, substrate: Path, *, cost: Any,
-                    total: int) -> Any:
+                    total: int, on_task=None) -> Any:
     """Run one eval stage through ``run_agent`` (the same machinery memeval-bench uses)
-    and return its ``RunResult``. Prints per-task progress so the stage isn't silent."""
+    and return its ``RunResult``. Prints per-task progress and (via ``on_task``) lets the
+    caller write partial results after each task so the results file appears early."""
     from ..agent import run_agent
 
     agent = _make_agent(stage, cfg, substrate)
@@ -285,7 +293,7 @@ def _run_eval_stage(stage: str, cfg: dict, substrate: Path, *, cost: Any,
         memory=(_STAGE_MODE[stage] != "off"),
         limit=cfg["limit"], sequence=cfg["sequence"],
         path_or_id=cfg["path"], cost=cost, grader=_grader(cfg),
-        progress_cb=_make_progress_cb(stage, total),
+        progress_cb=_make_progress_cb(stage, total, on_task=on_task),
         seed_sessions=False, workers=workers,
     )
 
@@ -373,11 +381,25 @@ def run_pipeline(cfg: dict) -> dict:
     rows: list[dict] = []
     native_by_stage: dict[str, dict] = {}
     dream: Optional[dict] = None
+    in_progress: dict[str, Any] = {"stage": None, "row": None}
 
     def _write_partial() -> None:
+        # Completed stage rows + the in-progress stage's partial row (if any), so the
+        # results file exists from the first task and grows live — not only between stages.
+        live = list(rows)
+        if in_progress["row"] is not None:
+            live.append(in_progress["row"])
         PS.write_pipeline_results(benchmark=_BENCHMARK, version=version, timestamp=stamp,
-                                  rows=rows, pipeline_meta=meta, dream=dream,
+                                  rows=live, pipeline_meta=meta, dream=dream,
                                   root=str(results_root))
+
+    def _on_task(stage: str, partial: Any) -> None:
+        # After each task within a stage, refresh that stage's partial row and rewrite
+        # the results file so progress is visible on disk immediately.
+        in_progress["stage"] = stage
+        in_progress["row"] = PS.stage_row(partial, stage=stage,
+                                          stage_index=_STAGE_INDEX[stage], pipeline_meta=meta)
+        _write_partial()
 
     cost = CostTracker(budget_usd=cfg["budget_usd"]) if cfg["budget_usd"] and cfg["budget_usd"] > 0 else None
     total = _stage_task_total(cfg)
@@ -385,9 +407,15 @@ def run_pipeline(cfg: dict) -> dict:
     nat = " + native-CL passes" if cfg["native_cl"] else ""
     print(f"running 4 eval stages × {total} tasks{nat} (plugin stages run "
           f"{cfg['plugin_workers']} at a time)…", flush=True)
+    _write_partial()  # create the results file immediately (header + pipeline metadata)
+    print(f"results file: {PS.benchmark_results_path(_BENCHMARK, version=version, timestamp=stamp, root=str(results_root))}",
+          flush=True)
 
     for stage in ("base", "plugin-blank", "plugin-accum"):
-        rows.append(_run_one(stage, cfg, substrate, cost, native_by_stage, meta, total))
+        row = _run_one(stage, cfg, substrate, cost, native_by_stage, meta, total,
+                       on_task=lambda p, s=stage: _on_task(s, p))
+        rows.append(row)
+        in_progress["row"] = None  # stage finished -> its final row is in `rows`
         _write_partial()
 
     # Stage 4: dream consolidation through the plugin's own surface.
@@ -397,7 +425,9 @@ def run_pipeline(cfg: dict) -> dict:
     _write_partial()
 
     # Stage 5: final eval on the dream-consolidated substrate.
-    rows.append(_run_one("plugin-dreamed", cfg, substrate, cost, native_by_stage, meta, total))
+    rows.append(_run_one("plugin-dreamed", cfg, substrate, cost, native_by_stage, meta, total,
+                         on_task=lambda p: _on_task("plugin-dreamed", p)))
+    in_progress["row"] = None
     meta["ended_at"] = time.time()
 
     path = PS.write_pipeline_results(benchmark=_BENCHMARK, version=version, timestamp=stamp,
@@ -415,9 +445,10 @@ def run_pipeline(cfg: dict) -> dict:
 
 
 def _run_one(stage: str, cfg: dict, substrate: Path, cost: Any,
-             native_by_stage: dict, meta: dict, total: int) -> dict:
+             native_by_stage: dict, meta: dict, total: int, on_task=None) -> dict:
     """Run one eval stage (standard metrics + optional native CL) and return its row.
-    Prints a stage banner, per-task progress (via run_agent's callback), and a summary."""
+    Prints a stage banner, per-task progress (via run_agent's callback), and a summary.
+    ``on_task`` is forwarded so partial results can be persisted after each task."""
     import time
 
     from . import pipeline_summary as PS
@@ -426,7 +457,7 @@ def _run_one(stage: str, cfg: dict, substrate: Path, cost: Any,
     t0 = time.monotonic()
     print(f"\n── stage {idx}/5 · {stage} (mode={_STAGE_MODE[stage]}) · {total} tasks "
           f"──────────", flush=True)
-    rr = _run_eval_stage(stage, cfg, substrate, cost=cost, total=total)
+    rr = _run_eval_stage(stage, cfg, substrate, cost=cost, total=total, on_task=on_task)
     m = rr.metrics
     secs = int(time.monotonic() - t0)
     resolved = sum(1 for t in rr.trajectories if t.success)
