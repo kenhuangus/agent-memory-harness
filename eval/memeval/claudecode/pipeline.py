@@ -308,13 +308,12 @@ def _event_name(rec: dict) -> str:
     return str(rec.get("op") or rec.get("event_type") or rec.get("event") or rec.get("type") or "")
 
 
-def _read_store_events(store_dir: Path) -> list[dict]:
-    events = store_dir / "events.jsonl"
-    if not events.is_file():
+def _read_jsonl(path: Path) -> list[dict]:
+    if not path.is_file():
         return []
     out: list[dict] = []
     try:
-        lines = events.read_text(encoding="utf-8").splitlines()
+        lines = path.read_text(encoding="utf-8").splitlines()
     except OSError:
         return out
     for line in lines:
@@ -327,16 +326,33 @@ def _read_store_events(store_dir: Path) -> list[dict]:
     return out
 
 
+def _read_store_events(store_dir: Path) -> list[dict]:
+    return _read_jsonl(store_dir / "events.jsonl")
+
+
+def _read_daydream_events(store_dir: Path) -> list[dict]:
+    dream_dir = store_dir / "dream"
+    if not dream_dir.is_dir():
+        return []
+    out: list[dict] = []
+    for path in sorted(dream_dir.glob("*.daydream-events.jsonl")):
+        out.extend(_read_jsonl(path))
+    return out
+
+
 def _store_health(substrate: Path) -> dict[str, Any]:
     """Read-only observability snapshot for the plugin-owned shared store."""
     store_dir = substrate / ".cookbook-memory"
     events = _read_store_events(store_dir)
+    daydream_events = _read_daydream_events(store_dir)
     recall_events = [r for r in events if _event_name(r) == "recall"]
     recall_with_hits = [
         r for r in recall_events
         if (r.get("ids") or (r.get("meta") or {}).get("hits"))
     ]
     names = [_event_name(r) for r in events]
+    daydream_names = [_event_name(r) for r in daydream_events]
+    all_names = [*names, *daydream_names]
     memory_items = _sqlite_count(store_dir / "memory.db", "items")
     graph_nodes = _sqlite_count(store_dir / "graph.db", "nodes")
     markdown_items = len(list(store_dir.glob("*.md"))) if store_dir.is_dir() else 0
@@ -344,6 +360,7 @@ def _store_health(substrate: Path) -> dict[str, Any]:
     return {
         "store_dir": str(store_dir),
         "events": len(events),
+        "daydream_events": len(daydream_events),
         "recall_events": len(recall_events),
         "recall_with_hits": len(recall_with_hits),
         "recall_zero_hits": len(recall_events) - len(recall_with_hits),
@@ -352,10 +369,10 @@ def _store_health(substrate: Path) -> dict[str, Any]:
             if _event_name(r) == "error" and (r.get("meta") or {}).get("op_attempted") == "recall"
         ),
         "daydream_completed": sum(
-            1 for n in names
+            1 for n in all_names
             if n in {"daydream.hook_subprocess_fired", "daydream.chunk_extracted"}
         ),
-        "daydream_memory_written": sum(1 for n in names if n == "daydream.memory_written"),
+        "daydream_memory_written": sum(1 for n in all_names if n == "daydream.memory_written"),
         "memory_items": memory_items,
         "graph_nodes": graph_nodes,
         "markdown_items": markdown_items,
