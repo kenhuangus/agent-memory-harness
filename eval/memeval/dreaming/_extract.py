@@ -27,7 +27,7 @@ from memeval.cost import cost_of
 from memeval.dreaming.events import emit
 from memeval.dreaming.llm import Completion, LLMClient
 from memeval.dreaming.prompts import EXTRACTION_SYSTEM_PROMPT, _ENVELOPE_TEMPLATE
-from memeval.dreaming.redaction import RedactedText
+from memeval.dreaming.redaction import RedactedText, redact
 from memeval.schema import MemoryItem
 
 _logger = logging.getLogger(__name__)
@@ -44,6 +44,41 @@ _MAX_CONTENT_LEN = 200
 
 #: Maximum number of tags retained on a single MemoryItem (plan §3 "0-5").
 _MAX_TAGS = 5
+
+#: Rejection-event field caps (halliday-amended plan §3.2). Snippet is
+#: deliberately tighter than `_MAX_CONTENT_LEN`: it's a forensic tracer, not
+#: a stored memory, and the smaller cap bounds the residual-leak surface
+#: (halliday B1 — even after the second `redact()` pass).
+_REJECTION_SNIPPET_MAX_LEN: int = 100
+_REJECTION_RATIONALE_MAX_LEN: int = 200
+
+#: Per-chunk cap on emitted ``daydream.candidate_rejected`` events
+#: (halliday B2). Overflow rows fold into ``rejected_n_dropped`` in the
+#: extended ``chunk_partial_parse`` event so operators can detect
+#: cap-hit. The LLM is told about this cap in `EXTRACTION_SYSTEM_PROMPT`
+#: so it self-selects the most informative 50 instead of getting silently
+#: truncated.
+_REJECTION_MAX_PER_CHUNK: int = 50
+
+#: One-shot guard for ``daydream.rejected_field_missing`` (halliday B3).
+#: When an LLM completion omits the ``rejected`` key entirely (vs emitting
+#: ``rejected: []``), the extractor fires this event ONCE per session_id
+#: so a silent model regression cannot mask itself. Keyed on session_id;
+#: cleared by process restart (no persistence — that's an upstream
+#: concern). Module-level so the same set persists across calls within
+#: a single Daydream pass.
+_rejected_missing_seen: set[str] = set()
+
+
+class _RejectedMissing:
+    """Sentinel that distinguishes ``rejected`` key absent from
+    ``rejected: []`` / ``rejected: <wrong-type>``. Halliday B3 needs the
+    absent-key case to fire its own event exactly once per session."""
+
+    __slots__ = ()
+
+
+_REJECTED_MISSING = _RejectedMissing()
 
 
 class _ParseError(Exception):
@@ -146,8 +181,85 @@ def extract_memories(
         except _ParseError:
             n_dropped += 1
 
-    if n_dropped:
-        emit("chunk_partial_parse", n_kept=len(items), n_dropped=n_dropped)
+    # ── Rejection-candidate parse pass (halliday-amended plan §§B1/B2/B3 + A1/A2) ─
+    # The LLM is asked to emit a parallel `rejected` array carrying the
+    # candidates it considered-but-dropped, with a snippet + rationale per
+    # row. Each surviving row produces one ``daydream.candidate_rejected``
+    # event. The block accounts for: missing-key (B3), cap-overflow (B2),
+    # per-row malformed (A1 family), normalized overlap with a kept memory
+    # (A1), second-pass redaction of `content_snippet` (B1), and explicit
+    # truncation flags on the event payload (A2).
+    raw_rejected: Any = data.get("rejected", _REJECTED_MISSING)
+    rejected_n_dropped = 0
+    if isinstance(raw_rejected, _RejectedMissing):
+        # B3: silent regression masking is the failure mode this guards.
+        # Fire the warning ONCE per session_id (set is module-level).
+        if session_id not in _rejected_missing_seen:
+            emit("daydream.rejected_field_missing", session_id=session_id)
+            _rejected_missing_seen.add(session_id)
+        raw_rejected = []
+    elif not isinstance(raw_rejected, list):
+        # Coerce wrong-type to empty, matching the leniency we already grant
+        # to malformed `tags` per ``_build_memory_item``. Not a parse failure.
+        raw_rejected = []
+
+    # A1: precompute the normalized kept-memory content set so a rejection
+    # event that overlaps a kept memory is suppressed (operator forensic
+    # value collapses if the same content appears in both surfaces).
+    kept_content_norms: set[str] = {
+        item.content.strip().lower()[:_REJECTION_SNIPPET_MAX_LEN]
+        for item in items
+        if item.content
+    }
+    rejected_n_kept = 0
+    for batch_index, raw_rej in enumerate(raw_rejected):
+        if batch_index >= _REJECTION_MAX_PER_CHUNK:
+            # B2: prompt advertises the 50-cap; overflow counts but doesn't emit.
+            rejected_n_dropped += 1
+            continue
+        if not isinstance(raw_rej, dict):
+            rejected_n_dropped += 1
+            continue
+        snippet_raw = raw_rej.get("content_snippet")
+        rationale_raw = raw_rej.get("rationale")
+        if not isinstance(snippet_raw, str) or not isinstance(rationale_raw, str):
+            rejected_n_dropped += 1
+            continue
+        # B1: SECOND-PASS redact() on snippet BEFORE truncation+emit. ADR-005
+        # guarantees redaction on the INPUT side; the LLM may quote unredacted
+        # input back in `content_snippet`. The local-regex second pass closes
+        # the residual-leak surface at minimal cost (no LLM call).
+        snippet_redacted = str(redact(snippet_raw))
+        # A1: suppress events whose normalized snippet overlaps a kept memory.
+        if snippet_redacted.strip().lower()[:_REJECTION_SNIPPET_MAX_LEN] in kept_content_norms:
+            rejected_n_dropped += 1
+            continue
+        snippet_truncated = len(snippet_redacted) > _REJECTION_SNIPPET_MAX_LEN
+        rationale_truncated = len(rationale_raw) > _REJECTION_RATIONALE_MAX_LEN
+        emit(
+            "daydream.candidate_rejected",
+            content_snippet=snippet_redacted[:_REJECTION_SNIPPET_MAX_LEN],
+            rationale=rationale_raw[:_REJECTION_RATIONALE_MAX_LEN],
+            session_id=session_id,
+            batch_index=batch_index,
+            snippet_truncated=snippet_truncated,
+            rationale_truncated=rationale_truncated,
+        )
+        rejected_n_kept += 1
+
+    if n_dropped or rejected_n_dropped:
+        # `chunk_partial_parse` extended with parallel rejected-side counters
+        # (halliday-amended plan §3.3). The existing `n_kept`/`n_dropped`
+        # remain memories-only; the new kwargs partition the rejection drops
+        # so an operator can distinguish memory-row malformations from
+        # rejection-row malformations / cap-overflow / overlap suppressions.
+        emit(
+            "chunk_partial_parse",
+            n_kept=len(items),
+            n_dropped=n_dropped,
+            rejected_n_kept=rejected_n_kept,
+            rejected_n_dropped=rejected_n_dropped,
+        )
 
     emit(
         "daydream.chunk_extracted",
