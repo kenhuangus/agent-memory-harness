@@ -262,6 +262,14 @@ def _handle_dream(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     """Entry point; returns 0 on success/fail-open, 1 on argparse error. CC reserves exit 2 (ADR-018)."""
+    # Load the repo-root .env so OPENROUTER_API_KEY / DREAM_* are available when the
+    # plugin's Stop hook invokes daydream-cli (the daydreamer needs them to extract
+    # memories; without them it fail-opens to a no-op). Existing env wins (override=False).
+    try:
+        from ..dotenv_loader import load_root_dotenv
+        load_root_dotenv()
+    except Exception:  # noqa: BLE001 - never let env loading break the hook (fail-open)
+        pass
     parser = _build_parser()
     try:
         args = parser.parse_args(argv)

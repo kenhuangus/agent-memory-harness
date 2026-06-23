@@ -160,6 +160,11 @@ _COMMANDS = {
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    try:  # load OPENROUTER_API_KEY / MEMORY_STORE etc. from the repo-root .env (export wins)
+        from memeval.dotenv_loader import load_root_dotenv
+        load_root_dotenv()
+    except Exception:  # noqa: BLE001
+        pass
     args = build_parser().parse_args(argv)
     return _COMMANDS[args.command](args)
 

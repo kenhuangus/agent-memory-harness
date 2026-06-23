@@ -248,6 +248,8 @@ def _openrouter_advisory(modes: list[str]) -> Optional[str]:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    from ..dotenv_loader import load_root_dotenv
+    load_root_dotenv()  # OPENROUTER_API_KEY etc. from the repo-root .env (export still wins)
     ap = argparse.ArgumentParser(
         prog="memeval-bench",
         description="Run a memory benchmark (or all five) through your Claude Code CLI, "
