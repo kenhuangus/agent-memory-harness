@@ -716,6 +716,7 @@ def test_extract_module_does_not_format_redacted_directly() -> None:
     assert sites == {
         "_wrap_user_content_in_envelope",
         "_wrap_batch_in_envelope",
+        "_wrap_governance_batch_in_envelope",
     }, f"unauthorized envelope-format site(s): {sites}"
 
 

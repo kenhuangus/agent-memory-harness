@@ -88,3 +88,29 @@ agent is otherwise idle).
   Scott's. It reads memory hashes/timestamps from the store to find what changed; it
   does **not** use the per-session cursor of
   [`ADR-harness-004`](ADR-harness-004-dream-state-sidecar.md).
+
+  **CLOSED 2026-06-23** (per execution; closed by the Job 3 PR shipping the
+  governance pass in `eval/memeval/dreaming/worker.py` against
+  `JOB3_GOVERNANCE_RUBRIC.md`). All four ADR-002 jobs have now landed:
+
+  - **Job 1 (dedup)** — PR #88 (detection) + PR #98 (mutation). Worker
+    deletes cluster losers via `self.store.delete`, picks winner by
+    recency-latest + lex-tiebreak.
+  - **Job 4 (TTL pruning)** — PR #103. Worker drops items past
+    `DREAM_ITEM_RETENTION_DAYS` (default 30; `=0` disables) via
+    `self.store.delete`; runs BEFORE dedup.
+  - **Job 2 (contradiction resolution)** — PR #105. LLM-driven pair
+    detection; deterministic worker-side loser-selection by the Job 1
+    recency rule; loser retired via `self.store.delete`.
+  - **Job 3 (governance: must-know / must-do / blacklist)** — closes
+    THIS PR. LLM-driven per-item classification; blacklist via
+    `self.store.delete` (same primitive); must-know and must-do are
+    **SOFT** advisories surfaced in `summary.governance` block (no
+    mutation, no recall-side enforcement in v1 — pinned as
+    forensic-only by halliday B4).
+
+  All four jobs share the same basedir flock (ADR-021 Decision 2), the
+  same NFS hard-fail (Decision 3), the same Daydream serialization
+  (Decision 4), and the same `self.store.delete` mutation primitive
+  (ADR-021 §Policy). No successor ADR was required; ADR-021's mutation
+  envelope held end-to-end.

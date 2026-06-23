@@ -139,13 +139,16 @@ def test_run_no_ttl_victims_zero_pruned(memory_store_dir: Path) -> None:
 # §B — Dict shape
 # --------------------------------------------------------------------------- #
 
-# Pinned top-level + counts shape — UPDATED 2026-06-23 by Job 2 PR per
-# JOB2_CONTRADICTION_RUBRIC.md "Supersedes" — Job 2 extends the dict with a
-# top-level `contradicted` block and 6 new `counts` entries. These tests
-# preserve the TTL-specific properties under the Job-2-extended shape.
+# Pinned top-level + counts shape — UPDATED 2026-06-23 by Job 3 PR per
+# JOB3_GOVERNANCE_RUBRIC.md "Supersedes" — Job 3 extends the dict with a
+# top-level `governance` block and 8 new `counts` entries. Job 2 had
+# already extended with `contradicted` + 6 cost-observability entries.
+# These tests preserve the TTL-specific properties under the
+# Job-3-extended shape.
 _EXPECTED_TOP_LEVEL_KEYS = {
     "schema", "version", "mode", "jobs_run",
     "skipped_jobs", "counts", "clusters", "pruned", "contradicted",
+    "governance",
 }
 
 _EXPECTED_COUNTS_KEYS = {
@@ -154,11 +157,15 @@ _EXPECTED_COUNTS_KEYS = {
     "items_contradicted", "contradiction_llm_calls",
     "contradiction_input_tokens", "contradiction_output_tokens",
     "contradiction_cost_usd_estimate", "contradiction_pairs_examined_estimate",
+    "items_blacklisted", "items_must_known", "items_must_done",
+    "governance_llm_calls", "governance_input_tokens",
+    "governance_output_tokens", "governance_cost_usd_estimate",
+    "governance_items_examined_estimate",
 }
 
 
 def test_ttl_top_level_keys_exact(memory_store_dir: Path) -> None:
-    """B1 — top-level key set is exactly the Job-2-extended pinned set."""
+    """B1 — top-level key set is exactly the Job-3-extended pinned set."""
     result = worker.DreamingWorker(_seed(_FIXED_NOW, ("a", "x", 1))).run()
     assert set(result.keys()) == _EXPECTED_TOP_LEVEL_KEYS
 
@@ -177,37 +184,39 @@ def test_ttl_version_literal(memory_store_dir: Path) -> None:
 
 
 def test_ttl_mode_literal(memory_store_dir: Path) -> None:
-    """B4 — Job 2 supersedes Job 4 §B4: mode adds `_and_contradiction` suffix."""
+    """B4 — Job 3 supersedes Job 2 §B4: mode adds `_and_governance` suffix."""
     result = worker.DreamingWorker(_seed(_FIXED_NOW, ("a", "x", 1))).run()
-    assert result["mode"] == "detection_and_mutation_and_pruning_and_contradiction"
+    assert result["mode"] == "detection_and_mutation_and_pruning_and_contradiction_and_governance"
 
 
 def test_ttl_jobs_run_literal(memory_store_dir: Path) -> None:
-    """B5 — Job 2 supersedes Job 4 §B5: jobs_run adds `contradiction_resolution`."""
+    """B5 — Job 3 supersedes Job 2 §B5: jobs_run adds `governance`."""
     result = worker.DreamingWorker(_seed(_FIXED_NOW, ("a", "x", 1))).run()
     assert result["jobs_run"] == [
-        "dedup_detection", "dedup_merge", "ttl_pruning", "contradiction_resolution",
+        "dedup_detection", "dedup_merge", "ttl_pruning",
+        "contradiction_resolution", "governance",
     ]
 
 
 def test_ttl_skipped_jobs_literal(memory_store_dir: Path) -> None:
-    """B6 — Job 2 supersedes Job 4 §B6: contradiction_resolution removed, only governance skipped."""
+    """B6 — Job 3 supersedes Job 2 §B6: governance removed → skipped_jobs is now empty."""
     result = worker.DreamingWorker(_seed(_FIXED_NOW, ("a", "x", 1))).run()
-    assert result["skipped_jobs"] == ["governance"]
+    assert result["skipped_jobs"] == []
 
 
 def test_ttl_counts_key_set_exact(memory_store_dir: Path) -> None:
-    """B7 — Job 2 extends counts with 6 new keys (4 cost-observability + 2 estimate)."""
+    """B7 — Job 3 extends counts with 8 new keys (3 size + 4 cost + 1 examined-estimate)."""
     result = worker.DreamingWorker(_seed(_FIXED_NOW, ("a", "x", 1))).run()
     assert set(result["counts"].keys()) == _EXPECTED_COUNTS_KEYS
 
 
 def test_ttl_counts_values_are_int(memory_store_dir: Path) -> None:
-    """B8 — Job 2 supersedes Job 4 §B8: contradiction_cost_usd_estimate is float
-    (cost.cost_of returns float); all 11 other keys are strict int."""
+    """B8 — Job 3 supersedes Job 2 §B8: TWO float keys (contradiction_cost_usd_estimate
+    + governance_cost_usd_estimate); all 18 other keys are strict int."""
     result = worker.DreamingWorker(_seed(_FIXED_NOW, ("a", "x", 1))).run()
+    float_keys = {"contradiction_cost_usd_estimate", "governance_cost_usd_estimate"}
     for k, v in result["counts"].items():
-        if k == "contradiction_cost_usd_estimate":
+        if k in float_keys:
             assert type(v) is float, f"{k} = {v!r} ({type(v).__name__}); expected float"
         else:
             assert type(v) is int, f"{k} = {v!r} ({type(v).__name__}); expected int"
