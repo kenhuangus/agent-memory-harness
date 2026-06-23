@@ -90,6 +90,10 @@ def result_record(
         "reliability": {
             "n_errors": rr.metadata.get("n_errors", 0),
             "memory_reached": rr.metadata.get("memory_reached", 0),
+            "memory_hit": rr.metadata.get("memory_hit", 0),
+            "recall_attempted": rr.metadata.get("recall_attempted", 0),
+            "recall_with_hits": rr.metadata.get("recall_with_hits", 0),
+            "graded_n": rr.metadata.get("graded_n", 0),
             "errors": rr.metadata.get("errors", []),
         },
         "notes": notes,

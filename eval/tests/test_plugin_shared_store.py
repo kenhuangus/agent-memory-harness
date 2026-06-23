@@ -45,11 +45,19 @@ _NATIVE = ClaudeRuntime(kind="native", exe="claude", python="python")
 
 
 class _Ctx:
-    """Minimal AgentContext stand-in (record_* are no-ops we don't assert on)."""
+    """Minimal AgentContext stand-in."""
 
     def record_generate(self, *a, **k) -> None: ...
     def record_retrieve(self, *a, **k) -> None: ...
     def note(self, *a, **k) -> None: ...
+
+
+class _RecordingCtx(_Ctx):
+    def __init__(self) -> None:
+        self.retrieves: list[tuple[list, str]] = []
+
+    def record_retrieve(self, hits, *, query: str = "") -> None:
+        self.retrieves.append((list(hits), query))
 
 
 def _qa_task(task_id: str, *, group_id=None, order=0) -> Task:
@@ -210,6 +218,26 @@ def test_agentic_code_keeps_checkout_cwd_but_shared_store() -> None:
         )
         assert all("repo" in c for c in seen["cwd"])  # ran in the checkout
         assert (substrate.resolve() / ".cookbook-memory").is_dir()
+
+
+def test_zero_hit_real_recall_is_attributed_as_reach() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        store = Path(tmp) / "store"
+        store.mkdir()
+        (store / "events.jsonl").write_text(
+            json.dumps({"ts": 1.0, "op": "recall", "ids": [], "query": "empty",
+                        "meta": {"hits": []}}) + "\n",
+            encoding="utf-8",
+        )
+        agent = ClaudeCodeAgent(memory_mode="plugin-real", runner=lambda *a, **k: ClaudeResult(text=""),
+                                runtime=_NATIVE, workdir=tmp)
+        ctx = _RecordingCtx()
+
+        agent._attribute_real_recall(store / "events.jsonl", ctx)
+
+        assert len(ctx.retrieves) == 1
+        assert ctx.retrieves[0][0] == []
+        assert ctx.retrieves[0][1] == "empty"
 
 
 # --------------------------------------------------------------------------- #

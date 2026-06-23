@@ -430,8 +430,7 @@ class ClaudeCodeAgent:
                 )
                 for i, h in enumerate(rec.get("hits", []))
             ]
-            if hits:
-                ctx.record_retrieve(hits, query=rec.get("query", ""))
+            ctx.record_retrieve(hits, query=rec.get("query", ""))
 
     def _solve_plugin(self, task: Task, ctx: Any, prompt: str, run_dir: Path) -> ClaudeResult:
         bundle, log, tools = self._seed_plugin_store_okf(run_dir, task)
@@ -881,8 +880,7 @@ class ClaudeCodeAgent:
                 )
                 for i, h in enumerate(rec.get("meta", {}).get("hits", []))
             ]
-            if hits:
-                ctx.record_retrieve(hits, query=rec.get("query", ""))
+            ctx.record_retrieve(hits, query=rec.get("query", ""))
 
     # -- helpers ------------------------------------------------------------ #
     def _run(self, prompt: str, cwd: Path, system: str, *,

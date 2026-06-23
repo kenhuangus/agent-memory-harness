@@ -7,8 +7,10 @@ whether an accumulating + dream-consolidated memory makes the agent get better o
   1. base          -- mode=off, no plugin (the baseline)
   2. plugin-blank   -- plugin-real, empty shared memory substrate
   3. plugin-accum   -- plugin-real, the SAME substrate (now holding stage-2's memory)
-  4. dream          -- NO-OP placeholder (whole-store consolidation not implemented yet)
-  5. plugin-dreamed -- plugin-real, the SAME substrate (final; == stage 3 until dream lands)
+  4. dream          -- one real whole-store consolidation pass over the shared substrate
+                       (memeval.dreaming.worker.dream, the daydream-cli dream --all surface);
+                       a no-op in practice until the TTL/contradiction/governance knobs are on
+  5. plugin-dreamed -- plugin-real, the SAME substrate (final; reflects any dream mutations)
 
 Memory is ONE shared substrate per pipeline VERSION at ``results/v{version}/_memory/``
 (ADR-eval-003): the harness only ensures that directory exists and points
@@ -24,8 +26,11 @@ non-interactive ``--yes`` mode for CI/scripts. Drives the SAME machinery the per
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import sqlite3
 import sys
+import tempfile
 import types
 from pathlib import Path
 from typing import Any, Optional
@@ -286,6 +291,178 @@ def _rebase_cost(rr: Any, cost_base: float) -> Any:
     return rr
 
 
+def _sqlite_count(path: Path, table: str) -> Optional[int]:
+    """Return a SQLite table count, or ``None`` when the store/table is absent."""
+    if not path.is_file():
+        return None
+    try:
+        with sqlite3.connect(str(path)) as db:
+            row = db.execute(f"select count(*) from {table}").fetchone()
+    except sqlite3.Error:
+        return None
+    return int(row[0]) if row else None
+
+
+def _event_name(rec: dict) -> str:
+    return str(rec.get("op") or rec.get("event_type") or rec.get("event") or rec.get("type") or "")
+
+
+def _read_store_events(store_dir: Path) -> list[dict]:
+    events = store_dir / "events.jsonl"
+    if not events.is_file():
+        return []
+    out: list[dict] = []
+    try:
+        lines = events.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            continue
+    return out
+
+
+def _store_health(substrate: Path) -> dict[str, Any]:
+    """Read-only observability snapshot for the plugin-owned shared store."""
+    store_dir = substrate / ".cookbook-memory"
+    events = _read_store_events(store_dir)
+    recall_events = [r for r in events if _event_name(r) == "recall"]
+    recall_with_hits = [
+        r for r in recall_events
+        if (r.get("ids") or (r.get("meta") or {}).get("hits"))
+    ]
+    names = [_event_name(r) for r in events]
+    memory_items = _sqlite_count(store_dir / "memory.db", "items")
+    graph_nodes = _sqlite_count(store_dir / "graph.db", "nodes")
+    markdown_items = len(list(store_dir.glob("*.md"))) if store_dir.is_dir() else 0
+    durable_counts = [n for n in (memory_items, graph_nodes, markdown_items) if n is not None]
+    return {
+        "store_dir": str(store_dir),
+        "events": len(events),
+        "recall_events": len(recall_events),
+        "recall_with_hits": len(recall_with_hits),
+        "recall_zero_hits": len(recall_events) - len(recall_with_hits),
+        "recall_errors": sum(
+            1 for r in events
+            if _event_name(r) == "error" and (r.get("meta") or {}).get("op_attempted") == "recall"
+        ),
+        "daydream_completed": sum(
+            1 for n in names
+            if n in {"daydream.hook_subprocess_fired", "daydream.chunk_extracted"}
+        ),
+        "daydream_memory_written": sum(1 for n in names if n == "daydream.memory_written"),
+        "memory_items": memory_items,
+        "graph_nodes": graph_nodes,
+        "markdown_items": markdown_items,
+        "durable_items": max(durable_counts) if durable_counts else 0,
+    }
+
+
+def _health_delta(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key, after_v in after.items():
+        before_v = before.get(key)
+        if isinstance(after_v, int) and isinstance(before_v, int):
+            out[key] = after_v - before_v
+    return out
+
+
+def _stage_warnings(stage: str, cfg: dict, rr: Any, before: dict[str, Any],
+                    after: dict[str, Any], delta: dict[str, Any]) -> list[dict[str, str]]:
+    warnings: list[dict[str, str]] = []
+    if _STAGE_MODE[stage] == "plugin-real":
+        if delta.get("recall_events", 0) <= 0:
+            warnings.append({
+                "code": "memory_recall_not_observed",
+                "message": "plugin-real stage produced no recall events",
+            })
+        if stage in {"plugin-accum", "plugin-dreamed"} and after.get("durable_items", 0) <= 0:
+            warnings.append({
+                "code": "memory_store_empty",
+                "message": "shared store has no durable memories after accumulation stage",
+            })
+        if delta.get("daydream_completed", 0) > 0 and delta.get("daydream_memory_written", 0) <= 0:
+            warnings.append({
+                "code": "daydream_completed_without_writes",
+                "message": "daydream completed but wrote no durable memories",
+            })
+    if cfg["grader"] == "none" or rr.metadata.get("graded_n", 0) == 0:
+        warnings.append({
+            "code": "accuracy_ungraded",
+            "message": "no graded tasks; accuracy is not a resolve-rate measurement",
+        })
+    return warnings
+
+
+def _plugin_memory_probe() -> dict[str, Any]:
+    """Best-effort plugin runtime + synthetic memory round-trip check."""
+    from . import sandbox
+
+    try:
+        sandbox._require_plugin_mcp_runtime()
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "ok": False,
+            "code": "plugin_mcp_runtime_unavailable",
+            "message": str(exc)[:240],
+        }
+    try:
+        from cookbook_memory.core import MemoryClient
+
+        with tempfile.TemporaryDirectory(prefix="cookbook-memory-preflight-") as tmp:
+            client = MemoryClient(store=tmp)
+            mem_id = client.remember("cookbook memory preflight sentinel",
+                                     tags=["preflight"], ts=1.0)
+            hits = client.recall("preflight sentinel", k=3, ts=2.0)
+        return {
+            "ok": bool(mem_id and hits),
+            "code": "plugin_memory_round_trip_failed" if not (mem_id and hits) else "ok",
+            "remembered": bool(mem_id),
+            "hits": len(hits),
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "ok": False,
+            "code": "plugin_memory_round_trip_error",
+            "message": f"{type(exc).__name__}: {str(exc)[:200]}",
+        }
+
+
+def _preflight(cfg: dict, substrate: Path, active: list[str]) -> dict[str, Any]:
+    warnings: list[dict[str, str]] = []
+    probe: Optional[dict[str, Any]] = None
+    provider = os.environ.get("DREAM_PROVIDER", "openrouter").strip().lower()
+    if provider == "openrouter" and not (os.environ.get("OPENROUTER_API_KEY") or "").strip():
+        warnings.append({
+            "code": "dreamer_key_missing",
+            "message": "OPENROUTER_API_KEY is not set; daydream extraction may write no memories",
+        })
+    if cfg["grader"] == "none":
+        warnings.append({
+            "code": "grader_none",
+            "message": "CODE accuracy will be ungraded",
+        })
+    if "plugin-blank" in active:
+        initial = _store_health(substrate)
+        if initial.get("durable_items", 0) > 0 or initial.get("events", 0) > 0:
+            warnings.append({
+                "code": "shared_store_not_blank",
+                "message": "plugin-blank stage is starting with an existing shared store",
+            })
+    if any(_STAGE_MODE.get(stage) == "plugin-real" for stage in active):
+        probe = _plugin_memory_probe()
+        if not probe.get("ok"):
+            warnings.append({
+                "code": str(probe.get("code") or "plugin_preflight_failed"),
+                "message": str(probe.get("message") or "plugin synthetic memory preflight failed"),
+            })
+    return {"warnings": warnings, "plugin_memory_probe": probe}
+
+
 def _make_progress_cb(stage: str, total: int, on_task=None, cost_base: float = 0.0):
     """A run_agent progress callback that, after EACH completed task, (1) prints
     ``[N/total] stage … resolved · $cost`` so a long stage isn't a silent wait, and
@@ -370,21 +547,55 @@ def _native_cl_for_stage(stage: str, cfg: dict, substrate: Path) -> Optional[dic
 
 
 def _run_dream_stage(substrate: Path) -> dict:
-    """Dream stage -- a NO-OP placeholder until consolidation is actually implemented.
+    """Dream stage -- run ONE real whole-store consolidation pass over the shared substrate.
 
-    Whole-store consolidation ("night dream") is not implemented (the v1 dreaming worker
-    is detection-only and mutation is gated -- ADR-dreaming-020). The pipeline keeps this
-    stage as a structural slot so the 5-stage shape and the base->final comparison are in
-    place, but it does NOT touch the shared substrate: no subprocess, no store read, no
-    side effects. When real consolidation lands behind the plugin's own surface, this stage
-    invokes it (and ONLY through that surface); for now stage 5 runs on the same substrate
-    stage 3 left, so the stage-3->5 delta is expected to be ~0.
+    Wired to the SAME surface the plugin's ``daydream-cli dream --all`` uses: build the
+    RouterStore for the store dir (``cookbook_memory.core.contract.build_store`` via the
+    dreaming CLI's ``_make_store`` seam, ADR-harness-011) and run
+    ``memeval.dreaming.worker.dream`` against it under the basedir dream-lock. The worker
+    is real (Jobs 1-4: TTL prune, dedup, contradiction, governance) and returns a
+    ``dream.summary`` dict, which the pipeline summary renders.
 
-    ``substrate`` is accepted for signature stability but intentionally unused."""
-    return {"status": "not-implemented",
-            "note": "whole-store dream consolidation is not implemented yet "
-                    "(ADR-dreaming-020); this stage is a no-op placeholder",
-            "dream_consolidation": "not-implemented (no-op)"}
+    "Stub no-op in practice": with the destructive passes disabled by default
+    (``DREAM_ITEM_RETENTION_DAYS=0`` / ``DREAM_CONTRADICTION_MAX_CALLS=0`` /
+    ``DREAM_GOVERNANCE_MAX_CALLS=0``, or simply no ``OPENROUTER_API_KEY`` for the LLM
+    passes), a single pass over the accumulated store deletes nothing but exercises the
+    full wiring and records a real summary -- so the stage-3->5 delta stays ~0 until those
+    knobs are turned on, but the consolidation surface is now genuinely invoked.
+
+    The store dir is ``<substrate>/.cookbook-memory`` -- the SAME path the plugin stages
+    write to (``ClaudeCodeAgent._plugin_real_store`` sets ``MEMORY_STORE`` there); the
+    worker resolves its basedir from ``$MEMORY_STORE`` (ADR-dreaming-019). Fail-open: any
+    failure (lock contended, unsupported FS, worker error) returns a structured
+    ``skipped``/``error`` dict and NEVER aborts the pipeline."""
+    import os
+
+    from ..dreaming import _state, worker
+    from ..dreaming.cli import _make_store
+
+    store_dir = (substrate / ".cookbook-memory").resolve()
+    store_dir.mkdir(parents=True, exist_ok=True)
+
+    prev = os.environ.get("MEMORY_STORE")
+    os.environ["MEMORY_STORE"] = str(store_dir)
+    try:
+        store = _make_store(store_dir)
+        return worker.dream(store=store)
+    except _state._DreamLockHeld:
+        return {"status": "skipped", "reason": "dream basedir lock contended",
+                "store": str(store_dir)}
+    except _state._UnsupportedFsError as exc:
+        return {"status": "skipped",
+                "reason": f"unsupported filesystem ({exc}); set DREAM_ALLOW_NETWORK_FS=1",
+                "store": str(store_dir)}
+    except Exception as exc:  # noqa: BLE001 -- dreaming must never abort the pipeline
+        return {"status": "error", "error_type": type(exc).__name__,
+                "reason": str(exc)[:200], "store": str(store_dir)}
+    finally:
+        if prev is None:
+            os.environ.pop("MEMORY_STORE", None)
+        else:
+            os.environ["MEMORY_STORE"] = prev
 
 
 def _sandbox_auth_probe(config_dir: Path, *, timeout: int = 60) -> bool:
@@ -540,6 +751,7 @@ def run_pipeline(cfg: dict) -> dict:
 
     active = cfg.get("stages") or list(_EVAL_STAGES)
     meta["stages_run"] = active
+    meta["preflight"] = _preflight(cfg, substrate, active)
     cost = CostTracker(budget_usd=cfg["budget_usd"]) if cfg["budget_usd"] and cfg["budget_usd"] > 0 else None
     total = _stage_task_total(cfg)
     meta["n_tasks"] = total
@@ -565,8 +777,20 @@ def run_pipeline(cfg: dict) -> dict:
     # Stage 4 (dream) + stage 5 (plugin-dreamed) only run if the final stage is selected.
     if "plugin-dreamed" in active:
         print("\n── stage 4/5 · dream ──────────", flush=True)
-        print("  no-op placeholder — whole-store consolidation not implemented yet", flush=True)
+        print("  running whole-store consolidation (daydream-cli dream --all surface)…",
+              flush=True)
         dream = _run_dream_stage(substrate)
+        _dream_status = dream.get("status") or dream.get("mode") or "ok"
+        _dream_counts = dream.get("counts") or {}
+        if _dream_counts:
+            print(f"  ✓ dream: {_dream_status} · {_dream_counts.get('total_items', 0)} items · "
+                  f"{_dream_counts.get('items_retired', 0)} deduped · "
+                  f"{_dream_counts.get('items_pruned', 0)} pruned · "
+                  f"{_dream_counts.get('items_contradicted', 0)} contradicted · "
+                  f"{_dream_counts.get('items_blacklisted', 0)} blacklisted", flush=True)
+        else:
+            print(f"  dream: {_dream_status} — {dream.get('reason', 'no consolidation')}",
+                  flush=True)
         _write_partial()
 
         rows.append(_run_one("plugin-dreamed", cfg, substrate, cost, native_by_stage, meta, total,
@@ -603,10 +827,14 @@ def _run_one(stage: str, cfg: dict, substrate: Path, cost: Any,
     # so its spent_usd is CUMULATIVE. Subtract the spend at stage start so each stage's
     # cost reflects only THAT stage, not the running pipeline total.
     cost_base = cost.spent_usd if cost is not None else 0.0
+    memory_before = _store_health(substrate)
     print(f"\n── stage {idx}/5 · {stage} (mode={_STAGE_MODE[stage]}) · {total} tasks "
           f"──────────", flush=True)
     rr = _run_eval_stage(stage, cfg, substrate, cost=cost, total=total, on_task=on_task,
                          cost_base=cost_base)
+    memory_after = _store_health(substrate)
+    memory_delta = _health_delta(memory_before, memory_after)
+    warnings = _stage_warnings(stage, cfg, rr, memory_before, memory_after, memory_delta)
     _rebase_cost(rr, cost_base)
     m = rr.metrics
     secs = int(time.monotonic() - t0)
@@ -625,7 +853,20 @@ def _run_one(stage: str, cfg: dict, substrate: Path, cost: Any,
         except Exception as exc:  # native CL is supplementary -- never abort the stage
             print(f"  native CL skipped: {type(exc).__name__}: {str(exc)[:120]}",
                   file=sys.stderr, flush=True)
-    return PS.stage_row(rr, stage=stage, stage_index=idx, pipeline_meta=meta)
+    return PS.stage_row(
+        rr,
+        stage=stage,
+        stage_index=idx,
+        pipeline_meta=meta,
+        extra={
+            "memory_health": {
+                "before": memory_before,
+                "after": memory_after,
+                "delta": memory_delta,
+            },
+            "warnings": warnings,
+        },
+    )
 
 
 def main(argv: Optional[list[str]] = None) -> int:
