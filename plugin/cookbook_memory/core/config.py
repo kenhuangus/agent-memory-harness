@@ -17,6 +17,22 @@ from typing import Optional
 EVENTS_FILENAME = "events.jsonl"
 
 
+def _resolve_store_path(raw_store: Optional[str], env: dict[str, str]) -> Optional[Path]:
+    """Normalize store strings received from plugin manifests or hook env.
+
+    Claude Code plugin manifests may hand us placeholder values verbatim when an env
+    interpolation fails. Treat the config boundary as untrusted: strip accidental
+    Markdown/shell quotes and expand the one placeholder this plugin ships.
+    """
+    if not raw_store:
+        return None
+    store = raw_store.strip().strip("`'\"")
+    project_dir = env.get("CLAUDE_PROJECT_DIR")
+    if project_dir:
+        store = store.replace("${CLAUDE_PROJECT_DIR}", project_dir)
+    return Path(store) if store else None
+
+
 @dataclass(slots=True)
 class Settings:
     """Resolved runtime settings for one client invocation."""
@@ -44,7 +60,7 @@ class Settings:
         """
         env = os.environ if env is None else env
         raw_store = store or env.get("MEMORY_STORE")
-        store_path = Path(raw_store) if raw_store else None
+        store_path = _resolve_store_path(raw_store, env)
         events_path = store_path / EVENTS_FILENAME if store_path else None
         sid = session_id or env.get("CLAUDE_SESSION_ID") or env.get("MEMORY_SESSION_ID")
         if k is not None:

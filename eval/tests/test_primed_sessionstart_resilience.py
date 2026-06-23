@@ -79,6 +79,50 @@ def test_mcp_config_miss_still_detected() -> None:
     assert diag.is_mcp_config_miss is True
 
 
+def test_connection_closed_mid_response_is_classified_transient() -> None:
+    diag = C._diagnose_primed_failure(
+        "", "API Error: Connection closed mid-response. The response above may be incomplete."
+    )
+    assert diag.is_connection_closed_mid_response is True
+
+
+def test_progress_interval_can_be_disabled() -> None:
+    import os
+    old = os.environ.get("MEMEVAL_CLAUDE_PROGRESS_SECS")
+    try:
+        os.environ["MEMEVAL_CLAUDE_PROGRESS_SECS"] = "0"
+        assert C._progress_interval_secs() == 0.0
+    finally:
+        if old is None:
+            os.environ.pop("MEMEVAL_CLAUDE_PROGRESS_SECS", None)
+        else:
+            os.environ["MEMEVAL_CLAUDE_PROGRESS_SECS"] = old
+
+
+def test_summarize_transcript_counts_tool_telemetry(tmp_path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        "\n".join([
+            '{"type":"assistant","message":{"content":[{"type":"text","text":"x"}]}}',
+            '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read"}]}}',
+            '{"type":"user","message":{"content":[{"type":"tool_result","content":"ok"}]}}',
+            '{"type":"assistant","isApiErrorMessage":true,"error":"server_error",'
+            '"message":{"content":[{"type":"text","text":"API Error"}]}}',
+        ])
+        + "\n",
+        encoding="utf-8",
+    )
+
+    stats = C._summarize_transcript(transcript)
+
+    assert stats.lines == 4
+    assert stats.assistant_events == 3
+    assert stats.tool_uses == 1
+    assert stats.tool_results == 1
+    assert stats.api_errors == 1
+    assert stats.last_type == "assistant"
+
+
 # --------------------------------------------------------------------------- #
 # (1) Bounded retry: a transient startup abort is retried, a model error is not.
 # --------------------------------------------------------------------------- #
@@ -122,6 +166,24 @@ def test_run_claude_primed_retries_startup_abort_then_succeeds() -> None:
         res = cli_mod.run_claude_primed("q", cwd=".", runtime=rt)
         assert res.text == "answer"
         assert len(calls) == 2          # it retried exactly once
+    finally:
+        cli_mod.subprocess.run = orig
+
+
+def test_run_claude_primed_retries_connection_closed_then_succeeds() -> None:
+    rt = _with_native_runtime()
+    ok_stdout = '{"type":"result","subtype":"success","result":"answer"}\n'
+    responses = [
+        _FakeProc(1, stderr="API Error: Connection closed mid-response."),
+        _FakeProc(0, stdout=ok_stdout),
+    ]
+    import memeval.claudecode.cli as cli_mod
+    orig = cli_mod.subprocess.run
+    try:
+        calls = _patch_subprocess_run(cli_mod, responses)
+        res = cli_mod.run_claude_primed("q", cwd=".", runtime=rt)
+        assert res.text == "answer"
+        assert len(calls) == 2
     finally:
         cli_mod.subprocess.run = orig
 

@@ -141,3 +141,22 @@ def test_settings_from_env_resolves_events_path(tmp_path, monkeypatch):
     s = Settings.from_env()
     assert s.store_path == tmp_path
     assert s.events_path == tmp_path / "events.jsonl"
+
+
+def test_settings_from_env_strips_accidental_backticks(tmp_path):
+    raw = f"`{tmp_path}/.cookbook-memory`"
+    s = Settings.from_env({"MEMORY_STORE": raw})
+    assert s.store_path == tmp_path / ".cookbook-memory"
+
+
+def test_settings_from_env_strips_leading_backtick():
+    s = Settings.from_env({"MEMORY_STORE": "`/.cookbook-memory"})
+    assert s.store_path.as_posix() == "/.cookbook-memory"
+
+
+def test_settings_from_env_expands_claude_project_dir(tmp_path):
+    s = Settings.from_env({
+        "CLAUDE_PROJECT_DIR": str(tmp_path),
+        "MEMORY_STORE": "${CLAUDE_PROJECT_DIR}/.cookbook-memory",
+    })
+    assert s.store_path == tmp_path / ".cookbook-memory"

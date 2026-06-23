@@ -557,7 +557,11 @@ class ClaudeCodeAgent:
             # learning accumulates across tasks/stages by directory persistence. The
             # harness never copies the store (ADR-harness-012).
             project_dir, store_dir = self._plugin_real_store(checkout)
-            extra_env = {**plugin_env, "CLAUDE_PROJECT_DIR": str(project_dir)}
+            extra_env = {
+                **plugin_env,
+                "CLAUDE_PROJECT_DIR": str(project_dir),
+                "MEMORY_STORE": str(store_dir),
+            }
             _add_dream_env(extra_env)  # OPENROUTER_API_KEY / DREAM_* for the daydream write path
             events = store_dir / "events.jsonl"
             # Drive the coding turn through the PRIMED runner with a retry-until-recall
@@ -662,7 +666,11 @@ class ClaudeCodeAgent:
         plugin_env = self._ensure_real_plugin()  # install first so the plugin MCP is on PATH
         project_dir, store_dir = self._plugin_real_store(run_dir)
 
-        extra_env = {**plugin_env, "CLAUDE_PROJECT_DIR": str(project_dir)}
+        extra_env = {
+            **plugin_env,
+            "CLAUDE_PROJECT_DIR": str(project_dir),
+            "MEMORY_STORE": str(store_dir),
+        }
         _add_dream_env(extra_env)  # OPENROUTER_API_KEY / DREAM_* so daydream is live on WSL too
         events = store_dir / "events.jsonl"
 

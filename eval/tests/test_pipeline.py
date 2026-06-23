@@ -29,10 +29,14 @@ _FIXTURE = str(Path(__file__).resolve().parents[1] / "memeval" / "data"
 
 def _fake_runner(prompt, *, cwd, extra_env=None, **kw) -> ClaudeResult:
     """Stand in for the installed plugin: write a recall event into the resolved store
-    (${CLAUDE_PROJECT_DIR}/.cookbook-memory) so attribution produces a retrieve step,
-    plus a per-prompt marker memory file proving cross-stage persistence."""
-    proj = (extra_env or {}).get("CLAUDE_PROJECT_DIR", cwd)
-    store = Path(proj) / ".cookbook-memory"
+    ($MEMORY_STORE, falling back to ${CLAUDE_PROJECT_DIR}/.cookbook-memory) so
+    attribution produces a retrieve step, plus a per-prompt marker memory file proving
+    cross-stage persistence."""
+    env = extra_env or {}
+    store = Path(
+        env.get("MEMORY_STORE")
+        or (Path(env.get("CLAUDE_PROJECT_DIR", cwd)) / ".cookbook-memory")
+    )
     store.mkdir(parents=True, exist_ok=True)
     (store / f"mem_{abs(hash(prompt)) % 10000}.md").write_text("learned\n", encoding="utf-8")
     ev = {"ts": 1.0, "op": "recall", "ids": ["m1"], "query": prompt,
@@ -136,6 +140,47 @@ def test_pipeline_results_path_is_version_scoped(monkeypatch) -> None:
         vd = version_dirs[0]
         assert (vd / "_memory").is_dir()
         assert list(vd.glob("swe_bench_cl-*.json"))
+
+
+def test_interactive_config_can_skip_base(monkeypatch) -> None:
+    answers = iter(["", "", "", "", "", "y"])
+    monkeypatch.setattr(P, "_interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
+    args = P._build_parser().parse_args([])
+
+    cfg = P._resolve_config(args)
+
+    assert cfg["stages"] == ["plugin-blank", "plugin-accum", "plugin-dreamed"]
+
+
+def test_interactive_config_stages_override_skip_prompt(monkeypatch) -> None:
+    prompts: list[str] = []
+    answers = iter(["", "", "", "", ""])
+    monkeypatch.setattr(P, "_interactive", lambda: True)
+
+    def fake_input(prompt: str) -> str:
+        prompts.append(prompt)
+        return next(answers)
+
+    monkeypatch.setattr("builtins.input", fake_input)
+    args = P._build_parser().parse_args(["--stages", "plugin-blank"])
+
+    cfg = P._resolve_config(args)
+
+    assert cfg["stages"] == ["plugin-blank"]
+    assert not any("skip stage 1" in p for p in prompts)
+
+
+def test_pipeline_native_cl_defaults_off() -> None:
+    args = P._build_parser().parse_args([])
+    cfg = P._resolve_config(args)
+    assert cfg["native_cl"] is False
+
+
+def test_pipeline_native_cl_is_opt_in() -> None:
+    args = P._build_parser().parse_args(["--native-cl"])
+    cfg = P._resolve_config(args)
+    assert cfg["native_cl"] is True
 
 
 def test_pipeline_fails_closed_when_sandbox_not_logged_in(monkeypatch) -> None:

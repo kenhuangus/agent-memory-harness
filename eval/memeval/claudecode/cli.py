@@ -12,6 +12,9 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
+import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
@@ -22,6 +25,11 @@ from .platform import ClaudeRuntime, detect, to_wsl_path
 #: Credentials stripped so the CLI uses the Claude Code *subscription* (OAuth),
 #: never an API key — benchmarking Claude Code on its own auth, no API billing.
 _API_KEY_VARS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
+
+# Live transcript progress while a long `claude -p --output-format stream-json` run is
+# blocking. Set to 0/off/false/no to disable, or a number of seconds to tune cadence.
+_PROGRESS_ENV = "MEMEVAL_CLAUDE_PROGRESS_SECS"
+_PROGRESS_DEFAULT_SECS = 20.0
 
 
 class ClaudeNotInstalled(RuntimeError):
@@ -177,9 +185,10 @@ def run_claude_primed(
     )
     stdin_data = _stream_json_input([_PRIME_MESSAGE, prompt])
     for attempt in range(3):
-        proc = subprocess.run(argv, cwd=sub_cwd, capture_output=True, text=True,
-                              timeout=timeout, env=_clean_env(strip_api_key, extra_env),
-                              input=stdin_data)
+        env = _clean_env(strip_api_key, extra_env)
+        with _ClaudeProgressMonitor(cwd=cwd, env=env, attempt=attempt + 1):
+            proc = subprocess.run(argv, cwd=sub_cwd, capture_output=True, text=True,
+                                  timeout=timeout, env=env, input=stdin_data)
         if proc.returncode == 0:
             return _parse_stream_json(proc.stdout)
         diag = _diagnose_primed_failure(proc.stdout, proc.stderr)
@@ -191,10 +200,144 @@ def run_claude_primed(
         # are state/timing dependent (a re-run of the SAME task succeeds), so a
         # bounded retry of the whole primed turn clears them without masking a real
         # model error (which DOES emit a result event -> not retried here).
-        if attempt < 2 and (diag.is_mcp_config_miss or diag.is_startup_abort):
+        if attempt < 2 and (
+            diag.is_mcp_config_miss
+            or diag.is_startup_abort
+            or diag.is_connection_closed_mid_response
+        ):
             continue
         raise RuntimeError(f"claude (primed) exited {proc.returncode}: {diag.message}")
     return _parse_stream_json(proc.stdout)
+
+
+@dataclass(slots=True)
+class _TranscriptStats:
+    lines: int = 0
+    assistant_events: int = 0
+    tool_uses: int = 0
+    tool_results: int = 0
+    api_errors: int = 0
+    last_type: str = ""
+    last_mtime: float = 0.0
+
+
+def _progress_interval_secs() -> float:
+    raw = os.environ.get(_PROGRESS_ENV)
+    if raw is None:
+        return _PROGRESS_DEFAULT_SECS
+    if raw.strip().lower() in {"0", "false", "no", "off"}:
+        return 0.0
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return _PROGRESS_DEFAULT_SECS
+
+
+def _project_transcript_root(env: Optional[dict[str, str]]) -> Optional[Path]:
+    cfg = (env or {}).get("CLAUDE_CONFIG_DIR") or sandbox.active_config_dir()
+    return (Path(cfg) / "projects") if cfg else None
+
+
+def _latest_transcript(projects: Optional[Path], *, since: float) -> Optional[Path]:
+    if projects is None or not projects.is_dir():
+        return None
+    candidates: list[Path] = []
+    for p in projects.glob("**/*.jsonl"):
+        try:
+            if p.stat().st_mtime >= since:
+                candidates.append(p)
+        except OSError:
+            continue
+    if not candidates:
+        return None
+    return max(candidates, key=lambda p: p.stat().st_mtime)
+
+
+def _summarize_transcript(path: Path) -> _TranscriptStats:
+    stats = _TranscriptStats()
+    try:
+        stats.last_mtime = path.stat().st_mtime
+        lines = path.read_text(errors="replace").splitlines()
+    except OSError:
+        return stats
+    stats.lines = len(lines)
+    for line in lines:
+        try:
+            ev = json.loads(line)
+        except Exception:
+            continue
+        if not isinstance(ev, dict):
+            continue
+        typ = str(ev.get("type") or "")
+        if typ:
+            stats.last_type = typ
+        if typ == "assistant":
+            stats.assistant_events += 1
+            msg = ev.get("message") if isinstance(ev.get("message"), dict) else {}
+            for item in msg.get("content") or []:
+                if isinstance(item, dict) and item.get("type") == "tool_use":
+                    stats.tool_uses += 1
+        elif typ == "user":
+            msg = ev.get("message") if isinstance(ev.get("message"), dict) else {}
+            for item in msg.get("content") or []:
+                if isinstance(item, dict) and item.get("type") == "tool_result":
+                    stats.tool_results += 1
+        if ev.get("isApiErrorMessage") or ev.get("error"):
+            stats.api_errors += 1
+    return stats
+
+
+class _ClaudeProgressMonitor:
+    """Periodic, best-effort transcript heartbeat for long blocking Claude runs."""
+
+    def __init__(self, *, cwd: str | Path, env: Optional[dict[str, str]],
+                 attempt: int) -> None:
+        self.cwd = Path(cwd)
+        self.env = env
+        self.attempt = attempt
+        self.interval = _progress_interval_secs()
+        self._stop = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+
+    def __enter__(self) -> "_ClaudeProgressMonitor":
+        if self.interval <= 0:
+            return self
+        self._thread = threading.Thread(target=self._run, name="claude-progress",
+                                        daemon=True)
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=1.0)
+
+    def _run(self) -> None:
+        started = time.time()
+        projects = _project_transcript_root(self.env)
+        last_printed: tuple[Optional[Path], int, int, int, int] = (None, -1, -1, -1, -1)
+        while not self._stop.wait(self.interval):
+            transcript = _latest_transcript(projects, since=started - 5.0)
+            elapsed = int(time.time() - started)
+            if transcript is None:
+                print(f"  claude still running · attempt {self.attempt} · {elapsed}s · "
+                      "waiting for transcript", file=sys.stderr, flush=True)
+                continue
+            stats = _summarize_transcript(transcript)
+            key = (transcript, stats.lines, stats.tool_uses, stats.tool_results,
+                   stats.api_errors)
+            if key == last_printed:
+                print(f"  claude still running · attempt {self.attempt} · {elapsed}s · "
+                      f"no new transcript events · {transcript.name}",
+                      file=sys.stderr, flush=True)
+            else:
+                print(f"  claude still running · attempt {self.attempt} · {elapsed}s · "
+                      f"lines={stats.lines} assistant={stats.assistant_events} "
+                      f"tool_uses={stats.tool_uses} tool_results={stats.tool_results} "
+                      f"api_errors={stats.api_errors} last={stats.last_type or '?'} · "
+                      f"{transcript.name}",
+                      file=sys.stderr, flush=True)
+                last_printed = key
 
 
 @dataclass(slots=True)
@@ -212,6 +355,7 @@ class _PrimedFailure:
     message: str
     is_mcp_config_miss: bool
     is_startup_abort: bool
+    is_connection_closed_mid_response: bool
 
 
 def _diagnose_primed_failure(stdout: Optional[str], stderr: Optional[str]) -> _PrimedFailure:
@@ -220,6 +364,7 @@ def _diagnose_primed_failure(stdout: Optional[str], stderr: Optional[str]) -> _P
     err = (stderr or "").strip()
     combined = "\n".join(p for p in (out, err) if p)
     is_mcp = "MCP config" in combined
+    is_closed_mid_response = "Connection closed mid-response" in combined
     # A startup abort: stream-json began (a `hook_started`/`system` event was emitted)
     # but NO `result` event ever landed — claude exited during startup, before the real
     # turn produced an answer. A genuine model/tool error emits a result event with
@@ -242,8 +387,12 @@ def _diagnose_primed_failure(stdout: Optional[str], stderr: Optional[str]) -> _P
         message = out[-400:]
     else:
         message = "(no output on stdout or stderr)"
-    return _PrimedFailure(message=message, is_mcp_config_miss=is_mcp,
-                          is_startup_abort=is_startup_abort)
+    return _PrimedFailure(
+        message=message,
+        is_mcp_config_miss=is_mcp,
+        is_startup_abort=is_startup_abort,
+        is_connection_closed_mid_response=is_closed_mid_response,
+    )
 
 
 def _wsl_env_prefix(strip_api_key: bool,
