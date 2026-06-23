@@ -107,8 +107,14 @@ class MarkdownStore:
         """Persist ``item`` as an OKF doc (idempotent on id) and (re)index it."""
         self._sync()  # absorb any peer writes first so they aren't clobbered out of the index
         self._okf.write(item)  # writes the bundle doc, bumps the OKF generation, populates item.tokens
-        self._index(item)
-        self._indexed_generation = self._okf._loaded_generation  # lockstep -> no spurious rebuild
+        # If the OKF write RECONCILED peers under the lock (a peer landed between _sync and the
+        # write), the mirror now holds docs our incremental _index(item) wouldn't cover — rebuild
+        # the whole index from the post-write mirror so no peer is acked-but-unindexed (R2 #2).
+        if self._okf._last_mutation_reconciled:
+            self._rebuild_index()
+        else:
+            self._index(item)
+        self._indexed_generation = self._okf._loaded_generation  # lockstep with the post-write gen
 
     def get(self, item_id: str) -> Optional[MemoryItem]:
         self._sync()
@@ -166,9 +172,13 @@ class MarkdownStore:
         """Delete ``item_id`` from the OKF bundle (durable) and the inverted keyword index. Idempotent."""
         self._sync()  # absorb any peer writes first so the index stays coherent
         removed = self._okf.delete(item_id)
-        if removed:
+        # A delete can also reconcile peers under the lock (even on the not-found path) — if so the
+        # mirror changed; rebuild the index from it rather than only deindexing the one id (R2 #2).
+        if self._okf._last_mutation_reconciled:
+            self._rebuild_index()
+        elif removed:
             self._deindex(item_id)
-            self._indexed_generation = self._okf._loaded_generation  # lockstep with the bump
+        self._indexed_generation = self._okf._loaded_generation  # lockstep with the post-delete gen
         return removed
 
 

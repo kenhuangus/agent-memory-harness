@@ -491,6 +491,10 @@ class OKFStore:
         # the mtime-after-lock race (the loaded generation is set under the lock, so an
         # instance never "acknowledges" a peer commit it did not load). 0 == never loaded.
         self._loaded_generation = 0
+        # Set by write/delete: did the last own mutation reconcile peer writes under the lock?
+        # A derived index (MarkdownStore's postings) reads this to decide between an incremental
+        # update (own item only) and a full rebuild (peers were pulled in).
+        self._last_mutation_reconciled = False
         if autoload and self.root.exists():
             self._load_from_disk()
 
@@ -553,22 +557,45 @@ class OKFStore:
             return True
         return False
 
+    def _reconcile_locked(self) -> bool:
+        """Pull in any peer writes BEFORE applying an own mutation — MUST be called while
+        holding the bundle lock. Returns ``True`` iff a reload happened (a derived index like
+        MarkdownStore's postings must then rebuild from the post-mutation mirror, not just the
+        own item).
+
+        Closes the WRITER-SIDE stale-ack hole (R2): without this, an own write could bump the
+        generation to N+1 and record ``_loaded_generation = N+1`` while ``_mem`` never loaded a
+        peer's gen-N doc, so future reads would see on-disk==loaded and NEVER reload — silently
+        and permanently missing the peer. Reloading first means the own mutation is applied on
+        top of a mirror that already reflects every peer, so the recorded generation is honest
+        (``_mem`` == peers loaded + own applied == on-disk state). ``_autoload=False`` opts out
+        (single-process tests that intentionally freeze the mirror)."""
+        if not self._autoload:
+            return False
+        if self._read_generation() > self._loaded_generation:
+            self._load_from_disk()
+            return True
+        return False
+
     # -- MemoryStore protocol ----------------------------------------------
     def write(self, item: MemoryItem) -> None:
         """Persist ``item`` as an OKF concept doc — atomic (tmp+replace+fsync, ADR-013)
         and serialized across processes by a bundle flock (ADR-014) so concurrent peers
         over one ``$MEMORY_STORE`` never interleave a write or torn-write a doc.
 
-        ``_mem.write`` runs FIRST (it populates ``item.tokens`` in place when zero) so the
-        rendered doc carries ``x_tokens`` — byte-equivalent to the pre-hardening single-process
-        path. The generation is bumped AND recorded WHILE HOLDING THE LOCK, so this instance
-        only ever acknowledges generations it has actually loaded (a peer's later commit gets
-        a strictly higher generation and is detected on the next refresh)."""
-        self._mem.write(item)  # populates item.tokens in place; the doc render below captures it
+        RECONCILE-UNDER-LOCK (R2): inside the critical section, BEFORE applying the local
+        write, peer writes are pulled in (``_reconcile_locked``) so ``_mem`` reflects every
+        committed peer; the own write is then applied on top, persisted, and the generation
+        bumped + recorded — all under the lock. This guarantees ``_loaded_generation`` only
+        ever names state the instance actually holds (no writer-side stale-ack). ``_mem.write``
+        also populates ``item.tokens`` in place so the rendered doc carries ``x_tokens``
+        (byte-equivalent to the single-process path)."""
         rel = _doc_relpath(item)
         with _bundle_write_lock(self.root):
+            self._last_mutation_reconciled = self._reconcile_locked()  # pull peers FIRST so own write isn't lost
+            self._mem.write(item)              # apply own write on top; populates item.tokens in place
             _write_text_atomic(self.root / rel, memory_item_to_doc(item))
-            self._loaded_generation = self._bump_generation()  # under the lock -> no stale-ack race
+            self._loaded_generation = self._bump_generation()  # honest: _mem == peers + own == on-disk
 
     def get(self, item_id: str) -> Optional[MemoryItem]:
         self._maybe_refresh()
@@ -592,10 +619,11 @@ class OKFStore:
         delete no longer goes quadratic under a Daydreamer dedup burst. Serialized + atomic via the same
         bundle flock as :meth:`write`. Returns ``False`` if the id was not present.
         """
-        item = self._mem.get(item_id)
-        if item is None:
-            return False
         with _bundle_write_lock(self.root):
+            self._last_mutation_reconciled = self._reconcile_locked()  # pull peers FIRST (deletable + no stale-ack)
+            item = self._mem.get(item_id)
+            if item is None:
+                return False           # absent even after reconcile -> nothing to delete (idempotent)
             canonical = self.root / _doc_relpath(item)
             unlinked = False
             if canonical.exists():
@@ -612,8 +640,9 @@ class OKFStore:
                         continue
                     if self._doc_is_item(path, item_id):
                         path.unlink(missing_ok=True)
-            self._loaded_generation = self._bump_generation()  # under the lock (cf. write())
-        return self._mem.delete(item_id)
+            removed = self._mem.delete(item_id)
+            self._loaded_generation = self._bump_generation()  # honest: _mem == peers + own delete applied
+        return removed
 
     def _doc_is_item(self, path: Path, item_id: str) -> bool:
         """True if the concept doc at ``path`` parses to ``item_id`` (guards torn/foreign docs).
@@ -636,9 +665,17 @@ class OKFStore:
         return doc_to_memory_item(text, fallback_id=_slug(rel[:-3])).item_id == item_id
 
     def flush_indexes(self) -> dict[str, Any]:
-        """(Re)write the bundle's index.md/log.md from the current items."""
-        result = export_bundle(self._mem.all(), self.root)
+        """(Re)write the bundle's index.md/log.md (and re-emit every concept doc) from the
+        current items.
+
+        ``export_bundle`` rewrites concept docs, not just the index/log artifacts, so it runs
+        INSIDE the bundle lock with a reconcile-first (R2) — otherwise it could overwrite a
+        peer's newer doc from a stale mirror and then publish a later generation, silently
+        losing the peer's write. Reconcile pulls peers in first; the export then reflects
+        peers + own state; the bump records that honest generation under the lock."""
         with _bundle_write_lock(self.root):
+            self._reconcile_locked()
+            result = export_bundle(self._mem.all(), self.root)
             self._loaded_generation = self._bump_generation()
         return result
 

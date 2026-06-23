@@ -165,9 +165,12 @@ class MarkdownRefreshAndLockTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.d = self._tmp.name
+        self._tmp2 = tempfile.TemporaryDirectory()
+        self.d2 = self._tmp2.name   # a second, isolated bundle (the MarkdownStore sub-scenario)
 
     def tearDown(self) -> None:
         self._tmp.cleanup()
+        self._tmp2.cleanup()
 
     def test_okf_auto_refresh_on_read_without_explicit_reload(self) -> None:
         # AUTO-refresh: A is the long-lived reader (MCP daemon), constructed BEFORE the peer
@@ -224,6 +227,35 @@ class MarkdownRefreshAndLockTests(unittest.TestCase):
                         "MarkdownStore.search must rebuild postings for a peer's new doc (no reload)")
         self.assertIsNotNone(a.get("peerm"), "MarkdownStore.get must auto-refresh to the peer doc")
 
+    def test_writer_side_does_not_stale_ack_an_unloaded_peer(self) -> None:
+        # The R2 writer-side stale-ack hole (gate finding #1+2+3 share this root cause): A loads
+        # gen 0; peer B commits a NEW doc (gen 1); A then writes its OWN different doc. On the
+        # 9db51b0 code A's own write bumps to gen 2 and records _loaded_generation=2 WITHOUT ever
+        # loading B's gen-1 doc, so every future read sees on-disk==loaded and NEVER reloads ->
+        # A permanently misses B. The reconcile-under-lock fix pulls B in during A's own write,
+        # so A holds B afterward. Proven at BOTH layers (OKFStore and MarkdownStore) and via
+        # search on the coined token — all WITHOUT any explicit reload().
+        a_okf = OKFStore(self.d)
+        b_okf = OKFStore(self.d)
+        b_okf.write(_item("b_peer", "zphlanitic coined peer concept", ts=1.0))  # peer commits gen 1
+        a_okf.write(_item("a_own", "a's own unrelated concept", ts=2.0))         # A's OWN write (gen 2)
+        # A never reloaded; a plain read MUST surface the peer it skipped over.
+        self.assertIsNotNone(a_okf.get("b_peer"),
+                             "writer-side: an own write must not stale-ack an unloaded peer (OKFStore.get)")
+        self.assertTrue(any(h.item_id == "b_peer" for h in a_okf.search("zphlanitic", k=5)),
+                        "writer-side: the skipped peer must be searchable (OKFStore.search)")
+        self.assertIsNotNone(a_okf.get("a_own"), "the own write is not lost")
+
+        # Same race through MarkdownStore (the inverted index must reflect the reconciled peer).
+        a_md = MarkdownStore(self.d2)
+        b_md = MarkdownStore(self.d2)
+        b_md.write(_item("b_peer", "blorptacular coined peer token", ts=1.0))    # peer gen 1
+        a_md.write(_item("a_own", "a markdown own concept", ts=2.0))             # A's own write (gen 2)
+        self.assertTrue(any(h.item_id == "b_peer" for h in a_md.search("blorptacular", k=5)),
+                        "writer-side: MarkdownStore postings must include the reconciled peer (no reload)")
+        self.assertIsNotNone(a_md.get("b_peer"),
+                             "writer-side: MarkdownStore.get must surface the reconciled peer")
+
     def test_cross_process_flock_serializes_concurrent_writers(self) -> None:
         # Genuinely cross-PROCESS: separate OS processes (multiprocessing) hammer the SAME id.
         # The bundle flock must serialize their tmp-write+replace so a cold reload finds exactly
@@ -275,7 +307,12 @@ class MarkdownRefreshAndLockTests(unittest.TestCase):
 # Property 3 — Markdown delete fast-path [HIGH-3]
 # --------------------------------------------------------------------------- #
 class _ReadSpy:
-    """Counts per-file text reads so a delete's disk-read cost is observable."""
+    """Counts per-CONCEPT-DOC (.md) text reads so a delete's doc-scan cost is observable.
+
+    Only ``*.md`` reads are counted — the O(N) full-scan is the concern. The constant
+    generation/lock dotfile reads (``.okf-generation``) are deliberately excluded: they are
+    fixed overhead (the reconcile-under-lock coherence seam reads the counter), not a function
+    of bundle size, and counting them would couple this O(1) assertion to that seam."""
 
     def __init__(self) -> None:
         self.reads = 0
@@ -285,7 +322,8 @@ class _ReadSpy:
         spy = self
 
         def counting_read_text(self_path, *a, **k):  # type: ignore[no-untyped-def]
-            spy.reads += 1
+            if str(self_path).endswith(".md"):
+                spy.reads += 1
             return spy._orig(self_path, *a, **k)
 
         Path.read_text = counting_read_text  # type: ignore[assignment]
