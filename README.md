@@ -87,18 +87,26 @@ The evaluation code lives in [`eval/`](eval/) — a stdlib-first Python package
 memory** vs **our plugin memory**, on your Claude Code **subscription** (no API
 key, no API billing). Installing puts a **`memeval-bench`** command on your PATH.
 
-First set up a virtual environment on Python 3.13 — the one standard way across
-macOS / Linux / WSL (see [`eval/README.md` → Setup](eval/README.md#setup-virtual-environment-macos-linux-wsl)):
+Set up once with [`uv`](https://docs.astral.sh/uv/) (Python 3.13; same on macOS / Linux /
+WSL — see [`eval/README.md` → Setup](eval/README.md#setup-one-command--macos-linux-wsl)):
 
 ```bash
-uv venv --python 3.13 && source .venv/bin/activate    # or: python3.13 -m venv .venv && source .venv/bin/activate
+make setup                                       # .venv on 3.13 + harness + plugin (via uv)
+npm install -g @anthropic-ai/claude-code         # the `claude` CLI (the agent under test)
 ```
+
+Run the **5-stage SWE-Bench-CL pipeline** (base → plugin/blank → plugin/accumulated →
+dream → plugin/dreamed, with a base→final summary) from the repo root:
+
+```bash
+make pipeline                                    # interactive
+make pipeline ARGS="--yes --sequence pytest-dev_pytest_sequence --limit 3 --budget-usd 5"
+```
+
+For the individual `memeval-bench` commands below, prefix with `uv run` (or activate `.venv`):
 
 ```bash
 cd eval
-pip install -e ".[claudecode,hf]"               # harness + MCP memory plugin + dataset loaders
-npm install -g @anthropic-ai/claude-code         # the `claude` CLI (the agent under test)
-
 memeval-bench --list-benchmarks                  # see the five ids (offline, no claude)
 
 # 1) offline smoke first (free, no claude, bundled fixtures):

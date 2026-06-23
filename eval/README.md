@@ -71,45 +71,111 @@ echo-model CLI with nothing else installed.
 
 ---
 
-## Setup: virtual environment (macOS, Linux, WSL)
+## Dev setup (macOS, Linux, WSL)
 
-Work in a **virtual environment** on **Python 3.13** (the targeted version; `>=3.11`
-is the floor). This is the cross-platform standard — the same commands on macOS,
-Linux, and WSL — and it avoids two common traps: a system Python that only ships
-`python3`/`pip3` (no bare `pip`), and Homebrew/Debian's *externally-managed* Python
-(PEP 668) that refuses a direct `pip install`. We use [`uv`](https://docs.astral.sh/uv/)
-(install: `brew install uv`, or `curl -LsSf https://astral.sh/uv/install.sh | sh`),
-which picks the right interpreter for you and is identical across platforms:
+Everything runs through [`uv`](https://docs.astral.sh/uv/) against a project-local
+`.venv` on **Python 3.13** (the targeted version; `>=3.11` is the floor) — no bare
+`pip`/`python`, no manual activation. This is identical on all three platforms and avoids
+two common traps: a system Python that only ships `python3`/`pip3` (no bare `pip`), and
+Homebrew/Debian's *externally-managed* Python (PEP 668) that refuses a direct `pip install`.
+
+**1. Install uv once** (if you don't have it):
 
 ```bash
-# from the repo root
-uv venv --python 3.13                     # creates ./.venv on Python 3.13
-source .venv/bin/activate                  # Windows (non-WSL): .venv\Scripts\activate
-uv pip install -e 'eval[daydream,dev]'     # the harness + dreaming + test deps
-uv pip install --no-deps -e plugin         # the cookbook-memory plugin (for plugin-real runs)
+brew install uv                                  # macOS
+# or, any platform:
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-Once activated, plain `python` / `pip` / the console scripts (`memeval`, `memeval-bench`,
-`memeval-pipeline`, `daydream-cli`) are on your PATH. Prefer **uv**, but a stdlib venv
-works too: `python3.13 -m venv .venv && source .venv/bin/activate && pip install -e 'eval[...]'`.
+**2. Set up the project** — one command, from the **repo root**, idempotent:
 
-> The `Makefile` targets (`make test`, `make install-dev`) call bare `pip`/`python`, so
-> run them only from inside an activated venv. The `Install` commands below assume the
-> same.
+```bash
+make setup
+```
+
+That creates `./.venv` on Python 3.13 and installs the harness (with the `claudecode`,
+`daydream`, `hf`, and `dev` extras) **and** the `cookbook-memory` plugin. The equivalent
+without `make` (same result):
+
+```bash
+uv venv --python 3.13
+uv pip install -e 'eval[claudecode,daydream,hf,dev]'
+uv pip install --no-deps -e plugin
+```
+
+After setup, the console scripts (`memeval`, `memeval-bench`, `memeval-pipeline`,
+`daydream-cli`) live in `.venv/bin`. Run any command three equivalent ways:
+
+```bash
+uv run memeval-pipeline --help          # uv finds ./.venv automatically (no activation)
+source .venv/bin/activate               # or activate once (Windows non-WSL: .venv\Scripts\activate)
+memeval-pipeline --help                 #   ... then call directly
+```
+
+## Testing
+
+```bash
+make test                               # full pytest suite (via uv; from the repo root)
+make typecheck                          # mypy --strict on the dreaming production code
+make test-daydream                      # only the dreaming-domain tests
+```
+
+Direct equivalents — use `uv run --no-project` so uv uses the repo-root `./.venv` instead
+of creating a stray `eval/.venv` (or just `source .venv/bin/activate` first and drop the
+`uv run --no-project` prefix):
+
+```bash
+cd eval
+uv run --no-project python -m pytest                        # full suite
+uv run --no-project python -m pytest tests/test_pipeline.py -q   # one file
+python tests/test_smoke.py                                  # stdlib-only smoke — NO pytest/venv needed (what CI runs)
+```
+
+The smoke suite (`tests/test_smoke.py`) is stdlib-only and runs with zero dependencies —
+that is what CI runs on every PR.
+
+## Running the SWE-Bench-CL pipeline
+
+The 5-stage pipeline (base → plugin/blank → plugin/accumulated → dream → plugin/dreamed,
+sharing one persistent per-version memory substrate, then a base→final summary). It drives
+the **live** `cookbook-memory` plugin, so it needs the `claude` CLI installed
+(`npm install -g @anthropic-ai/claude-code`) and a one-time sandbox `/login` on macOS; the
+base (no-plugin) stage runs without `claude`.
+
+**Via make** (interactive by default — prompts for each option, Enter accepts the default):
+
+```bash
+make pipeline                           # interactive
+make pipeline ARGS="--yes --sequence pytest-dev_pytest_sequence --limit 3 --budget-usd 5"
+```
+
+**Directly** (the console script — no `ARGS=`, flags passed normally):
+
+```bash
+uv run memeval-pipeline --sequence pytest-dev_pytest_sequence --limit 3 --budget-usd 5
+# or, with .venv activated:
+memeval-pipeline --sequence pytest-dev_pytest_sequence --limit 3 --budget-usd 5
+# non-interactive (CI/scripts): add --yes ; whole sequence: --limit 0 ; see all flags:
+memeval-pipeline --help
+```
+
+Key flags: `--sequence` (one of the 8 SWE-Bench-CL sequences — the "domain"), `--limit`
+(tasks of that sequence, `0` = all), `--model`, `--grader` (`local` runs real tests),
+`--budget-usd`, `--yes`. Results + the `SUMMARY-*.md` land under `results/v{version}/`
+(version = git tag on the commit, else the branch name, else `MEMORY_VERSION`); the shared
+memory substrate is `results/v{version}/_memory/`.
 
 ---
 
-## Install
+## Optional extras (reference)
 
-```bash
-# from the eval/ directory (this README's directory) — inside an activated venv
-pip install -e .                 # offline path only — stdlib, zero extra deps
-```
-
-Optional extras, added only when you need a live/remote capability:
+`make setup` installs `eval[claudecode,daydream,hf,dev]` + the plugin, which covers the
+pipeline, benchmarks, and tests. The full extra menu, if you want a leaner or different
+install (`uv pip install -e 'eval[<extra>]'`):
 
 | Extra            | Pulls in                                   | Needed for                                            |
 |------------------|--------------------------------------------|-------------------------------------------------------|
+| *(none)*         | —                                          | offline path only — stdlib, zero extra deps           |
 | `anthropic`      | `anthropic`                                | `AnthropicAdapter` (real Claude calls)                |
 | `hf`             | `datasets`                                 | loaders' remote download path (HuggingFace)           |
 | `embeddings`     | `numpy`                                     | embedding-based relevancy / vector retrieval          |
@@ -119,30 +185,20 @@ Optional extras, added only when you need a live/remote capability:
 | `full`           | anthropic + datasets + numpy + requests + pyyaml | real, online, paid runs                         |
 | `dev`            | `pytest`, `mypy`                           | `python -m pytest` + typecheck (tests also run without pytest) |
 
-```bash
-pip install -e ".[full]"         # everything for real online runs
-pip install -e ".[anthropic]"    # just real Claude models, local fixtures
-```
+The **offline path** — fixture parsing, all metrics math, the harness with `EchoModel` +
+`InMemoryStore`, cost gating, trajectory IO, and the smoke tests — needs **none** of these:
+it runs on the standard library alone (heavy deps are lazy-imported only where used).
 
 ---
 
-## Run the offline smoke tests
+## The offline smoke suite (what `make test` / CI run)
 
-The smoke suite is **stdlib-only** and runs **two ways** — pytest is *not*
-required:
-
-```bash
-# 1) as a pytest suite (if pytest is installed)
-python -m pytest tests
-
-# 2) as a plain script — no pytest needed; prints PASS/FAIL, exits nonzero on failure
-python tests/test_smoke.py
-```
-
-It covers: fixture parsing for each of the five benchmarks, the metrics math
-(recency / efficiency / relevancy / accuracy), the harness end-to-end with
-`EchoModel` + `InMemoryStore`, the cost gate raising `BudgetExceeded`, and the
-trajectory JSONL round-trip.
+The smoke suite (`tests/test_smoke.py`, run via **Testing** above) is **stdlib-only** and
+needs no venv or pytest — `python tests/test_smoke.py` prints PASS/FAIL and exits nonzero
+on failure (exactly what CI runs on every PR). It covers: fixture parsing for each of the
+five benchmarks, the metrics math (recency / efficiency / relevancy / accuracy), the
+harness end-to-end with `EchoModel` + `InMemoryStore`, the cost gate raising
+`BudgetExceeded`, and the trajectory JSONL round-trip.
 
 ## Run the harness from the CLI (offline)
 
