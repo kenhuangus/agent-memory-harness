@@ -145,10 +145,12 @@ def test_openrouter_complete_without_key_emits_llm_unavailable_event(
 # --- OpenRouterClient happy path (mocked httpx) -------------------------- #
 class _FakeResponse:
     def __init__(self, status_code: int, body: dict[str, Any] | None = None,
-                 *, raise_on_json: bool = False) -> None:
+                 *, raise_on_json: bool = False,
+                 headers: dict[str, str] | None = None) -> None:
         self.status_code = status_code
         self._body = body
         self._raise_on_json = raise_on_json
+        self.headers = headers if headers is not None else {}
 
     def json(self) -> Any:
         if self._raise_on_json:
@@ -166,6 +168,28 @@ def _mock_httpx_post(monkeypatch, response: _FakeResponse) -> list[dict[str, Any
                   timeout: float) -> _FakeResponse:
         calls.append({"url": url, "headers": headers, "json": json, "timeout": timeout})
         return response
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    return calls
+
+
+def _mock_httpx_post_seq(
+    monkeypatch, responses: list[_FakeResponse]
+) -> list[dict[str, Any]]:
+    """Replace httpx.post with a recorder returning ``responses`` in order.
+
+    The last response is reused if more calls than responses occur (so a
+    test that under-counts still fails on an assertion, not an IndexError).
+    """
+    import httpx
+
+    calls: list[dict[str, Any]] = []
+
+    def fake_post(url: str, *, headers: dict[str, str], json: dict[str, Any],
+                  timeout: float) -> _FakeResponse:
+        calls.append({"url": url, "headers": headers, "json": json, "timeout": timeout})
+        idx = min(len(calls) - 1, len(responses) - 1)
+        return responses[idx]
 
     monkeypatch.setattr(httpx, "post", fake_post)
     return calls
@@ -232,19 +256,115 @@ def test_openrouter_passes_max_tokens(monkeypatch):
 @pytest.mark.parametrize("status", [400, 401, 403, 500, 502, 503])
 def test_openrouter_status_error_returns_empty_completion(monkeypatch, status):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
-    _mock_httpx_post(monkeypatch, _FakeResponse(status, {}))
-    out = OpenRouterClient().complete(RedactedText("x"))
+    calls = _mock_httpx_post(monkeypatch, _FakeResponse(status, {}))
+    client = OpenRouterClient(sleep=lambda _: None)
+    out = client.complete(RedactedText("x"))
     assert out == Completion(text="", tokens_in=0, tokens_out=0)
+    if status >= 500:
+        # 5xx is transient → retried max_retries+1 times.
+        assert len(calls) == client._max_retries + 1
+    else:
+        # Non-429 4xx is NOT retried.
+        assert len(calls) == 1
 
 
 def test_openrouter_429_emits_rate_limited_event(monkeypatch, caplog):
     import logging
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
-    _mock_httpx_post(monkeypatch, _FakeResponse(429, {}))
+    calls = _mock_httpx_post(monkeypatch, _FakeResponse(429, {}))
     caplog.set_level(logging.DEBUG, logger="memeval.dreaming.events")
-    out = OpenRouterClient().complete(RedactedText("x"))
+    client = OpenRouterClient(sleep=lambda _: None)
+    out = client.complete(RedactedText("x"))
     assert out.text == ""
     assert any("llm_rate_limited" in r.getMessage() for r in caplog.records)
+    assert len(calls) == client._max_retries + 1
+
+
+def _ok_response() -> _FakeResponse:
+    return _FakeResponse(
+        200,
+        {
+            "choices": [{"message": {"content": "recovered text"}}],
+            "usage": {"prompt_tokens": 3, "completion_tokens": 4},
+        },
+    )
+
+
+def test_openrouter_429_then_200_recovers(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    calls = _mock_httpx_post_seq(
+        monkeypatch, [_FakeResponse(429, {}), _ok_response()]
+    )
+    client = OpenRouterClient(sleep=lambda _: None)
+    out = client.complete(RedactedText("x"))
+    assert out == Completion(text="recovered text", tokens_in=3, tokens_out=4)
+    assert len(calls) == 2
+
+
+def test_openrouter_5xx_then_200_recovers(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    calls = _mock_httpx_post_seq(
+        monkeypatch, [_FakeResponse(503, {}), _ok_response()]
+    )
+    client = OpenRouterClient(sleep=lambda _: None)
+    out = client.complete(RedactedText("x"))
+    assert out == Completion(text="recovered text", tokens_in=3, tokens_out=4)
+    assert len(calls) == 2
+
+
+def test_openrouter_retry_after_header_honored(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    slept: list[float] = []
+    _mock_httpx_post_seq(
+        monkeypatch,
+        [_FakeResponse(429, {}, headers={"Retry-After": "2"}), _ok_response()],
+    )
+    client = OpenRouterClient(sleep=slept.append)
+    client.complete(RedactedText("x"))
+    assert slept == [2.0]
+
+
+def test_openrouter_retry_after_header_case_insensitive(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    slept: list[float] = []
+    _mock_httpx_post_seq(
+        monkeypatch,
+        [_FakeResponse(429, {}, headers={"retry-after": "3"}), _ok_response()],
+    )
+    client = OpenRouterClient(sleep=slept.append)
+    client.complete(RedactedText("x"))
+    assert slept == [3.0]
+
+
+def test_openrouter_exhausted_retries_empty_and_rate_limited(monkeypatch, caplog):
+    import logging
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    calls = _mock_httpx_post(monkeypatch, _FakeResponse(429, {}))
+    caplog.set_level(logging.DEBUG, logger="memeval.dreaming.events")
+    client = OpenRouterClient(sleep=lambda _: None)
+    out = client.complete(RedactedText("x"))
+    assert out == Completion(text="", tokens_in=0, tokens_out=0)
+    assert any("llm_rate_limited" in r.getMessage() for r in caplog.records)
+    assert len(calls) == client._max_retries + 1
+
+
+def test_openrouter_default_backoff_sequence_no_retry_after(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    # Deterministic jitter: pin random.uniform to 0.
+    import memeval.dreaming.llm as llm_mod
+
+    monkeypatch.setattr(llm_mod.random, "uniform", lambda a, b: 0.0)
+    slept: list[float] = []
+    _mock_httpx_post(monkeypatch, _FakeResponse(429, {}))
+    client = OpenRouterClient(
+        sleep=slept.append,
+        max_retries=3,
+        backoff_base_s=0.5,
+        max_backoff_s=8.0,
+    )
+    client.complete(RedactedText("x"))
+    # attempts 0,1,2 (3rd attempt is the last, no sleep): 0.5, 1.0, 2.0
+    assert slept == [0.5, 1.0, 2.0]
 
 
 def test_openrouter_network_error_returns_empty_completion(monkeypatch):

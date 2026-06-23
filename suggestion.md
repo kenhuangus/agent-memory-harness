@@ -219,3 +219,51 @@ fire once the plugin *does* run.
 - `is_gold`-persistence fix that corrected the recall measurement: PR #46.
 - CODE `memory_reached = 0` blocker diagnosis (9-agent investigate → verify):
   `code-memory-reached-blocker-and-plan.md` (repo root).
+
+## Daydream LLM 429s are dropped without retry (`eval/memeval/dreaming/llm.py`)
+
+**Status: implemented in this PR** — at the user's explicit request we now apply the bounded
+retry below in `OpenRouterClient.complete()` (this edits the team-owned `dreaming/` client;
+please review). The root cause + evidence are retained for context.
+
+**Symptom.** In a `plugin-real` SWE-Bench-CL run (3 django tasks, paid model
+`qwen/qwen3-next-80b-a3b-instruct`), the daydream events showed `daydream.memory_written: 7`
+but also `llm_rate_limited (429): 3` + `chunk_skipped_unavailable_llm: 3` — 3 memory chunks
+were lost to transient 429s in a single run.
+
+**Root cause.** `OpenRouterClient.complete()` makes a single `httpx.post` and, on HTTP 429,
+emits `llm_rate_limited` and returns an empty `Completion` immediately (lines ~231–239).
+There is **no retry, no backoff, and no `Retry-After` handling**. The engine then treats the
+empty completion as `chunk_skipped_unavailable_llm` and (per ADR-dreaming-013) does not
+advance the cursor — so the chunk is retried only on a *later* daydream pass, not within the
+run. Any single transient 429 drops that chunk's memory for the run.
+
+**The 429s are transient, not an account/credit limit.** Reproduction the same day:
+- 8 rapid back-to-back calls to the **paid** `qwen/qwen3-next-80b-a3b-instruct` → all `200`.
+- `GET https://openrouter.ai/api/v1/key` → `limit: 10`, `limit_remaining: 9.99`, `usage: 0.006`.
+So credits/account are healthy. The run's 429s are upstream-provider tokens-per-minute spikes
+under the daydream's real payloads (`DEFAULT_MAX_TOKENS = 4096` + a redacted transcript chunk),
+which a 16-token probe can't reproduce. A bounded retry would clear essentially all of them.
+
+**The fix (implemented in this PR):**
+1. **Bounded retry with exponential backoff on 429 (and 5xx)**, honoring the `Retry-After`
+   response header when present, e.g. up to `max_retries` (default 2) extra attempts with
+   `0.5s · 2^n` (+jitter) capped at `max_backoff_s` (default 8s). The existing fail-open is
+   preserved: after the final attempt, still emit `llm_rate_limited` (429) / `llm_call_failed`
+   (5xx) and return an empty `Completion` (no behavior change on permanent limits; cursor
+   semantics per ADR-dreaming-012/013 unchanged). Network exceptions and non-429 4xx are not
+   retried. A new `llm_retry` event is emitted before each backoff sleep.
+2. **Optional — OpenRouter provider routing.** Add a `provider` block to the request body so
+   OpenRouter can route around a rate-limited upstream, e.g. `"provider": {"sort": "throughput"}`
+   or rely on default `allow_fallbacks`. This reduces 429s before retries are even needed.
+3. **Capture the 429 detail** (the `Retry-After` header and a short body snippet) in the
+   `llm_rate_limited` event — currently only `status` is recorded, which hides whether the limit
+   is per-minute vs daily and how long to wait.
+
+**Why this can't be fixed harness-side.** The daydream LLM client is constructed inside the
+`daydream-cli` subprocess fired by the plugin's Stop hook; the harness only sets env
+(`DREAM_PROVIDER`, `DREAM_MODEL`, `OPENROUTER_API_KEY`) and there is no retry env knob, so the
+retry must live in `OpenRouterClient.complete()`.
+
+Evidence: run `eval/runs/swe_bench_cl_pluginreal_smoke/v0.1/plugin-real/_groupstore/django_django_sequence/dream/*.daydream-events.jsonl`
+(`llm_rate_limited` × 3); the burst reproduction + `/api/v1/key` output above.

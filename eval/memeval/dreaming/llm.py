@@ -21,8 +21,10 @@ from __future__ import annotations
 
 import logging
 import os
+import random
+import time
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from .events import emit
 from .redaction import RedactedText
@@ -151,6 +153,16 @@ class OpenRouterClient:
     the failure subtype. Caller's behavior is identical to the
     unavailable case (no cursor advance per ADR-dreaming-013).
 
+    Transient errors (HTTP 429 + 5xx) are retried with bounded
+    exponential backoff (``max_retries`` extra attempts). A ``Retry-After``
+    response header, when present and a valid integer, sets the delay;
+    otherwise ``min(max_backoff_s, backoff_base_s * 2**attempt)`` plus
+    jitter is used. Network exceptions and non-429 4xx are NOT retried.
+    Once retries are exhausted the FAIL-OPEN contract is unchanged: the
+    same empty ``Completion`` + the same terminal event as before
+    (``llm_rate_limited`` for 429, ``llm_call_failed`` for 5xx), so the
+    engine's cursor semantics (ADR-dreaming-012/013) are preserved.
+
     ``httpx`` is lazy-imported inside ``complete()`` per architecture.md
     §3 (offline path stays stdlib-only at module top).
     """
@@ -162,6 +174,10 @@ class OpenRouterClient:
         api_key: str | None = None,
         url: str = OPENROUTER_URL,
         timeout_s: float = 30.0,
+        max_retries: int = 2,
+        backoff_base_s: float = 0.5,
+        max_backoff_s: float = 8.0,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self.model = model
         # Honor an explicit api_key=None passthrough vs the env-var lookup:
@@ -173,6 +189,10 @@ class OpenRouterClient:
         )
         self._url = url
         self._timeout_s = timeout_s
+        self._max_retries = max_retries
+        self._backoff_base_s = backoff_base_s
+        self._max_backoff_s = max_backoff_s
+        self._sleep = sleep
 
     def complete(
         self,
@@ -205,31 +225,56 @@ class OpenRouterClient:
             messages.append({"role": "system", "content": str(system)})
         messages.append({"role": "user", "content": str(prompt)})
 
-        try:
-            response = httpx.post(
-                self._url,
-                headers={
-                    "Authorization": f"Bearer {self._api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": self.model,
-                    "messages": messages,
-                    "max_tokens": max_tokens,
-                },
-                timeout=self._timeout_s,
-            )
-        except Exception as exc:
-            emit(
-                "llm_call_failed",
-                provider="openrouter",
-                reason=f"{type(exc).__name__}: {exc}",
-                model=self.model,
-            )
-            return Completion(text="", tokens_in=0, tokens_out=0)
+        # Bounded retry on transient errors (429 + 5xx). One LLM call per
+        # daydream hook means a single transient 429 would otherwise lose
+        # the whole hook's memory extraction; retrying recovers it.
+        response = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                response = httpx.post(
+                    self._url,
+                    headers={
+                        "Authorization": f"Bearer {self._api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": self.model,
+                        "messages": messages,
+                        "max_tokens": max_tokens,
+                    },
+                    timeout=self._timeout_s,
+                )
+            except Exception as exc:
+                # Network exceptions are NOT retried (tight scope): emit +
+                # return empty, exactly as before.
+                emit(
+                    "llm_call_failed",
+                    provider="openrouter",
+                    reason=f"{type(exc).__name__}: {exc}",
+                    model=self.model,
+                )
+                return Completion(text="", tokens_in=0, tokens_out=0)
 
+            status = response.status_code
+            transient = status == 429 or status >= 500
+            if transient and attempt < self._max_retries:
+                delay = self._retry_delay(response, attempt)
+                emit(
+                    "llm_retry",
+                    provider="openrouter",
+                    status=status,
+                    attempt=attempt,
+                    delay_s=delay,
+                    model=self.model,
+                )
+                self._sleep(delay)
+                continue
+            break
+
+        assert response is not None  # loop always runs >= 1 iteration
         status = response.status_code
         if status == 429:
+            # Retries exhausted (or none configured): unchanged fail-open.
             emit(
                 "llm_rate_limited",
                 provider="openrouter",
@@ -285,6 +330,25 @@ class OpenRouterClient:
             tokens_out = 0
 
         return Completion(text=str(text or ""), tokens_in=tokens_in, tokens_out=tokens_out)
+
+    def _retry_delay(self, response: Any, attempt: int) -> float:
+        """Compute the pre-retry sleep for a transient error.
+
+        Honors a valid integer ``Retry-After`` header (checked case-
+        insensitively, read defensively); otherwise falls back to
+        ``min(max_backoff_s, backoff_base_s * 2**attempt)`` plus jitter.
+        """
+        hdrs = getattr(response, "headers", {}) or {}
+        raw = hdrs.get("Retry-After")
+        if raw is None:
+            raw = hdrs.get("retry-after")
+        if raw is not None:
+            try:
+                return float(int(str(raw).strip()))
+            except (TypeError, ValueError):
+                pass
+        backoff = min(self._max_backoff_s, self._backoff_base_s * (2 ** attempt))
+        return backoff + random.uniform(0, self._backoff_base_s)
 
 
 # --------------------------------------------------------------------------- #
