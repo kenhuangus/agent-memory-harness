@@ -30,7 +30,7 @@ from __future__ import annotations
 import json
 from typing import Any, Optional
 
-from ..schema import MemoryItem, RetrievedItem
+from ..schema import MemoryItem
 from .graph_store import GraphStore, _MAX_DEPTH
 
 # The graph node label + the relationship type. ``REL`` carries a ``rel_type`` property (the classified
@@ -69,6 +69,7 @@ class Neo4jGraphStore:
                  database: str = "neo4j", max_depth: int = _MAX_DEPTH,
                  embed: Optional[Any] = None, **kwargs: Any) -> None:
         self.uri = uri
+        self._auth_value = auth  # stored so connect() passes real-driver auth (a set auth was silently dropped)
         self.config = kwargs
         self._database = database
         self._max_depth = max(0, int(max_depth))
@@ -113,6 +114,10 @@ class Neo4jGraphStore:
         return getattr(self, "_auth_value", None)
 
     def _session(self):
+        # Reads (get/all/search) hit Neo4j live — there is no in-RAM cache to serve a closed store, so a
+        # post-close read FAILS LOUD here (write/delete already guard with their own message before this).
+        if self._closed or self._driver is None:
+            raise RuntimeError("operation on a closed Neo4jGraphStore")
         return self._driver.session(database=self._database)
 
     def _ensure_constraint(self) -> None:
@@ -182,17 +187,26 @@ class Neo4jGraphStore:
         }
 
     def _row_to_item(self, props: dict) -> MemoryItem:
-        """Reconstruct a :class:`MemoryItem` from a node's props (inverse of :meth:`_props`)."""
+        """Reconstruct a :class:`MemoryItem` from a node's props (inverse of :meth:`_props`).
+
+        Numeric fields are coerced (``float``/``int``) with a default for a missing/``None`` value — a real
+        Neo4j node could carry a null or a numeric-string property, and ``MemoryItem`` declares ``float``/
+        ``int``; coercion keeps the round-trip total instead of leaking a ``None`` into a typed field.
+        """
+        rel = props.get("relevancy")
+        ts = props.get("timestamp")
+        ver = props.get("version")
+        toks = props.get("tokens")
         return MemoryItem(
             item_id=props["item_id"],
             content=props.get("content") or "",
-            timestamp=props.get("timestamp") or 0.0,
-            relevancy=props.get("relevancy") if props.get("relevancy") is not None else 1.0,
+            timestamp=float(ts) if ts is not None else 0.0,
+            relevancy=float(rel) if rel is not None else 1.0,
             session_id=props.get("session_id"),
             source=props.get("source"),
             tags=json.loads(props.get("tags") or "[]"),
-            tokens=props.get("tokens") or 0,
-            version=props.get("version") if props.get("version") is not None else 1,
+            tokens=int(toks) if toks is not None else 0,
+            version=int(ver) if ver is not None else 1,
             metadata=json.loads(props.get("metadata") or "{}"),
         )
 

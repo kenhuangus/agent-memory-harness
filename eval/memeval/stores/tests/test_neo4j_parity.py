@@ -269,6 +269,38 @@ class FailLoudTests(unittest.TestCase):
         self.assertNotIn("neo4j", sys.modules,
                          "importing neo4j_store must NOT import neo4j (offline/CI path stays clean)")
 
+    def test_connect_passes_uri_and_auth_to_driver(self) -> None:
+        # The paid path must forward BOTH the uri AND the auth to neo4j.GraphDatabase.driver — a real
+        # auth-required Neo4j is the "runs under load" target (D039); a dropped auth fails to authenticate.
+        # Inject a fake `neo4j` module so connect() succeeds offline and captures what it was handed.
+        import sys
+        import types
+
+        captured: dict = {}
+
+        class _FakeGraphDatabase:
+            @staticmethod
+            def driver(uri, auth=None):
+                captured["uri"] = uri
+                captured["auth"] = auth
+                return FakeBoltDriver()
+
+        fake = types.ModuleType("neo4j")
+        fake.GraphDatabase = _FakeGraphDatabase  # type: ignore[attr-defined]
+        saved = sys.modules.get("neo4j")
+        sys.modules["neo4j"] = fake
+        try:
+            Neo4jGraphStore = _Neo4jGraphStore()
+            Neo4jGraphStore(uri="bolt://localhost:7687", auth=("neo4j", "secret"))
+        finally:
+            if saved is not None:
+                sys.modules["neo4j"] = saved
+            else:
+                sys.modules.pop("neo4j", None)
+        self.assertEqual(captured.get("uri"), "bolt://localhost:7687")
+        self.assertEqual(captured.get("auth"), ("neo4j", "secret"),
+                         "connect() must forward auth to the real driver (a set auth must not be dropped)")
+
 
 # --------------------------------------------------------------------------- #
 # 2-4. Parity across the typed/disambiguation/multi-hop/untyped slices
@@ -397,6 +429,14 @@ class CrudTests(unittest.TestCase):
             store.write(_item("b", "b", ts=2.0))
         with self.assertRaises(RuntimeError):
             store.delete("a")
+        # Reads hit Neo4j live (no in-RAM cache) -> a post-close read must FAIL LOUD too, not deref a
+        # nulled driver with an AttributeError.
+        with self.assertRaises(RuntimeError):
+            store.search("a", k=1)
+        with self.assertRaises(RuntimeError):
+            store.get("a")
+        with self.assertRaises(RuntimeError):
+            store.all()
 
     def test_context_manager_closes_driver(self) -> None:
         Neo4jGraphStore = _Neo4jGraphStore()
