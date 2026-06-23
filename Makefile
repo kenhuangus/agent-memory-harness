@@ -19,7 +19,12 @@ help:
 setup:
 	@test -d $(VENV) || uv venv --python 3.13 $(VENV)
 	uv pip install -e 'eval[claudecode,daydream,hf,dev]'
+	# Plugin installed --no-deps so its `agent-memory-eval @ git+…` dep doesn't clobber
+	# the LOCAL editable eval above; install its `[mcp]` runtime (memory-cli's MCP server)
+	# EXPLICITLY so plugin-real turns actually work — without it every plugin turn dies on
+	# "memory-cli MCP runtime not available".
 	uv pip install --no-deps -e plugin
+	uv pip install 'mcp>=1.0'
 	@echo "✓ setup complete — run: make pipeline"
 
 # Run the 5-stage SWE-Bench-CL pipeline against the live cookbook-memory plugin.
