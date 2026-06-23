@@ -12,9 +12,11 @@ those nodes — it does NOT reimplement seeding/BFS/scoring, so ids+order cannot
 
 **No real Neo4j, no network.** A committed stdlib ``FakeBoltDriver`` / ``FakeSession`` / ``FakeTx`` behaves
 like a tiny graph store for OUR known Cypher shapes and RECORDS every emitted ``(cypher, params)`` so the
-tests can assert the wire shape (a node ``MERGE … SET n +=`` per write, a typed ``MERGE … [r:REL`` per
-edge, a ``MATCH (n:Memory)`` on search with the ``$as_of`` bound pushed to Cypher, ``DETACH DELETE`` on
-delete). ``neo4j`` is NOT installed and the offline/CI path must never import it.
+tests can assert the wire shape (a node ``MERGE … SET n +=`` per write and NO relationship ``[r:REL`` merge
+— Phase A writes nodes + ``okf_links`` only, the native typed graph is deferred to Phase B — a
+``MATCH (n:Memory)`` on search with the ``$as_of`` bound pushed to Cypher, ``DETACH DELETE`` on
+delete). The fake also models Neo4j endpoint-creation, so a reintroduced relationship write surfaces a
+read-visible placeholder and fails the parity guards. ``neo4j`` is NOT installed and the offline/CI path must never import it.
 
 **ANTI-THEATER.** Every parity case asserts the Neo4j-backed store returns the byte-identical ordered id
 list as an in-memory ``GraphStore`` baseline fed the SAME writes — a silent edge mis-resolution in the

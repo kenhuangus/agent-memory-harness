@@ -27,9 +27,11 @@ reads never consult ``[:REL]`` — they rebuild from ``okf_links``.
 
 **Phase B (deferred — the native typed graph + the accuracy upside).** Because every node persists its FULL
 ``okf_links`` set, Phase B can materialize the native typed ``[:REL {rel_type}]`` graph from that complete
-SSOT in ONE consistent pass (no forward-reference gaps — every node's whole link list is already on disk, so
-each edge's endpoints already exist as real nodes; no placeholder is ever created). It then switches
-``search`` off the transient-delegation path onto native Cypher: typed/directional path-traversal keyed on
+SSOT in ONE consistent pass. Materialization MATCHes existing endpoints — it must NEVER ``MERGE`` a target
+(that is exactly the R1 placeholder bug); a forward reference resolves once both nodes are written, and a
+permanently *dangling* ``okf_links`` target (a link to an id never written as a node) simply yields no
+relationship — mirroring the in-memory store, which leaves an edge to an absent node unresolved. It then
+switches ``search`` off the transient-delegation path onto native Cypher: typed/directional path-traversal keyed on
 ``rel_type`` + GDS scoring (Personalized-PageRank seeding / weighted shortest paths / the native vector
 index) — the captained-measured accuracy upside that THIS module's parity floor is the regression guard for.
 The ``okf_links`` SSOT makes that buildable at any time with NO re-ingest. (Phase B is NOT in this module —
