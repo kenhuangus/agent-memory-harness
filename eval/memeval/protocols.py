@@ -10,7 +10,7 @@ Standard-library only; safe to import on Python 3.11+.
 
 Three protocols
 ---------------
-MemoryStore   write / get / search / all  -- the persistence + retrieval seam.
+MemoryStore   write / get / search / all / delete  -- the persistence + retrieval seam.
 ModelAdapter  generate(...) -> (text, tokens_in, tokens_out) + name/price keys.
 Loader        load(path_or_id, **) -> list[Task]  -- one per benchmark.
 """
@@ -29,7 +29,8 @@ class MemoryStore(Protocol):
     The offline harness ships an in-memory reference implementation
     (``memeval.harness.InMemoryStore``) that satisfies this protocol with the
     standard library only. Real backends (Brent's adapters) implement the same
-    four methods. ``search`` MUST return items sorted by descending score with
+    five methods (``write`` / ``get`` / ``search`` / ``all`` / ``delete``).
+    ``search`` MUST return items sorted by descending score with
     ``rank`` set (0 == best), and MUST set ``RetrievedItem.tokens`` via the
     underlying ``MemoryItem.tokens`` so the efficiency metric can be computed.
     """

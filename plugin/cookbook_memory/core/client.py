@@ -63,8 +63,8 @@ class _Engine:
 
     Holds the single fully-assembled :class:`~memeval.protocols.MemoryStore` the contract
     seam builds (:func:`~cookbook_memory.core.contract.build_store`) and does nothing but
-    drive its four-method protocol: ``recall`` calls ``search`` and maps the results to
-    :class:`Hit`; ``remember`` calls ``write``. The seam owns ALL routing/storage logic —
+    drive its five-method protocol: ``recall`` calls ``search`` and maps the results to
+    :class:`Hit`; ``remember`` calls ``write`` (``delete`` is also available). The seam owns ALL routing/storage logic —
     which profile, which backends, embedders, cascade, fusion, dedup, write-routing — so the
     plugin specifies none of it and holds none of it. Switching profiles never touches this
     class: the store it receives already encodes the choice.

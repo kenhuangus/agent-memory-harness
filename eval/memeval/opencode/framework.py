@@ -12,7 +12,7 @@ concrete classes:
 * ``dreamer`` — Scott B.'s :class:`memeval.dreaming.DreamingWorker`.
 
 The framework itself **is a** ``MemoryStore`` (it implements ``write`` / ``get`` /
-``search`` / ``all``), so it can be handed straight to
+``search`` / ``all`` / ``delete``), so it can be handed straight to
 ``memeval.agent.run_agent(..., store=framework)`` as the shared store. That is the
 integration point: Keith's framework, backed by Brent's storage, evaluated by
 Ken's harness, cleaned by Scott's dreaming.

@@ -1115,7 +1115,7 @@ class RouterStore:
     results), and the Router has no ``get`` / ``all``. So nothing that expects a ``MemoryStore`` — the
     plugin ``_Engine``, the harness ``MemoryFramework``, the #63 native eval ``store=`` seam — can use
     the Router's dedup + multi-index write path; every such write goes direct to a single backend and
-    write-routing/dedup stay dead code. ``RouterStore`` adapts the Router to the four-method protocol so
+    write-routing/dedup stay dead code. ``RouterStore`` adapts the Router to the five-method protocol so
     those seams drive routed writes and reads unchanged. Purely additive: the Router contract is
     untouched; this only re-shapes it.
 

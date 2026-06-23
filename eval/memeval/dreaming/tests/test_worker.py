@@ -424,6 +424,10 @@ class _SpyStore:
         """Protocol-satisfier: return every seeded item (insertion order not guaranteed)."""
         return list(self._items.values())
 
+    def delete(self, item_id: str) -> bool:
+        """Protocol-satisfier: drop the item; return whether it was present."""
+        return self._items.pop(item_id, None) is not None
+
 
 def test_run_makes_zero_write_calls() -> None:
     """F4 — spy store receives zero write() calls during run()."""

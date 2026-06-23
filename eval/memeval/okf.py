@@ -413,11 +413,10 @@ class OKFStore:
 
         Unlinks EVERY concept doc that PARSES to ``item_id`` — the canonical path :meth:`write` uses AND any
         noncanonical filename from a foreign imported bundle — so a fresh autoload (``import_bundle``, which
-        scans ``*.md`` and skips the reserved index.md/log.md) cannot resurrect it. :class:`InMemoryStore`
-        has no delete (the frozen reference store), so the in-memory view is rebuilt from the survivors via
-        the public API. Returns ``False`` if the id was not present.
+        scans ``*.md`` and skips the reserved index.md/log.md) cannot resurrect it. The in-memory view is
+        dropped via :meth:`InMemoryStore.delete` (now a ``MemoryStore`` protocol method). Returns ``False``
+        if the id was not present.
         """
-        from .harness import InMemoryStore  # local import: avoid cycle at module load (as in __init__)
         if self._mem.get(item_id) is None:
             return False
         if self.root.exists():
@@ -431,11 +430,7 @@ class OKFStore:
                 rel = path.relative_to(self.root).as_posix()
                 if doc_to_memory_item(text, fallback_id=_slug(rel[:-3])).item_id == item_id:
                     path.unlink()
-        survivors = [it for it in self._mem.all() if it.item_id != item_id]
-        self._mem = InMemoryStore()
-        for it in survivors:
-            self._mem.write(it)
-        return True
+        return self._mem.delete(item_id)
 
     def flush_indexes(self) -> dict[str, Any]:
         """(Re)write the bundle's index.md/log.md from the current items."""
