@@ -124,13 +124,16 @@ def resolve_pipeline_version(*, cwd: "str | Path | None" = None) -> dict[str, An
     1. ``git describe --tags --exact-match HEAD`` -- HEAD is exactly a tag -> use it.
     2. ``git describe --tags --abbrev=0`` -- nearest reachable tag -> use it, and flag
        that HEAD is *past* the tag (``version_exact=False``).
-    3. :data:`memeval.MEMORY_VERSION` -- no tags (or no git) -> fall back, ``untagged=True``.
+    3. The current **branch name** (when on an untagged commit) -> use a sanitized,
+       filesystem-safe form so a WIP branch's substrate accumulates across local runs
+       without colliding with a released version's. Flagged ``untagged=True``.
+    4. :data:`memeval.MEMORY_VERSION` -- detached HEAD / no branch / no git -> final fallback.
 
-    Returns a dict ``{version, version_exact, untagged, git_sha, source}`` where ``version``
-    is normalized to the ``vX.Y`` directory form (:func:`normalize_version`) and ``source``
-    is ``"exact-tag" | "nearest-tag" | "memory-version"``. Never raises -- a missing git
-    checkout degrades to the ``MEMORY_VERSION`` fallback, since the resolver is metadata,
-    not metric logic.
+    Returns a dict ``{version, version_exact, untagged, git_sha, branch, source}`` where
+    ``version`` is normalized to the ``vX.Y``-style directory form (:func:`normalize_version`)
+    and ``source`` is ``"exact-tag" | "nearest-tag" | "branch" | "memory-version"``. Never
+    raises -- a missing git checkout degrades to the ``MEMORY_VERSION`` fallback, since the
+    resolver is metadata, not metric logic.
     """
     import subprocess
 
@@ -147,19 +150,42 @@ def resolve_pipeline_version(*, cwd: "str | Path | None" = None) -> dict[str, An
         return out.stdout.strip() if out.returncode == 0 and out.stdout.strip() else None
 
     git_sha = _git("rev-parse", "--short", "HEAD") or ""
+    branch = _git("rev-parse", "--abbrev-ref", "HEAD")  # "HEAD" when detached
 
     exact = _git("describe", "--tags", "--exact-match", "HEAD")
     if exact:
         return {"version": normalize_version(exact), "version_exact": True,
-                "untagged": False, "git_sha": git_sha, "source": "exact-tag"}
+                "untagged": False, "git_sha": git_sha, "branch": branch, "source": "exact-tag"}
 
     nearest = _git("describe", "--tags", "--abbrev=0")
     if nearest:
         return {"version": normalize_version(nearest), "version_exact": False,
-                "untagged": False, "git_sha": git_sha, "source": "nearest-tag"}
+                "untagged": False, "git_sha": git_sha, "branch": branch, "source": "nearest-tag"}
+
+    # Untagged commit: key the substrate by the branch name so this branch's memory
+    # accumulates across local runs (and stays separate from a released version's),
+    # rather than every untagged branch sharing the one MEMORY_VERSION bucket.
+    if branch and branch != "HEAD":
+        return {"version": _branch_version(branch), "version_exact": False,
+                "untagged": True, "git_sha": git_sha, "branch": branch, "source": "branch"}
 
     return {"version": normalize_version(MEMORY_VERSION), "version_exact": False,
-            "untagged": True, "git_sha": git_sha, "source": "memory-version"}
+            "untagged": True, "git_sha": git_sha, "branch": branch, "source": "memory-version"}
+
+
+def _branch_version(branch: str) -> str:
+    """A filesystem-safe directory token for a branch-keyed substrate, e.g.
+    ``eval/swe-bench-cl-pipeline`` -> ``vbranch-eval-swe-bench-cl-pipeline``.
+
+    Slashes and any non ``[A-Za-z0-9._-]`` char become ``-`` (so the version never
+    creates nested dirs), collapsed runs of ``-`` are squeezed, and a ``branch-`` prefix
+    plus the ``v`` from :func:`normalize_version` keep it distinct from a real ``vX.Y``
+    tag bucket. Capped at a sane length."""
+    import re
+
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "-", branch).strip("-")
+    safe = re.sub(r"-{2,}", "-", safe)[:60] or "unknown"
+    return normalize_version(f"branch-{safe}")
 
 
 def benchmark_results_path(

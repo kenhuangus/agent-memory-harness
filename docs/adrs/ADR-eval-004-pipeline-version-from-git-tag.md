@@ -58,12 +58,24 @@ A pipeline run's **version** is resolved, in order:
 1. `git describe --tags --exact-match HEAD` — HEAD is exactly a tag → use it.
 2. else `git describe --tags --abbrev=0` — nearest reachable tag → use it, and record that
    HEAD is *past* that tag (not exact) in run metadata.
-3. else `memeval.MEMORY_VERSION` — no tags at all → fall back, and flag the run `untagged` in
-   metadata and stdout.
+3. else the current **branch name** (`git rev-parse --abbrev-ref HEAD`, when not detached) →
+   use a filesystem-safe form `vbranch-<sanitized-branch>` (slashes and other unsafe chars →
+   `-`), so a WIP branch's substrate accumulates across local runs and stays isolated from a
+   released version's. Flagged `untagged` (source `branch`).
+4. else `memeval.MEMORY_VERSION` — detached HEAD / no branch / no git → final fallback,
+   flagged `untagged` (source `memory-version`).
 
 The result is normalized with `results.normalize_version()` to the `vX.Y…` directory form and
 used as the `{version}` in both `results/v{version}/` (result files) and
-`results/v{version}/_memory/` (the shared substrate, per ADR-eval-003).
+`results/v{version}/_memory/` (the shared substrate, per ADR-eval-003). The resolver returns
+`{version, version_exact, untagged, git_sha, branch, source}` where `source` is one of
+`exact-tag | nearest-tag | branch | memory-version`.
+
+**Why a branch rung (not straight to `MEMORY_VERSION`):** without it, every untagged branch
+shared one `v{MEMORY_VERSION}` substrate, so two people iterating on different feature branches
+would pollute each other's accumulating memory and a branch's runs would mix with `main`'s. Keying
+by branch makes "this branch's memory" the natural local-iteration unit; a real benchmarked release
+still runs on an exact tag (rung 1).
 
 A small resolver `resolve_pipeline_version()` lives in
 [`eval/memeval/results.py`](../../eval/memeval/results.py) (Ken's domain) alongside the
@@ -79,11 +91,15 @@ directory-naming convention across the whole results tree.
 
 ## Tradeoffs & risks
 
-- **Untagged commits share one fallback bucket.** Every untagged WIP run lands in
-  `v{MEMORY_VERSION}/`, so two different untagged code states can collide in the same substrate.
-  Mitigation: the run is flagged `untagged` loudly; the contract for *comparable* runs is "tag
-  the commit." For throwaway local runs the collision is acceptable (the dev can wipe
-  `_memory/`).
+- **Untagged commits on the SAME branch share that branch's bucket.** The branch rung means a
+  branch's runs accumulate into `vbranch-<branch>/` regardless of which commit on the branch is
+  checked out — so two different code states on one branch collide in that branch's substrate.
+  This is the intended local-iteration behavior ("this branch's memory"), and it is far better
+  than the prior all-untagged-share-`v{MEMORY_VERSION}` collision (different branches no longer
+  pollute each other). The contract for *comparable, archival* runs is still "tag the commit"
+  (rung 1); a dev can wipe `vbranch-<branch>/_memory/` to reset a branch's memory.
+- **Detached HEAD with no tag** falls to `v{MEMORY_VERSION}` (no branch to key on) — the one
+  remaining shared bucket, acceptable since detached-HEAD pipeline runs are unusual.
 - **`git describe` needs a git checkout.** In a tarball/export with no `.git`, resolution falls
   to `MEMORY_VERSION`. Accepted: the pipeline is a developer/CI tool run from the repo.
 - **Lightweight vs annotated tags.** `--tags` matches both, which is what we want; the resolver

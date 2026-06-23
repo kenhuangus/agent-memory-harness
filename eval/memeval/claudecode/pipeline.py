@@ -288,8 +288,15 @@ def run_pipeline(cfg: dict) -> dict:
           f"limit {cfg['limit']} · model {cfg['model']}")
     print(f"shared memory substrate: {substrate}")
     if version_info.get("untagged"):
-        print("NOTE: HEAD is untagged -> version fell back to MEMORY_VERSION "
-              f"(v{MEMORY_VERSION}); tag the commit for a comparable run.", file=sys.stderr)
+        src = version_info.get("source")
+        if src == "branch":
+            note = (f"NOTE: HEAD is untagged -> version keyed by branch "
+                    f"'{version_info.get('branch')}' ({version}). This branch's memory "
+                    f"accumulates here; tag the commit for an archival, comparable run.")
+        else:
+            note = ("NOTE: HEAD is untagged and detached/branchless -> version fell back to "
+                    f"MEMORY_VERSION (v{MEMORY_VERSION}); tag the commit for a comparable run.")
+        print(note, file=sys.stderr)
 
     rows: list[dict] = []
     native_by_stage: dict[str, dict] = {}

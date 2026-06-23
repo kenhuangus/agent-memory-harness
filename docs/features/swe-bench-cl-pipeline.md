@@ -48,7 +48,9 @@ R5. The dream stage (4) is a NO-OP placeholder with no side effects — whole-st
    is not implemented yet (ADR-dreaming-020). It records `status: not-implemented` so the 5-stage
    shape + base→final comparison stand; when real consolidation lands it is invoked ONLY through the
    plugin's own surface. Stage 5 runs on the same substrate stage 3 left (delta ~0 today).
-R6. Pipeline version = git tag on the `main` commit (fallback: `MEMORY_VERSION`).
+R6. Pipeline version = git tag on the commit; on an untagged commit it falls back to the
+   (sanitized) **branch name** (`vbranch-<branch>`), then to `MEMORY_VERSION` (detached HEAD /
+   no git). So local iteration on a feature branch keys the substrate by that branch.
 R7. The wrapper is interactive by default (offer/override defaults, confirm) with a non-interactive
    `--yes` mode taking flags/defaults.
 R8. A summary file tabulates per-stage metrics and base→final deltas.

@@ -22,10 +22,11 @@ def _git(cwd, *args):
 
 @pytest.fixture
 def repo(tmp_path):
-    """A minimal git repo with one commit and deterministic identity."""
+    """A minimal git repo with one commit, a known branch, and deterministic identity."""
     _git(tmp_path, "init", "-q")
     _git(tmp_path, "config", "user.email", "t@example.com")
     _git(tmp_path, "config", "user.name", "Test")
+    _git(tmp_path, "checkout", "-q", "-b", "main")  # deterministic branch name
     (tmp_path / "f.txt").write_text("x\n", encoding="utf-8")
     _git(tmp_path, "add", "f.txt")
     _git(tmp_path, "commit", "-q", "-m", "init")
@@ -53,7 +54,29 @@ def test_nearest_tag_when_head_is_past_it(repo):
     assert info["source"] == "nearest-tag"
 
 
-def test_untagged_falls_back_to_memory_version(repo):
+def test_untagged_falls_back_to_branch_name(repo):
+    # No tag, but on a branch -> key the substrate by the (sanitized) branch name.
+    info = resolve_pipeline_version(cwd=repo)
+    assert info["version"] == "vbranch-main"
+    assert info["untagged"] is True
+    assert info["source"] == "branch"
+    assert info["branch"] == "main"
+
+
+def test_branch_name_with_slashes_is_filesystem_safe(repo):
+    # A feature-branch name with a slash must not create nested dirs.
+    _git(repo, "checkout", "-q", "-b", "eval/swe-bench-cl-pipeline")
+    info = resolve_pipeline_version(cwd=repo)
+    assert info["source"] == "branch"
+    assert info["version"] == "vbranch-eval-swe-bench-cl-pipeline"
+    assert "/" not in info["version"]  # never a nested path
+
+
+def test_detached_head_untagged_falls_back_to_memory_version(repo):
+    # Detached HEAD with no tag -> the final MEMORY_VERSION fallback (no branch to key on).
+    sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo,
+                         capture_output=True, text=True).stdout.strip()
+    _git(repo, "checkout", "-q", sha)  # detach
     info = resolve_pipeline_version(cwd=repo)
     assert info["version"] == normalize_version(MEMORY_VERSION)
     assert info["untagged"] is True
@@ -65,4 +88,5 @@ def test_no_git_checkout_falls_back(tmp_path):
     info = resolve_pipeline_version(cwd=tmp_path)
     assert info["version"] == normalize_version(MEMORY_VERSION)
     assert info["untagged"] is True
+    assert info["source"] == "memory-version"
     assert info["git_sha"] == ""
