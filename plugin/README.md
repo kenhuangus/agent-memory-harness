@@ -91,6 +91,15 @@ for your `python3`.
 > If your Claude Code client can't resolve a `git-subdir` marketplace source, fall
 > back to cloning the repo and running `claude plugin marketplace add <path-to-clone>`.
 
+For local development from this checkout, the repo-level shortcut installs the editable
+Python packages into the repo `.venv`, builds an ignored local Claude bundle under
+`build/` with commands pinned to that `.venv`, and installs the plugin into the real
+Claude Code config, explicitly bypassing the eval sandbox:
+
+```bash
+make install-claude-plugin
+```
+
 **Codex / OpenCode — place the skill into the harness's discovery path:**
 
 ```bash

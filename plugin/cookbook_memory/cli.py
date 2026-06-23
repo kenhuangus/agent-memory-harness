@@ -52,6 +52,8 @@ def build_parser() -> argparse.ArgumentParser:
     bb.add_argument("--out", required=True, help="Output directory for the assembled bundle.")
     bb.add_argument("--no-clean", action="store_true",
                     help="Do not wipe --out first (default: clean rebuild).")
+    bb.add_argument("--runtime-bin-dir",
+                    help="Rewrite bundle commands to use console scripts from this bin directory.")
 
     q = sub.add_parser("query", help="Debug retrieval: search memory and print hits.")
     q.add_argument("query", help="The search query.")
@@ -96,7 +98,7 @@ def _cmd_install(args: argparse.Namespace) -> int:
 def _cmd_build_bundle(args: argparse.Namespace) -> int:
     from .adapters.claude_code.build import build_bundle
 
-    out = build_bundle(args.out, clean=not args.no_clean)
+    out = build_bundle(args.out, clean=not args.no_clean, runtime_bin_dir=args.runtime_bin_dir)
     _emit({"bundle": str(out), "ok": True})
     return 0
 
