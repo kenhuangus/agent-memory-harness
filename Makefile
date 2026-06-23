@@ -5,7 +5,6 @@
 VENV := .venv
 UVRUN := uv run --no-project
 CLAUDE ?= claude
-HOST_CLAUDE := env -u CLAUDE_CONFIG_DIR $(CLAUDE)
 VENV_BIN := $(abspath $(VENV))/bin
 LOCAL_CLAUDE_BUNDLE := $(abspath build/claude-code/cookbook-memory)
 
@@ -40,12 +39,7 @@ install-claude-plugin:
 	uv pip install -e 'eval[claudecode,daydream,hf,dev]'
 	uv pip install --no-deps -e plugin
 	uv pip install 'mcp>=1.0'
-	$(UVRUN) memory-cli build-bundle --out "$(LOCAL_CLAUDE_BUNDLE)" --runtime-bin-dir "$(VENV_BIN)"
-	@$(HOST_CLAUDE) plugin uninstall cookbook-memory >/dev/null 2>&1 || true
-	@$(HOST_CLAUDE) plugin marketplace remove cookbook-memory >/dev/null 2>&1 || true
-	$(HOST_CLAUDE) plugin marketplace add "$(LOCAL_CLAUDE_BUNDLE)"
-	$(HOST_CLAUDE) plugin install cookbook-memory@cookbook-memory --scope user
-	$(HOST_CLAUDE) plugin details cookbook-memory
+	$(UVRUN) memory-cli install-claude-plugin --bundle-dir "$(LOCAL_CLAUDE_BUNDLE)" --runtime-bin-dir "$(VENV_BIN)" --claude "$(CLAUDE)"
 
 # Run the 5-stage SWE-Bench-CL pipeline against the live cookbook-memory plugin.
 # Defaults to a small interactive run; override with ARGS, e.g.:

@@ -59,37 +59,30 @@ Two steps: install the Python package (so the host has the `cookbook_memory` mod
 and the memory engine), then add the plugin to Claude Code from this repo's git URL.
 
 **1. Install the package on the host.** A `pip install --user` from git pulls the
-plugin *and* its frozen-contract dependency (`agent-memory-eval`, declared as a
-`git+URL`) with no clone and no package index:
+plugin *and* its frozen-contract dependency (`agent-memory-eval[daydream]`, declared
+as a `git+URL`) with no clone and no package index:
 
 ```bash
 pip install --user \
   "cookbook-memory[mcp] @ git+https://github.com/kenhuangus/agent-memory-harness.git#subdirectory=plugin"
 ```
 
-> **Use `pip install --user`, not pipx.** The plugin's hooks and MCP server are
-> invoked by module — `python3 -m cookbook_memory …` — which resolves against the
-> interpreter Claude Code runs (your system `python3`). A `--user` install is visible
-> to that interpreter; a pipx-isolated install would not be. Ensure your user
-> `bin`/site is on the path your `python3` uses (it is, by default).
-
-**2. Add the plugin to Claude Code from git** — the repo ships a root
-`.claude-plugin/marketplace.json` pointing at the committed bundle, so a single native
-install delivers the `recall` skill + MCP tool + lifecycle hooks together:
+**2. Install the Claude Code plugin bundle.** The package installer builds a local
+Claude bundle pinned to the Python environment that owns `memory-cli` / `memory-hook`,
+then adds and installs that bundle into the real Claude Code config:
 
 ```bash
-claude plugin marketplace add https://github.com/kenhuangus/agent-memory-harness   # or /plugin marketplace add
-claude plugin install cookbook-memory                                              # or /plugin install
+memory-cli install-claude-plugin
 ```
 
 Verify with `claude plugin details cookbook-memory` → `Skills (1)`, `Hooks (5)`,
-`MCP servers (1)`. The bundle invokes `python3 -m cookbook_memory` for the MCP server
-and `python3 -m cookbook_memory.adapters.claude_code.hooks_handler <Event>` for hooks,
-so nothing needs a console script on `$PATH` — only that step 1 installed the package
-for your `python3`.
+`MCP servers (1)`. The installed bundle invokes the console scripts from the same
+Python environment used by `memory-cli`, so the MCP server, hooks, and hook-fired
+Daydream subprocess all share one interpreter and dependency set.
 
-> If your Claude Code client can't resolve a `git-subdir` marketplace source, fall
-> back to cloning the repo and running `claude plugin marketplace add <path-to-clone>`.
+The repo also ships a static git marketplace bundle for release validation and manual
+fallbacks, but the `memory-cli install-claude-plugin` path is the recommended
+production install because it avoids guessing which `python3` Claude Code will see.
 
 For local development from this checkout, the repo-level shortcut installs the editable
 Python packages into the repo `.venv`, builds an ignored local Claude bundle under

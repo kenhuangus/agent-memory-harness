@@ -24,7 +24,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import shutil
+import subprocess
 import sys
+import sysconfig
+from pathlib import Path
 from typing import Optional
 
 from .core import MemoryClient
@@ -54,6 +59,18 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Do not wipe --out first (default: clean rebuild).")
     bb.add_argument("--runtime-bin-dir",
                     help="Rewrite bundle commands to use console scripts from this bin directory.")
+
+    icp = sub.add_parser("install-claude-plugin",
+                         help="Build and install a runtime-pinned Claude Code plugin bundle.")
+    icp.add_argument("--bundle-dir", default=None,
+                     help="Local bundle directory (default: ~/.cookbook-memory/claude-plugin/cookbook-memory).")
+    icp.add_argument("--runtime-bin-dir", default=None,
+                     help="Console-script bin directory to pin into the bundle (default: this install's scripts dir).")
+    icp.add_argument("--claude", default="claude", help="Claude Code executable (default: claude).")
+    icp.add_argument("--scope", default="user", choices=["user", "project"],
+                     help="Claude plugin install scope (default: user).")
+    icp.add_argument("--keep-claude-config-dir", action="store_true",
+                     help="Honor CLAUDE_CONFIG_DIR instead of installing into the real host config.")
 
     q = sub.add_parser("query", help="Debug retrieval: search memory and print hits.")
     q.add_argument("query", help="The search query.")
@@ -100,6 +117,60 @@ def _cmd_build_bundle(args: argparse.Namespace) -> int:
 
     out = build_bundle(args.out, clean=not args.no_clean, runtime_bin_dir=args.runtime_bin_dir)
     _emit({"bundle": str(out), "ok": True})
+    return 0
+
+
+def _default_runtime_bin_dir() -> Path:
+    argv0 = Path(sys.argv[0])
+    if argv0.name and argv0.exists():
+        return argv0.resolve().parent
+    resolved = shutil.which(argv0.name or "memory-cli")
+    if resolved:
+        return Path(resolved).resolve().parent
+    return Path(sysconfig.get_path("scripts")).resolve()
+
+
+def _cmd_install_claude_plugin(args: argparse.Namespace) -> int:
+    from .adapters.claude_code.build import build_bundle
+
+    bundle_dir = Path(args.bundle_dir).expanduser() if args.bundle_dir else (
+        Path.home() / ".cookbook-memory" / "claude-plugin" / "cookbook-memory"
+    )
+    runtime_bin_dir = (
+        Path(args.runtime_bin_dir).expanduser()
+        if args.runtime_bin_dir
+        else _default_runtime_bin_dir()
+    )
+    bundle = build_bundle(bundle_dir, runtime_bin_dir=runtime_bin_dir)
+
+    env = os.environ.copy()
+    if not args.keep_claude_config_dir:
+        env.pop("CLAUDE_CONFIG_DIR", None)
+
+    def run_plugin(command: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [args.claude, "plugin", *command],
+            env=env,
+            text=True,
+            capture_output=True,
+            check=check,
+        )
+
+    run_plugin(["uninstall", "cookbook-memory"], check=False)
+    run_plugin(["marketplace", "remove", "cookbook-memory"], check=False)
+    add = run_plugin(["marketplace", "add", str(bundle)], check=True)
+    install = run_plugin(["install", "cookbook-memory@cookbook-memory", "--scope", args.scope], check=True)
+    details = run_plugin(["details", "cookbook-memory"], check=True)
+
+    _emit({
+        "ok": True,
+        "bundle": str(bundle),
+        "runtime_bin_dir": str(runtime_bin_dir.resolve()),
+        "scope": args.scope,
+        "marketplace_add": (add.stdout or add.stderr).strip(),
+        "install": (install.stdout or install.stderr).strip(),
+        "details": details.stdout.strip(),
+    })
     return 0
 
 
@@ -153,6 +224,7 @@ _COMMANDS = {
     "mcp": _cmd_mcp,
     "install": _cmd_install,
     "build-bundle": _cmd_build_bundle,
+    "install-claude-plugin": _cmd_install_claude_plugin,
     "query": _cmd_query,
     "remember": _cmd_remember,
     "stats": _cmd_stats,
