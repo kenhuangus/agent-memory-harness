@@ -1,0 +1,82 @@
+{
+  "cases": 291,
+  "configs": {
+    "fusion_rrf": {
+      "MRR@10": 0.859,
+      "by_lens": {
+        "lexical": {
+          "MRR@10": 1.0,
+          "recall@10": 1.0
+        },
+        "mixed_adversarial": {
+          "MRR@10": 0.8162,
+          "recall@10": 1.0
+        },
+        "multi_hop_relational": {
+          "MRR@10": 0.2638,
+          "recall@10": 0.9783
+        },
+        "temporal_versioned": {
+          "MRR@10": 1.0,
+          "recall@10": 1.0
+        }
+      },
+      "recall@1": 0.8041,
+      "recall@10": 0.9966,
+      "recall@5": 0.9828
+    },
+    "fusion_rrf_rerank": {
+      "MRR@10": 0.8692,
+      "by_lens": {
+        "lexical": {
+          "MRR@10": 1.0,
+          "recall@10": 1.0
+        },
+        "mixed_adversarial": {
+          "MRR@10": 0.8897,
+          "recall@10": 1.0
+        },
+        "multi_hop_relational": {
+          "MRR@10": 0.2659,
+          "recall@10": 1.0
+        },
+        "temporal_versioned": {
+          "MRR@10": 1.0,
+          "recall@10": 1.0
+        }
+      },
+      "recall@1": 0.8179,
+      "recall@10": 1.0,
+      "recall@5": 0.9897
+    },
+    "route_speed": {
+      "MRR@10": 0.8194,
+      "by_lens": {
+        "lexical": {
+          "MRR@10": 0.9882,
+          "recall@10": 1.0
+        },
+        "mixed_adversarial": {
+          "MRR@10": 0.7372,
+          "recall@10": 0.8462
+        },
+        "multi_hop_relational": {
+          "MRR@10": 0.1109,
+          "recall@10": 0.3478
+        },
+        "temporal_versioned": {
+          "MRR@10": 1.0,
+          "recall@10": 1.0
+        }
+      },
+      "recall@1": 0.7938,
+      "recall@10": 0.8763,
+      "recall@5": 0.8694
+    }
+  },
+  "embedder": "hashing",
+  "filler": 100,
+  "mode": "offline",
+  "quality": 1500,
+  "reranker": "mock(lexical-jaccard)"
+}
