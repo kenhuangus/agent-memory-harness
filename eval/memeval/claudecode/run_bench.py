@@ -32,7 +32,7 @@ from ..schema import Benchmark
 from .agent import ClaudeCodeAgent
 from .platform import describe, detect
 
-_ALL_BENCH = ["memoryagentbench", "longmemeval", "swe_contextbench", "swe_bench_cl", "contextbench"]
+_ALL_BENCH = ["memoryagentbench", "longmemeval", "swe_contextbench", "swe_bench_cl", "contextbench", "vista"]
 # The comparison that matters: Claude Code's built-in memory (builtin) vs Keith's
 # SHIPPING plugin (plugin-real = plugin/cookbook_memory, the real product). The OKF
 # `plugin` is a harness SIMULATION of our MCP memory and stays selectable only via an
@@ -53,6 +53,10 @@ _MODES = ["builtin", "plugin-real"]
 #                     (group-aware selection would be strictly better here).
 #   contextbench      1136 tasks, median 9 gold spans/task (in-task retrieval, not
 #                     cross-session) -> 20 tasks.
+#   vista             one flat-QA journey per row (drift/injection/slow_burn events
+#                     are WITHIN a journey); answer=None, scored by the native
+#                     poisoning/calibration/RSI evaluator -> a small floor (6, the
+#                     6-journey safety suite) is enough.
 # Override any of these with --limit N (applies to all); --limit 0 = whole dataset.
 DEFAULT_FLOORS = {
     "longmemeval": 20,
@@ -60,6 +64,7 @@ DEFAULT_FLOORS = {
     "swe_bench_cl": 33,
     "swe_contextbench": 50,
     "contextbench": 20,
+    "vista": 6,
 }
 DEFAULT_MIN_ENTRIES = 20  # fallback floor for an unlisted benchmark
 # Benchmarks whose memory lives *across* entries in a group_id sequence: draw
@@ -150,6 +155,65 @@ def _resolve_group_aware(benchmark: str, select: str) -> bool:
     return benchmark in _GROUP_AWARE  # auto
 
 
+# Benchmarks whose run we additionally score through their NATIVE evaluator and
+# attach as ``rr.metadata["native_report"]`` so results.result_record emits the
+# row's ``native`` block (rendered on results.html). VISTA is the one that turns
+# a plain plugin-real run into a real memory-SAFETY measurement (poisoning
+# resistance, targeted ASR, retrieval P/R/F1, adaptation rate, RSI
+# self_improvement_safety). Ken-owned reporting glue: it reads the trajectories
+# the harness already recorded and the loader's tasks; it never touches the
+# team-owned plugin/dreaming/stores code.
+_NATIVE_REPORT_BENCH = {"vista"}
+
+
+def _attach_native_report(rr: Any, benchmark: str, mode: str,
+                          tasks: Optional[list] = None) -> None:
+    """Score ``rr``'s recorded trajectories through ``benchmark``'s native evaluator
+    and stash the report on ``rr.metadata['native_report']`` (where
+    :func:`memeval.results.result_record` looks for it).
+
+    Robust by design: the native ``score`` reads each trajectory's ``retrieve``
+    steps (item ids + text) and the task's gold/oracle fields — the EXACT shape a
+    plugin-real run already produces (``_attribute_real_recall`` records retrieve
+    steps; the VISTA loader carries route_graph/oracle_bindings on the task). We
+    adapt by joining the run's trajectories to freshly-loaded tasks (by task_id)
+    and wrapping each trajectory in a :class:`PerTaskRecord`. If anything is
+    missing or the evaluator/loader is unavailable, we log a clear warning and
+    leave the run unannotated rather than crash the benchmark."""
+    if benchmark not in _NATIVE_REPORT_BENCH:
+        return
+    try:
+        from ..native.registry import get_native_evaluator
+        from ..native.spec import PerTaskRecord
+        from ..schema import Benchmark as _B
+
+        if tasks is None:
+            from ..loaders import get_loader
+            loader = get_loader(_B.from_str(benchmark))
+            tasks = loader.load(None)
+        by_id = {t.task_id: t for t in tasks}
+        trajs = list(getattr(rr, "trajectories", []) or [])
+        if not trajs:
+            print(f"     native[{benchmark}]: no trajectories to score — skipped",
+                  file=sys.stderr)
+            return
+        # Score only trajectories whose task we can join (the loader is the source
+        # of the gold/oracle fields the evaluator needs).
+        records = [PerTaskRecord.from_trajectory(t) for t in trajs if t.task_id in by_id]
+        if not records:
+            print(f"     native[{benchmark}]: no trajectory joined a loaded task — "
+                  f"skipped (ran {len(trajs)} tasks)", file=sys.stderr)
+            return
+        evaluator = get_native_evaluator(benchmark)
+        report = evaluator.score(records, tasks)
+        report.mode = mode  # reflect the real run mode (plugin-real), not the default
+        rr.metadata["native_report"] = report
+    except Exception as exc:  # reporting must never abort a real run
+        print(f"     native[{benchmark}]: could not attach native report "
+              f"({type(exc).__name__}: {str(exc)[:120]}) — run still recorded",
+              file=sys.stderr)
+
+
 def _run_one(benchmark: str, mode: str, args: argparse.Namespace,
              *, stamp: str = "", completed_recs: Optional[list] = None) -> Optional[dict]:
     import json
@@ -224,6 +288,10 @@ def _run_one(benchmark: str, mode: str, args: argparse.Namespace,
     finally:
         if logger is not None:
             logger.close()
+    # Surface the benchmark's NATIVE metrics on the REAL trajectories this run just
+    # recorded (VISTA: poisoning/calibration/RSI safety). Attaches a native_report
+    # to rr.metadata so result_record/append_result emit the row's `native` block.
+    _attach_native_report(rr, benchmark, mode)
     rec = append_result(rr, args.results, run_id=run_id, notes=notes)
     if rec_path:
         with open(rec_path, "w", encoding="utf-8") as fh:
