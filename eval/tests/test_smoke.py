@@ -1245,9 +1245,12 @@ def test_patch_target_files() -> None:
     assert G.patch_target_files("") == []
 
 
-def test_auto_grader_prefers_swebench_when_available(monkeypatch) -> None:
+def test_auto_grader_prefers_swebench_when_available() -> None:
     """`auto` picks the swebench grader iff the swebench extra imports, else
-    LocalExecGrader — never breaking grading on a host without the extra."""
+    LocalExecGrader — never breaking grading on a host without the extra.
+
+    Uses manual attribute save/restore (no pytest `monkeypatch`) so this file still
+    runs under the stdlib-only smoke harness (`python tests/test_smoke.py`)."""
     import argparse
 
     from memeval import grader as Gmod
@@ -1257,18 +1260,23 @@ def test_auto_grader_prefers_swebench_when_available(monkeypatch) -> None:
     args = argparse.Namespace(grader="auto", grader_timeout=60)
     bench = next(iter(RB._LOCAL_EXEC_BENCH))
 
-    # Extra absent -> fall back to LocalExecGrader (real instance, no swebench needed).
-    monkeypatch.setattr(RB, "_swebench_available", lambda: False)
-    assert isinstance(RB._make_grader(bench, args), LocalExecGrader)
+    _orig_avail = RB._swebench_available
+    _orig_get = Gmod.get_grader
+    try:
+        # Extra absent -> fall back to LocalExecGrader (real instance, no swebench).
+        RB._swebench_available = lambda: False
+        assert isinstance(RB._make_grader(bench, args), LocalExecGrader)
 
-    # Extra present -> route to the "swebench" grader name (capture without importing
-    # the real package).
-    chosen: dict = {}
-    monkeypatch.setattr(RB, "_swebench_available", lambda: True)
-    monkeypatch.setattr(Gmod, "get_grader",
-                        lambda name, **kw: chosen.setdefault("name", name))
-    RB._make_grader(bench, args)
-    assert chosen["name"] == "swebench"
+        # Extra present -> route to the "swebench" grader name (capture without
+        # importing the real package).
+        chosen: dict = {}
+        RB._swebench_available = lambda: True
+        Gmod.get_grader = lambda name, **kw: chosen.setdefault("name", name)
+        RB._make_grader(bench, args)
+        assert chosen["name"] == "swebench"
+    finally:
+        RB._swebench_available = _orig_avail
+        Gmod.get_grader = _orig_get
 
 
 def test_grader_overlap_offline() -> None:
