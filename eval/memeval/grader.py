@@ -766,17 +766,28 @@ def get_grader(name: str, **kwargs: Any) -> Grader:
     """Resolve a grader by name.
 
     ``"local"`` / ``"localexec"`` / ``"local-exec"`` -> :class:`LocalExecGrader`
-    (kwargs forwarded); ``"overlap"`` -> :func:`overlap_grader`; ``"none"`` -> a
-    grader that always returns ``None`` (leave CODE ungraded).
+    (kwargs forwarded); ``"swebench"`` / ``"swebench-host"`` / ``"swebenchhost"``
+    -> :class:`memeval.grader_swebench.SwebenchHostGrader` (reuses SWE-bench's own
+    env specs + official log parsers in a host ``uv`` venv; needs the optional
+    ``swebench`` extra — imported lazily so it stays optional); ``"overlap"`` ->
+    :func:`overlap_grader`; ``"none"`` -> a grader that always returns ``None``
+    (leave CODE ungraded).
     """
     key = (name or "").strip().lower()
     if key in ("local", "localexec", "local-exec"):
         return LocalExecGrader(**kwargs)
+    if key in ("swebench", "swebench-host", "swebenchhost"):
+        # Lazy import so swebench remains an OPTIONAL dependency (no hard import at
+        # module load of this grader registry).
+        from .grader_swebench import SwebenchHostGrader
+
+        return SwebenchHostGrader(**kwargs)
     if key == "overlap":
         return lambda task, pred: overlap_grader(task, pred, **kwargs)
     if key in ("none", "", "off"):
         return lambda task, pred: None
-    raise ValueError(f"unknown grader {name!r} (use local / overlap / none)")
+    raise ValueError(
+        f"unknown grader {name!r} (use local / swebench / overlap / none)")
 
 
 __all__ = [

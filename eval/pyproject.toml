@@ -64,6 +64,13 @@ embeddings = ["numpy>=1.26"]
 # ungraded when the env can't be built). No containers, no extra grading package
 # — see ADR-eval-002.
 
+# Realistic Docker-free CODE grading that reuses SWE-bench's OWN per-instance env
+# specs + official log parsers in a host `uv` venv (memeval.grader_swebench.
+# SwebenchHostGrader, selected via `--grader swebench`). Opt-in and lazily
+# imported, so swebench stays optional — the default `local`/`overlap` graders need
+# nothing extra. NOT leaderboard-comparable (host venv != container); see ADR-eval-002.
+swebench = ["swebench>=4.0"]
+
 # Langfuse Cloud tracing (memeval.tracing). Lazy + no-op unless keys are set, so
 # the offline path never imports it.
 langfuse = ["langfuse>=3.0"]
