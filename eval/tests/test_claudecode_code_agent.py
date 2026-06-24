@@ -508,6 +508,12 @@ def test_make_grader_auto_routing() -> None:
     assert run_bench._make_grader("swe_contextbench", args_none) is None
     args_local = argparse.Namespace(grader="local", grader_timeout=1800)
     assert isinstance(run_bench._make_grader("longmemeval", args_local), G.LocalExecGrader)
+    # 'swebench' routes to SwebenchHostGrader AND forwards --grader-timeout to it.
+    from memeval.grader_swebench import SwebenchHostGrader
+    args_swe = argparse.Namespace(grader="swebench", grader_timeout=4242)
+    g = run_bench._make_grader("swe_bench_cl", args_swe)
+    assert isinstance(g, SwebenchHostGrader)
+    assert g.timeout == 4242
 
 
 def test_run_bench_code_mode_default_agentic() -> None:
