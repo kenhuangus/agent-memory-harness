@@ -41,8 +41,12 @@
   <div class="wrap">
     <div class="crumb"><a href="index.html">Overview</a> / Benchmarks</div>
     <h1>Benchmarks &amp; datasets</h1>
-    <p class="lead">No home-grown evals. The harness proves itself on established public memory benchmarks —
-      defensible and comparable.</p>
+    <p class="lead">No home-grown evals. The harness proves itself on established public benchmarks —
+      defensible and comparable. The suite is positioned around <strong>two in-scope benchmarks</strong>:
+      <strong>SWE-Bench-CL</strong> (primary · continual learning) and <strong>VISTA</strong>
+      (2nd · foresight × safety, memory poisoning / adaptation), each reported with its own
+      <strong>native metrics</strong>. The four original memory benches are kept available but
+      de-scoped to legacy (see <a href="https://github.com/kenhuangus/agent-memory-harness/blob/main/docs/adrs/ADR-eval-007-benchmark-suite-scope.md">ADR-eval-007</a>).</p>
   </div>
 </section>
 
@@ -51,23 +55,41 @@
   <div class="wrap">
     <div class="section-head">
       <div class="eyebrow">At a glance</div>
-      <h2>Which benchmark measures which metric</h2>
-      <p>✓ = primary coverage · ~ = partial / implicit coverage. Together the five benchmarks cover all four metrics.</p>
+      <h2>The two in-scope benchmarks &amp; their native metrics</h2>
+      <p>Each in-scope benchmark is scored on the metrics its own paper / evaluator defines — not the
+        generic four. The legacy table below is kept for the de-scoped memory benches.</p>
     </div>
     <div class="table-wrap fade-up">
       <table>
         <thead>
-          <tr><th>Benchmark</th><th>Recency</th><th>Efficiency</th><th>Relevancy</th><th>Accuracy</th><th>Also tests</th></tr>
+          <tr><th>Benchmark</th><th>Role</th><th>Native headline metrics</th></tr>
         </thead>
         <tbody>
-          <tr><td><strong>MemoryAgentBench</strong></td><td class="dash">~</td><td class="dash">~</td><td class="check">✓</td><td class="check">✓</td><td>Conflict resolution, test-time learning</td></tr>
-          <tr><td><strong>LongMemEval</strong></td><td class="check">✓</td><td class="dash">~</td><td class="dash">~</td><td class="check">✓</td><td>Temporal reasoning, knowledge updates</td></tr>
-          <tr><td><strong>SWE-ContextBench</strong></td><td class="dash">~</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td>Context reuse, cost efficiency</td></tr>
-          <tr><td><strong>SWE-Bench-CL</strong></td><td class="dash">~</td><td class="dash">~</td><td class="check">✓</td><td class="check">✓</td><td>Forgetting, knowledge transfer</td></tr>
-          <tr><td><strong>ContextBench</strong></td><td class="dash">~</td><td class="check">✓</td><td class="check">✓</td><td class="dash">~</td><td>Retrieval recall/precision (file/block/line)</td></tr>
+          <tr><td><strong>SWE-Bench-CL</strong></td><td><span class="pill p1">primary</span></td>
+            <td>accuracy, forgetting ↓, backward/forward transfer (BWT/FWT), AULC, CL-plasticity, CL-stability, CL-F1, CL-Score</td></tr>
+          <tr><td><strong>VISTA</strong></td><td><span class="pill p2">2nd</span></td>
+            <td>poisoning_resistance, targeted-ASR ↓, retrieval precision/recall, gold-retrieval F1, adaptation_rate, RSI self-improvement-safety; plus reusable calibration (ECE), retrieval-calibration, pass^k</td></tr>
         </tbody>
       </table>
     </div>
+
+    <details style="margin-top:18px">
+      <summary style="cursor:pointer;font-weight:600">Legacy memory benchmarks (non-primary) — generic four metrics</summary>
+      <p class="note" style="margin-top:8px">✓ = primary coverage · ~ = partial / implicit coverage. Kept available, de-scoped per ADR-eval-007.</p>
+      <div class="table-wrap fade-up">
+        <table>
+          <thead>
+            <tr><th>Benchmark</th><th>Recency</th><th>Efficiency</th><th>Relevancy</th><th>Accuracy</th><th>Also tests</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>MemoryAgentBench</strong></td><td class="dash">~</td><td class="dash">~</td><td class="check">✓</td><td class="check">✓</td><td>Conflict resolution, test-time learning</td></tr>
+            <tr><td><strong>LongMemEval</strong></td><td class="check">✓</td><td class="dash">~</td><td class="dash">~</td><td class="check">✓</td><td>Temporal reasoning, knowledge updates</td></tr>
+            <tr><td><strong>SWE-ContextBench</strong></td><td class="dash">~</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td>Context reuse, cost efficiency</td></tr>
+            <tr><td><strong>ContextBench</strong></td><td class="dash">~</td><td class="check">✓</td><td class="check">✓</td><td class="dash">~</td><td>Retrieval recall/precision (file/block/line)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
   </div>
 </section>
 
@@ -76,7 +98,7 @@
   <div class="wrap">
     <div class="callout fade-up">
       <span class="ic">▶️</span>
-      <div><p style="margin:0"><strong>Run these locally — Claude Code CLI.</strong> All five run through the
+      <div><p style="margin:0"><strong>Run these locally — Claude Code CLI.</strong> All benchmarks run through the
         Claude Code CLI (subscription auth — no API key), comparing Claude Code's <strong>built-in</strong> memory
         vs <strong>our plugin</strong> memory:
         <code>python -m memeval.claudecode.run_bench --benchmark all --mode all --model claude-haiku-4-5</code>.
@@ -90,9 +112,52 @@
 <section class="section">
   <div class="wrap">
     <div class="section-head">
-      <div class="eyebrow">The five benchmarks</div>
+      <div class="eyebrow">In-scope benchmarks</div>
       <h2>Benchmark details</h2>
+      <p>The two in-scope benchmarks come first; the four legacy memory benches follow (kept available, non-primary).</p>
     </div>
+
+    <!-- VISTA (2nd benchmark) -->
+    <div class="card bl2 fade-up" id="vista" style="margin-bottom:22px">
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:6px">
+        <h3 style="margin:0">VISTA</h3>
+        <span class="pill p2">2nd benchmark</span><span class="pill">Memory poisoning</span><span class="pill">RSI safety</span>
+      </div>
+      <p>Long-horizon <strong>foresight × safety</strong> journeys. Each journey carries
+        <code>injection</code> / <code>drift</code> / <code>slow_burn</code> events that exercise
+        <strong>memory poisoning &amp; adaptation</strong> — the dimension none of the legacy benches cover.
+        Deterministic, stdlib-only, offline; corpus CC-BY-4.0.</p>
+      <p class="note"><strong>Native metrics:</strong> poisoning_resistance, targeted-ASR (lower is better),
+        retrieval precision/recall, gold-retrieval F1, adaptation_rate, and the observer-only
+        <strong>RSI self-improvement-safety</strong> gate — plus reusable calibration (ECE), retrieval-calibration
+        and pass^k. No team-owned consolidation code is modified; the safety gate observes store diffs.</p>
+      <p style="margin:0">
+        <a href="https://github.com/kenhuangus/vista-benchmark" target="_blank" rel="noopener">💻 GitHub</a> &nbsp;·&nbsp;
+        <a href="https://github.com/kenhuangus/agent-memory-harness/blob/main/eval/memeval/data/vista/ATTRIBUTION.md" target="_blank" rel="noopener">🏷️ Corpus (CC-BY-4.0)</a>
+      </p>
+    </div>
+
+    <!-- SWE-Bench-CL (primary) -->
+    <div class="card bl4 fade-up" id="swe-bench-cl" style="margin-bottom:22px">
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:6px">
+        <h3 style="margin:0">SWE-Bench-CL</h3>
+        <span class="pill p1">primary</span><span class="pill">Continual learning</span><span class="pill">Accuracy</span>
+      </div>
+      <p>Built on SWE-Bench Verified, it orders issues chronologically to test <strong>knowledge transfer and
+        resistance to catastrophic forgetting</strong> across per-repo task sequences. The primary CODE /
+        continual-learning benchmark.</p>
+      <p class="note"><strong>Native metrics:</strong> accuracy, forgetting (lower is better), backward/forward
+        transfer (BWT/FWT), AULC, CL-plasticity, CL-stability, CL-F1 and the composite CL-Score — the
+        continual-learning suite from the paper's reference evaluator, reported per sequence and macro-averaged.</p>
+      <p style="margin:0">
+        <a href="https://arxiv.org/abs/2507.00014" target="_blank" rel="noopener">📄 Paper (arXiv 2507.00014)</a> &nbsp;·&nbsp;
+        <a href="https://github.com/thomasjoshi/agents-never-forget" target="_blank" rel="noopener">💻 GitHub</a>
+      </p>
+    </div>
+
+    <!-- Legacy subheading -->
+    <h3 style="margin:28px 0 6px">Legacy memory benchmarks <span class="pill" style="font-size:.62rem;vertical-align:middle">non-primary</span></h3>
+    <p class="note" style="margin-top:0">Kept available and selectable; de-scoped per ADR-eval-007.</p>
 
     <!-- MemoryAgentBench -->
     <div class="card bl1 fade-up" id="memoryagentbench" style="margin-bottom:22px">
@@ -147,30 +212,13 @@
       </p>
     </div>
 
-    <!-- SWE-Bench-CL -->
-    <div class="card bl4 fade-up" id="swe-bench-cl" style="margin-bottom:22px">
-      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:6px">
-        <h3 style="margin:0">SWE-Bench-CL</h3>
-        <span class="pill p4">Relevancy</span><span class="pill p1">Accuracy</span><span class="pill">Continual learning</span>
-      </div>
-      <p>Built on SWE-Bench Verified, it orders issues chronologically to test <strong>knowledge transfer and
-        resistance to catastrophic forgetting</strong>. Ships a LangGraph harness + FAISS memory and CL metrics
-        (forgetting, forward/backward transfer, composite score).</p>
-      <p class="note"><strong>How we use it:</strong> relevancy precision &amp; accuracy over time — avoid negative
-        transfer (irrelevant memories that hurt) across task sequences.</p>
-      <p style="margin:0">
-        <a href="https://arxiv.org/abs/2507.00014" target="_blank" rel="noopener">📄 Paper (arXiv 2507.00014)</a> &nbsp;·&nbsp;
-        <a href="https://github.com/thomasjoshi/agents-never-forget" target="_blank" rel="noopener">💻 GitHub</a>
-      </p>
-    </div>
-
     <!-- ContextBench -->
     <div class="card bl2 fade-up" id="contextbench" style="margin-bottom:0">
       <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:6px">
         <h3 style="margin:0">ContextBench</h3>
         <span class="pill p3">Efficiency</span><span class="pill p4">Relevancy</span><span class="pill">Retrieval quality</span>
       </div>
-      <p>The 5th, process-level benchmark: <strong>in-task context retrieval quality</strong>. 1,136 issue tasks across
+      <p>A process-level benchmark: <strong>in-task context retrieval quality</strong>. 1,136 issue tasks across
         66 repos / 8 languages, each with human-annotated <strong>gold contexts</strong> (file / block / line). Scores
         context recall, precision and efficiency — distinct from SWE-ContextBench (cross-task reuse).</p>
       <p class="note"><strong>How we use it:</strong> direct ground truth for <em>relevancy</em> &amp; <em>efficiency</em> —

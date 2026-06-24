@@ -44,6 +44,45 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def native_metrics_block(report: Any) -> dict:
+    """Flatten a :class:`~memeval.native.spec.BenchmarkNativeReport` (or its
+    ``to_dict()``) into a ledger-friendly ``native`` block for the Results page.
+
+    Returns ``{"benchmark", "mode", "n_tasks", "metrics": {name: {value, n,
+    better, metadata}}, "components": {...}}`` — the headline native metrics
+    keyed by name so the dashboard can read ``row.native.metrics.forgetting`` /
+    ``row.native.metrics.poisoning_resistance`` directly. Accepts either a
+    report object (has ``to_dict``) or an already-serialized dict; ``None`` /
+    unrecognized input yields ``{}`` so callers degrade gracefully.
+
+    This is reporting/results plumbing only — it surfaces the metrics the native
+    evaluators already compute into the ledger the static page consumes, without
+    touching any team-owned (dreaming/stores/plugin) code.
+    """
+    if report is None:
+        return {}
+    d = report.to_dict() if hasattr(report, "to_dict") else report
+    if not isinstance(d, dict):
+        return {}
+    metrics_list = d.get("metrics") or []
+    metrics: dict[str, Any] = {}
+    for m in metrics_list:
+        if isinstance(m, dict) and "name" in m:
+            metrics[m["name"]] = {
+                "value": m.get("value"),
+                "n": m.get("n"),
+                "better": m.get("better", "higher"),
+                "metadata": m.get("metadata", {}),
+            }
+    return {
+        "benchmark": d.get("benchmark"),
+        "mode": d.get("mode"),
+        "n_tasks": d.get("n_tasks"),
+        "metrics": metrics,
+        "components": d.get("components", {}),
+    }
+
+
 def result_record(
     rr: RunResult,
     *,
@@ -104,6 +143,14 @@ def result_record(
         },
         "notes": notes,
     }
+    # Surface a benchmark's NATIVE metrics (continual-learning suite for
+    # swe_bench_cl; poisoning/calibration/RSI for vista) into the ledger row so
+    # the Results page can render per-benchmark native panels. The native report
+    # is passed through ``rr.metadata['native_report']`` (a BenchmarkNativeReport
+    # or its dict); absent -> no ``native`` key (page shows n/a). Reporting-only.
+    native = native_metrics_block(rr.metadata.get("native_report"))
+    if native:
+        rec["native"] = native
     if extra:
         rec.update(extra)
     return rec

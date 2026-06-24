@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Results · Cookbook Memory</title>
-<meta name="description" content="Live results scoreboard for Cookbook Memory: every logged benchmark run, rendered from results.json — recency, efficiency, relevancy, accuracy, memory-on vs off.">
+<meta name="description" content="Live results scoreboard for Cookbook Memory: every logged benchmark run, rendered from results.json — the two in-scope benchmarks (SWE-Bench-CL + VISTA) and their native metrics, memory-on vs off.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -53,8 +53,10 @@
   <div class="wrap">
     <div class="callout fade-up">
       <span class="ic">🎯</span>
-      <div><p style="margin:0"><strong>Success criterion:</strong> Haiku + the memory harness beats the Opus 4.8
-        no-memory baseline on <strong>at least two</strong> of the five benchmarks, without &gt; ~10% memory overhead.</p></div>
+      <div><p style="margin:0"><strong>Suite focus:</strong> two in-scope benchmarks —
+        <strong>SWE-Bench-CL</strong> (primary, continual learning) and <strong>VISTA</strong>
+        (2nd: foresight × safety, memory poisoning / adaptation) — each shown with its own
+        <strong>native metrics</strong>. The four legacy memory benches stay available below.</p></div>
     </div>
   </div>
 </section>
@@ -110,13 +112,36 @@
 
 <script>
 (function () {
-  var BENCH = [
+  // In-scope suite (each rendered with its own NATIVE metric panel).
+  var INSCOPE = [
+    ["swe_bench_cl", "SWE-Bench-CL", "primary · continual learning"],
+    ["vista", "VISTA", "2nd · foresight × safety, memory poisoning"]
+  ];
+  // Legacy memory benches — kept available, shown below behind a toggle.
+  var LEGACY = [
     ["memoryagentbench", "MemoryAgentBench"],
     ["longmemeval", "LongMemEval"],
     ["swe_contextbench", "SWE-ContextBench"],
-    ["swe_bench_cl", "SWE-Bench-CL"],
     ["contextbench", "ContextBench"]
   ];
+  // The two benchmarks' native headline metrics (name -> column label + "lower is better").
+  var NATIVE_COLS = {
+    swe_bench_cl: [
+      ["accuracy","Accuracy",false],["forgetting","Forgetting",true],
+      ["backward_transfer","BWT",false],["forward_transfer","FWT",false],
+      ["aulc","AULC",false],["cl_plasticity","Plasticity",false],
+      ["cl_stability","Stability",false],["cl_f1","CL-F1",false],
+      ["cl_score","CL-Score",false]
+    ],
+    vista: [
+      ["poisoning_resistance","Poison-resist",false],["targeted_asr","Targeted-ASR",true],
+      ["retrieval_precision","Precision",false],["retrieval_recall","Recall",false],
+      ["gold_retrieval_f1","Gold-F1",false],["adaptation_rate","Adaptation",false],
+      ["self_improvement_safety","RSI-safe",false]
+    ]
+  };
+  // Hypothesis scoreboard still spans the legacy generic-accuracy comparison.
+  var BENCH = INSCOPE.concat(LEGACY);
   function esc(s){ var d=document.createElement("div"); d.textContent=(s==null?"":String(s)); return d.innerHTML; }
   function num(v){ return (v==null||isNaN(v))?"—":Number(v).toFixed(3); }
   function usd(v){ return "$"+Number(v||0).toFixed(4); }
@@ -183,6 +208,48 @@
     el.querySelectorAll(".fade-up").forEach(function(n){ n.classList.add("in"); });
   }
 
+  // Read a native metric value off a ledger row: row.native.metrics[name].value.
+  // Falls back to row.metrics[name] (so swe_bench_cl 'accuracy' still shows even
+  // from a generic row), else null -> rendered "n/a" (graceful degrade).
+  function nativeVal(row, name){
+    var nm = row && row.native && row.native.metrics;
+    if (nm && nm[name] && nm[name].value!=null) return Number(nm[name].value);
+    var gm = row && row.metrics;
+    if (gm && gm[name]!=null) return Number(gm[name]);
+    return null;
+  }
+  // One in-scope benchmark's native-metric table.
+  function nativePanel(key, label, tag, rows){
+    var cols = NATIVE_COLS[key] || [];
+    var hasNative = rows.some(function(r){ return r.native && r.native.metrics; });
+    var h = '<h3 style="margin-top:22px">'+esc(label)
+      + ' <span class="pill" style="font-size:.62rem;vertical-align:middle">'+esc(tag)+'</span>'
+      + ' <span class="note" style="font-weight:400">— '+rows.length+' run(s)</span></h3>';
+    if (!hasNative){
+      h += '<p class="note" style="margin-top:0">Native metrics not present in these ledger rows yet '
+        + '(re-run with the native evaluator to surface them); showing what is available.</p>';
+    }
+    h += '<div class="table-wrap fade-up" style="margin-bottom:8px"><table><thead><tr>'
+      + '<th>Config</th><th>Memory</th>';
+    cols.forEach(function(c){
+      h += '<th'+(c[2]?' title="lower is better"':'')+'>'+esc(c[1])+(c[2]?' ↓':'')+'</th>';
+    });
+    h += '<th>n</th><th>When (UTC)</th></tr></thead><tbody>';
+    rows.forEach(function(r){
+      var mem = r.memory ? '<span class="check">on</span>' : '<span class="dash">off</span>';
+      h += '<tr><td><strong>'+esc(r.label||r.model)+'</strong>'
+        + (r.partial?' <span class="pill" style="font-size:.66rem">partial</span>':'')+'</td><td>'+mem+'</td>';
+      cols.forEach(function(c){
+        var v = nativeVal(r, c[0]);
+        h += '<td>'+(v==null?'<span class="note">n/a</span>':num(v))+'</td>';
+      });
+      h += '<td>'+esc(r.n_tasks)+'</td>'
+        + '<td class="note">'+esc((r.timestamp||"").replace("T"," ").replace("+00:00","Z"))+'</td></tr>';
+    });
+    h += '</tbody></table></div>';
+    return h;
+  }
+
   function render(data){
     var app = document.getElementById("results-app");
     var empty = document.getElementById("results-empty");
@@ -202,36 +269,63 @@
         + 'Haiku / Opus 4.8 / Sonnet runs to populate the real scoreboard.</p></div></div>';
     }
 
+    var inscopeCovered = INSCOPE.filter(function(b){ return benchesCovered[b[0]]; }).length;
     html += '<div class="stats" style="margin-bottom:14px">'
       + '<div class="stat"><div class="n">'+runs.length+'</div><div class="l">Runs logged</div></div>'
-      + '<div class="stat"><div class="n">'+Object.keys(benchesCovered).length+' / 5</div><div class="l">Benchmarks covered</div></div>'
+      + '<div class="stat"><div class="n">'+inscopeCovered+' / 2</div><div class="l">In-scope benchmarks</div></div>'
       + '<div class="stat"><div class="n">'+Object.keys(models).length+'</div><div class="l">Configs (model × memory)</div></div>'
       + '<div class="stat"><div class="n" style="font-size:1.1rem">'+esc((data.updated||"—"))+'</div><div class="l">Last updated (UTC)</div></div>'
       + '</div>';
 
-    BENCH.forEach(function(b){
-      var key=b[0], label=b[1];
+    // ---- In-scope benchmarks: each gets its own NATIVE-metric panel. ----
+    html += '<h2 style="margin-top:24px">In-scope benchmarks — native metrics</h2>';
+    var anyInscope = false;
+    INSCOPE.forEach(function(b){
+      var key=b[0], label=b[1], tag=b[2];
       var rows = runs.filter(function(r){ return r.benchmark===key; });
       if (!rows.length) return;
+      anyInscope = true;
       rows.sort(function(a,c){ return (a.model+a.memory).localeCompare(c.model+c.memory); });
-      html += '<h3 style="margin-top:22px">'+esc(label)+' <span class="note" style="font-weight:400">— '+rows.length+' run(s)</span></h3>';
-      html += '<div class="table-wrap fade-up" style="margin-bottom:8px"><table>'
-        + '<thead><tr><th>Config</th><th>Memory</th><th>Recency</th><th>Efficiency</th>'
-        + '<th>Relevancy</th><th>Accuracy</th><th>n</th><th>Cost</th><th>When (UTC)</th></tr></thead><tbody>';
-      rows.forEach(function(r){
-        var m = r.metrics||{};
-        var mem = r.memory ? '<span class="check">on</span>' : '<span class="dash">off</span>';
-        html += '<tr>'
-          + '<td><strong>'+esc(r.label||r.model)+'</strong>'+(r.partial?' <span class="pill" style="font-size:.66rem">partial</span>':'')+'</td>'
-          + '<td>'+mem+'</td>'
-          + '<td>'+num(m.recency)+'</td><td>'+num(m.efficiency)+'</td>'
-          + '<td>'+num(m.relevancy)+'</td><td>'+num(m.accuracy)+'</td>'
-          + '<td>'+esc(r.n_tasks)+'</td><td>'+usd(r.cost_usd)+'</td>'
-          + '<td class="note">'+esc((r.timestamp||"").replace("T"," ").replace("+00:00","Z"))+'</td>'
-          + '</tr>';
-      });
-      html += '</tbody></table></div>';
+      html += nativePanel(key, label, tag, rows);
     });
+    if (!anyInscope){
+      html += '<div class="callout warn fade-up"><span class="ic">⏳</span><div><p style="margin:0">'
+        + 'No runs logged yet for the in-scope benchmarks (SWE-Bench-CL, VISTA). '
+        + 'Run one to populate the native-metric panels above.</p></div></div>';
+    }
+
+    // ---- Legacy memory benches: kept available, behind a <details> toggle. ----
+    var legacyRows = runs.filter(function(r){ return LEGACY.some(function(b){return b[0]===r.benchmark;}); });
+    if (legacyRows.length){
+      html += '<details style="margin-top:26px"><summary style="cursor:pointer;font-weight:600;font-size:1.05rem">'
+        + 'Legacy memory benchmarks (non-primary) — generic 4 metrics</summary>'
+        + '<p class="note" style="margin-top:8px">These four benches are de-scoped to legacy but kept available '
+        + '(see ADR-eval-007). Shown with the original recency / efficiency / relevancy / accuracy metrics.</p>';
+      LEGACY.forEach(function(b){
+        var key=b[0], label=b[1];
+        var rows = runs.filter(function(r){ return r.benchmark===key; });
+        if (!rows.length) return;
+        rows.sort(function(a,c){ return (a.model+a.memory).localeCompare(c.model+c.memory); });
+        html += '<h3 style="margin-top:18px">'+esc(label)+' <span class="note" style="font-weight:400">— '+rows.length+' run(s)</span></h3>';
+        html += '<div class="table-wrap fade-up" style="margin-bottom:8px"><table>'
+          + '<thead><tr><th>Config</th><th>Memory</th><th>Recency</th><th>Efficiency</th>'
+          + '<th>Relevancy</th><th>Accuracy</th><th>n</th><th>Cost</th><th>When (UTC)</th></tr></thead><tbody>';
+        rows.forEach(function(r){
+          var m = r.metrics||{};
+          var mem = r.memory ? '<span class="check">on</span>' : '<span class="dash">off</span>';
+          html += '<tr>'
+            + '<td><strong>'+esc(r.label||r.model)+'</strong>'+(r.partial?' <span class="pill" style="font-size:.66rem">partial</span>':'')+'</td>'
+            + '<td>'+mem+'</td>'
+            + '<td>'+num(m.recency)+'</td><td>'+num(m.efficiency)+'</td>'
+            + '<td>'+num(m.relevancy)+'</td><td>'+num(m.accuracy)+'</td>'
+            + '<td>'+esc(r.n_tasks)+'</td><td>'+usd(r.cost_usd)+'</td>'
+            + '<td class="note">'+esc((r.timestamp||"").replace("T"," ").replace("+00:00","Z"))+'</td>'
+            + '</tr>';
+        });
+        html += '</tbody></table></div>';
+      });
+      html += '</details>';
+    }
 
     app.innerHTML = html;
     // re-trigger reveal on freshly-added nodes
