@@ -94,6 +94,12 @@ def result_record(
             "recall_attempted": rr.metadata.get("recall_attempted", 0),
             "recall_with_hits": rr.metadata.get("recall_with_hits", 0),
             "graded_n": rr.metadata.get("graded_n", 0),
+            # Task-success breakdown: resolved = passed, ungraded = could-not-grade,
+            # grade_reasons = histogram of why (checkout_failed / env_build_failed /
+            # graded / ...). Surfaces which tasks succeeded and why others didn't.
+            "resolved": rr.metadata.get("resolved", 0),
+            "ungraded": rr.metadata.get("ungraded", 0),
+            "grade_reasons": rr.metadata.get("grade_reasons", {}),
             "errors": rr.metadata.get("errors", []),
         },
         "notes": notes,

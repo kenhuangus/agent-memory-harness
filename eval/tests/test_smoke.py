@@ -1174,6 +1174,58 @@ def test_grader_django_parse_docstring_and_selector_filter() -> None:
         ["test_absent (pagination.tests.PaginationTests)"]
 
 
+def test_pytest_selector_filter_and_parse() -> None:
+    """The pytest path's two data/parse hazards: a leaked ``[100%]`` progress token
+    that aborts the whole run, and a node id literally named ``test_failed`` that a
+    substring parser misreads as a failure."""
+    from memeval import grader as G
+
+    # --- is_pytest_selector: accept node ids, reject captured progress junk. ---
+    assert G.is_pytest_selector("testing/test_x.py::TestC::test_y")
+    assert G.is_pytest_selector("testing/test_x.py::test_y[param]")
+    assert G.is_pytest_selector("testing/test_x.py::test_y[test_input1-expected1]")
+    assert not G.is_pytest_selector("[100%]")     # leaked progress bar (the contaminant)
+    assert not G.is_pytest_selector("")
+    assert not G.is_pytest_selector("4 passed in 1.5s")
+    # Truncated parametrized ids (param contained ", " -> capture split off the rest,
+    # leaving an unbalanced bracket). Unrecoverable; pytest reports "not found" and
+    # aborts the whole run, so these must be dropped.
+    assert not G.is_pytest_selector("testing/test_skipping.py::TestXFail::test_xfail_raises[(AttributeError,")
+    assert not G.is_pytest_selector('testing/test_skipping.py::TestSkipif::test_skipif_reporting["hasattr(sys,')
+    assert not G.is_pytest_selector("testing/test_x.py::test_xfail_raises[TypeError-IndexError-*1")
+
+    # --- _parse_pytest reads pytest -rA "<STATUS> <nodeid>" summary lines. ---
+    # Crucially, a node id NAMED test_failed must be read by the leading STATUS word,
+    # not a substring scan (the latter sees "FAILED" inside "test_failed").
+    f2p = ["testing/test_pastebin.py::TestPaste::test_create_new_paste"]
+    p2p = [
+        "testing/test_pastebin.py::TestPasteCapture::test_failed",   # PASSED despite the name
+        "testing/test_pastebin.py::TestPasteCapture::test_all",
+    ]
+    out = (
+        "=========================== short test summary info ===========================\n"
+        "PASSED testing/test_pastebin.py::TestPaste::test_create_new_paste\n"
+        "PASSED testing/test_pastebin.py::TestPasteCapture::test_failed\n"
+        "PASSED testing/test_pastebin.py::TestPasteCapture::test_all\n"
+        "=========================== 3 passed in 1.43 seconds ===========================\n"
+    )
+    status = G._parse_pytest(out, f2p, p2p)
+    assert status["FAIL_TO_PASS"]["success"] == f2p
+    assert status["PASS_TO_PASS"]["failure"] == [], \
+        "test_failed must be read as PASSED, not misparsed via substring"
+    assert set(status["PASS_TO_PASS"]["success"]) == set(p2p)
+
+    # A genuinely FAILED selector is classified as failure; a parametrized id matches.
+    out2 = (
+        "FAILED testing/test_x.py::test_a - AssertionError: boom\n"
+        "PASSED testing/test_x.py::test_b[case1]\n"
+    )
+    st2 = G._parse_pytest(out2, ["testing/test_x.py::test_a"],
+                          ["testing/test_x.py::test_b"])
+    assert st2["FAIL_TO_PASS"]["failure"] == ["testing/test_x.py::test_a"]
+    assert st2["PASS_TO_PASS"]["success"] == ["testing/test_x.py::test_b"]
+
+
 def test_grader_overlap_offline() -> None:
     from memeval import grader as G
     gold = "diff --git a/f.py b/f.py\n+    return x + 1"

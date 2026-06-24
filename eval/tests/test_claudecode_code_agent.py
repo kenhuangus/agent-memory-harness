@@ -147,12 +147,15 @@ def _make_fake_cmd(*, fail_to_pass_passed=True, pass_to_pass_passed=True,
             if raise_on_pytest:
                 raise RuntimeError("env build / pytest invocation failed")
             lines = []
-            # selectors are the trailing args after `-q`
-            for sel in args[args.index("-q") + 1:]:
+            # selectors are the trailing args after the report flag (`-rA`); emit a
+            # ``PASSED <nodeid>`` / ``FAILED <nodeid>`` summary line per selector,
+            # matching pytest's `-rA` short-summary that _parse_pytest reads.
+            flag = "-rA" if "-rA" in args else "-q"
+            for sel in args[args.index(flag) + 1:]:
                 if "empty" in sel or "index" in sel:
-                    lines.append(f"{sel} {'PASSED' if fail_to_pass_passed else 'FAILED'}")
+                    lines.append(f"{'PASSED' if fail_to_pass_passed else 'FAILED'} {sel}")
                 else:
-                    lines.append(f"{sel} {'PASSED' if pass_to_pass_passed else 'FAILED'}")
+                    lines.append(f"{'PASSED' if pass_to_pass_passed else 'FAILED'} {sel}")
             rc = 0 if (fail_to_pass_passed and pass_to_pass_passed) else 1
             return CmdResult(returncode=rc, stdout="\n".join(lines) + "\n")
         return CmdResult(returncode=0)
@@ -335,6 +338,116 @@ def test_local_exec_grader_clears_reason_on_real_verdict() -> None:
     g = G.LocalExecGrader(runner=_make_fake_cmd(), git_runner=_make_fake_git())
     assert g(_code_task(), _FIXED_DIFF) is True
     assert g.last_reason is None
+
+
+# --------------------------------------------------------------------------- #
+# Test B2 — agent._grade surfaces the grader's ungraded reason (visibility layer)
+# --------------------------------------------------------------------------- #
+# Reconciled design (ADR-eval-005/006): the grader exposes the *why* of a None via
+# its ``last_reason`` (loud-degradation, main's design); agent._grade reads that and
+# buckets it for the run histogram. These check the seam end to end.
+def test_agent_grade_reports_graded_on_real_verdict() -> None:
+    from memeval.agent import _grade
+
+    git = _make_fake_git()
+    cmd = _make_fake_cmd(fail_to_pass_passed=True, pass_to_pass_passed=True)
+    g = G.LocalExecGrader(runner=cmd, git_runner=git)
+    success, reason = _grade(_code_task(), _FIXED_DIFF, g)
+    assert success is True and reason == "graded"
+
+
+def test_agent_grade_buckets_env_failure_reason() -> None:
+    from memeval.agent import _grade
+
+    git = _make_fake_git()
+    cmd = _make_fake_cmd(raise_on_pytest=True)  # env/build blows up -> None
+    g = G.LocalExecGrader(runner=cmd, git_runner=git)
+    success, reason = _grade(_code_task(), _FIXED_DIFF, g)
+    assert success is None
+    # grader.last_reason is a free-form string; agent buckets it to a stable label.
+    assert reason in ("env_build_failed", "exception"), reason
+
+
+def test_agent_grade_buckets_patch_apply_failure() -> None:
+    from memeval.agent import _grade
+
+    git = _make_fake_git(apply_ok=False)  # prediction patch won't apply -> None
+    g = G.LocalExecGrader(runner=_make_fake_cmd(), git_runner=git)
+    success, reason = _grade(_code_task(), _FIXED_DIFF, g)
+    assert success is None and reason == "patch_apply_failed"
+
+
+def test_bucket_ungraded_reason_maps_known_strings() -> None:
+    from memeval.agent import _bucket_ungraded_reason
+
+    assert _bucket_ungraded_reason("checkout failed: boom") == "checkout_failed"
+    assert _bucket_ungraded_reason("gold test_patch did not apply") == \
+        "gold_test_apply_failed"
+    assert _bucket_ungraded_reason(None) == "ungraded"
+    # An unrecognized reason is kept verbatim rather than lost.
+    assert _bucket_ungraded_reason("weird novel reason") == "weird novel reason"
+
+
+# --------------------------------------------------------------------------- #
+# Test B3 — per-task env resolution: Python pin + setuptools-scm version gate
+# --------------------------------------------------------------------------- #
+def test_python_for_task_pins_known_repo() -> None:
+    # 2019-era pytest must not run on a host-default 3.12+ (its `import imp` is gone).
+    t = _code_task()
+    t.repo = "pytest-dev/pytest"
+    assert G._python_for_task(t) == "3.8"
+
+
+def test_python_for_task_unknown_repo_is_host_default() -> None:
+    t = _code_task()
+    t.repo = "some/unmapped-repo"
+    assert G._python_for_task(t) is None  # host default, legacy behavior
+
+
+def test_python_for_task_metadata_override_wins() -> None:
+    t = _code_task()
+    t.repo = "pytest-dev/pytest"
+    t.metadata = {**(t.metadata or {}), "python": "3.10"}
+    assert G._python_for_task(t) == "3.10"
+
+
+def test_scm_env_sets_pretend_version() -> None:
+    # Tagless shallow checkout -> setuptools-scm would emit 0.1.dev1 and trip a
+    # `requires pytest-2.0` minversion gate; the pretend version clears it.
+    env = G._scm_env(_code_task())
+    assert env.get("SETUPTOOLS_SCM_PRETEND_VERSION")
+    assert env["SETUPTOOLS_SCM_PRETEND_VERSION_FOR_PYTEST"] == \
+        env["SETUPTOOLS_SCM_PRETEND_VERSION"]
+
+
+def test_make_venv_passes_python_pin() -> None:
+    # Record every argv the runner sees; assert `uv venv` carried `--python <ver>`.
+    seen: list = []
+
+    def _recording(args, cwd, env=None, *a, **kw):
+        seen.append(list(args))
+        return G.CmdResult(returncode=0)
+
+    g = G.LocalExecGrader(runner=_recording)
+    # _make_venv returns None here (the stub creates no interpreter on disk), but we
+    # only care that the venv command requested the pin.
+    g._make_venv("/tmp/x/repo", python="3.8")
+    venv_cmds = [a for a in seen if a[:2] == ["uv", "venv"]]
+    assert venv_cmds, "expected a `uv venv` invocation"
+    assert "--python" in venv_cmds[0] and "3.8" in venv_cmds[0]
+
+
+def test_make_venv_no_pin_omits_python_flag() -> None:
+    seen: list = []
+
+    def _recording(args, cwd, env=None, *a, **kw):
+        seen.append(list(args))
+        return G.CmdResult(returncode=0)
+
+    g = G.LocalExecGrader(runner=_recording)
+    g._make_venv("/tmp/x/repo", python=None)
+    venv_cmds = [a for a in seen if a[:2] == ["uv", "venv"]]
+    assert venv_cmds and "--python" not in venv_cmds[0]
 
 
 # --------------------------------------------------------------------------- #

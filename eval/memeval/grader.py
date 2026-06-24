@@ -122,25 +122,42 @@ def _parse_pytest(stdout: str, fail_to_pass: list[str],
                   pass_to_pass: list[str]) -> dict:
     """Parse pytest output into a ``tests_status`` dict for ``resolved_from_report``.
 
-    Pure + stdlib-only (unit-testable). For each named selector in
-    ``fail_to_pass`` / ``pass_to_pass``, classify it as success/failure by scanning
-    pytest's ``<nodeid> PASSED`` / ``FAILED`` lines (either order:
-    ``test_x.py::t PASSED`` or ``PASSED test_x.py::t``). A selector pytest never
-    reported on (collection error, not found) counts as a failure — it did not
-    pass, which the SWE-bench resolved rule treats as not-resolved.
+    Pure + stdlib-only (unit-testable). Reads pytest's ``-rA`` short-summary, whose
+    lines are ``<STATUS> <nodeid>`` (e.g. ``PASSED testing/x.py::test_y``). For each
+    named selector, the verdict is the STATUS word at the START of a summary line
+    whose nodeid matches the selector — NOT a substring scan, because a node id can
+    itself contain ``failed``/``error`` (``...::test_failed`` would otherwise be
+    misread as a failure). A selector pytest never reported on (collection error,
+    not found) counts as a failure — it did not pass, which the SWE-bench resolved
+    rule treats as not-resolved.
     """
     out = stdout or ""
+    # pytest -rA summary line statuses, in precedence order (a not-passed status wins
+    # so a test reported both ways is conservatively not a pass).
+    _PASS_WORDS = ("PASSED", "XPASS")
+    _NOTPASS_WORDS = ("FAILED", "ERROR", "XFAIL", "SKIPPED")
+
+    def _status_for(selector: str) -> Optional[str]:
+        # Find a summary line "<STATUS> <nodeid...>" whose nodeid equals/extends the
+        # selector. Match on the line's leading STATUS token only.
+        for line in out.splitlines():
+            stripped = line.strip()
+            parts = stripped.split(None, 1)
+            if len(parts) != 2:
+                continue
+            status, rest = parts[0].upper(), parts[1].strip()
+            if status not in _PASS_WORDS and status not in _NOTPASS_WORDS:
+                continue
+            # rest is the nodeid (possibly with trailing reason text after a space or
+            # ' - '); accept an exact match or a nodeid that starts with the selector.
+            node = rest.split(" - ", 1)[0].split()[0] if rest else ""
+            if node == selector or node.startswith(selector + "["):
+                return status
+        return None
 
     def _passed(selector: str) -> bool:
-        # A line mentioning this selector marked PASSED, and not also FAILED.
-        for line in out.splitlines():
-            if selector not in line:
-                continue
-            up = line.upper()
-            if "PASSED" in up or " PASS" in up or up.strip().startswith("PASS"):
-                if "FAILED" not in up and "ERROR" not in up:
-                    return True
-        return False
+        status = _status_for(selector)
+        return status in _PASS_WORDS
 
     def _group(selectors: list[str]) -> dict:
         success = [s for s in selectors if _passed(s)]
@@ -242,6 +259,33 @@ def is_django_selector(selector: str) -> bool:
     return all(part.isidentifier() for part in s.split(".") if part)
 
 
+def is_pytest_selector(selector: str) -> bool:
+    """True iff ``selector`` is a *runnable* pytest node id, not captured junk.
+
+    Two failure shapes the SWE-bench-CL ``FAIL_TO_PASS`` / ``PASS_TO_PASS`` lists
+    carry, both of which abort the WHOLE pytest run (rc=4, ``no tests ran``) so that
+    every real selector then scores as a never-ran failure:
+
+    * **Progress-output fragments** — e.g. ``"[100%]"`` (a captured progress bar).
+      Pytest treats it as a missing file path. Rejected: no ``::``.
+    * **Truncated parametrized ids** — when a parametrize id contains ``", "`` the
+      upstream capture split on the comma and stored only the prefix, leaving an
+      UNBALANCED bracket: ``test_xfail_raises[(AttributeError,`` or
+      ``test_skipif_reporting["hasattr(sys,``. The full id is unrecoverable, and
+      pytest reports ``ERROR: not found`` for it. Rejected: ``[`` count != ``]``.
+
+    A genuine selector is a node id containing ``::`` (``path::Class::test`` or
+    ``path::test[param]``) with balanced ``[]``. Dropping the unrecoverable ones
+    (like the django prose filter) keeps the run grading on the selectors that CAN
+    run — honest as long as ``FAIL_TO_PASS`` survives; a task whose F2P is entirely
+    junk has nothing to resolve and degrades to ungraded upstream. String-only
+    (unit-tested)."""
+    s = (selector or "").strip()
+    if not s or "::" not in s:
+        return False
+    return s.count("[") == s.count("]")  # reject truncated parametrized ids
+
+
 def _parse_django(stdout: str, stderr: str, fail_to_pass: list[str],
                   pass_to_pass: list[str]) -> dict:
     """Parse ``tests/runtests.py`` output into a ``tests_status`` dict.
@@ -326,6 +370,60 @@ def _parse_django(stdout: str, stderr: str, fail_to_pass: list[str],
         "FAIL_TO_PASS": _group(list(fail_to_pass or [])),
         "PASS_TO_PASS": _group(list(pass_to_pass or [])),
     }
+
+
+# --------------------------------------------------------------------------- #
+# Per-task environment resolution (Python pin + version-gate workaround)
+# --------------------------------------------------------------------------- #
+#: Interpreter pins for repos whose pinned commits predate the host Python. SWE-bench
+#: instances run at a historical ``base_commit`` whose code assumes a then-current
+#: interpreter; a host-default venv (e.g. 3.12) breaks them — 2019-era pytest does
+#: ``import imp`` (gone in 3.12). Keyed by ``owner/name`` lowercased. Best-effort and
+#: deliberately conservative: an unlisted repo returns ``None`` (host default, the
+#: prior behavior), never a wrong guess. Refine per-instance if the dataset ever
+#: carries an explicit ``environment_setup_commit`` / python version.
+_REPO_PYTHON_PIN: dict[str, str] = {
+    "pytest-dev/pytest": "3.8",
+}
+
+
+def _python_for_task(task: Task) -> Optional[str]:
+    """Resolve the interpreter version to pin for ``task``'s venv, or ``None`` for
+    the host default. Currently a repo-level map (:data:`_REPO_PYTHON_PIN`); honors
+    an explicit ``task.metadata['python']`` override if a dataset ever supplies one."""
+    explicit = (task.metadata or {}).get("python")
+    if explicit:
+        return str(explicit)
+    return _REPO_PYTHON_PIN.get((task.repo or "").strip().lower())
+
+
+def _scm_env(task: Task) -> dict[str, str]:
+    """Environment overlay that neutralizes setuptools-scm version gates (install time).
+
+    A shallow ``--depth 1`` checkout carries no git tags, so setuptools-scm computes
+    a bogus ``0.1.dev1+g<sha>`` version; projects that gate on their own
+    ``minversion`` (pytest's ``tox.ini`` / ``pyproject.toml`` ``requires
+    pytest-2.0``) then refuse to run (pytest rc=4). Pretending a high version
+    satisfies the gate without affecting test behavior. Keyed by the distribution's
+    scm env var; we set the generic one plus pytest's specific one."""
+    pretend = "9999.0.0"
+    return {
+        "SETUPTOOLS_SCM_PRETEND_VERSION": pretend,
+        "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_PYTEST": pretend,
+    }
+
+
+def _test_run_env(task: Task) -> dict[str, str]:
+    """Environment overlay for the TEST-RUN step (a superset of :func:`_scm_env`).
+
+    Adds ``PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`` so third-party pytest plugins that the
+    *modern* toolchain drags into the venv don't auto-register and crash an old
+    pytest. Concretely: current ``setuptools`` vendors a ``typeguard`` pytest plugin
+    whose ``pytest_addoption`` calls ``parser.addini(type="string")``, but 2019-era
+    pytest's ``argparsing.py`` only allows ``(None, pathlist, args, linelist, bool)``
+    and asserts — pytest exits rc=1 at load before any test runs. Disabling autoload
+    loads only the repo's own pytest, which is what SWE-bench grading wants anyway."""
+    return {**_scm_env(task), "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"}
 
 
 # --------------------------------------------------------------------------- #
@@ -542,9 +640,16 @@ class LocalExecGrader:
             return self._ungraded("no FAIL_TO_PASS/PASS_TO_PASS selectors to run", task)
         dest = Path(dest)
 
-        # Fresh, isolated venv (best-effort); install the checkout into it.
-        py = self._make_venv(dest) or (self._python_exe or "python")
-        self._install_repo(dest, py)
+        # Fresh, isolated venv (best-effort), pinned to a task-appropriate Python so
+        # historical repo commits run on a compatible interpreter; install the
+        # checkout into it. ``scm_env`` neutralizes setuptools-scm minversion gates
+        # that a tagless shallow checkout would otherwise trip; ``test_env`` adds the
+        # plugin-autoload guard for the actual test run (see _test_run_env).
+        scm_env = _scm_env(task)
+        test_env = _test_run_env(task)
+        py = self._make_venv(dest, python=_python_for_task(task)) or (
+            self._python_exe or "python")
+        self._install_repo(dest, py, env=scm_env)
 
         # Repo-aware test command. django uses tests/runtests.py (unittest), not pytest.
         runtests = dest / "tests" / "runtests.py"
@@ -563,7 +668,7 @@ class LocalExecGrader:
                 return self._ungraded("no runnable django selectors after filtering", task)
             labels = [django_label(s) for s in valid]
             ran = self._run([py, "tests/runtests.py", "--verbosity=2",
-                             "--parallel=1", *labels], dest)
+                             "--parallel=1", *labels], dest, env=test_env)
             if ran is None:
                 return self._ungraded("django test runner unavailable/raised", task)
             rc, out, err = ran
@@ -574,7 +679,20 @@ class LocalExecGrader:
             return _parse_django(out, err, f2p, p2p)
 
         # Default: pytest.
-        ran = self._run([py, "-m", "pytest", "-q", *selectors], dest)
+        # Drop captured-junk selectors (e.g. a leaked ``[100%]`` progress token) from
+        # BOTH the command AND the parsed lists — handing one to pytest aborts the
+        # whole run (rc=4, "no tests ran"), poisoning every real selector. Mirrors the
+        # django prose-filter above.
+        f2p = [s for s in f2p if is_pytest_selector(s)]
+        p2p = [s for s in p2p if is_pytest_selector(s)]
+        selectors = f2p + p2p
+        if not selectors:
+            return self._ungraded("no runnable pytest selectors after filtering", task)
+        # ``-rA`` emits an explicit per-test summary (``PASSED <nodeid>`` /
+        # ``FAILED <nodeid>``) that :func:`_parse_pytest` reads; plain ``-q`` prints
+        # only dots, which the parser can't attribute to a selector (so every test
+        # would score as a never-passed failure).
+        ran = self._run([py, "-m", "pytest", "-rA", *selectors], dest, env=test_env)
         if ran is None:
             return self._ungraded("pytest runner unavailable/raised", task)
         rc, out, _err = ran
@@ -584,28 +702,39 @@ class LocalExecGrader:
             return self._ungraded(f"pytest usage/collection error (rc={rc})", task)
         return _parse_pytest(out, f2p, p2p)
 
-    def _run(self, args: list, cwd: Any):
+    def _run(self, args: list, cwd: Any, *, env: Optional[dict] = None):
         """Invoke the injectable command runner; return ``(rc, stdout, stderr)`` or
-        ``None`` if the runner raised (installer/tool absent, timeout, etc.)."""
+        ``None`` if the runner raised (installer/tool absent, timeout, etc.). ``env``
+        is an overlay merged onto the process environment by the runner."""
         try:
-            r = self._runner(args, cwd, None)
+            r = self._runner(args, cwd, env)
         except Exception:  # noqa: BLE001 - tool absent / failed -> ungraded upstream
             return None
         return (getattr(r, "returncode", None),
                 getattr(r, "stdout", "") or "",
                 getattr(r, "stderr", "") or "")
 
-    def _make_venv(self, dest: Any) -> Optional[str]:
+    def _make_venv(self, dest: Any, *, python: Optional[str] = None) -> Optional[str]:
         """Create a fresh ``uv`` venv beside the checkout; return its python exe
         path, or ``None`` if uv is unavailable / failed. Offline (stub runner) this
         is a harmless no-op: the canned runner reports success but creates no files,
-        so we fall back to the configured python and still drive the pytest path."""
+        so we fall back to the configured python and still drive the pytest path.
+
+        ``python`` pins the interpreter version (e.g. ``"3.8"``); ``uv`` fetches it
+        if absent. This matters because SWE-bench tasks are pinned to historical
+        repo commits whose code does not run on a current interpreter — e.g.
+        2019-era pytest does ``import imp``, removed in Python 3.12, so collection
+        crashes on a host-default venv. ``None`` -> host default (legacy behavior)."""
         from pathlib import Path
 
         venv = Path(dest).parent / ".venv-grade"
         # ``--clear`` so a re-used parent dir (debug harness, retries) doesn't make
         # ``uv venv`` refuse with "already exists"; harmless on a fresh dir.
-        ran = self._run(["uv", "venv", "--clear", str(venv)], dest)
+        argv = ["uv", "venv", "--clear"]
+        if python:
+            argv += ["--python", python]
+        argv.append(str(venv))
+        ran = self._run(argv, dest)
         if ran is None or ran[0] != 0:
             return None
         posix = venv / "bin" / "python"
@@ -616,15 +745,18 @@ class LocalExecGrader:
             return str(win)
         return None  # venv reported OK but no interpreter on disk (offline stub)
 
-    def _install_repo(self, dest: Any, py: str) -> None:
+    def _install_repo(self, dest: Any, py: str, *, env: Optional[dict] = None) -> None:
         """Best-effort editable install of the checkout (+ common test extras) into
-        the venv ``py``. Failures are tolerated — many repos import from source."""
+        the venv ``py``. Failures are tolerated — many repos import from source.
+        ``env`` overlays the install environment (e.g. setuptools-scm pretend
+        version, so a tagless shallow checkout produces a sane package version)."""
         for spec in (".[test]", ".[tests]", ".[dev]", "."):
-            ran = self._run(["uv", "pip", "install", "--python", py, "-e", spec], dest)
+            ran = self._run(["uv", "pip", "install", "--python", py, "-e", spec], dest,
+                            env=env)
             if ran is not None and ran[0] == 0:
                 return
         # Last resort: pip inside the target interpreter.
-        self._run([py, "-m", "pip", "install", "-e", "."], dest)
+        self._run([py, "-m", "pip", "install", "-e", "."], dest, env=env)
 
 
 # --------------------------------------------------------------------------- #
