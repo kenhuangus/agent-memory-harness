@@ -547,7 +547,7 @@ def iter_matrix_cells(
             missing.append("VOYAGE_API_KEY")
         if missing:
             cells.extend(
-                Skip(name, f"captained: {' and '.join(missing)} unset", skip.columns)
+                Skip(skip.name, f"captained: {' and '.join(missing)} unset", skip.columns)
                 for skip in skip_cells()[:3]
             )
         else:

@@ -13,7 +13,7 @@ EVAL_DIR = ROOT / "eval"
 if str(EVAL_DIR) not in sys.path:
     sys.path.insert(0, str(EVAL_DIR))
 
-from memeval.schema import MemoryItem
+from memeval.schema import MemoryItem  # noqa: E402
 from memeval.stores.tests.scale_retrieval.helpers import (  # noqa: E402
     item_to_record,
     load_items,
