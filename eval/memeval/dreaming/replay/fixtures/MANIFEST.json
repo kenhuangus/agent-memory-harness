@@ -1,0 +1,98 @@
+{
+  "sequence_id": "astropy_astropy_sequence",
+  "source": "vmain-run6 baseline (V0, no plugin)",
+  "notes": "Selection heuristic: last assistant message contains 'tests pass' AND no failure markers. Heuristic-only; the bench result file (results/vmain-run6/swe_bench_cl-*.json) is authoritative but not in-repo.",
+  "fixtures": [
+    {
+      "fixture": "astropy_astropy_sequence-01.jsonl",
+      "sequence_index": 1,
+      "instance_id": "astropy__astropy-7336",
+      "bytes": 152430,
+      "source_session_uuid": "d1191bad-6f39-4ad6-b476-ce51ce776458"
+    },
+    {
+      "fixture": "astropy_astropy_sequence-03.jsonl",
+      "sequence_index": 3,
+      "instance_id": "astropy__astropy-14995",
+      "bytes": 178896,
+      "source_session_uuid": "3db91173-c276-4919-8548-e0c02669c473"
+    },
+    {
+      "fixture": "astropy_astropy_sequence-05.jsonl",
+      "sequence_index": 5,
+      "instance_id": "astropy__astropy-7671",
+      "bytes": 143196,
+      "source_session_uuid": "ca2d49e8-e40c-44fc-9ec2-5c2512dc9979"
+    },
+    {
+      "fixture": "astropy_astropy_sequence-06.jsonl",
+      "sequence_index": 6,
+      "instance_id": "astropy__astropy-8707",
+      "bytes": 139015,
+      "source_session_uuid": "fc279f63-31d1-4137-941a-78779f3f0c25"
+    },
+    {
+      "fixture": "astropy_astropy_sequence-07.jsonl",
+      "sequence_index": 7,
+      "instance_id": "astropy__astropy-8872",
+      "bytes": 139775,
+      "source_session_uuid": "69e32620-b678-4832-8927-db4dc380bf59"
+    },
+    {
+      "fixture": "astropy_astropy_sequence-08.jsonl",
+      "sequence_index": 8,
+      "instance_id": "astropy__astropy-12907",
+      "bytes": 195224,
+      "source_session_uuid": "09dbd352-aa62-4aee-828b-6cbe7032e4d3"
+    },
+    {
+      "fixture": "astropy_astropy_sequence-09.jsonl",
+      "sequence_index": 9,
+      "instance_id": "astropy__astropy-13033",
+      "bytes": 149819,
+      "source_session_uuid": "70426295-12f6-40d2-8ba0-b14a3b3f9330"
+    },
+    {
+      "fixture": "astropy_astropy_sequence-11.jsonl",
+      "sequence_index": 11,
+      "instance_id": "astropy__astropy-13453",
+      "bytes": 142695,
+      "source_session_uuid": "7357a51a-1dd8-4810-a08a-668c40b113fe"
+    },
+    {
+      "fixture": "astropy_astropy_sequence-12.jsonl",
+      "sequence_index": 12,
+      "instance_id": "astropy__astropy-13977",
+      "bytes": 201615,
+      "source_session_uuid": "57222367-4742-49c4-a3cf-de2806bc0aed"
+    },
+    {
+      "fixture": "astropy_astropy_sequence-14.jsonl",
+      "sequence_index": 14,
+      "instance_id": "astropy__astropy-14182",
+      "bytes": 119794,
+      "source_session_uuid": "a8f05c06-d0fb-4ae4-aa78-8dea8480db7b"
+    },
+    {
+      "fixture": "astropy_astropy_sequence-15.jsonl",
+      "sequence_index": 15,
+      "instance_id": "astropy__astropy-14365",
+      "bytes": 201896,
+      "source_session_uuid": "f1360a85-6327-4fcc-a8ea-13f79d0dfe41"
+    },
+    {
+      "fixture": "astropy_astropy_sequence-16.jsonl",
+      "sequence_index": 16,
+      "instance_id": "astropy__astropy-14508",
+      "bytes": 145272,
+      "source_session_uuid": "6f588535-cf1b-4913-9759-af51666de749"
+    },
+    {
+      "fixture": "astropy_astropy_sequence-19.jsonl",
+      "sequence_index": 19,
+      "instance_id": "astropy__astropy-13398",
+      "bytes": 160280,
+      "source_session_uuid": "543e0c8d-3544-44ad-b4e3-a5c7268a9f50"
+    }
+  ]
+}
