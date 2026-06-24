@@ -418,6 +418,14 @@ def run_agent(
                     if any(s.kind == "retrieve" and s.retrieved for s in t.steps)
                 ),
                 "graded_n": sum(1 for t in trajs if t.success is not None),
+                # Task-success visibility: how many graded tasks actually resolved,
+                # how many were ungraded, and *why* each was ungraded (the grader's
+                # degrade reason, carried on traj.metadata["grade_reason"]). Lets a
+                # run read as "1/3 resolved, 2 ungraded(checkout_failed)" instead of
+                # a bare graded_n that hides a flaky host env.
+                "resolved": sum(1 for t in trajs if t.success is True),
+                "ungraded": sum(1 for t in trajs if t.success is None),
+                "grade_reasons": _grade_reason_histogram(trajs),
             },
         )
 
@@ -461,10 +469,12 @@ def run_agent(
                 tspan.update(output=pred)
             traj.prediction = pred
             try:
-                traj.success = (
-                    forced_success if forced_success is not None
-                    else _grade(task, pred, grader)
-                )
+                if forced_success is not None:
+                    traj.success = forced_success
+                    traj.metadata["grade_reason"] = "forced"
+                else:
+                    traj.success, grade_reason = _grade(task, pred, grader)
+                    traj.metadata["grade_reason"] = grade_reason
             except Exception as exc:  # noqa: BLE001 - grading raised -> UNGRADED, not a miss
                 # A grader exception (e.g. the local test environment could not be
                 # built) means "could not grade", NOT "graded as fail". Record None
@@ -475,6 +485,7 @@ def run_agent(
                 err_note = {"task_id": task.task_id, "stage": "grade",
                             "error": f"{type(exc).__name__}: {str(exc)[:200]}"}
                 traj.success = None
+                traj.metadata["grade_reason"] = "exception"
         except BudgetExceeded:
             with _lock:
                 budget_hit = True
@@ -497,6 +508,9 @@ def run_agent(
                             "error": f"{type(exc).__name__}: {str(exc)[:200]}"}
             traj.prediction = ""
             traj.success = False
+            traj.metadata["grade_reason"] = (
+                "task_timeout" if isinstance(exc, _sp.TimeoutExpired) else "task_error"
+            )
         traj.ended_at = clock()
         # Annotate gold-ness BEFORE the trajectory is stored/logged so the
         # persisted JSONL carries is_gold (the metrics pass runs later and only
@@ -622,14 +636,68 @@ def _coerce_result(result: SolveReturn) -> tuple[str, Optional[bool]]:
     return (result or ""), None
 
 
+def _grade_reason_histogram(trajs: list) -> dict[str, int]:
+    """Count ``traj.metadata["grade_reason"]`` across ``trajs`` (sorted by key).
+
+    A task that predates this field (no reason recorded) is bucketed as
+    ``"unknown"`` so the histogram always sums to ``len(trajs)``."""
+    counts: dict[str, int] = {}
+    for t in trajs:
+        reason = (getattr(t, "metadata", None) or {}).get("grade_reason") or "unknown"
+        counts[reason] = counts.get(reason, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+#: Map a LocalExecGrader free-form ``last_reason`` (e.g. "checkout failed: ...") to a
+#: stable bucket for the run histogram. Substring match, first hit wins; an unmatched
+#: reason falls back to the raw string so nothing is lost.
+_UNGRADED_REASON_BUCKETS = (
+    ("checkout failed", "checkout_failed"),
+    ("prediction patch", "patch_apply_failed"),
+    ("gold test_patch", "gold_test_apply_failed"),
+    ("no selectors", "no_selectors"),
+    ("no runnable", "no_selectors"),
+    ("collection error", "env_build_failed"),
+    ("runner unavailable", "env_build_failed"),
+    ("env build", "env_build_failed"),
+    ("test run", "env_build_failed"),
+    ("exception", "exception"),
+)
+
+
+def _bucket_ungraded_reason(reason: Optional[str]) -> str:
+    """Normalize a grader ``last_reason`` string to a stable histogram bucket."""
+    if not reason:
+        return "ungraded"
+    low = reason.lower()
+    for needle, bucket in _UNGRADED_REASON_BUCKETS:
+        if needle in low:
+            return bucket
+    return reason  # keep the raw reason rather than lose detail
+
+
 def _grade(task: Task, prediction: str,
-           grader: Optional[Callable[[Task, str], Optional[bool]]]) -> Optional[bool]:
-    """QA -> normalized exact match; CODE -> external grader or None (ungraded)."""
+           grader: Optional[Callable[[Task, str], Optional[bool]]]
+           ) -> tuple[Optional[bool], str]:
+    """Grade one task, returning ``(success, reason)``.
+
+    QA -> normalized exact match; CODE -> external grader or ``None`` (ungraded).
+    For a ``LocalExecGrader`` (ADR-eval-006's loud-degradation design) the *why* of
+    a ``None`` is read from its ``last_reason`` and bucketed; a real verdict clears
+    ``last_reason`` (-> "graded"). Other graders expose no reason, so we infer a
+    coarse one. ``success`` is unchanged from before.
+    """
     if grader is not None:
-        return grader(task, prediction)
+        success = grader(task, prediction)
+        if success is not None:
+            return success, "graded"
+        # Ungraded: prefer the grader's own recorded reason (LocalExecGrader sets
+        # last_reason on every None path); else a coarse fallback.
+        last = getattr(grader, "last_reason", None)
+        return None, _bucket_ungraded_reason(last)
     if task.kind == TaskKind.QA and task.answer is not None:
-        return qa_match(prediction, task.answer)
-    return None
+        return qa_match(prediction, task.answer), "graded"
+    return None, "no_grader"
 
 
 def _select_group_aware(tasks: list[Task], limit: int) -> list[Task]:

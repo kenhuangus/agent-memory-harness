@@ -338,6 +338,54 @@ def test_local_exec_grader_clears_reason_on_real_verdict() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Test B2 — agent._grade surfaces the grader's ungraded reason (visibility layer)
+# --------------------------------------------------------------------------- #
+# Reconciled design (ADR-eval-005/006): the grader exposes the *why* of a None via
+# its ``last_reason`` (loud-degradation, main's design); agent._grade reads that and
+# buckets it for the run histogram. These check the seam end to end.
+def test_agent_grade_reports_graded_on_real_verdict() -> None:
+    from memeval.agent import _grade
+
+    git = _make_fake_git()
+    cmd = _make_fake_cmd(fail_to_pass_passed=True, pass_to_pass_passed=True)
+    g = G.LocalExecGrader(runner=cmd, git_runner=git)
+    success, reason = _grade(_code_task(), _FIXED_DIFF, g)
+    assert success is True and reason == "graded"
+
+
+def test_agent_grade_buckets_env_failure_reason() -> None:
+    from memeval.agent import _grade
+
+    git = _make_fake_git()
+    cmd = _make_fake_cmd(raise_on_pytest=True)  # env/build blows up -> None
+    g = G.LocalExecGrader(runner=cmd, git_runner=git)
+    success, reason = _grade(_code_task(), _FIXED_DIFF, g)
+    assert success is None
+    # grader.last_reason is a free-form string; agent buckets it to a stable label.
+    assert reason in ("env_build_failed", "exception"), reason
+
+
+def test_agent_grade_buckets_patch_apply_failure() -> None:
+    from memeval.agent import _grade
+
+    git = _make_fake_git(apply_ok=False)  # prediction patch won't apply -> None
+    g = G.LocalExecGrader(runner=_make_fake_cmd(), git_runner=git)
+    success, reason = _grade(_code_task(), _FIXED_DIFF, g)
+    assert success is None and reason == "patch_apply_failed"
+
+
+def test_bucket_ungraded_reason_maps_known_strings() -> None:
+    from memeval.agent import _bucket_ungraded_reason
+
+    assert _bucket_ungraded_reason("checkout failed: boom") == "checkout_failed"
+    assert _bucket_ungraded_reason("gold test_patch did not apply") == \
+        "gold_test_apply_failed"
+    assert _bucket_ungraded_reason(None) == "ungraded"
+    # An unrecognized reason is kept verbatim rather than lost.
+    assert _bucket_ungraded_reason("weird novel reason") == "weird novel reason"
+
+
+# --------------------------------------------------------------------------- #
 # Test C — the full loop wired together (deterministic accuracy)
 # --------------------------------------------------------------------------- #
 def test_full_agentic_loop_accuracy_one() -> None:

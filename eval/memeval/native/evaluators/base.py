@@ -154,7 +154,12 @@ class BaseNativeEvaluator:
             result = agent.solve(task, ctx)
             pred, forced = _coerce_result(result)
             traj.prediction = pred
-            traj.success = forced if forced is not None else _grade(task, pred, grader)
+            if forced is not None:
+                traj.success = forced
+                traj.metadata["grade_reason"] = "forced"
+            else:
+                traj.success, grade_reason = _grade(task, pred, grader)
+                traj.metadata["grade_reason"] = grade_reason
             traj.ended_at = 0.0
             _annotate_gold(traj, set(task.gold_memory_ids))
             records.append(PerTaskRecord.from_trajectory(traj))

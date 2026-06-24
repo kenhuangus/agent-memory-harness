@@ -246,8 +246,44 @@ def test_summary_renders_ungraded_accuracy_as_dash() -> None:
         "dream": {"status": "not-run"},
     })
 
-    assert "| plugin-blank | — | 0.0000 | 0.0000 | 0.0000 | 1 | $0.0000 |" in md
+    # ``resolved`` cell is ``—`` here: this stage dict predates the grading-visibility
+    # fields, so it falls back gracefully (no resolved/n -> dash).
+    assert "| plugin-blank | — | 0.0000 | 0.0000 | 0.0000 | — | 1 | $0.0000 |" in md
     assert "accuracy_ungraded" in md
+
+
+def test_summary_surfaces_resolved_and_grade_reasons() -> None:
+    """A floored accuracy reads honestly: resolved/total + the ungraded reason."""
+    from memeval.claudecode import pipeline_summary as PS
+
+    md = PS.render_summary_md({
+        "benchmark": "swe_bench_cl",
+        "pipeline": {"version": "vtest", "sequence": "s", "model": "m", "n_tasks": 3,
+                     "n_stages": 5, "dream": {"provider": "p", "model": "d"},
+                     "grader": "auto", "git_sha": "abc"},
+        "stages": [{
+            "stage": "base",
+            "metrics": {"accuracy": 0.0, "relevancy": 0.0, "recency": 0.0, "efficiency": 0.0},
+            "n_tasks": 3,
+            "cost_usd": 0.1,
+            "graded_n": 1,
+            "resolved": 0,
+            "ungraded": 2,
+            "grade_reasons": {"checkout_failed": 2, "graded": 1},
+            "recall_attempted": 0,
+            "memory_health": {},
+            "warnings": [],
+        }],
+        "deltas": {},
+        "dream": {"status": "not-run"},
+    })
+
+    # Main table carries a resolved column (0/3 here).
+    assert "| base |" in md and " 0/3 " in md
+    # Task grading section breaks down graded/ungraded + the reason histogram.
+    assert "## Task grading" in md
+    assert "checkout_failed×2" in md
+    assert "graded×1" in md
 
 
 def test_store_health_counts_daydream_diary_writes() -> None:

@@ -129,6 +129,9 @@ def build_summary(
             "n_tasks": r.get("n_tasks"),
             "cost_usd": r.get("cost_usd"),
             "graded_n": reliability.get("graded_n"),
+            "resolved": reliability.get("resolved"),
+            "ungraded": reliability.get("ungraded"),
+            "grade_reasons": reliability.get("grade_reasons") or {},
             "memory_reached": reliability.get("memory_reached"),
             "memory_hit": reliability.get("memory_hit"),
             "recall_attempted": reliability.get("recall_attempted"),
@@ -194,6 +197,37 @@ def _metric_cell(stage: dict, key: str) -> str:
     return _fmt((stage.get("metrics") or {}).get(key))
 
 
+def _resolved_cell(stage: dict) -> str:
+    """``resolved/n_tasks`` (e.g. ``1/3``) — the count of tasks that actually passed
+    over the total attempted. ``—`` when the field is absent (pre-this-feature runs)."""
+    resolved = stage.get("resolved")
+    n = stage.get("n_tasks")
+    if resolved is None or n is None:
+        return "—"
+    return f"{resolved}/{n}"
+
+
+def _int_cell(v: Any) -> str:
+    """Format an integer count cell (no decimals); ``—`` when absent."""
+    if v is None:
+        return "—"
+    if isinstance(v, bool):
+        return str(v)
+    if isinstance(v, (int, float)):
+        return str(int(v))
+    return str(v)
+
+
+def _grade_reasons_cell(stage: dict) -> str:
+    """Compact ``reason×count`` list for a stage's grade-reason histogram, busiest
+    first (e.g. ``checkout_failed×2, graded×1``). ``—`` when nothing recorded."""
+    reasons = stage.get("grade_reasons") or {}
+    if not reasons:
+        return "—"
+    ordered = sorted(reasons.items(), key=lambda kv: (-kv[1], kv[0]))
+    return ", ".join(f"{name}×{count}" for name, count in ordered)
+
+
 def render_summary_md(summary: dict) -> str:
     """Render the human-readable SUMMARY markdown from :func:`build_summary` output."""
     pm = summary.get("pipeline", {})
@@ -220,17 +254,38 @@ def render_summary_md(summary: dict) -> str:
             lines.append(f"- `{warning.get('code')}`: {warning.get('message')}")
         lines.append("")
 
-    # Per-stage metric table.
-    header = "| Stage | " + " | ".join(_SUMMARY_METRICS) + " | n | cost |"
-    sep = "|" + "---|" * (len(_SUMMARY_METRICS) + 3)
+    # Per-stage metric table. ``resolved`` (passed/total) sits next to accuracy so a
+    # floored accuracy reads honestly as "1/3 resolved, 2 ungraded" not "0.0000".
+    header = "| Stage | " + " | ".join(_SUMMARY_METRICS) + " | resolved | n | cost |"
+    sep = "|" + "---|" * (len(_SUMMARY_METRICS) + 4)
     lines.append(header)
     lines.append(sep)
     for s in summary.get("stages", []):
         cells = " | ".join(_metric_cell(s, k) for k in _SUMMARY_METRICS)
         cost = s.get("cost_usd")
         cost_cell = f"${cost:.4f}" if isinstance(cost, (int, float)) else "—"
-        lines.append(f"| {s.get('stage')} | {cells} | {s.get('n_tasks')} | {cost_cell} |")
+        lines.append(
+            f"| {s.get('stage')} | {cells} | {_resolved_cell(s)} | "
+            f"{s.get('n_tasks')} | {cost_cell} |"
+        )
     lines.append("")
+
+    # Task grading table — makes the resolved/graded/ungraded split and the *reason*
+    # for ungraded tasks visible, so a 0.0000 accuracy is readable as a host-env
+    # degrade (e.g. checkout_failed) rather than a memory regression.
+    has_grading = any(s.get("resolved") is not None for s in summary.get("stages", []))
+    if has_grading:
+        lines.append("## Task grading")
+        lines.append("")
+        lines.append("| Stage | resolved | graded | ungraded | reasons |")
+        lines.append("|---|---|---|---|---|")
+        for s in summary.get("stages", []):
+            lines.append(
+                f"| {s.get('stage')} | {_resolved_cell(s)} | "
+                f"{_int_cell(s.get('graded_n'))} | {_int_cell(s.get('ungraded'))} | "
+                f"{_grade_reasons_cell(s)} |"
+            )
+        lines.append("")
 
     # Memory/reliability table.
     lines.append("## Memory health")
