@@ -1,0 +1,173 @@
+{
+  "candidate_count": 600,
+  "drop_reasons": [
+    "unknown_gold",
+    "future_gold",
+    "trivial_floor",
+    "unsolved_target",
+    "ambiguous_gold",
+    "floor_not_beaten"
+  ],
+  "filler_count": 100,
+  "generated_at": "deterministic-offline-smoke",
+  "lenses": {
+    "lexical": {
+      "dropped": 0,
+      "dropped_by_reason": {
+        "ambiguous_gold": 0,
+        "floor_not_beaten": 0,
+        "future_gold": 0,
+        "trivial_floor": 0,
+        "unknown_gold": 0,
+        "unsolved_target": 0
+      },
+      "generated": 120,
+      "retained": 120
+    },
+    "mixed_adversarial": {
+      "dropped": 81,
+      "dropped_by_reason": {
+        "ambiguous_gold": 6,
+        "floor_not_beaten": 1,
+        "future_gold": 15,
+        "trivial_floor": 44,
+        "unknown_gold": 15,
+        "unsolved_target": 0
+      },
+      "generated": 120,
+      "retained": 39
+    },
+    "multi_hop_relational": {
+      "dropped": 74,
+      "dropped_by_reason": {
+        "ambiguous_gold": 0,
+        "floor_not_beaten": 35,
+        "future_gold": 0,
+        "trivial_floor": 24,
+        "unknown_gold": 15,
+        "unsolved_target": 0
+      },
+      "generated": 120,
+      "retained": 46
+    },
+    "semantic_divergence": {
+      "dropped": 120,
+      "dropped_by_reason": {
+        "ambiguous_gold": 0,
+        "floor_not_beaten": 0,
+        "future_gold": 0,
+        "trivial_floor": 20,
+        "unknown_gold": 20,
+        "unsolved_target": 80
+      },
+      "generated": 120,
+      "retained": 0
+    },
+    "temporal_versioned": {
+      "dropped": 34,
+      "dropped_by_reason": {
+        "ambiguous_gold": 0,
+        "floor_not_beaten": 0,
+        "future_gold": 17,
+        "trivial_floor": 17,
+        "unknown_gold": 0,
+        "unsolved_target": 0
+      },
+      "generated": 120,
+      "retained": 86
+    }
+  },
+  "matrix": {
+    "current_cells": [
+      "backend_markdown",
+      "backend_vector_hash",
+      "backend_graph_bfs",
+      "router_speed",
+      "router_cascade",
+      "fusion_rrf",
+      "fusion_score"
+    ],
+    "skipped_cells": [
+      {
+        "graph_engine": "in_memory_bfs",
+        "lexical_engine": "shared_bm25",
+        "name": "accuracy_voyage",
+        "reason": "captained: MEMEVAL_LIVE unset",
+        "reranker": "none",
+        "vector_index": "brute_force"
+      },
+      {
+        "graph_engine": "in_memory_bfs",
+        "lexical_engine": "shared_bm25",
+        "name": "accuracy_voyage_rerank",
+        "reason": "captained: MEMEVAL_LIVE unset",
+        "reranker": "voyage",
+        "vector_index": "brute_force"
+      },
+      {
+        "graph_engine": "in_memory_bfs",
+        "lexical_engine": "shared_bm25",
+        "name": "fuse_all_voyage_rerank_rrf",
+        "reason": "captained: MEMEVAL_LIVE unset",
+        "reranker": "voyage",
+        "vector_index": "brute_force"
+      },
+      {
+        "graph_engine": "none",
+        "lexical_engine": "none",
+        "name": "future_vector_sqlite_vec",
+        "reason": "future: sqlite_vec selector not implemented",
+        "reranker": "none",
+        "vector_index": "sqlite_vec"
+      },
+      {
+        "graph_engine": "none",
+        "lexical_engine": "none",
+        "name": "future_vector_usearch_hnsw",
+        "reason": "future: usearch_hnsw selector not implemented",
+        "reranker": "none",
+        "vector_index": "usearch_hnsw"
+      },
+      {
+        "graph_engine": "neo4j_phase_b",
+        "lexical_engine": "none",
+        "name": "future_graph_neo4j_phase_b",
+        "reason": "future: native Neo4j graph engine not in matrix yet",
+        "reranker": "none",
+        "vector_index": "none"
+      },
+      {
+        "graph_engine": "falkordb",
+        "lexical_engine": "none",
+        "name": "future_graph_falkordb",
+        "reason": "future: FalkorDB graph engine not in matrix yet",
+        "reranker": "none",
+        "vector_index": "none"
+      },
+      {
+        "graph_engine": "none",
+        "lexical_engine": "fts5",
+        "name": "future_lexical_fts5",
+        "reason": "future: SQLite FTS5 lexical engine not in matrix yet",
+        "reranker": "none",
+        "vector_index": "none"
+      }
+    ]
+  },
+  "mode": "offline",
+  "quality_count": 1500,
+  "search_depth": 100,
+  "totals": {
+    "dropped": 309,
+    "dropped_by_reason": {
+      "ambiguous_gold": 6,
+      "floor_not_beaten": 36,
+      "future_gold": 32,
+      "trivial_floor": 105,
+      "unknown_gold": 50,
+      "unsolved_target": 80
+    },
+    "generated": 600,
+    "retained": 291
+  }
+}
