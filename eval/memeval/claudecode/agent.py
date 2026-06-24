@@ -263,23 +263,45 @@ def _count_recall_events(events: Path) -> int:
 _DAYDREAM_DRAIN_DEFAULT_SECS = 8.0
 
 
-#: Daydream events that mean "the plugin's write for this turn completed" — the engine
-#: emits ``daydream.memory_written`` per item, and the hook shim emits
-#: ``daydream.hook_subprocess_fired`` once the (blocking) subprocess returns.
-_DAYDREAM_WRITE_OPS = ("daydream.memory_written", "daydream.hook_subprocess_fired")
+#: Daydream diary events that mean a memory was actually WRITTEN — the engine emits
+#: ``daydream.memory_written`` per item (keyed by ``event_type`` in the daydream-events
+#: stream). NOTE: ``daydream.hook_subprocess_fired`` is deliberately EXCLUDED — the Stop
+#: hook FIRING is not a write. Counting it made the drain barrier treat an empty async
+#: hook (e.g. one whose subprocess never got OPENROUTER_API_KEY, so extraction is
+#: disabled) as a completed write and skip the synchronous backstop, leaving the
+#: substrate empty. We count real writes only, so the backstop runs when it must.
+_DAYDREAM_WRITE_OPS = ("daydream.memory_written",)
 
 
-def _count_daydream_writes(events: Path) -> int:
-    """Number of daydream write-completion events in the plugin's events stream.
+def _safe_group_dir(group_id: str) -> str:
+    """A filesystem-safe single path segment for a ``group_id`` (sequence) so the shared
+    substrate can be keyed per group without path-escape or separator surprises."""
+    import re
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", str(group_id)).strip("._") or "group"
+    return safe[:128]
 
-    The plugin's events use an ``event``/``type`` key for daydream diary events (vs the
-    ``op`` key used for recall), so check both shapes to be robust to the stream
-    schema."""
-    n = 0
-    for rec in _read_events(events):
-        name = rec.get("event") or rec.get("type") or rec.get("op")
-        if name in _DAYDREAM_WRITE_OPS:
-            n += 1
+
+def _count_daydream_writes(store_dir: Path) -> int:
+    """Number of memories the daydream engine has actually WRITTEN to ``store_dir``.
+
+    The engine persists each extracted memory as a markdown file under
+    ``<store>/markdown/daydream/*.md`` (the durable artifact) and logs a
+    ``daydream.memory_written`` diary event (keyed by ``event_type``) in
+    ``<store>/dream/*.daydream-events.jsonl``. We count the markdown memories as the
+    primary signal and fall back to the diary write events. The main ``events.jsonl``
+    stream is intentionally NOT used here: it carries the hook-fired marker (not a
+    write), which is exactly what previously masked an empty daydream pass."""
+    md = store_dir / "markdown" / "daydream"
+    n = len(list(md.glob("*.md"))) if md.is_dir() else 0
+    if n:
+        return n
+    dream = store_dir / "dream"
+    if dream.is_dir():
+        for dd in dream.glob("*.daydream-events.jsonl"):
+            for rec in _read_events(dd):
+                name = rec.get("event_type") or rec.get("event") or rec.get("op")
+                if name in _DAYDREAM_WRITE_OPS:
+                    n += 1
     return n
 
 
@@ -328,6 +350,7 @@ class ClaudeCodeAgent:
         code_mode: str = "blind",
         git_runner: Optional[GitRunner] = None,
         project_dir: Optional[str | Path] = None,
+        group_scoped_store: bool = False,
     ) -> None:
         if memory_mode not in _MODES:
             raise ValueError(f"memory_mode must be one of {_MODES}, got {memory_mode!r}")
@@ -364,6 +387,11 @@ class ClaudeCodeAgent:
         # store -- the plugin owns its contents. None = no shared substrate (the per-task
         # store the plugin builds under its own run dir, no cross-task carryover).
         self._project_dir = Path(project_dir).resolve() if project_dir else None
+        # When True (set by run_bench for CL benchmarks), the shared substrate is keyed
+        # by ``task.group_id`` so each sequence accumulates its OWN store while different
+        # sequences stay isolated. pipeline.py runs one sequence per substrate and leaves
+        # this False (flat substrate), so its store path is unchanged.
+        self._group_scoped_store = bool(group_scoped_store)
         # plugin-real: built+installed once per agent; caches the MCP-server PATH env.
         self._real_plugin_env: Optional[dict[str, str]] = None
         self.k = k
@@ -573,7 +601,8 @@ class ClaudeCodeAgent:
             # persistent dir, NOT the throwaway per-base_commit checkout, so the plugin's
             # learning accumulates across tasks/stages by directory persistence. The
             # harness never copies the store (ADR-harness-012).
-            project_dir, store_dir = self._plugin_real_store(checkout)
+            project_dir, store_dir = self._plugin_real_store(
+                checkout, group_id=getattr(task, "group_id", None))
             extra_env = {
                 **plugin_env,
                 "CLAUDE_PROJECT_DIR": str(project_dir),
@@ -589,7 +618,7 @@ class ClaudeCodeAgent:
             # this the CLI asks for permission to use recall and the headless run denies
             # it. Recall reach is counted via the plugin's OWN events stream
             # (_count_recall_events), not the harness recall log.
-            before_writes = _count_daydream_writes(events)
+            before_writes = _count_daydream_writes(store_dir)
             res: Optional[ClaudeResult] = None
             for _ in range(_PLUGIN_MAX_TRIES):
                 before = _count_recall_events(events)
@@ -682,7 +711,8 @@ class ClaudeCodeAgent:
         carries forward. The harness only ensures that directory exists; it performs no
         store copying, seeding, or pruning (ADR-harness-012)."""
         plugin_env = self._ensure_real_plugin()  # install first so the plugin MCP is on PATH
-        project_dir, store_dir = self._plugin_real_store(run_dir)
+        project_dir, store_dir = self._plugin_real_store(
+            run_dir, group_id=getattr(task, "group_id", None))
 
         extra_env = {
             **plugin_env,
@@ -692,7 +722,7 @@ class ClaudeCodeAgent:
         _add_dream_env(extra_env)  # OPENROUTER_API_KEY / DREAM_* so daydream is live on WSL too
         events = store_dir / "events.jsonl"
 
-        before_writes = _count_daydream_writes(events)
+        before_writes = _count_daydream_writes(store_dir)
         res: Optional[ClaudeResult] = None
         for _ in range(_PLUGIN_MAX_TRIES):
             before = _count_recall_events(events)
@@ -708,7 +738,8 @@ class ClaudeCodeAgent:
         self._drain_daydream(task, res, store_dir, events, plugin_env, before_writes)
         return res  # type: ignore[return-value]
 
-    def _plugin_real_store(self, run_dir: Path) -> tuple[Path, Path]:
+    def _plugin_real_store(self, run_dir: Path, *,
+                           group_id: Optional[str] = None) -> tuple[Path, Path]:
         """Resolve (project_dir, store_dir) for a plugin-real turn, honoring the shared
         memory substrate (ADR-eval-003 / ADR-harness-012).
 
@@ -727,6 +758,12 @@ class ClaudeCodeAgent:
         ``${CLAUDE_PROJECT_DIR}`` from that env (verified to win over cwd; a symlink
         fallback is provided if a future CC build expands from cwd instead)."""
         project_dir = self._project_dir or run_dir
+        # CL benchmarks (run_bench with group_scoped_store=True) key the shared substrate
+        # by group_id, so each sequence accumulates its own store and different sequences
+        # don't cross-contaminate. pipeline.py keeps the flat substrate (one sequence per
+        # run), so its store path is unchanged.
+        if self._project_dir is not None and self._group_scoped_store and group_id:
+            project_dir = self._project_dir / _safe_group_dir(group_id)
         project_dir.mkdir(parents=True, exist_ok=True)
         store_dir = project_dir / ".cookbook-memory"
         store_dir.mkdir(parents=True, exist_ok=True)
@@ -802,7 +839,7 @@ class ClaudeCodeAgent:
 
         deadline = time.monotonic() + _drain_timeout_secs()
         while time.monotonic() < deadline:
-            if _count_daydream_writes(events) > before_writes:
+            if _count_daydream_writes(store_dir) > before_writes:
                 return  # the async hook's write already landed — drained.
             time.sleep(0.25)
 

@@ -704,6 +704,72 @@ def test_agentic_code_plugin_real_records_retrieval() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Daydream write accounting (Fix #2) + group-scoped substrate (Fix #1)
+# --------------------------------------------------------------------------- #
+def test_count_daydream_writes_ignores_hook_fired() -> None:
+    """The Stop-hook FIRING is not a write. Counting it made the drain barrier skip the
+    backstop and leave the substrate empty — regression-guard that fix."""
+    import json
+    from memeval.claudecode.agent import _count_daydream_writes
+    with tempfile.TemporaryDirectory() as tmp:
+        store = Path(tmp) / ".cookbook-memory"
+        store.mkdir()
+        # Only a hook-fired marker present -> NOT a write.
+        (store / "events.jsonl").write_text(
+            json.dumps({"op": "daydream.hook_subprocess_fired"}) + "\n", encoding="utf-8")
+        assert _count_daydream_writes(store) == 0
+
+
+def test_count_daydream_writes_counts_markdown_and_diary() -> None:
+    import json
+    from memeval.claudecode.agent import _count_daydream_writes
+    with tempfile.TemporaryDirectory() as tmp:
+        store = Path(tmp) / ".cookbook-memory"
+        # Primary signal: markdown memory files.
+        md = store / "markdown" / "daydream"
+        md.mkdir(parents=True)
+        (md / "mem_a.md").write_text("x", encoding="utf-8")
+        (md / "mem_b.md").write_text("y", encoding="utf-8")
+        assert _count_daydream_writes(store) == 2
+    with tempfile.TemporaryDirectory() as tmp:
+        store = Path(tmp) / ".cookbook-memory"
+        dream = store / "dream"
+        dream.mkdir(parents=True)
+        # Fallback signal: memory_written diary events (keyed by event_type).
+        (dream / "s.daydream-events.jsonl").write_text("\n".join(json.dumps(r) for r in [
+            {"event_type": "daydream.memory_written", "item_id": "m1"},
+            {"event_type": "daydream.candidate_rejected"},
+            {"event_type": "daydream.memory_written", "item_id": "m2"},
+        ]) + "\n", encoding="utf-8")
+        assert _count_daydream_writes(store) == 2
+
+
+def test_plugin_real_store_group_scoped_accumulates_per_sequence() -> None:
+    """plugin-real CL benchmark: same sequence -> one shared store (accumulates);
+    different sequence -> isolated store."""
+    with tempfile.TemporaryDirectory() as tmp:
+        sub = Path(tmp) / "_memory"
+        a = ClaudeCodeAgent(memory_mode="plugin-real", project_dir=sub,
+                            group_scoped_store=True)
+        _, sd1 = a._plugin_real_store(Path(tmp) / "co1", group_id="django_django_sequence")
+        _, sd2 = a._plugin_real_store(Path(tmp) / "co2", group_id="django_django_sequence")
+        _, sd3 = a._plugin_real_store(Path(tmp) / "co3", group_id="sympy_sympy_sequence")
+        assert sd1 == sd2          # same sequence -> carryover
+        assert sd3 != sd1          # different sequence -> isolated
+        assert sd1 == (sub / "django_django_sequence" / ".cookbook-memory").resolve()
+
+
+def test_plugin_real_store_flat_when_not_group_scoped() -> None:
+    """pipeline.py path (group_scoped_store=False) keeps the flat substrate unchanged."""
+    with tempfile.TemporaryDirectory() as tmp:
+        sub = Path(tmp) / "_memory"
+        a = ClaudeCodeAgent(memory_mode="plugin-real", project_dir=sub)
+        pd, sd = a._plugin_real_store(Path(tmp) / "co", group_id="any_sequence")
+        assert pd == sub.resolve()                       # group ignored
+        assert sd == (sub / ".cookbook-memory").resolve()
+
+
+# --------------------------------------------------------------------------- #
 # Built-in runner (no pytest required)
 # --------------------------------------------------------------------------- #
 def _all_tests() -> list:

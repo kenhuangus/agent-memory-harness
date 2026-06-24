@@ -172,9 +172,18 @@ def _run_one(benchmark: str, mode: str, args: argparse.Namespace,
         rec_path = os.path.join(args.out_dir, f"{benchmark}__{mode}.record.json")
         logger = TrajectoryLogger(traj_path, append=False)
 
+    # plugin-real memory must persist ACROSS tasks for a continual-learning benchmark,
+    # or each task gets a fresh empty store and "improvement over time" can never show
+    # (every recall returns 0 hits). Point CLAUDE_PROJECT_DIR at a shared substrate under
+    # the out-dir, keyed per sequence (group_id) by the agent, so a sequence accumulates
+    # while different sequences stay isolated. Without --out-dir there's no persistent
+    # home, so we leave it per-task (unchanged). off/builtin/plugin are unaffected.
+    substrate = (os.path.join(args.out_dir, "_memory")
+                 if (mode == "plugin-real" and args.out_dir) else None)
     agent = ClaudeCodeAgent(model=args.model, memory_mode=mode, k=args.k,
                             timeout=args.timeout, workdir=workdir,
-                            code_mode=args.code_mode)
+                            code_mode=args.code_mode,
+                            project_dir=substrate, group_scoped_store=substrate is not None)
     cost = CostTracker(budget_usd=args.budget_usd) if args.budget_usd and args.budget_usd > 0 else None
     limit = _resolve_limit(benchmark, args.limit)
     group_aware = _resolve_group_aware(benchmark, args.select)
