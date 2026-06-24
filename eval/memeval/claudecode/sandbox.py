@@ -223,11 +223,14 @@ def setup_real_plugin(
     bundle = build_bundle(out_dir or (d / "_plugin-bundle"))
     install_plugin_bundle(bundle, config_dir=d, claude_exe=claude_exe)
     # The sandbox needs its OWN auth (a fresh CLAUDE_CONFIG_DIR), or every turn dies on
-    # "Not logged in". If it's ALREADY logged in (the user ran /login once, or a prior
-    # seed succeeded), there is nothing to do — do NOT warn. Otherwise try to seed the
-    # host subscription (portable only on file-based-auth platforms); only when that also
-    # fails is the sandbox genuinely logged out, so print the one-time /login instructions.
-    if not is_logged_in(d) and not seed_auth_from_host(d):
+    # "Not logged in". Seed from the host subscription FIRST (idempotent; refreshes the
+    # token if the host has since rotated it) — do not gate this on is_logged_in, because
+    # is_logged_in is satisfied by a bare `oauthAccount` in .claude.json even when the
+    # sandbox has NO usable .credentials.json (e.g. a deleted/expired token), which would
+    # otherwise skip seeding and let every turn die tokenless. Only when seeding is not
+    # possible (macOS keychain, or host logged out) do we trust an already-logged-in
+    # sandbox; if neither holds, print the one-time /login instructions.
+    if not (seed_auth_from_host(d) or is_logged_in(d)):
         import sys
         cmds = "  " + "\n  ".join(login_commands(d))
         sys.stderr.write(
