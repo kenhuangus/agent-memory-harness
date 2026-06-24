@@ -309,6 +309,34 @@ def test_local_exec_grader_none_when_patch_does_not_apply() -> None:
     assert g(_code_task(), _FIXED_DIFF) is None
 
 
+def test_local_exec_grader_records_and_logs_reason_on_env_failure(caplog) -> None:
+    # The degradation stays None (honesty rule) but is no longer SILENT: it sets
+    # last_reason, tallies ungraded_reasons, and logs at WARNING.
+    import logging
+    git = _make_fake_git()
+    cmd = _make_fake_cmd(raise_on_pytest=True)
+    g = G.LocalExecGrader(runner=cmd, git_runner=git)
+    with caplog.at_level(logging.WARNING, logger="memeval.grader"):
+        assert g(_code_task(), _FIXED_DIFF) is None
+    assert g.last_reason and "pytest" in g.last_reason
+    assert sum(g.ungraded_reasons.values()) == 1
+    assert any("UNGRADED" in r.message for r in caplog.records)
+
+
+def test_local_exec_grader_reason_on_patch_apply_failure() -> None:
+    git = _make_fake_git(apply_ok=False)
+    g = G.LocalExecGrader(runner=_make_fake_cmd(), git_runner=git)
+    assert g(_code_task(), _FIXED_DIFF) is None
+    assert g.last_reason and "did not apply" in g.last_reason
+
+
+def test_local_exec_grader_clears_reason_on_real_verdict() -> None:
+    # A real verdict (True/False) leaves last_reason cleared (reset per call).
+    g = G.LocalExecGrader(runner=_make_fake_cmd(), git_runner=_make_fake_git())
+    assert g(_code_task(), _FIXED_DIFF) is True
+    assert g.last_reason is None
+
+
 # --------------------------------------------------------------------------- #
 # Test C — the full loop wired together (deterministic accuracy)
 # --------------------------------------------------------------------------- #

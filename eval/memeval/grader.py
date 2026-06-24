@@ -32,12 +32,18 @@ git, venv, or network.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from .schema import Task, TaskKind
 
 Grader = Callable[[Task, str], Optional[bool]]
+
+#: Logger for grading diagnostics. Every UNGRADED (``None``) result is logged at
+#: WARNING with a specific reason so a CODE run that "comes back empty" is no longer
+#: silent -- the operator can see WHY each task could not be graded.
+log = logging.getLogger(__name__)
 
 
 # --------------------------------------------------------------------------- #
@@ -415,18 +421,40 @@ class LocalExecGrader:
         self.model_name = model_name
         self.timeout = timeout
         self._python_exe = python_exe
+        #: Reason the MOST RECENT call returned ``None`` (UNGRADED), or ``None`` when
+        #: the last call produced a real verdict. Read by callers (run_bench / the
+        #: evaluators) to surface why a CODE task could not be graded.
+        self.last_reason: Optional[str] = None
+        #: Run-lifetime tally of UNGRADED reasons (reason -> count). Lets a driver
+        #: report, e.g., "12/15 ungraded: env build failed" instead of a silent 0.0.
+        self.ungraded_reasons: dict[str, int] = {}
+
+    def _ungraded(self, reason: str, task: Optional[Task] = None) -> None:
+        """Record + log an UNGRADED (``None``) outcome and return ``None``.
+
+        Centralizes the honesty-rule degradation: keeps ``None`` (never a fake
+        ``False``), but makes it LOUD -- sets :attr:`last_reason`, tallies
+        :attr:`ungraded_reasons`, and logs at WARNING so an empty CODE run is
+        explainable. Returns ``None`` so callers can ``return self._ungraded(...)``.
+        """
+        self.last_reason = reason
+        self.ungraded_reasons[reason] = self.ungraded_reasons.get(reason, 0) + 1
+        tid = getattr(task, "task_id", None) or "?"
+        log.warning("LocalExecGrader UNGRADED [task=%s]: %s", tid, reason)
+        return None
 
     def __call__(self, task: Task, prediction: str) -> Optional[bool]:
+        self.last_reason = None  # reset per call; set only on a None (ungraded) path
         if task.kind is not TaskKind.CODE:
-            return None  # not a CODE task; let QA grading handle it
+            return None  # not a CODE task; let QA grading handle it (not a degradation)
         # Empty prediction = no patch produced = a real miss (consistent with the
         # overlap grader and SWE-bench's empty_patch handling).
         if not (prediction or "").strip():
             return False
         try:
             return self._grade(task, prediction)
-        except Exception:  # noqa: BLE001 - any env/run failure -> UNGRADED, never a crash
-            return None
+        except Exception as exc:  # noqa: BLE001 - any env/run failure -> UNGRADED, never a crash
+            return self._ungraded(f"exception: {type(exc).__name__}: {exc}", task)
 
     # -- internals -------------------------------------------------------- #
     def _grade(self, task: Task, prediction: str) -> Optional[bool]:
@@ -441,25 +469,29 @@ class LocalExecGrader:
             try:
                 prepare_checkout(task.repo or "", task.base_commit, dest,
                                  timeout=self.timeout, **git_kwargs)
-            except CheckoutError:
-                return None  # can't even check out -> ungraded
+            except CheckoutError as exc:
+                return self._ungraded(f"checkout failed: {exc}", task)
 
             # (2) apply the agent's prediction patch.
             applied = self._apply_patch(dest, prediction)
             if applied is None:
-                return None  # patch wouldn't apply (base drift) -> ungraded
+                return self._ungraded("prediction patch did not apply (base drift)", task)
             if applied is False:
-                return None
+                return self._ungraded("prediction patch was empty/no-op after strip", task)
 
             # (3) apply the GOLD test_patch (harness applies tests, never the agent).
             if task.test_patch:
                 if self._apply_patch(dest, task.test_patch) is not True:
-                    return None  # gold tests won't apply -> can't grade
+                    return self._ungraded("gold test_patch did not apply", task)
 
             # (4) build env + run tests, best-effort -> a SWE-bench tests_status dict.
             status = self._build_and_run(dest, task)
             if status is None:
-                return None  # env build / test run failed -> ungraded
+                # _build_and_run already set a specific last_reason via _ungraded;
+                # add a generic one only if some other path left it unset.
+                if self.last_reason is None:
+                    return self._ungraded("env build / test run produced no gradeable status", task)
+                return None
 
             # (5) SWE-bench resolved rule via the shared report interpreter.
             iid = instance_id_of(task)
@@ -507,7 +539,7 @@ class LocalExecGrader:
         p2p = list(task.pass_to_pass or [])
         selectors = f2p + p2p
         if not selectors:
-            return None  # nothing to run -> nothing to grade
+            return self._ungraded("no FAIL_TO_PASS/PASS_TO_PASS selectors to run", task)
         dest = Path(dest)
 
         # Fresh, isolated venv (best-effort); install the checkout into it.
@@ -528,28 +560,28 @@ class LocalExecGrader:
             p2p = [s for s in p2p if is_django_selector(s)]
             valid = f2p + p2p
             if not valid:
-                return None  # no runnable selectors left -> nothing to grade
+                return self._ungraded("no runnable django selectors after filtering", task)
             labels = [django_label(s) for s in valid]
             ran = self._run([py, "tests/runtests.py", "--verbosity=2",
                              "--parallel=1", *labels], dest)
             if ran is None:
-                return None
+                return self._ungraded("django test runner unavailable/raised", task)
             rc, out, err = ran
             # runtests rc 0 = all passed, 1 = some failed (both gradeable); any
             # other rc with no output = setup/collection error -> ungraded.
             if rc not in (0, 1) and not (out or err):
-                return None
+                return self._ungraded(f"django runtests setup/collection error (rc={rc})", task)
             return _parse_django(out, err, f2p, p2p)
 
         # Default: pytest.
         ran = self._run([py, "-m", "pytest", "-q", *selectors], dest)
         if ran is None:
-            return None
+            return self._ungraded("pytest runner unavailable/raised", task)
         rc, out, _err = ran
         # pytest rc 0 = all passed, 1 = tests failed (still gradeable output);
         # rc >=2 (or no output) = usage/collection error -> can't grade.
         if rc is None or (rc not in (0, 1) and not out):
-            return None
+            return self._ungraded(f"pytest usage/collection error (rc={rc})", task)
         return _parse_pytest(out, f2p, p2p)
 
     def _run(self, args: list, cwd: Any):
