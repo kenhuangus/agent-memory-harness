@@ -387,3 +387,65 @@ def test_extraction_variants_are_all_documented_size() -> None:
             f"{v} length {len(prompt)} is {ratio:.2f}× V0's {v0_len} — "
             "suspiciously off; check for truncation or accidental duplication."
         )
+
+
+# --- resolve_extraction_prompt — identity sibling for forensic logging ----- #
+def test_resolve_returns_identity_for_default_variant(monkeypatch) -> None:
+    """No env var, no arg → V0 + matching sha256 + matching char_count."""
+    import hashlib as _hashlib
+
+    from memeval.dreaming.prompts import resolve_extraction_prompt
+
+    monkeypatch.delenv("DREAM_EXTRACTION_VARIANT", raising=False)
+    ident = resolve_extraction_prompt()
+    assert ident.variant == "V0"
+    assert ident.text == EXTRACTION_SYSTEM_PROMPT
+    assert ident.sha256 == _hashlib.sha256(EXTRACTION_SYSTEM_PROMPT.encode()).hexdigest()
+    assert ident.char_count == len(EXTRACTION_SYSTEM_PROMPT)
+
+
+def test_resolve_explicit_arg_wins_over_env(monkeypatch) -> None:
+    """Explicit arg wins over DREAM_EXTRACTION_VARIANT env var."""
+    from memeval.dreaming.prompts import resolve_extraction_prompt
+
+    monkeypatch.setenv("DREAM_EXTRACTION_VARIANT", "V1")
+    ident = resolve_extraction_prompt("V3")
+    assert ident.variant == "V3"
+    assert ident.text == EXTRACTION_SYSTEM_PROMPT_V3
+
+
+def test_resolve_env_variant_when_no_arg(monkeypatch) -> None:
+    """DREAM_EXTRACTION_VARIANT=V2 (case-insensitive) → V2 identity."""
+    from memeval.dreaming.prompts import resolve_extraction_prompt
+
+    monkeypatch.setenv("DREAM_EXTRACTION_VARIANT", "v2")
+    ident = resolve_extraction_prompt()
+    assert ident.variant == "V2"
+    assert ident.text == EXTRACTION_SYSTEM_PROMPT_V2
+
+
+def test_resolve_unknown_variant_raises_value_error(monkeypatch) -> None:
+    """Unknown DREAM_EXTRACTION_VARIANT raises ValueError naming the legal set."""
+    import pytest as _pytest
+
+    from memeval.dreaming.prompts import resolve_extraction_prompt
+
+    monkeypatch.setenv("DREAM_EXTRACTION_VARIANT", "made-up")
+    with _pytest.raises(ValueError) as exc_info:
+        resolve_extraction_prompt()
+    msg = str(exc_info.value)
+    assert "MADE-UP" in msg
+    assert "V0" in msg
+    assert "V3" in msg
+
+
+def test_get_extraction_prompt_is_resolve_text_for_all_variants(monkeypatch) -> None:
+    """`get_extraction_prompt` and `resolve_extraction_prompt(...).text` agree."""
+    from memeval.dreaming.prompts import (
+        get_extraction_prompt,
+        list_extraction_variants,
+        resolve_extraction_prompt,
+    )
+
+    for v in list_extraction_variants():
+        assert get_extraction_prompt(v) == resolve_extraction_prompt(v).text

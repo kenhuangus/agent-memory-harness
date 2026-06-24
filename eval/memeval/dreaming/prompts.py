@@ -22,7 +22,9 @@ in the test in the same PR or the suite goes red.
 
 from __future__ import annotations
 
+import hashlib
 import os
+from typing import NamedTuple
 
 # ---------------------------------------------------------------------------
 # EXTRACTION_SYSTEM_PROMPT
@@ -472,6 +474,36 @@ def get_extraction_prompt(variant: str | None = None) -> str:
     options. Variant names are case-insensitive (``"v1"`` and ``"V1"`` both
     resolve to V1).
     """
+    return resolve_extraction_prompt(variant).text
+
+
+def list_extraction_variants() -> list[str]:
+    """Return the sorted list of known variant names (for diagnostics + tests)."""
+    return sorted(_EXTRACTION_VARIANTS)
+
+
+class ExtractionPromptIdentity(NamedTuple):
+    """Resolved extraction prompt + identity for forensic logging.
+
+    The text is what the LLM sees; (variant, sha256, char_count) is the
+    identity tuple that lets an operator reverse-look-up which prompt was
+    used without storing the 4 KB body in the diary.
+    """
+
+    text: str
+    variant: str
+    sha256: str
+    char_count: int
+
+
+def resolve_extraction_prompt(variant: str | None = None) -> ExtractionPromptIdentity:
+    """Resolve the active extraction prompt + its identity for log correlation.
+
+    Returns the text plus (variant_key, sha256, char_count) so the dreaming
+    engine can emit a per-chunk `daydream.prompt_resolved` event without
+    re-computing the hash. Variant resolution follows the same precedence as
+    :func:`get_extraction_prompt`.
+    """
     raw = variant if variant is not None else os.environ.get("DREAM_EXTRACTION_VARIANT", "V0")
     v = (raw or "V0").strip().upper()
     if v not in _EXTRACTION_VARIANTS:
@@ -479,12 +511,13 @@ def get_extraction_prompt(variant: str | None = None) -> str:
             f"Unknown DREAM_EXTRACTION_VARIANT={v!r}; expected one of: "
             f"{sorted(_EXTRACTION_VARIANTS)}"
         )
-    return _EXTRACTION_VARIANTS[v]
-
-
-def list_extraction_variants() -> list[str]:
-    """Return the sorted list of known variant names (for diagnostics + tests)."""
-    return sorted(_EXTRACTION_VARIANTS)
+    text = _EXTRACTION_VARIANTS[v]
+    return ExtractionPromptIdentity(
+        text=text,
+        variant=v,
+        sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        char_count=len(text),
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -404,8 +404,14 @@ def test_extract_passes_redactedtext_to_client_prompt() -> None:
     assert '<transcript nonce="' in str(client.last_prompt)
 
 
-def test_extract_passes_system_prompt() -> None:
-    """The system prompt is delivered as RedactedText on the system kwarg."""
+def test_extract_passes_system_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The system prompt is delivered as RedactedText on the system kwarg.
+
+    Explicitly clears ``DREAM_EXTRACTION_VARIANT`` so the assertion
+    against the V0 default body is stable even if the dotenv loader (or
+    a sibling test) leaks a non-default variant into ``os.environ``.
+    """
+    monkeypatch.delenv("DREAM_EXTRACTION_VARIANT", raising=False)
     client = _StubClient(_ok_completion({"memories": []}))
     extract_memories(
         redact("x"),
@@ -1374,7 +1380,13 @@ def test_no_partial_parse_means_all_rejection_rows_emitted(
 # §E — Events: allow-set + new event shape
 # --------------------------------------------------------------------------- #
 def test_extract_event_allow_set_ast() -> None:
-    """§E1 — AST walk gives exactly the 6 expected event names."""
+    """§E1 — AST walk gives exactly the 7 expected event names.
+
+    Extended to 7 by ``daydream.prompt_resolved`` — the per-chunk
+    forensic anchor that carries the active variant + sha256 + char_count
+    so the diary/replay stream is self-describing without storing the
+    4 KB prompt body.
+    """
     src = Path(_extract.__file__).read_text(encoding="utf-8")
     tree = ast.parse(src)
     names: set[str] = set()
@@ -1395,6 +1407,7 @@ def test_extract_event_allow_set_ast() -> None:
         "daydream.chunk_extracted",
         "daydream.candidate_rejected",
         "daydream.rejected_field_missing",
+        "daydream.prompt_resolved",
     }
     assert names == expected, (
         f"event allow-set drift: missing={expected - names}, "
@@ -2446,6 +2459,9 @@ def test_extract_module_top_imports_unchanged() -> None:
         "memeval.dreaming.prompts._ENVELOPE_TEMPLATE",
         # ADR-dreaming-023: per-call selector resolves V0/V1/V2/V3 from env.
         "memeval.dreaming.prompts.get_extraction_prompt",
+        # Identity sibling — returns (text, variant, sha256, char_count) so the
+        # per-chunk `daydream.prompt_resolved` event can self-describe.
+        "memeval.dreaming.prompts.resolve_extraction_prompt",
         "memeval.dreaming.redaction.RedactedText",
         "memeval.dreaming.redaction.redact",
         "memeval.schema.MemoryItem",
@@ -2551,4 +2567,87 @@ def test_prompts_py_only_extraction_constant_changed() -> None:
     )
     assert env_hash in prompts_test_src, (
         f"_ENVELOPE_TEMPLATE hash {env_hash} not pinned"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# §PR — `daydream.prompt_resolved` per-chunk forensic anchor
+#
+# Surfaces (variant, sha256, char_count, model) once per extract_memories call
+# so the diary / DREAM_DEBUG stream + replay-script consumers can identify
+# WHICH prompt produced the kept memories WITHOUT having to store the 4 KB
+# prompt body inline on every per-memory event.
+# --------------------------------------------------------------------------- #
+def test_prompt_resolved_emitted_once_per_extract_call(
+    monkeypatch: pytest.MonkeyPatch, spy_extract_emit: list,
+) -> None:
+    """One `daydream.prompt_resolved` event per call, with the full identity tuple."""
+    import hashlib as _hashlib
+
+    from memeval.dreaming.prompts import EXTRACTION_SYSTEM_PROMPT
+
+    monkeypatch.delenv("DREAM_EXTRACTION_VARIANT", raising=False)
+    client = _StubClient(_ok_completion({"memories": [{"content": "x"}]}))
+    extract_memories(
+        redact("anything"), client=client, session_id="sess-x", now=42.0,
+        id_gen=_id_counter(),
+    )
+    resolved = [e for e in spy_extract_emit if e[0] == "daydream.prompt_resolved"]
+    assert len(resolved) == 1, f"expected exactly one prompt_resolved event, got {len(resolved)}"
+    _, fields = resolved[0]
+    assert fields["session_id"] == "sess-x"
+    assert fields["variant"] == "V0"
+    assert fields["prompt_sha256"] == (
+        _hashlib.sha256(EXTRACTION_SYSTEM_PROMPT.encode("utf-8")).hexdigest()
+    )
+    assert fields["prompt_chars"] == len(EXTRACTION_SYSTEM_PROMPT)
+    assert fields["model"] == client.model
+
+
+def test_kept_memory_content_is_second_pass_redacted() -> None:
+    """B1 generalized to kept content: if the LLM echoes an unredacted secret
+    into a kept-memory `content` field, the second-pass redact() in
+    `_build_memory_item` replaces it with the [REDACTED:<type>] marker BEFORE
+    the MemoryItem is constructed. Defends both the store AND the
+    `daydream.memory_written` diary/stdout surface.
+
+    CodeRabbit finding on PR #137.
+    """
+    # Construct the fake secret at runtime so the source file doesn't carry the
+    # literal pattern (GitGuardian-friendly; mirrors test_redaction.py:78).
+    fake_secret = "sk-ant-api03-" + "A" * 80
+    payload = {
+        "memories": [
+            {"content": f"user pasted {fake_secret}", "tags": ["t1"]},
+        ]
+    }
+    client = _StubClient(_ok_completion(payload))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s-redact", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    assert out is not None and len(out) == 1
+    assert fake_secret not in out[0].content
+    assert "[REDACTED:" in out[0].content
+
+
+def test_prompt_resolved_picks_up_variant_from_env(
+    monkeypatch: pytest.MonkeyPatch, spy_extract_emit: list,
+) -> None:
+    """DREAM_EXTRACTION_VARIANT=V3 is reflected in the emitted identity tuple."""
+    import hashlib as _hashlib
+
+    from memeval.dreaming.prompts import EXTRACTION_SYSTEM_PROMPT_V3
+
+    monkeypatch.setenv("DREAM_EXTRACTION_VARIANT", "V3")
+    client = _StubClient(_ok_completion({"memories": []}))
+    extract_memories(
+        redact("x"), client=client, session_id="s-v3", now=1.0, id_gen=_id_counter(),
+    )
+    resolved = [e for e in spy_extract_emit if e[0] == "daydream.prompt_resolved"]
+    assert len(resolved) == 1
+    _, fields = resolved[0]
+    assert fields["variant"] == "V3"
+    assert fields["prompt_sha256"] == (
+        _hashlib.sha256(EXTRACTION_SYSTEM_PROMPT_V3.encode("utf-8")).hexdigest()
     )

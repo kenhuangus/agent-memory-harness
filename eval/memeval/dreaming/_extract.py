@@ -30,6 +30,7 @@ from memeval.dreaming.prompts import (
     EXTRACTION_SYSTEM_PROMPT,
     _ENVELOPE_TEMPLATE,
     get_extraction_prompt,
+    resolve_extraction_prompt,
 )
 from memeval.dreaming.redaction import RedactedText, redact
 from memeval.schema import MemoryItem
@@ -144,7 +145,18 @@ def extract_memories(
     # DREAM_EXTRACTION_VARIANT env var. Reading per call (vs at import time)
     # lets operators flip variants without a process restart.
     # REASON: developer-authored constants, no user content.
-    system = RedactedText(get_extraction_prompt())
+    identity = resolve_extraction_prompt()
+    system = RedactedText(identity.text)
+    # Per-chunk forensic anchor: one event carries (variant, sha256, char_count,
+    # model). Per-memory events stay lean; correlate via session_id + ts.
+    emit(
+        "daydream.prompt_resolved",
+        session_id=session_id,
+        variant=identity.variant,
+        prompt_sha256=identity.sha256,
+        prompt_chars=identity.char_count,
+        model=client.model,
+    )
 
     completion: Completion = client.complete(
         wrapped, system=system, max_tokens=max_tokens
@@ -302,6 +314,14 @@ def _build_memory_item(
     content = raw.get("content")
     if not isinstance(content, str) or not content or len(content) > _MAX_CONTENT_LEN:
         raise _ParseError("invalid or missing 'content'")
+    # Second-pass redact() on kept-memory content. ADR-005 only guarantees
+    # redaction on the INPUT side; the LLM may echo unredacted user text back
+    # in `content`. The rejection path already does this for `content_snippet`
+    # (halliday B1) — kept content is even higher-stakes because it gets
+    # persisted to the store AND recalled into future LLM contexts. The cap
+    # check above applies to the LLM-emitted length; redaction tokens may
+    # grow or shrink it. Surfaced by CodeRabbit on PR #137.
+    content = str(redact(content))
 
     raw_tags = raw.get("tags", [])
     if isinstance(raw_tags, list):

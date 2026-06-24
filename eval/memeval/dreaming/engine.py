@@ -169,11 +169,19 @@ def daydream(
 
                     for item in items:
                         store.write(item)
+                        # Extended additively (PR #108 precedent) with content/
+                        # tags/relevancy so replay consumers + Speaker D's router
+                        # evaluator can read the kept-memory stream without a
+                        # store round-trip. Content is extracted-safe by design
+                        # (the LLM emitted it under the redacted envelope).
                         emit(
                             "daydream.memory_written",
                             item_id=item.item_id,
                             session_id=session_id,
                             chunk_id=cursor,
+                            content=item.content,
+                            tags=list(item.tags),
+                            relevancy=item.relevancy,
                         )
 
                     new_last_summary: str | None = (

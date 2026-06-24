@@ -50,6 +50,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import sys
 import time
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -59,6 +61,12 @@ from typing import Any, Iterator
 _logger = logging.getLogger(__name__)
 
 __all__ = ["emit", "event_context", "diary_path_for"]
+
+#: Opt-in stdout mirror for debugging. When ``DREAM_DEBUG=1`` is set in the
+#: environment, every :func:`emit` call also prints a JSON line to stdout.
+#: Read per-call (not at import time) so a test or operator can toggle it
+#: without a process restart. The diary write is unaffected.
+_DREAM_DEBUG_ENV = "DREAM_DEBUG"
 
 
 # --------------------------------------------------------------------------- #
@@ -108,27 +116,42 @@ def diary_path_for(basedir: str | Path, session_id: str) -> Path:
 def emit(event_type: str, **fields: Any) -> None:
     """Record a Daydream event.
 
-    Always logs at DEBUG via stdlib ``logging``. If an
+    Always logs at DEBUG via stdlib ``logging``. If ``DREAM_DEBUG=1`` is
+    set in the environment, also prints a JSON line to stdout — opt-in
+    instrumentation for local dev + replay-script consumers. If an
     :func:`event_context` is bound (``session_id`` + ``basedir`` set
     via ContextVars), also appends a JSONL line to the per-session
-    diary file. Missing context → log-only fallback (no error).
+    diary file. Missing context → diary-skip (no error); stdout mirror
+    still fires when ``DREAM_DEBUG=1``.
 
-    Fail-open: any exception during the diary write is caught, logged
-    at WARNING, and suppressed. The caller never sees an event-related
-    failure.
+    Fail-open: any exception during the diary OR stdout write is caught,
+    logged at WARNING, and suppressed. The caller never sees an
+    event-related failure.
     """
     _logger.debug("event %s %s", event_type, fields)
 
     sid = _session_id_var.get()
     bd = _basedir_var.get()
-    if sid is None or bd is None:
-        return  # no context bound -- log-only
+    debug_on = os.environ.get(_DREAM_DEBUG_ENV) == "1"
+    if not debug_on and (sid is None or bd is None):
+        return  # no sink for this event — bail before any record cost
 
     record: dict[str, Any] = {
         "ts": time.time(),
         "event_type": event_type,
         **fields,
     }
+
+    if debug_on:
+        try:
+            sys.stdout.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+            sys.stdout.flush()
+        except Exception as exc:
+            _logger.warning("DREAM_DEBUG stdout emit failed for %s: %s", event_type, exc)
+
+    if sid is None or bd is None:
+        return  # stdout mirror fired but no diary context — done
+
     try:
         _write_diary_record(bd, sid, record)
     except Exception as exc:
