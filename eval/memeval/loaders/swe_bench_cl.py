@@ -38,6 +38,7 @@ present, else the HuggingFace remote. See :meth:`SWEBenchCLLoader.load`.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Optional
 
@@ -300,6 +301,15 @@ class SWEBenchCLLoader(BaseLoader):
         for key in ("created_at", "difficulty", "version"):
             if key in row:
                 metadata[key] = row[key]
+        # The SWE-Bench-CL dataset omits the SWE-bench ``version`` field, but the
+        # swebench grader needs it to resolve MAP_REPO_VERSION_TO_SPECS[repo][version]
+        # (without it every task is UNGRADED). Backfill from a bundled instance_id ->
+        # version map derived from the official SWE-bench dataset, only when the row
+        # itself didn't carry one.
+        if not str(metadata.get("version") or "").strip():
+            ver = _version_for_instance(task_id)
+            if ver:
+                metadata["version"] = ver
 
         return Task(
             task_id=task_id,
@@ -320,6 +330,30 @@ class SWEBenchCLLoader(BaseLoader):
             competency=competency,
             metadata=metadata,
         )
+
+
+#: Bundled instance_id -> SWE-bench ``version`` map (the CL dataset omits version).
+#: Generated from the official ``princeton-nlp/SWE-bench`` (+ _Verified) dataset; covers
+#: all 273 CL instances. Loaded once and cached.
+_VERSION_MAP: "Optional[dict[str, str]]" = None
+
+
+def _version_for_instance(instance_id: str) -> Optional[str]:
+    """The SWE-bench ``version`` for ``instance_id`` from the bundled map, or ``None``.
+
+    Lazy-loads ``loaders/data/swe_bench_cl_versions.json`` once. Fail-open: a missing or
+    unreadable map yields ``None`` (the grader then logs the task as UNGRADED rather than
+    crashing), so the loader never hard-depends on the bundled file."""
+    global _VERSION_MAP
+    if _VERSION_MAP is None:
+        path = (Path(__file__).resolve().parent.parent
+                / "data" / "swe_bench_cl" / "versions.json")
+        try:
+            _VERSION_MAP = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            _VERSION_MAP = {}
+    v = _VERSION_MAP.get(instance_id)
+    return str(v) if v else None
 
 
 def _flatten_task(t: dict) -> dict:
