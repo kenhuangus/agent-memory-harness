@@ -78,6 +78,7 @@ the move).
 | [ADR-dreaming-020](ADR-dreaming-020-cross-process-dream-mutation-gate.md) | v2 Dream mutation half is gated on a successor ADR resolving cross-process concurrency on `$MEMORY_STORE` | Superseded by [ADR-dreaming-021](ADR-dreaming-021-dream-mutation-concurrency.md) | **yes** |
 | [ADR-dreaming-021](ADR-dreaming-021-dream-mutation-concurrency.md) | v2 Dream mutation = `Router.delete()` under a basedir `flock`; Daydream serializes against Dream; no NFS (supersedes ADR-020) | Accepted | **yes** |
 | [ADR-dreaming-022](ADR-dreaming-022-deepseek-model-swap-test.md) | Test `deepseek/deepseek-v4-flash` as the daydream model via `.env` override (does not switch the default); fix stale `.env.example` docstring; add `llm_call_succeeded` observability event | Accepted | no |
+| [ADR-dreaming-023](ADR-dreaming-023-selectable-extraction-prompt-variants.md) | Four selectable EXTRACTION_SYSTEM_PROMPT variants (V0 baseline / V1 STRICT / V2 A-MEM keywords+context / V3 SWE-tuned); runtime selection via `DREAM_EXTRACTION_VARIANT` env; V0 remains default (backward-compatible) | Accepted | no |
 | [ADR-harness-003](ADR-harness-003-log-extraction-chunking.md) | `dream` log-extraction chunking = one turn = one chunk + prior-summary overlap | Accepted | no |
 | [ADR-harness-004](ADR-harness-004-dream-state-sidecar.md) | `dream` state = on-disk JSON sidecar (cursor + last_summary + recent_memory_ids) | Accepted | no |
 | [ADR-harness-005](ADR-harness-005-log-adapter-redaction.md) | The log adapter redacts secrets before any model call | Accepted | no |

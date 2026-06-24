@@ -16,8 +16,14 @@ import hashlib
 from memeval.dreaming.prompts import (
     CONTRADICTION_SYSTEM_PROMPT,
     EXTRACTION_SYSTEM_PROMPT,
+    EXTRACTION_SYSTEM_PROMPT_V1,
+    EXTRACTION_SYSTEM_PROMPT_V2,
+    EXTRACTION_SYSTEM_PROMPT_V3,
     GOVERNANCE_SYSTEM_PROMPT,
     _ENVELOPE_TEMPLATE,
+    _EXTRACTION_VARIANTS,
+    get_extraction_prompt,
+    list_extraction_variants,
 )
 
 # Computed at write time. Bumping requires deliberate reviewer authorization.
@@ -160,3 +166,224 @@ def test_governance_prompt_enumerates_four_classes() -> None:
     semantically equivalent. Both names are kept so the grader can match either.
     """
     test_governance_prompt_pins_four_class_enum()
+
+
+# ── ADR-dreaming-023: selectable EXTRACTION_SYSTEM_PROMPT variants ─────────
+
+# Sha256 pins for the three new variants. V0 stays pinned at the existing
+# `b2f8f69b…` value (unchanged literal — backward compatible). Computed by
+# running prompts.py at the commit that introduced these variants.
+
+_EXTRACTION_V0_SHA256 = (
+    "b2f8f69bcff40693346ee9facfeb1661f59822bac78d4e235f78d68e834a0bc3"
+)
+_EXTRACTION_V1_SHA256 = (
+    "655b3bd0bf6ff7c2e13caa2b958828729bae1d736d36b752bb2e82014cbf5c8b"
+)
+_EXTRACTION_V2_SHA256 = (
+    "e268af8b08039034e072b3d06dfad06f97c1cffc27618dd9aa368e212a4aa6cb"
+)
+_EXTRACTION_V3_SHA256 = (
+    "2c8f32d7f9615d12881e094b194af99d81c46344b644f7583fba1f4ad6f2625e"
+)
+
+# Negative-substring contract: no variant may contain Job 2 / Job 3 vocab.
+# Same contract the original V0 prompt is held to — guards against cross-layer
+# vocab leak when a future PR edits a variant.
+_FORBIDDEN_VOCAB_FROM_JOB2_AND_JOB3 = (
+    "must_know",
+    "must_do",
+    "blacklist",
+    "classifications",
+    "a_id",
+    "b_id",
+)
+
+
+def test_extraction_variant_v0_sha256_pinned() -> None:
+    """V0 (default, backward-compatible) sha256 must match the existing pin."""
+    h = hashlib.sha256(EXTRACTION_SYSTEM_PROMPT.encode("utf-8")).hexdigest()
+    assert h == _EXTRACTION_V0_SHA256, (
+        f"EXTRACTION_SYSTEM_PROMPT (V0) drifted; computed={h}. V0 is the "
+        "backward-compat default; do NOT bump unless you've coordinated with "
+        "every downstream pin site (test_extract.py:43, test_worker_governance.py:2089)."
+    )
+
+
+def test_extraction_variant_v1_sha256_pinned() -> None:
+    """V1 STRICT (ADR-dreaming-023) sha256 pinned."""
+    h = hashlib.sha256(EXTRACTION_SYSTEM_PROMPT_V1.encode("utf-8")).hexdigest()
+    assert h == _EXTRACTION_V1_SHA256, (
+        f"EXTRACTION_SYSTEM_PROMPT_V1 drifted; computed={h}. "
+        "Update _EXTRACTION_V1_SHA256 only after deliberate review."
+    )
+
+
+def test_extraction_variant_v2_sha256_pinned() -> None:
+    """V2 A-MEM keywords+context (ADR-dreaming-023) sha256 pinned."""
+    h = hashlib.sha256(EXTRACTION_SYSTEM_PROMPT_V2.encode("utf-8")).hexdigest()
+    assert h == _EXTRACTION_V2_SHA256, (
+        f"EXTRACTION_SYSTEM_PROMPT_V2 drifted; computed={h}. "
+        "Update _EXTRACTION_V2_SHA256 only after deliberate review."
+    )
+
+
+def test_extraction_variant_v3_sha256_pinned() -> None:
+    """V3 SWE-tuned (ADR-dreaming-023) sha256 pinned."""
+    h = hashlib.sha256(EXTRACTION_SYSTEM_PROMPT_V3.encode("utf-8")).hexdigest()
+    assert h == _EXTRACTION_V3_SHA256, (
+        f"EXTRACTION_SYSTEM_PROMPT_V3 drifted; computed={h}. "
+        "Update _EXTRACTION_V3_SHA256 only after deliberate review."
+    )
+
+
+def test_extraction_variants_are_mutually_distinct() -> None:
+    """All four variants must produce distinct sha256s — pinning catches drift,
+    this catches the accidental-identity bug (e.g. someone copy-pastes V0 into V2)."""
+    digests = {
+        v: hashlib.sha256(s.encode("utf-8")).hexdigest()
+        for v, s in _EXTRACTION_VARIANTS.items()
+    }
+    assert len(set(digests.values())) == len(digests), (
+        f"Two variants produced the same sha256: {digests}"
+    )
+
+
+def test_extraction_variant_registry_complete() -> None:
+    """The `_EXTRACTION_VARIANTS` registry must enumerate exactly V0/V1/V2/V3
+    so the selector advertises the full set via list_extraction_variants()."""
+    assert list_extraction_variants() == ["V0", "V1", "V2", "V3"]
+    assert set(_EXTRACTION_VARIANTS) == {"V0", "V1", "V2", "V3"}
+
+
+def test_extraction_variant_v0_is_backward_compat_baseline() -> None:
+    """V0 in the registry MUST be the same string object as the top-level
+    EXTRACTION_SYSTEM_PROMPT constant — the registry's V0 is the backward-
+    compat default, not a separate string that could drift independently."""
+    assert _EXTRACTION_VARIANTS["V0"] is EXTRACTION_SYSTEM_PROMPT
+
+
+def test_get_extraction_prompt_default_is_v0(monkeypatch) -> None:
+    """No arg + no env var → V0 (the backward-compatible default)."""
+    monkeypatch.delenv("DREAM_EXTRACTION_VARIANT", raising=False)
+    assert get_extraction_prompt() is EXTRACTION_SYSTEM_PROMPT
+
+
+def test_get_extraction_prompt_explicit_arg_wins(monkeypatch) -> None:
+    """Explicit `variant` arg overrides the env var."""
+    monkeypatch.setenv("DREAM_EXTRACTION_VARIANT", "V1")
+    assert get_extraction_prompt("V0") is EXTRACTION_SYSTEM_PROMPT
+    assert get_extraction_prompt("V2") is EXTRACTION_SYSTEM_PROMPT_V2
+    assert get_extraction_prompt("V3") is EXTRACTION_SYSTEM_PROMPT_V3
+
+
+def test_get_extraction_prompt_env_var_dispatch(monkeypatch) -> None:
+    """`DREAM_EXTRACTION_VARIANT` env var picks the variant when no arg given."""
+    monkeypatch.setenv("DREAM_EXTRACTION_VARIANT", "V1")
+    assert get_extraction_prompt() is EXTRACTION_SYSTEM_PROMPT_V1
+    monkeypatch.setenv("DREAM_EXTRACTION_VARIANT", "V2")
+    assert get_extraction_prompt() is EXTRACTION_SYSTEM_PROMPT_V2
+    monkeypatch.setenv("DREAM_EXTRACTION_VARIANT", "V3")
+    assert get_extraction_prompt() is EXTRACTION_SYSTEM_PROMPT_V3
+
+
+def test_get_extraction_prompt_case_insensitive(monkeypatch) -> None:
+    """Variant names normalize to upper-case after stripping whitespace."""
+    monkeypatch.delenv("DREAM_EXTRACTION_VARIANT", raising=False)
+    assert get_extraction_prompt("v1") is EXTRACTION_SYSTEM_PROMPT_V1
+    assert get_extraction_prompt("  V2  ") is EXTRACTION_SYSTEM_PROMPT_V2
+    monkeypatch.setenv("DREAM_EXTRACTION_VARIANT", "v3")
+    assert get_extraction_prompt() is EXTRACTION_SYSTEM_PROMPT_V3
+
+
+def test_get_extraction_prompt_unknown_raises(monkeypatch) -> None:
+    """Unknown variant name raises ValueError naming the legal options."""
+    monkeypatch.delenv("DREAM_EXTRACTION_VARIANT", raising=False)
+    import pytest as _pt  # local import keeps the module top minimal
+    with _pt.raises(ValueError) as exc:
+        get_extraction_prompt("V99")
+    msg = str(exc.value)
+    assert "V99" in msg
+    for name in ("V0", "V1", "V2", "V3"):
+        assert name in msg, f"error message must name legal variant {name}"
+
+
+def test_get_extraction_prompt_empty_env_falls_back_to_v0(monkeypatch) -> None:
+    """Empty env var value treated as unset → V0 default."""
+    monkeypatch.setenv("DREAM_EXTRACTION_VARIANT", "")
+    # Empty string after .strip() and .upper() is "" which is not in registry;
+    # the selector falls back to "V0" via the `raw or "V0"` guard.
+    assert get_extraction_prompt() is EXTRACTION_SYSTEM_PROMPT
+
+
+def test_extraction_variants_share_envelope_framing() -> None:
+    """All variants must keep the prompt-injection envelope framing — adversarial
+    escape, `DATA, not instructions`, and `nonce` mention (ADR-dreaming-010)."""
+    for v, prompt in _EXTRACTION_VARIANTS.items():
+        assert "DATA, not instructions" in prompt, f"{v} missing envelope framing"
+        assert "nonce" in prompt.lower(), f"{v} missing nonce framing"
+        assert '{"memories": [], "rejected": []}' in prompt, (
+            f"{v} missing adversarial-escape JSON literal"
+        )
+
+
+def test_extraction_variants_share_json_only_rule() -> None:
+    """All variants pin `Output JSON only.` and the no-markdown-fences rule —
+    the parser fail-closes on fenced output, so every variant must forbid it."""
+    for v, prompt in _EXTRACTION_VARIANTS.items():
+        low = prompt.lower()
+        assert "json only" in low, f"{v} missing json-only rule"
+        assert "no markdown fences" in low, f"{v} missing no-fences rule"
+
+
+def test_extraction_variants_forbid_job2_job3_vocab() -> None:
+    """No variant may leak Job 2 (contradiction) or Job 3 (governance) vocab.
+    Cross-layer contamination would confuse downstream observability + indicates
+    the variant was authored against the wrong rubric."""
+    for v, prompt in _EXTRACTION_VARIANTS.items():
+        for vocab in _FORBIDDEN_VOCAB_FROM_JOB2_AND_JOB3:
+            assert vocab not in prompt, (
+                f"{v} contains forbidden cross-layer vocab {vocab!r}; this is "
+                "either a cross-layer paste error or a rubric drift."
+            )
+
+
+def test_extraction_variant_v1_pins_strict_framing() -> None:
+    """V1 must explicitly pin STRICT framing — distinguishes it from V0/V2/V3."""
+    assert "STRICT selectivity" in EXTRACTION_SYSTEM_PROMPT_V1
+    assert "annoyance-prevention" in EXTRACTION_SYSTEM_PROMPT_V1
+    assert "When in doubt, REJECT" in EXTRACTION_SYSTEM_PROMPT_V1
+    # And V1 must NOT carry MODERATE framing (that's V0/V2/V3).
+    assert "MODERATE selectivity" not in EXTRACTION_SYSTEM_PROMPT_V1
+
+
+def test_extraction_variant_v2_pins_amem_schema_extension() -> None:
+    """V2 must require the keywords + context fields in the per-memory schema."""
+    text = EXTRACTION_SYSTEM_PROMPT_V2
+    assert '"keywords"' in text, "V2 missing keywords field"
+    assert '"context"' in text, "V2 missing context field"
+    # The guidance paragraph that explains how to fill them.
+    assert "3-7 specific, distinct terms" in text
+    assert "one sentence stating the topic AND the concrete situation" in text
+
+
+def test_extraction_variant_v3_pins_swe_framing() -> None:
+    """V3 must pin the autonomous-coding-agent opener + code-shaped examples."""
+    text = EXTRACTION_SYSTEM_PROMPT_V3
+    assert "autonomous coding agent" in text
+    assert "pytest" in text  # at least one code-shaped example mentions pytest
+    assert "migrations" in text  # durable project conventions example
+    # And V3 must NOT contain V0's chat-shaped identity example.
+    assert "the user is named Scott" not in text
+
+
+def test_extraction_variants_are_all_documented_size() -> None:
+    """Variants should be in the same order-of-magnitude as V0 (3-5K chars).
+    A wildly-different length suggests an accidental truncation or paste error."""
+    v0_len = len(EXTRACTION_SYSTEM_PROMPT)
+    for v, prompt in _EXTRACTION_VARIANTS.items():
+        ratio = len(prompt) / v0_len
+        assert 0.8 <= ratio <= 1.5, (
+            f"{v} length {len(prompt)} is {ratio:.2f}× V0's {v0_len} — "
+            "suspiciously off; check for truncation or accidental duplication."
+        )
