@@ -112,6 +112,11 @@ class SwebenchHostGrader:
         self.last_reason: Optional[str] = None
         #: Run-lifetime tally reason -> count (loud degradation, mirrors PR #124).
         self.ungraded_reasons: dict[str, int] = {}
+        #: task_id -> "pin->used" when the pinned python was unavailable and a nearest
+        #: uv-available python was substituted (host-substitution; not leaderboard-comparable).
+        self.python_substitutions: dict[str, str] = {}
+        #: cached sorted [(major, minor), ...] of uv-provisionable CPython versions.
+        self._uv_minors_cache: Optional[list] = None
 
     # -- honesty-rule degradation (mirrors LocalExecGrader._ungraded) -------- #
     def _ungraded(self, reason: str, task: Optional[Task] = None) -> None:
@@ -238,13 +243,15 @@ class SwebenchHostGrader:
         # Provision the pinned interpreter via uv. The pinned (often old) python is
         # the whole point — SWE-bench commits assume a then-current interpreter; a
         # host-default venv breaks historical code. If we cannot get it, UNGRADED.
-        py = self._make_venv(dest, python=str(spec.get("python") or "") or None)
+        py = self._make_venv(dest, python=str(spec.get("python") or "") or None, task=task)
         if py is None:
             # Fall back to a configured interpreter ONLY if no pin was requested;
-            # if a pin was requested and uv couldn't provide it, be honest.
+            # if a pin was requested and neither uv NOR a nearest-available substitute
+            # could be provisioned, be honest.
             if spec.get("python") and self._python_exe is None:
                 return self._ungraded(
-                    f"could not provision python {spec.get('python')}", task)
+                    f"could not provision python {spec.get('python')} "
+                    f"(nor any uv-available fallback >= it)", task)
             py = self._python_exe or "python"
 
         self._install(dest, py, spec)
@@ -333,28 +340,96 @@ class SwebenchHostGrader:
                 getattr(r, "stdout", "") or "",
                 getattr(r, "stderr", "") or "")
 
-    def _make_venv(self, dest: Any, *, python: Optional[str] = None) -> Optional[str]:
-        """``uv venv --python <python>`` beside the checkout; return its python exe
-        path or ``None`` if uv is unavailable / the pin can't be fetched. Offline
-        (stub runner) this is a harmless no-op — the canned runner reports success
-        but writes no files, so we return ``None`` and the caller falls back."""
+    def _make_venv(self, dest: Any, *, python: Optional[str] = None,
+                   task: Any = None) -> Optional[str]:
+        """Provision a venv beside the checkout and return its python exe path, or
+        ``None``.
+
+        First tries the SWE-bench-pinned interpreter via ``uv venv --python <pin>``.
+        uv's managed CPython builds only go back to 3.8, so an old pin (3.6/3.7) can't
+        be fetched and there is no Docker/pyenv here. Rather than leave every such task
+        UNGRADED, fall back to the **nearest uv-available python >= the pin** (e.g. a
+        django 3.1 task pinned to 3.6 grades under 3.8, which django 3.1 supports). This
+        is strictly safe: a substitution that the repo can't actually run still fails at
+        build/collection -> UNGRADED there (no worse than before); a compatible one now
+        grades. Each substitution is logged + recorded (``python_substitutions``) and is
+        a documented host-substitution (NOT leaderboard-comparable). Offline (stub
+        runner) ``uv venv`` reports rc 0 but writes no interpreter -> ``None`` (caller
+        falls back), and no fallback search runs."""
         from pathlib import Path
 
         venv = Path(dest).parent / ".venv-swe-grade"
-        argv = ["uv", "venv", "--clear"]
-        if python:
-            argv += ["--python", python]
-        argv.append(str(venv))
-        ran = self._run(argv, dest)
-        if ran is None or ran[0] != 0:
+
+        def _try(cand: Optional[str]) -> tuple[str, Optional[str]]:
+            argv = ["uv", "venv", "--clear"]
+            if cand:
+                argv += ["--python", cand]
+            argv.append(str(venv))
+            ran = self._run(argv, dest)
+            if ran is None or ran[0] != 0:
+                return "failed", None
+            posix = venv / "bin" / "python"
+            win = venv / "Scripts" / "python.exe"
+            if posix.exists():
+                return "ok", str(posix)
+            if win.exists():
+                return "ok", str(win)
+            return "no-interpreter", None  # offline stub: rc 0 but nothing on disk
+
+        status, py = _try(python)
+        if status == "ok":
+            return py
+        # No interpreter on disk (offline stub), or no pin to substitute -> done.
+        if status == "no-interpreter" or not python:
             return None
-        posix = venv / "bin" / "python"
-        if posix.exists():
-            return str(posix)
-        win = venv / "Scripts" / "python.exe"
-        if win.exists():
-            return str(win)
-        return None  # venv reported OK but no interpreter on disk (offline stub)
+        # The pin itself couldn't be fetched: try the nearest uv-available python >= pin.
+        for cand in self._fallback_pythons(dest, python):
+            status, py = _try(cand)
+            if status == "ok":
+                self._note_python_substitution(python, cand, task)
+                return py
+            if status == "no-interpreter":
+                return None
+        return None
+
+    def _fallback_pythons(self, dest: Any, pin: str) -> list:
+        """uv-available ``"major.minor"`` strings strictly newer than ``pin`` (ascending),
+        so we substitute the SMALLEST compatible interpreter uv can actually provision."""
+        try:
+            parts = (str(pin).split(".") + ["0"])[:2]
+            pin_mm = (int(parts[0]), int(parts[1]))
+        except (ValueError, AttributeError):
+            return []
+        out: list = []
+        for mm in self._uv_minors(dest):
+            if mm > pin_mm:
+                s = f"{mm[0]}.{mm[1]}"
+                if s not in out:
+                    out.append(s)
+        return out
+
+    def _uv_minors(self, dest: Any) -> list:
+        """Sorted unique ``(major, minor)`` of CPython versions uv can provision, parsed
+        from ``uv python list --all-versions``. Cached for the grader's lifetime."""
+        if self._uv_minors_cache is not None:
+            return self._uv_minors_cache
+        import re
+
+        mins: set = set()
+        ran = self._run(["uv", "python", "list", "--all-versions"], dest)
+        if ran is not None and ran[0] == 0:
+            for m in re.finditer(r"cpython-(\d+)\.(\d+)\.", (ran[1] or "") + (ran[2] or "")):
+                mins.add((int(m.group(1)), int(m.group(2))))
+        self._uv_minors_cache = sorted(mins)
+        return self._uv_minors_cache
+
+    def _note_python_substitution(self, pin: str, used: str, task: Any) -> None:
+        tid = getattr(task, "task_id", None) or "?"
+        self.python_substitutions[tid] = f"{pin}->{used}"
+        log.warning(
+            "SwebenchHostGrader [task=%s]: pinned python %s not provisionable via uv; "
+            "grading under nearest available python %s (host-substitution — NOT "
+            "leaderboard-comparable)", tid, pin, used)
 
     def _install(self, dest: Any, py: str, spec: dict) -> None:
         """Run the spec's install steps in the venv, best-effort. ROOT/apt

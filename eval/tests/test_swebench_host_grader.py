@@ -218,3 +218,59 @@ class SwebenchHostGraderTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# --------------------------------------------------------------------------- #
+# Python-pin fallback: uv can't fetch old pins (3.6/3.7); substitute nearest >= pin.
+# --------------------------------------------------------------------------- #
+def test_make_venv_falls_back_to_nearest_uv_python(tmp_path) -> None:
+    """A pinned python uv cannot provision (3.6) must NOT leave the task ungraded when a
+    newer uv-available python (3.8) exists — the grader substitutes the nearest one and
+    records it, instead of failing with 'could not provision python 3.6'."""
+    calls: list = []
+
+    def fake_runner(args, cwd, env=None):
+        calls.append(list(args))
+        if args[:2] == ["uv", "venv"]:
+            ver = args[args.index("--python") + 1] if "--python" in args else ""
+            if ver == "3.6":
+                return CmdResult(returncode=1, stderr="No download found for 3.6")
+            venv = Path(args[-1])
+            (venv / "bin").mkdir(parents=True, exist_ok=True)
+            (venv / "bin" / "python").write_text("#!stub\n", encoding="utf-8")
+            return CmdResult(returncode=0)
+        if args[:3] == ["uv", "python", "list"]:
+            return CmdResult(returncode=0, stdout=(
+                "cpython-3.11.9-linux-x86_64-gnu   <download available>\n"
+                "cpython-3.8.20-linux-x86_64-gnu   <download available>\n"))
+        return CmdResult(returncode=0)
+
+    g = SwebenchHostGrader(runner=fake_runner)
+    dest = tmp_path / "repo"
+    dest.mkdir()
+    task = Task(task_id="django__django-9296", benchmark=Benchmark.SWE_BENCH_CL,
+                kind=TaskKind.CODE, question="x")
+    py = g._make_venv(dest, python="3.6", task=task)
+
+    assert py is not None and py.replace("\\", "/").endswith("bin/python")
+    # Substituted the SMALLEST available >= pin (3.8, not 3.11), and recorded it.
+    assert g.python_substitutions["django__django-9296"] == "3.6->3.8"
+    assert any(c[:2] == ["uv", "venv"] and "3.6" in c for c in calls)   # tried the pin
+    assert any(c[:3] == ["uv", "python", "list"] for c in calls)        # consulted uv
+    assert any(c[:2] == ["uv", "venv"] and "3.8" in c for c in calls)   # used 3.8
+
+
+def test_make_venv_offline_stub_no_fallback(tmp_path) -> None:
+    """Offline stub (uv venv rc 0 but writes no interpreter) returns None WITHOUT a
+    fallback search — keeps the faked-runner grading tests unchanged."""
+    calls: list = []
+
+    def fake_runner(args, cwd, env=None):
+        calls.append(list(args))
+        return CmdResult(returncode=0)  # rc 0 but never creates venv/bin/python
+
+    g = SwebenchHostGrader(runner=fake_runner)
+    dest = tmp_path / "repo"
+    dest.mkdir()
+    assert g._make_venv(dest, python="3.6") is None
+    assert not any(c[:3] == ["uv", "python", "list"] for c in calls)  # no fallback search
