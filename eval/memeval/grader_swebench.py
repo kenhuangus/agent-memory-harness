@@ -41,7 +41,14 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable, Optional
 
-from .grader import CmdResult, CmdRunner, _subprocess_cmd, instance_id_of
+from .grader import (
+    CmdResult,
+    CmdRunner,
+    _subprocess_cmd,
+    instance_id_of,
+    patch_target_files,
+    revert_test_files,
+)
 from .schema import Task, TaskKind
 
 log = logging.getLogger(__name__)
@@ -220,6 +227,11 @@ class SwebenchHostGrader:
 
         # Apply the GOLD test_patch (harness applies tests, NEVER the agent).
         if task.test_patch:
+            # Trust boundary (SWE-bench rule): revert the gold test_patch's target
+            # files to base BEFORE applying it, discarding any agent edits to them.
+            # Otherwise an agent that touched a test file makes the gold patch fail
+            # to apply (gold_test_apply_failed) AND could influence the tests.
+            revert_test_files(self._git_runner, dest, patch_target_files(task.test_patch))
             if self._apply_patch(dest, task.test_patch) is not True:
                 return self._ungraded("gold test_patch did not apply", task)
 

@@ -78,23 +78,39 @@ _CODE_BENCH = {"swe_bench_cl", "swe_contextbench", "contextbench"}
 _LOCAL_EXEC_BENCH = {"swe_bench_cl", "swe_contextbench"}
 
 
+def _swebench_available() -> bool:
+    """True iff the optional ``swebench`` package can be imported, so ``auto`` can
+    prefer :class:`SwebenchHostGrader` and otherwise fall back to LocalExecGrader."""
+    import importlib.util
+
+    return importlib.util.find_spec("swebench") is not None
+
+
 def _make_grader(benchmark: str, args: argparse.Namespace):
     """Resolve the grader for ``benchmark``.
 
     ``auto`` (default): QA benches and contextbench get ``None`` (exact-match /
     native retrieval metric — no test execution); the two SWE benches get the
-    host-local :class:`LocalExecGrader`. ``none`` -> ``None``; ``local`` ->
-    LocalExecGrader for any bench; ``overlap`` -> the cheap heuristic. The grader
-    itself returns ``None`` for non-CODE tasks, so an explicit choice is safe on a
-    QA bench. LocalExecGrader degrades to ``None`` (ungraded) when the env can't be
-    built, so a missing toolchain leaves CODE tasks ungraded rather than crashing.
+    realistic :class:`SwebenchHostGrader` **when the optional ``swebench`` package
+    is importable**, else fall back to the host-local :class:`LocalExecGrader`
+    (so a host without the extra still grades, just with the heuristic env). ``none``
+    -> ``None``; ``local`` -> LocalExecGrader for any bench; ``swebench`` -> force the
+    SWE-bench-spec grader (errors if the extra is absent); ``overlap`` -> the cheap
+    heuristic. The grader returns ``None`` for non-CODE tasks, so an explicit choice
+    is safe on a QA bench; both CODE graders degrade to ``None`` (ungraded) when the
+    env can't be built, so a missing toolchain leaves CODE tasks ungraded, not crashing.
     """
     from ..grader import get_grader
 
     choice = (args.grader or "auto").strip().lower()
     if choice == "auto":
         if benchmark in _LOCAL_EXEC_BENCH:
-            return get_grader("local", timeout=args.grader_timeout)
+            # Prefer the SWE-bench-spec grader (official per-instance python/install/
+            # test specs + log parsers) when its optional package is installed; fall
+            # back to the heuristic LocalExecGrader otherwise so grading never breaks
+            # on a host that lacks the extra.
+            name = "swebench" if _swebench_available() else "local"
+            return get_grader(name, timeout=args.grader_timeout)
         return None  # QA benches + contextbench (retrieval-only): native metric
     if choice == "none":
         return None

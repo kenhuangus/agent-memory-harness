@@ -312,6 +312,39 @@ def test_local_exec_grader_none_when_patch_does_not_apply() -> None:
     assert g(_code_task(), _FIXED_DIFF) is None
 
 
+def test_grader_reverts_gold_test_files_before_applying_gold_patch() -> None:
+    """Trust boundary: the gold test_patch's target files are git-reverted to base
+    (discarding any agent edit) BEFORE the gold patch is applied, so an agent that
+    touched a test file can't break the apply or influence the tests."""
+    seen: list[list[str]] = []
+
+    def _recording_git(args, cwd, *a, **kw):
+        seen.append(list(args))
+        # Re-materialize on init/checkout like the standard fake; everything else ok.
+        if args and args[0] in ("init", "remote", "fetch", "checkout", "clone"):
+            from pathlib import Path as _P
+            _P(cwd).mkdir(parents=True, exist_ok=True)
+            (_P(cwd) / "orm.py").write_text("x\n", encoding="utf-8")
+        return GitResult(returncode=0)
+
+    # A gold test_patch that targets a specific test file.
+    task = _code_task(test_patch=(
+        "diff --git a/testing/test_orm.py b/testing/test_orm.py\n"
+        "--- a/testing/test_orm.py\n+++ b/testing/test_orm.py\n"
+        "@@ -1 +1 @@\n-old\n+new\n"
+    ))
+    g = G.LocalExecGrader(runner=_make_fake_cmd(), git_runner=_recording_git)
+    g(task, _FIXED_DIFF)
+
+    # A `git checkout -- testing/test_orm.py` (the revert) must appear, and it must
+    # come BEFORE the gold-test `git apply` of that same file.
+    revert_idxs = [i for i, a in enumerate(seen)
+                   if a[:2] == ["checkout", "--"] and "testing/test_orm.py" in a]
+    assert revert_idxs, f"expected a revert of the gold test file; saw {seen}"
+    # patch_target_files extracts the right file from the test_patch.
+    assert G.patch_target_files(task.test_patch) == ["testing/test_orm.py"]
+
+
 def test_local_exec_grader_records_and_logs_reason_on_env_failure(caplog) -> None:
     # The degradation stays None (honesty rule) but is no longer SILENT: it sets
     # last_reason, tallies ungraded_reasons, and logs at WARNING.

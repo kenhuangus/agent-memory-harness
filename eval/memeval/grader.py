@@ -286,6 +286,53 @@ def is_pytest_selector(selector: str) -> bool:
     return s.count("[") == s.count("]")  # reject truncated parametrized ids
 
 
+def patch_target_files(patch: str) -> list[str]:
+    """Return the repo-relative files a unified diff modifies (dedup, in order).
+
+    Reads the ``+++ b/<path>`` header of each hunk-group (the post-image path,
+    which is what ``git apply`` writes). ``/dev/null`` (a deletion's post-image) is
+    skipped. Pure + stdlib-only (unit-tested). Used to revert the gold test files to
+    their base state before applying the gold ``test_patch`` — enforcing the trust
+    boundary that the agent never influences the tests, and preventing a
+    ``gold_test_apply_failed`` when the agent happened to edit a test file."""
+    files: list[str] = []
+    for line in (patch or "").splitlines():
+        if line.startswith("+++ "):
+            path = line[4:].strip()
+            # Strip a/ b/ prefixes and any trailing tab-decorated timestamp.
+            path = path.split("\t", 1)[0].strip()
+            if path in ("/dev/null", ""):
+                continue
+            if path.startswith(("a/", "b/")):
+                path = path[2:]
+            if path not in files:
+                files.append(path)
+    return files
+
+
+def revert_test_files(git_runner: Any, dest: Any, files: list[str]) -> None:
+    """``git checkout -- <files>`` in ``dest``, restoring each to its committed
+    (base) state. Shared by BOTH graders (``LocalExecGrader`` and
+    ``SwebenchHostGrader``): called on the gold ``test_patch``'s target files
+    BEFORE applying that patch, so an agent that edited a test file can neither
+    break the apply (``gold_test_apply_failed``) nor influence the tests — the
+    SWE-bench trust boundary. ``git_runner`` is the injectable runner (``None`` ->
+    the real subprocess git) so offline tests drive it without a real repo.
+    Best-effort: a path that isn't tracked / can't be reverted is skipped; the
+    subsequent gold-patch apply is the real gate."""
+    if not files:
+        return
+    from pathlib import Path
+
+    from .claudecode import checkout as _checkout
+
+    git = git_runner or _checkout._subprocess_git
+    try:
+        git(["checkout", "--", *files], Path(dest))
+    except Exception:  # noqa: BLE001 - revert is best-effort; gold-apply still gates
+        pass
+
+
 def _parse_django(stdout: str, stderr: str, fail_to_pass: list[str],
                   pass_to_pass: list[str]) -> dict:
     """Parse ``tests/runtests.py`` output into a ``tests_status`` dict.
@@ -579,6 +626,13 @@ class LocalExecGrader:
 
             # (3) apply the GOLD test_patch (harness applies tests, never the agent).
             if task.test_patch:
+                # Trust boundary (grader docstring / SWE-bench rule): the agent must
+                # never influence the tests. If the prediction edited a file the gold
+                # test_patch targets, those edits would (a) survive into the grade and
+                # (b) make the gold patch fail to apply (-> gold_test_apply_failed).
+                # Revert exactly the gold test files to base BEFORE applying the gold
+                # patch, discarding any agent edits to them (non-test edits are kept).
+                revert_test_files(self._git_runner, dest, patch_target_files(task.test_patch))
                 if self._apply_patch(dest, task.test_patch) is not True:
                     return self._ungraded("gold test_patch did not apply", task)
 
@@ -798,6 +852,9 @@ __all__ = [
     "overlap_grader",
     "django_label",
     "is_django_selector",
+    "is_pytest_selector",
+    "patch_target_files",
+    "revert_test_files",
     "LocalExecGrader",
     "CmdResult",
     "CmdRunner",
