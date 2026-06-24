@@ -457,6 +457,13 @@ class RouterConfig:
     k: int = 5
     cascade: CascadeConfig = field(default_factory=CascadeConfig)
     consult2: Consult2Config = field(default_factory=Consult2Config)
+    # Reranker = the post-retrieval re-scoring stage, run AFTER routing/fusion — read-orchestration is the
+    # router's domain (the same place fusion lives), NOT the caller's. When set, `route()` wraps its
+    # retriever so search over-fetches `rerank_top_n` candidates and the reranker re-scores them to k.
+    # None (default) = no rerank, byte-for-byte today. Offline default is None (a lexical mock shows no
+    # lift, D028); the real cross-encoder (`VoyageReranker`) is the captained path (D045).
+    reranker: Optional[Any] = None
+    rerank_top_n: int = 50
     embed: Optional[Any] = None
     embed_model: Optional[str] = None
     # Write-routing (D009: the router owns WHERE to STORE). markdown is the always-written literal
@@ -514,7 +521,8 @@ def speed_profile() -> RouterConfig:
 
 def accuracy_profile(*, classifier: RouterClassifier, embed: Any,
                      embed_model: Optional[str] = None, k: int = 8,
-                     graph_max_depth: int = 3) -> RouterConfig:
+                     graph_max_depth: int = 3, reranker: Optional[Any] = None,
+                     rerank_top_n: int = 50) -> RouterConfig:
     """The ``accuracy`` profile: injected classifier + real embedder, cascade ON.
 
     The heavy strategies are CALLER-INJECTED (PR3): ``classifier`` is a
@@ -524,7 +532,8 @@ def accuracy_profile(*, classifier: RouterClassifier, embed: Any,
     ``graph_max_depth`` hops, default 3 — one deeper than speed's 2, a PROVISIONAL
     value pending a captained "does deeper traversal help" measurement, D032) and
     leaves ``consult2`` at its declared default (no RRF / second-opinion ships here).
-    ``k`` is the profile's retrieval breadth (wider than speed's default 5).
+    ``k`` is the profile's retrieval breadth (wider than speed's default 5). An optional
+    ``reranker`` adds the post-retrieval cross-encoder re-scoring stage (D045); ``None`` = no rerank.
     """
     return RouterConfig(
         profile_name="accuracy",
@@ -533,24 +542,30 @@ def accuracy_profile(*, classifier: RouterClassifier, embed: Any,
         embed=embed,
         embed_model=embed_model,
         k=k,
+        reranker=reranker,
+        rerank_top_n=rerank_top_n,
     )
 
 
 def fusion_profile(*, method: str = "rrf", per_backend_k: int = 10, rrf_k: int = 60,
-                   k: int = 8, backends: tuple = ()) -> RouterConfig:
+                   k: int = 8, backends: tuple = (), reranker: Optional[Any] = None,
+                   rerank_top_n: int = 50) -> RouterConfig:
     """A cross-backend FUSION profile: fan out to several backends and merge their results (D025).
 
     Enables :class:`Consult2Config` so :meth:`Router.route` returns a :class:`_FusionRetriever`.
     ``method`` is ``"rrf"`` (Reciprocal Rank Fusion) or ``"score"`` (max-normalized score fusion);
     ``per_backend_k`` is the fan-out depth fetched per backend; ``backends`` selects which to fuse
-    (empty = all registered). The cascade is left OFF (fusion supersedes it). Single-route/speed and
-    the offline default are unaffected — this only *builds the config*.
+    (empty = all registered). The cascade is left OFF (fusion supersedes it). An optional ``reranker``
+    adds the post-fusion cross-encoder re-scoring stage — the captained "fuse-all, then rerank" (D045);
+    ``None`` (default) = fusion only. Single-route/speed and the offline default are unaffected.
     """
     return RouterConfig(
         profile_name="fusion",
         consult2=Consult2Config(enabled=True, method=method, rrf_k=rrf_k,
                                 per_backend_k=per_backend_k, backends=backends),
         k=k,
+        reranker=reranker,
+        rerank_top_n=rerank_top_n,
     )
 
 
@@ -949,13 +964,27 @@ class Router:
         return {"choice": result.choice, "scores": result.scores, "margin": result.margin}
 
     def route(self, query: str, **kwargs: Any) -> MemoryStore:
-        """Return the store for ``query``, degrading to an available backend.
+        """Return the store for ``query`` — the routed retriever, with the profile's rerank stage applied.
 
-        When the active profile enables cross-backend fusion (``consult2``), returns a fresh
-        :class:`_FusionRetriever` over the registered backends (query-agnostic fan-out + merge — the
-        accuracy end of the spectrum), taking precedence over the cascade. Else when the profile enables
-        the cascade and a GRAPH-classified query has both cascade backends registered, returns a fresh
-        :class:`_GraphVectorCascade`; otherwise the v1 ``(choice, *fallback)`` single-route resolution.
+        Resolves the base retriever (fusion / cascade / single-route — see :meth:`_base_route`); then,
+        when the active profile sets a ``reranker``, wraps it so ``search`` over-fetches ``rerank_top_n``
+        candidates and the reranker re-scores them to ``k``. Reranking is the router's read-orchestration,
+        the same as fusion — the caller (the plugin) never wires a reranker; the *profile* does.
+        """
+        retriever = self._base_route(query)
+        if self._config.reranker is not None:
+            from .stores.rerankers import RerankedStore  # lazy: avoid a router<->stores import cycle
+            retriever = RerankedStore(retriever, self._config.reranker,
+                                      rerank_top_n=self._config.rerank_top_n)
+        return retriever
+
+    def _base_route(self, query: str) -> MemoryStore:
+        """The routed retriever BEFORE any rerank, degrading to an available backend.
+
+        Fusion (``consult2``) takes precedence and returns a fresh :class:`_FusionRetriever` (fan-out +
+        merge). Else the cascade for a GRAPH-classified query with both cascade backends registered
+        returns a fresh :class:`_GraphVectorCascade`; otherwise the v1 ``(choice, *fallback)`` single-route
+        resolution.
         """
         choice = self.classify(query)
         if self._config.consult2.enabled and self.backends:
