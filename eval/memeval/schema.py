@@ -50,6 +50,9 @@ class Benchmark(str, Enum):
     SWE_CONTEXTBENCH = "swe_contextbench"
     SWE_BENCH_CL = "swe_bench_cl"
     CONTEXTBENCH = "contextbench"
+    #: VISTA Bench — long-horizon foresight/safety journeys (drift, slow_burn,
+    #: injection / memory-poisoning). A 6th, additive benchmark.
+    VISTA = "vista"
 
     @classmethod
     def from_str(cls, value: str) -> "Benchmark":
@@ -75,6 +78,9 @@ class Benchmark(str, Enum):
             "context_bench": cls.CONTEXTBENCH,
             "euniai_contextbench": cls.CONTEXTBENCH,
             "cb": cls.CONTEXTBENCH,
+            "vista": cls.VISTA,
+            "vista_bench": cls.VISTA,
+            "vistabench": cls.VISTA,
         }
         if norm in aliases:
             return aliases[norm]
