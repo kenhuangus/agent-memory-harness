@@ -5,8 +5,11 @@ Evaluation infrastructure for the **AI Agent Memory Harness**.
 > **Hypothesis under test:** a small model (**Claude Haiku**) *plus* the memory
 > harness can beat **Claude Opus 4.8 with no memory** on public memory
 > benchmarks. `memeval` is the apparatus that measures whether that's true —
-> the same harness drives five public benchmarks through one unified data model
-> and scores every run on the same four metrics, memory-ON vs memory-OFF.
+> the same harness drives the public benchmarks through one unified data model
+> and scores every run on the same four metrics, memory-ON vs memory-OFF. The
+> suite is positioned around two in-scope benchmarks — **SWE-Bench-CL** (primary)
+> and **VISTA** (2nd) — with four legacy memory benches kept available but
+> non-primary (see `docs/adrs/ADR-eval-007-benchmark-suite-scope.md`).
 
 - **Distribution name:** `agent-memory-eval`
 - **Import package:** `memeval` (deliberately *not* `eval`, to avoid shadowing
@@ -244,18 +247,34 @@ the cost workflow below.
 
 ---
 
-## The five benchmarks → loaders → metrics
+## The benchmarks → loaders → metrics
+
+**Suite scope (positioning, not capability):** the harness is positioned around
+**two in-scope benchmarks** — **SWE-Bench-CL** (primary CODE / continual
+learning) and **VISTA** (2nd benchmark: foresight × safety, memory poisoning /
+adaptation). The four original memory benchmarks are **kept available but
+de-scoped to legacy/non-primary** — their loaders/evaluators/tests remain and
+they stay fully selectable. See
+[`../docs/adrs/ADR-eval-007-benchmark-suite-scope.md`](../docs/adrs/ADR-eval-007-benchmark-suite-scope.md).
 
 Each loader normalizes its source into `list[Task]`. The local-file path is
 stdlib-only; the remote path lazily imports `datasets`. Resolve a loader with
 `memeval.loaders.get_loader(benchmark)`.
+
+### In-scope
+
+| Benchmark | Loader | `default_source` | Kind | Real source |
+|---|---|---|---|---|
+| **SWE-Bench-CL** *(primary)* | `SWEBenchCLLoader` | `thomasjoshi/agents-never-forget` | CODE | GitHub `thomasjoshi/agents-never-forget`; arXiv 2507.00014. Built on SWE-bench Verified; chronological per-repo issue *sequences* (`group_id` = sequence, `order` within it). Continual-learning metrics. |
+| **VISTA** *(2nd)* | `VistaLoader` | `kenhuangus/vista-benchmark` | QA | GitHub `kenhuangus/vista-benchmark`; corpus CC-BY-4.0 (vendored under `memeval/data/vista/`). Long-horizon foresight × safety journeys; `event_trace` (`fact`/`drift`/`injection`/`slow_burn`) → `sessions`; exercises **memory poisoning / adaptation**. Native evaluator emits poisoning-resistance (targeted-ASR), gold-retrieval calibration, adaptation rate; pairs with the observer-only RSI safety gate (`memeval/safety.py`). |
+
+### Legacy (kept available, non-primary)
 
 | Benchmark | Loader | `default_source` | Kind | Real source |
 |---|---|---|---|---|
 | **MemoryAgentBench** | `MemoryAgentBenchLoader` | `ai-hyz/MemoryAgentBench` | QA | HF `ai-hyz/MemoryAgentBench`; GitHub `HUST-AI-HYZ/MemoryAgentBench`; arXiv 2507.05257. Competencies: accurate retrieval, test-time learning, long-range understanding, conflict resolution (EventQA, FactConsolidation). |
 | **LongMemEval** | `LongMemEvalLoader` | `xiaowu0162/LongMemEval` | QA | GitHub `xiaowu0162/LongMemEval`; arXiv 2410.10813. Files `longmemeval_s.json` (~115k tok/q), `longmemeval_m.json` (~1.5M), `longmemeval_oracle.json`. Multiple timestamped sessions/question; abilities incl. temporal reasoning, knowledge updates, abstention. |
 | **SWE-ContextBench** | `SWEContextBenchLoader` | `jiayuanz3/SWEContextBench` | CODE | HF `jiayuanz3/SWEContextBench`; GitHub `jiayuanz3/SWEContextBench`; arXiv 2602.08316. Parquet files (Experience + Related + Relationship; `lite=True` for Lite_* subsets), SWE-bench column schema. 1,100 base + 376 related, 51 repos, 9 languages; `group_id` from the Relationship links. |
-| **SWE-Bench-CL** | `SWEBenchCLLoader` | `thomasjoshi/agents-never-forget` | CODE | GitHub `thomasjoshi/agents-never-forget`; arXiv 2507.00014. Built on SWE-bench Verified; chronological per-repo issue *sequences* (`group_id` = sequence, `order` within it). Continual-learning metrics. |
 | **ContextBench** | `ContextBenchLoader` | `Contextbench/ContextBench` | CODE | HF `Contextbench/ContextBench` (configs `default` / `contextbench_verified`, single `train` split; `verified=True` for the 500-task subset); GitHub `EuniAI/ContextBench`; arXiv 2602.05892. In-task retrieval quality: 1,136 tasks, 66 repos, 8 langs, human-annotated `gold_context` spans (file/block/line) → `sessions` + `gold_memory_ids`. Primary metrics: relevancy + efficiency. |
 
 All defaults are overridable via the `--path` flag, CLI args, or env.

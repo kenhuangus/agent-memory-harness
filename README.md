@@ -67,13 +67,23 @@ straight to GitHub Pages.
 > All internal links are relative, so the site works at a project-pages subpath or at a user/organisation root
 > without any changes.
 
-## The five benchmarks
+## Benchmarks
+
+The suite is positioned around **two in-scope benchmarks**:
+
+- **SWE-Bench-CL** *(primary — CODE / continual learning)* — [paper](https://arxiv.org/abs/2507.00014) · [code](https://github.com/thomasjoshi/agents-never-forget)
+- **VISTA** *(2nd benchmark — foresight × safety, memory poisoning / adaptation)* — [code](https://github.com/kenhuangus/vista-benchmark) · corpus CC-BY-4.0 (see [`eval/memeval/data/vista/ATTRIBUTION.md`](eval/memeval/data/vista/ATTRIBUTION.md))
+
+### Legacy benchmarks (kept available, non-primary)
+
+These four original memory benchmarks are **de-scoped to legacy/non-primary** — their loaders, evaluators, and tests remain in the code and they stay fully selectable (`--benchmark <id>`), they are simply no longer positioned as the headline suite:
 
 - **MemoryAgentBench** — [paper](https://arxiv.org/abs/2507.05257) · [code](https://github.com/HUST-AI-HYZ/MemoryAgentBench) · [dataset](https://huggingface.co/datasets/ai-hyz/MemoryAgentBench)
 - **LongMemEval** — [paper](https://arxiv.org/abs/2410.10813) · [code](https://github.com/xiaowu0162/LongMemEval) · [site](https://xiaowu0162.github.io/long-mem-eval/)
 - **SWE-ContextBench** — [paper](https://arxiv.org/abs/2602.08316) · [dataset](https://huggingface.co/datasets/jiayuanz3/SWEContextBench) · [code](https://github.com/jiayuanz3/SWEContextBench)
-- **SWE-Bench-CL** — [paper](https://arxiv.org/abs/2507.00014) · [code](https://github.com/thomasjoshi/agents-never-forget)
 - **ContextBench** (in-task retrieval quality) — [paper](https://arxiv.org/abs/2602.05892) · [dataset](https://huggingface.co/datasets/Contextbench/ContextBench) · [code](https://github.com/EuniAI/ContextBench)
+
+See [`docs/adrs/ADR-eval-007-benchmark-suite-scope.md`](docs/adrs/ADR-eval-007-benchmark-suite-scope.md) for the scoping decision.
 
 Complementary: [LoCoMo](https://arxiv.org/abs/2402.17753), [SWE-bench Verified](https://huggingface.co/datasets/princeton-nlp/SWE-bench_Verified).
 
@@ -82,7 +92,7 @@ Complementary: [LoCoMo](https://arxiv.org/abs/2402.17753), [SWE-bench Verified](
 ## Run the benchmarks (the `eval/` harness)
 
 The evaluation code lives in [`eval/`](eval/) — a stdlib-first Python package
-(`memeval`). You can run each benchmark **on its own**, or all five together,
+(`memeval`). You can run each benchmark **on its own**, or several together,
 **locally through the Claude Code CLI**, comparing Claude Code's **built-in
 memory** vs **our plugin memory**, on your Claude Code **subscription** (no API
 key, no API billing). Installing puts a **`memeval-bench`** command on your PATH.

@@ -1,4 +1,4 @@
-"""Item 2 — VISTA as a 6th benchmark: loader + native evaluator offline tests."""
+"""Item 2 — VISTA as the 2nd benchmark: loader + native evaluator offline tests."""
 
 from __future__ import annotations
 

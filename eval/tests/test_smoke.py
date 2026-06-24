@@ -285,7 +285,8 @@ def test_loader_registry_lists_all_five() -> None:
         Benchmark.SWE_CONTEXTBENCH,
         Benchmark.SWE_BENCH_CL,
         Benchmark.CONTEXTBENCH,
-        # 6th benchmark (additive): VISTA Bench.
+        # 2nd in-scope benchmark (additive): VISTA Bench. The four memory
+        # benches above are kept selectable but de-scoped to legacy/non-primary.
         Benchmark.VISTA,
     }
     # Loose-string resolution goes through Benchmark.from_str.
