@@ -86,7 +86,7 @@ holding prompts/tools/task order fixed and logging every trajectory for reproduc
 - The intelligent router (rule-based; learned-classifier hook).
 - The async dreaming component: dedup, conflict resolution, session governance, retention/pruning.
 - OpenCode integration for systematic memory write/read on each agent step.
-- Evaluation harness over the five benchmarks; baselines for Haiku, Opus 4.8 and Sonnet.
+- Evaluation harness over the benchmarks; baselines for Haiku, Opus 4.8 and Sonnet. *(Scope, ADR-eval-007: two in-scope benchmarks — `swe_bench_cl` primary + `vista` 2nd; the four memory benches kept available but de-scoped to legacy.)*
 - Metric definitions, a reproducible protocol, and a results dashboard.
 
 ### Out of scope (non-goals)

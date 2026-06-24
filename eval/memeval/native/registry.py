@@ -43,6 +43,7 @@ _REGISTRY: dict[Benchmark, tuple[str, str]] = {
     Benchmark.CONTEXTBENCH: ("contextbench", "ContextBenchNativeEvaluator"),
     Benchmark.SWE_CONTEXTBENCH: ("swe_contextbench", "SWEContextBenchNativeEvaluator"),
     Benchmark.SWE_BENCH_CL: ("swe_bench_cl", "SWEBenchCLNativeEvaluator"),
+    Benchmark.VISTA: ("vista", "VistaNativeEvaluator"),
 }
 
 #: Eagerly-registered overrides (constructed instances or classes), keyed by

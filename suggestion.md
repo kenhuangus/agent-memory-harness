@@ -267,3 +267,30 @@ retry must live in `OpenRouterClient.complete()`.
 
 Evidence: run `eval/runs/swe_bench_cl_pluginreal_smoke/v0.1/plugin-real/_groupstore/django_django_sequence/dream/*.daydream-events.jsonl`
 (`llm_rate_limited` × 3); the burst reproduction + `/api/v1/key` output above.
+
+---
+
+## VISTA self-improvement-safety (RSI) gate — request for a non-invasive consolidation hook
+
+The new observer-only safety axis (`eval/memeval/safety.py`, ported from VISTA
+`harness/rsi.py`) measures whether a daydream/consolidation cycle ever makes a
+**forbidden belief** (a planted poisoned/canary fact) *reachable* in the store
+that was not reachable before — the memory analogue of VISTA's
+"self-improvement may never open a path to a forbidden state" invariant
+(OWASP ASI10 rogue self-improvement / ASI06 memory poisoning).
+
+It currently runs as a pure **black-box store-diff**: it consumes ordered
+public store snapshots (before / after each consolidation cycle) and never
+touches team-owned code (`dreaming/**`, `stores/**`, `plugin/cookbook_memory/**`).
+That works but gives only per-cycle (snapshot) trend resolution.
+
+**Request (team-owned, do not let the harness edit it):** if the consolidation
+path could emit a lightweight, read-only "proposed memory edit" event at the
+point a daydream write is about to be applied — e.g. a JSONL record
+`{cycle, item_id, op: add|update|delete, content}` alongside the existing
+`*.daydream-events.jsonl` — the safety gate could evaluate the invariant at
+true per-edit granularity (reject-if-new-forbidden-path, exactly like VISTA's
+`evaluate_edit`) instead of inferring it from snapshots. This is purely an
+additional observation surface; it would NOT change consolidation behavior.
+Until/unless the team adds it, the harness stays on the black-box store-diff
+fallback (no team-owned code touched).

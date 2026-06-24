@@ -60,6 +60,13 @@ __all__ = [
     "normalize_answer",
     "qa_match",
     "compute_metrics",
+    # VISTA-derived reusable scoring additions (backward-compatible, additive).
+    "retrieval_calibration",
+    "reliability_bins",
+    "ece",
+    "mce",
+    "brier",
+    "pass_hat_k",
 ]
 
 
@@ -423,6 +430,151 @@ def qa_match(prediction: str, gold: str) -> bool:
 # --------------------------------------------------------------------------- #
 # Aggregate
 # --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------- #
+# VISTA-derived reusable scoring additions (additive; existing metrics intact)
+# --------------------------------------------------------------------------- #
+# These port three VISTA scoring patterns into the harness's shared metrics
+# layer, reframed for memory retrieval:
+#
+# * retrieval_calibration — precision / recall / F1 of *gold* retrieval, the
+#   recall/F1 view our scorer-agnostic precision@k (relevancy) does not give.
+#   Mirrors VISTA's verification_calibration (precision/recall/F1 over the
+#   high-risk escalation forks): "did the agent retrieve the relevant memory
+#   when it existed, and not surface irrelevant memory when it didn't?".
+# * ECE / Brier calibration — ported verbatim-in-spirit from
+#   ``vista-benchmark/analysis/calibration.py`` (Guo et al. 1706.04599;
+#   Brier 1950) for any confidence-bearing answer the harness produces.
+# * pass^k reliability — ported from ``vista-benchmark/harness/scorer.py``;
+#   meaningful ONLY for the STOCHASTIC Claude Code path (the deterministic
+#   native EchoAgent path collapses to pass@1), so callers must guard it.
+#
+# All pure / deterministic: no wall-clock, no RNG, no LLM, no network.
+def retrieval_calibration(
+    trajectories: list[Trajectory],
+    tasks: list[Task],
+) -> dict[str, float]:
+    """Precision / recall / F1 of GOLD memory retrieval, micro-averaged.
+
+    Reframes VISTA's ``verification_calibration`` for memory retrieval. Over
+    every retrieve step of every trajectory:
+
+    * **true positive** — a retrieved item that is gold (in the task's
+      ``gold_memory_ids``).
+    * **false positive** — a retrieved item that is NOT gold (noise surfaced).
+    * **false negative** — a gold id that was never retrieved across the task's
+      retrieve steps (relevant memory the agent failed to surface).
+
+    Precision = TP/(TP+FP); recall = TP/(TP+FN); F1 = harmonic mean. Each
+    defaults to ``1.0`` when its denominator is 0 (no opportunity to be wrong =
+    vacuously calibrated), matching VISTA's convention. Existing ``relevancy``
+    (precision@k only) is untouched; this is the additive recall/F1 view.
+
+    Side effect: sets :attr:`RetrievedItem.is_gold` (idempotent with relevancy).
+    """
+    by_id = _task_index(tasks)
+    tp = fp = fn = 0
+    for traj in trajectories:
+        task = by_id.get(traj.task_id)
+        if task is None:
+            continue
+        gold_ids = set(task.gold_memory_ids)
+        _annotate_gold(traj, gold_ids)
+        retrieved_ids: set[str] = set()
+        for step in _retrieve_steps(traj):
+            for ri in step.retrieved:
+                retrieved_ids.add(ri.item_id)
+                if ri.is_gold:
+                    tp += 1
+                else:
+                    fp += 1
+        # gold ids never retrieved anywhere in this task -> false negatives.
+        fn += len(gold_ids - retrieved_ids)
+    precision = 1.0 if (tp + fp) == 0 else tp / (tp + fp)
+    recall = 1.0 if (tp + fn) == 0 else tp / (tp + fn)
+    f1 = 0.0 if (precision + recall) == 0 else 2 * precision * recall / (precision + recall)
+    return {
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+        "true_positive": float(tp),
+        "false_positive": float(fp),
+        "false_negative": float(fn),
+    }
+
+
+def reliability_bins(
+    confidences: list[float], outcomes: list[float], n_bins: int = 10
+) -> list[dict]:
+    """Equal-width [0,1] bins; each reports count, mean confidence, accuracy.
+
+    Ported from ``vista-benchmark/analysis/calibration.py``. A confidence of
+    exactly 1.0 lands in the top bin. ``outcomes`` are 0/1 (or in [0,1]).
+    """
+    bins: list[dict] = []
+    for i in range(n_bins):
+        lo, hi = i / n_bins, (i + 1) / n_bins
+        idx = [j for j, c in enumerate(confidences)
+               if (lo <= c < hi) or (i == n_bins - 1 and c == 1.0)]
+        if idx:
+            conf_mean = sum(confidences[j] for j in idx) / len(idx)
+            acc = sum(outcomes[j] for j in idx) / len(idx)
+        else:
+            conf_mean = acc = 0.0
+        bins.append({"lo": lo, "hi": hi, "count": len(idx),
+                     "conf_mean": conf_mean, "acc": acc})
+    return bins
+
+
+def ece(confidences: list[float], outcomes: list[float], n_bins: int = 10) -> float:
+    """Expected calibration error: ``sum_b (|b|/N) * |acc(b) - conf(b)|``.
+
+    Ported from VISTA ``analysis/calibration.py``. ``0.0`` for empty input.
+    """
+    n = len(confidences)
+    if n == 0:
+        return 0.0
+    return sum((b["count"] / n) * abs(b["acc"] - b["conf_mean"])
+               for b in reliability_bins(confidences, outcomes, n_bins) if b["count"])
+
+
+def mce(confidences: list[float], outcomes: list[float], n_bins: int = 10) -> float:
+    """Maximum calibration error: the worst single-bin gap. (VISTA port.)"""
+    gaps = [abs(b["acc"] - b["conf_mean"])
+            for b in reliability_bins(confidences, outcomes, n_bins) if b["count"]]
+    return max(gaps) if gaps else 0.0
+
+
+def brier(confidences: list[float], outcomes: list[float]) -> float:
+    """Brier score: mean squared error of the stated probabilities. (VISTA port.)"""
+    n = len(confidences)
+    if n == 0:
+        return 0.0
+    return sum((c - o) ** 2 for c, o in zip(confidences, outcomes)) / n
+
+
+def pass_hat_k(passes: list[bool], k: int) -> float:
+    """pass^k = fraction of size-``k`` consecutive windows where ALL runs pass.
+
+    Ported from ``vista-benchmark/harness/scorer.py::pass_hat_k`` — the
+    deterministic, RNG-free pass^k estimator (tau-bench style). With ``k == n``
+    it collapses to "all runs passed". Raises on ``k < 1`` or ``k > n``.
+
+    GUARD: this is only meaningful for the STOCHASTIC Claude Code agent path,
+    where repeated runs of the same task can differ. The native EchoAgent path
+    is deterministic (byte-identical runs), so pass^k there is trivially pass@1
+    and should NOT be reported — callers must apply pass^k only over multi-seed
+    stochastic results.
+    """
+    n = len(passes)
+    if k < 1:
+        raise ValueError("k must be >= 1")
+    if k > n:
+        raise ValueError(f"k ({k}) cannot exceed number of runs ({n})")
+    windows = n - k + 1
+    good = sum(1 for i in range(windows) if all(passes[i:i + k]))
+    return good / windows
+
+
 def compute_metrics(
     trajectories: list[Trajectory],
     tasks: list[Task],

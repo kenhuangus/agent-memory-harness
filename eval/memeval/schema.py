@@ -36,13 +36,21 @@ from typing import Any, Optional
 # Enums
 # --------------------------------------------------------------------------- #
 class Benchmark(str, Enum):
-    """The five public memory benchmarks this harness evaluates.
+    """The public benchmarks this harness can evaluate.
 
     Inherits from ``str`` so the enum value is JSON-serializable and usable
     directly as a dict key / CLI argument (``Benchmark("longmemeval")``).
 
-    The first four score task success; ``CONTEXTBENCH`` scores in-task context
-    *retrieval* quality (recall/precision/efficiency).
+    Suite scope (positioning, not capability): the harness is positioned around
+    **two in-scope benchmarks** — ``SWE_BENCH_CL`` (the primary CODE /
+    continual-learning benchmark) and ``VISTA`` (the 2nd benchmark: foresight ×
+    safety + memory poisoning / adaptation). The four original memory benchmarks
+    (``MEMORY_AGENT_BENCH``, ``LONGMEMEVAL``, ``SWE_CONTEXTBENCH``,
+    ``CONTEXTBENCH``) remain fully registered and selectable but are de-scoped to
+    legacy / non-primary. No benchmark code has been removed.
+
+    Of the four legacy benches the first three score task success; ``CONTEXTBENCH``
+    scores in-task context *retrieval* quality (recall/precision/efficiency).
     """
 
     MEMORY_AGENT_BENCH = "memoryagentbench"
@@ -50,6 +58,9 @@ class Benchmark(str, Enum):
     SWE_CONTEXTBENCH = "swe_contextbench"
     SWE_BENCH_CL = "swe_bench_cl"
     CONTEXTBENCH = "contextbench"
+    #: VISTA Bench — long-horizon foresight/safety journeys (drift, slow_burn,
+    #: injection / memory-poisoning). A 6th, additive benchmark.
+    VISTA = "vista"
 
     @classmethod
     def from_str(cls, value: str) -> "Benchmark":
@@ -75,6 +86,9 @@ class Benchmark(str, Enum):
             "context_bench": cls.CONTEXTBENCH,
             "euniai_contextbench": cls.CONTEXTBENCH,
             "cb": cls.CONTEXTBENCH,
+            "vista": cls.VISTA,
+            "vista_bench": cls.VISTA,
+            "vistabench": cls.VISTA,
         }
         if norm in aliases:
             return aliases[norm]

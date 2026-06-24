@@ -285,11 +285,15 @@ def test_loader_registry_lists_all_five() -> None:
         Benchmark.SWE_CONTEXTBENCH,
         Benchmark.SWE_BENCH_CL,
         Benchmark.CONTEXTBENCH,
+        # 2nd in-scope benchmark (additive): VISTA Bench. The four memory
+        # benches above are kept selectable but de-scoped to legacy/non-primary.
+        Benchmark.VISTA,
     }
     # Loose-string resolution goes through Benchmark.from_str.
     assert get_loader("LongMemEval").benchmark is Benchmark.LONGMEMEVAL
     assert get_loader("swe-bench-cl").benchmark is Benchmark.SWE_BENCH_CL
     assert get_loader("contextbench").benchmark is Benchmark.CONTEXTBENCH
+    assert get_loader("vista").benchmark is Benchmark.VISTA
 
 
 def test_live_loaders_against_real_sources() -> None:

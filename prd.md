@@ -27,6 +27,15 @@ largest model.
 On **≥ 2 of the 5 benchmarks**, *Haiku + harness* beats the *Opus 4.8 no-memory*
 baseline across the four metrics, **without** > ~10% memory-token overhead.
 
+> **Scope update (2026-06-24, ADR-eval-007):** the suite is now positioned around
+> **two in-scope benchmarks** — `swe_bench_cl` (primary) and `vista` (2nd:
+> foresight × safety + memory poisoning / adaptation). The four memory benches
+> referenced in the frozen criterion above (memoryagentbench, longmemeval,
+> swe_contextbench, contextbench) are **kept available but de-scoped to
+> legacy/non-primary** — no benchmark code was removed and all remain selectable.
+> The frozen criterion text is left intact for history; new reporting leads with
+> the two in-scope benchmarks.
+
 | Metric | Definition |
 |---|---|
 | Recency | Is the freshest relevant memory ranked first? |

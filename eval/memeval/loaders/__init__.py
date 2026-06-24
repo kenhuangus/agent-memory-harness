@@ -33,6 +33,7 @@ _REGISTRY: dict[Benchmark, tuple[str, str]] = {
     Benchmark.SWE_CONTEXTBENCH: ("swe_contextbench", "SWEContextBenchLoader"),
     Benchmark.SWE_BENCH_CL: ("swe_bench_cl", "SWEBenchCLLoader"),
     Benchmark.CONTEXTBENCH: ("contextbench", "ContextBenchLoader"),
+    Benchmark.VISTA: ("vista", "VistaLoader"),
 }
 
 #: Friendly alias for the registry (same object) -- the harness/CLI may import
