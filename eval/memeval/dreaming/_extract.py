@@ -26,7 +26,11 @@ from typing import Any, Callable
 from memeval.cost import cost_of
 from memeval.dreaming.events import emit
 from memeval.dreaming.llm import Completion, LLMClient
-from memeval.dreaming.prompts import EXTRACTION_SYSTEM_PROMPT, _ENVELOPE_TEMPLATE
+from memeval.dreaming.prompts import (
+    EXTRACTION_SYSTEM_PROMPT,
+    _ENVELOPE_TEMPLATE,
+    get_extraction_prompt,
+)
 from memeval.dreaming.redaction import RedactedText, redact
 from memeval.schema import MemoryItem
 
@@ -135,8 +139,12 @@ def extract_memories(
     wrapped = _wrap_user_content_in_envelope(
         redacted_chunk, session_id=session_id, now=now
     )
-    # REASON: developer-authored constant, no user content.
-    system = RedactedText(EXTRACTION_SYSTEM_PROMPT)
+    # Resolve the active extraction prompt variant per call (ADR-dreaming-023):
+    # default V0 = EXTRACTION_SYSTEM_PROMPT, opt-in V1/V2/V3 via
+    # DREAM_EXTRACTION_VARIANT env var. Reading per call (vs at import time)
+    # lets operators flip variants without a process restart.
+    # REASON: developer-authored constants, no user content.
+    system = RedactedText(get_extraction_prompt())
 
     completion: Completion = client.complete(
         wrapped, system=system, max_tokens=max_tokens

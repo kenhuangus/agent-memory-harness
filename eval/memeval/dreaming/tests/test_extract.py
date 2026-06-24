@@ -2444,6 +2444,8 @@ def test_extract_module_top_imports_unchanged() -> None:
         "memeval.dreaming.llm.LLMClient",
         "memeval.dreaming.prompts.EXTRACTION_SYSTEM_PROMPT",
         "memeval.dreaming.prompts._ENVELOPE_TEMPLATE",
+        # ADR-dreaming-023: per-call selector resolves V0/V1/V2/V3 from env.
+        "memeval.dreaming.prompts.get_extraction_prompt",
         "memeval.dreaming.redaction.RedactedText",
         "memeval.dreaming.redaction.redact",
         "memeval.schema.MemoryItem",
