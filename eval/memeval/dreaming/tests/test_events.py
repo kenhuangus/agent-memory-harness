@@ -295,3 +295,79 @@ def test_pr2_call_sites_emit_without_context(caplog):
     client = OpenRouterClient(api_key=None)  # explicitly unset
     client.complete(RedactedText("anything"))
     assert any("llm_unavailable" in r.getMessage() for r in caplog.records)
+
+
+# --- DREAM_DEBUG=1 stdout opt-in (replay-script + local-dev surface) -------- #
+def test_dream_debug_unset_no_stdout(monkeypatch, capsys):
+    """Default — no env var — emit() never touches stdout."""
+    monkeypatch.delenv("DREAM_DEBUG", raising=False)
+    emit("silent_event", k="v")
+    captured = capsys.readouterr()
+    assert captured.out == "", f"unexpected stdout: {captured.out!r}"
+
+
+def test_dream_debug_set_to_zero_no_stdout(monkeypatch, capsys):
+    """Only the literal value '1' enables the mirror (not '0', 'true', etc.)."""
+    monkeypatch.setenv("DREAM_DEBUG", "0")
+    emit("still_silent", k="v")
+    captured = capsys.readouterr()
+    assert captured.out == ""
+
+
+def test_dream_debug_emits_one_jsonl_line_per_event(monkeypatch, capsys):
+    """DREAM_DEBUG=1 → one JSONL line per emit, parseable, carrying event_type + fields."""
+    monkeypatch.setenv("DREAM_DEBUG", "1")
+    emit("debug_event_a", a=1)
+    emit("debug_event_b", b="x")
+    out = capsys.readouterr().out.splitlines()
+    assert len(out) == 2
+    parsed = [json.loads(line) for line in out]
+    assert parsed[0]["event_type"] == "debug_event_a"
+    assert parsed[0]["a"] == 1
+    assert "ts" in parsed[0]
+    assert parsed[1]["event_type"] == "debug_event_b"
+    assert parsed[1]["b"] == "x"
+
+
+def test_dream_debug_fires_outside_event_context(monkeypatch, capsys, tmp_path):
+    """Stdout mirror works even when no event_context is bound (diary skip path)."""
+    monkeypatch.setenv("DREAM_DEBUG", "1")
+    # NOT inside event_context — diary path is short-circuited but stdout still fires.
+    emit("loose_event", n=7)
+    out = capsys.readouterr().out
+    assert out, "stdout mirror should fire even without context bound"
+    record = json.loads(out)
+    assert record["event_type"] == "loose_event"
+    # No diary file created either.
+    assert not any(tmp_path.rglob("*.jsonl"))
+
+
+def test_dream_debug_does_not_replace_diary_when_context_bound(
+    monkeypatch, capsys, tmp_path
+):
+    """DREAM_DEBUG=1 is ADDITIVE — diary still gets the record when context is bound."""
+    monkeypatch.setenv("DREAM_DEBUG", "1")
+    with event_context(session_id="sid-1", basedir=tmp_path):
+        emit("dual_event", x=1)
+    # Stdout mirror fired
+    stdout_record = json.loads(capsys.readouterr().out)
+    assert stdout_record["event_type"] == "dual_event"
+    # Diary also written
+    diary_lines = diary_path_for(tmp_path, "sid-1").read_text().splitlines()
+    assert len(diary_lines) == 1
+    diary_record = json.loads(diary_lines[0])
+    assert diary_record["event_type"] == "dual_event"
+    assert diary_record["x"] == 1
+
+
+def test_dream_debug_stdout_failure_does_not_propagate(monkeypatch):
+    """If stdout.write blows up, emit() swallows it (fail-open contract)."""
+    monkeypatch.setenv("DREAM_DEBUG", "1")
+    import sys
+
+    def _explode(*a, **kw):
+        raise IOError("broken pipe")
+
+    monkeypatch.setattr(sys.stdout, "write", _explode)
+    # Must not raise.
+    emit("should_not_propagate", k="v")

@@ -30,6 +30,7 @@ from memeval.dreaming.prompts import (
     EXTRACTION_SYSTEM_PROMPT,
     _ENVELOPE_TEMPLATE,
     get_extraction_prompt,
+    resolve_extraction_prompt,
 )
 from memeval.dreaming.redaction import RedactedText, redact
 from memeval.schema import MemoryItem
@@ -144,7 +145,18 @@ def extract_memories(
     # DREAM_EXTRACTION_VARIANT env var. Reading per call (vs at import time)
     # lets operators flip variants without a process restart.
     # REASON: developer-authored constants, no user content.
-    system = RedactedText(get_extraction_prompt())
+    identity = resolve_extraction_prompt()
+    system = RedactedText(identity.text)
+    # Per-chunk forensic anchor: one event carries (variant, sha256, char_count,
+    # model). Per-memory events stay lean; correlate via session_id + ts.
+    emit(
+        "daydream.prompt_resolved",
+        session_id=session_id,
+        variant=identity.variant,
+        prompt_sha256=identity.sha256,
+        prompt_chars=identity.char_count,
+        model=client.model,
+    )
 
     completion: Completion = client.complete(
         wrapped, system=system, max_tokens=max_tokens

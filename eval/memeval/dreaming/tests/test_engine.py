@@ -1264,6 +1264,41 @@ def test_memory_written_event_emitted_per_item(
         assert r["item_id"].startswith("mem_")
 
 
+def test_memory_written_event_carries_content_tags_relevancy(
+    basedir: Path, log_path: Path, session_id: str
+) -> None:
+    """Replay-script + Speaker D's router-evaluator surface: per-kept-memory
+    event carries the LLM-emitted content + tags + relevancy so consumers
+    can read the kept-memory stream without a store round-trip. Additive
+    extension (PR #108 precedent); the prior id-only assertions still hold."""
+    payload = (
+        '{"memories": ['
+        '{"content":"prefers Postgres","tags":["pref","db"],"relevancy":0.9},'
+        '{"content":"meets weekly Fridays","tags":["sched"],"relevancy":0.5}'
+        "]}"
+    )
+    client = StubClient(text=payload)
+    daydream(
+        session_id=session_id,
+        log_path=log_path,
+        store=InMemoryStore(),
+        client=client,
+        basedir=basedir,
+        now=2000.0,
+        id_gen=_Counter(),
+    )
+    writes = [
+        r for r in _diary_records(basedir, session_id)
+        if r["event_type"] == "daydream.memory_written"
+    ]
+    assert len(writes) == 2
+    by_content = {r["content"]: r for r in writes}
+    assert by_content["prefers Postgres"]["tags"] == ["pref", "db"]
+    assert by_content["prefers Postgres"]["relevancy"] == 0.9
+    assert by_content["meets weekly Fridays"]["tags"] == ["sched"]
+    assert by_content["meets weekly Fridays"]["relevancy"] == 0.5
+
+
 # --------------------------------------------------------------------------- #
 # §L (rubric §P) — protocol compliance (criteria 134, 135)
 # --------------------------------------------------------------------------- #
