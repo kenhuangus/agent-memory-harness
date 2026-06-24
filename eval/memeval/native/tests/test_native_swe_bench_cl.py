@@ -114,9 +114,66 @@ def test_score_headline_metrics_in_range() -> None:
         assert m.better in ("higher", "lower")
     # forgetting is the lower-is-better member
     assert report.metric("forgetting").better == "lower"
-    # tool-use efficiency is the documented placeholder (0.0, N/A)
+    # tool-use efficiency is now COMPUTED (resolutions per recorded action step),
+    # not the old fixed N/A placeholder.
     tue = report.metric("tool_use_efficiency")
-    assert tue is not None and tue.value == 0.0
+    assert tue is not None
+    assert 0.0 <= tue.value <= 1.0
+    assert tue.better == "higher"
+    assert tue.metadata.get("status") != "placeholder"
+    assert tue.n >= 1 and "formula" in tue.metadata
+
+
+def test_tool_use_efficiency_is_computed_from_action_steps() -> None:
+    """TUE = resolved_initial / action_steps_initial, computed from real records."""
+    from memeval.native.spec import PerTaskRecord
+    from memeval.schema import Trajectory, TrajectoryStep
+
+    ev = SWEBenchCLNativeEvaluator()
+    tasks = _load_tasks()[:2]
+    bench = tasks[0].benchmark
+
+    def _rec(task, *, success: bool, n_steps: int, phase: str, memory_on: bool):
+        tr = Trajectory(task_id=task.task_id, benchmark=bench, model="m",
+                        memory_on=memory_on, success=success)
+        for _ in range(n_steps):
+            tr.add(TrajectoryStep(step=0, kind="generate"))
+        return PerTaskRecord.from_trajectory(tr, phase=phase)
+
+    records = [
+        # initial pass (mem-on): 1 resolved of 2, 4 action steps total -> 1/4 = 0.25
+        _rec(tasks[0], success=True, n_steps=2, phase="initial_pass", memory_on=True),
+        _rec(tasks[1], success=False, n_steps=2, phase="initial_pass", memory_on=True),
+        # mem-off baseline (present so the rest of score() has both conditions)
+        _rec(tasks[0], success=False, n_steps=1, phase="mem_off", memory_on=False),
+        _rec(tasks[1], success=False, n_steps=1, phase="mem_off", memory_on=False),
+    ]
+    tue = ev.score(records, tasks).metric("tool_use_efficiency")
+    assert tue.metadata["resolved"] == 1
+    assert tue.metadata["action_steps"] == 4
+    assert abs(tue.value - 0.25) < 1e-9
+    assert tue.n == 2
+
+
+def test_tool_use_efficiency_uncomputable_when_no_action_steps() -> None:
+    """No recorded action steps -> honest UNCOMPUTABLE (n=0), never a fake value."""
+    from memeval.native.spec import PerTaskRecord
+    from memeval.schema import Trajectory
+
+    ev = SWEBenchCLNativeEvaluator()
+    tasks = _load_tasks()[:2]
+    bench = tasks[0].benchmark
+    records = []
+    for t in tasks:
+        tr = Trajectory(task_id=t.task_id, benchmark=bench, model="m",
+                        memory_on=True, success=False)  # no steps added
+        records.append(PerTaskRecord.from_trajectory(tr, phase="initial_pass"))
+        tr2 = Trajectory(task_id=t.task_id, benchmark=bench, model="m",
+                         memory_on=False, success=False)
+        records.append(PerTaskRecord.from_trajectory(tr2, phase="mem_off"))
+    tue = ev.score(records, tasks).metric("tool_use_efficiency")
+    assert tue.n == 0
+    assert tue.metadata.get("status") == "uncomputable"
 
 
 def test_score_no_forgetting_offline() -> None:

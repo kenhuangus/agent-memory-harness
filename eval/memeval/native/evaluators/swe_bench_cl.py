@@ -79,6 +79,11 @@ _PHASE_INITIAL = "initial_pass"
 _PHASE_FINAL = "final_state"
 _PHASE_MEMOFF = "mem_off"
 
+#: Trajectory step kinds that count as agent "actions" for tool-use efficiency.
+#: The harness records actions (retrieve / generate / write), not a sub-agent's
+#: individual tool calls, so TUE is a faithful proxy over what is recorded.
+_ACTION_KINDS = frozenset({"retrieve", "generate", "write"})
+
 
 class SWEBenchCLNativeEvaluator(BaseNativeEvaluator):
     """Native evaluator for SWE-Bench-CL (continual-learning, code)."""
@@ -234,13 +239,36 @@ class SWEBenchCLNativeEvaluator(BaseNativeEvaluator):
         # -- snapshot-phase component (initial-pass vs final-state means) ----- #
         self._add_snapshot_component(report, initial, final, retested)
 
-        # -- Tool-Use Efficiency: placeholder, matching the reference code ---- #
-        report.add_metric(
-            NativeMetric(
-                "tool_use_efficiency", 0.0, n=0, better="higher",
-                metadata={"status": "placeholder", "note": "N/A in reference eval_procedure.py"},
-            )
+        # -- Tool-Use Efficiency: resolutions per recorded agent action step -- #
+        # Computed from the memory-ON initial pass: resolved tasks / total recorded
+        # agent action steps (retrieve/generate/write) across those trajectories --
+        # a proxy for how efficiently the agent spends actions to resolve tasks
+        # (higher = fewer actions per resolution). The harness records actions, not
+        # a sub-agent's individual tool calls, so this is a faithful proxy over what
+        # is recorded, not a literal tool-call count. The reference eval_procedure.py
+        # left this N/A; we compute it when there is signal, and report it honestly
+        # UNCOMPUTABLE (n=0) when no action steps were recorded -- never a fake 0.0.
+        init_recs = [r for r in records if r.extra.get("phase") == _PHASE_INITIAL]
+        action_steps = sum(
+            1 for r in init_recs for s in r.trajectory.steps if s.kind in _ACTION_KINDS
         )
+        resolved_ct = sum(1 for r in init_recs if r.success)
+        if action_steps > 0:
+            report.add_metric(NativeMetric(
+                "tool_use_efficiency", resolved_ct / action_steps,
+                n=len(init_recs), better="higher",
+                metadata={
+                    "formula": "resolved_initial / action_steps_initial",
+                    "action_kinds": sorted(_ACTION_KINDS),
+                    "resolved": resolved_ct, "action_steps": action_steps,
+                },
+            ))
+        else:
+            report.add_metric(NativeMetric(
+                "tool_use_efficiency", 0.0, n=0, better="higher",
+                metadata={"status": "uncomputable",
+                          "note": "no agent action steps recorded in trajectories"},
+            ))
 
         report.metadata["n_sequences"] = len(per_seq)
         report.metadata["retested"] = retested
