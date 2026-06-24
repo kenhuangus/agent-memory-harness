@@ -1183,9 +1183,16 @@ def test_pytest_selector_filter_and_parse() -> None:
     # --- is_pytest_selector: accept node ids, reject captured progress junk. ---
     assert G.is_pytest_selector("testing/test_x.py::TestC::test_y")
     assert G.is_pytest_selector("testing/test_x.py::test_y[param]")
+    assert G.is_pytest_selector("testing/test_x.py::test_y[test_input1-expected1]")
     assert not G.is_pytest_selector("[100%]")     # leaked progress bar (the contaminant)
     assert not G.is_pytest_selector("")
     assert not G.is_pytest_selector("4 passed in 1.5s")
+    # Truncated parametrized ids (param contained ", " -> capture split off the rest,
+    # leaving an unbalanced bracket). Unrecoverable; pytest reports "not found" and
+    # aborts the whole run, so these must be dropped.
+    assert not G.is_pytest_selector("testing/test_skipping.py::TestXFail::test_xfail_raises[(AttributeError,")
+    assert not G.is_pytest_selector('testing/test_skipping.py::TestSkipif::test_skipif_reporting["hasattr(sys,')
+    assert not G.is_pytest_selector("testing/test_x.py::test_xfail_raises[TypeError-IndexError-*1")
 
     # --- _parse_pytest reads pytest -rA "<STATUS> <nodeid>" summary lines. ---
     # Crucially, a node id NAMED test_failed must be read by the leading STATUS word,

@@ -260,18 +260,30 @@ def is_django_selector(selector: str) -> bool:
 
 
 def is_pytest_selector(selector: str) -> bool:
-    """True iff ``selector`` is a runnable pytest node id, not captured junk.
+    """True iff ``selector`` is a *runnable* pytest node id, not captured junk.
 
-    SWE-bench-CL ``FAIL_TO_PASS`` / ``PASS_TO_PASS`` lists occasionally carry
-    fragments of pytest's own *progress output* as standalone entries — e.g.
-    ``"[100%]"`` (the progress-bar suffix). Handed to pytest on the command line,
-    such a token is treated as a file path; pytest can't find it and aborts the
-    ENTIRE run with rc=4 (``ERROR: file not found: [100%]`` -> ``no tests ran``),
-    so every real selector is then scored as a never-ran failure. A genuine pytest
-    selector is a node id containing ``::`` (``path::Class::test`` or
-    ``path::test``). Best-effort + string-only (unit-tested)."""
+    Two failure shapes the SWE-bench-CL ``FAIL_TO_PASS`` / ``PASS_TO_PASS`` lists
+    carry, both of which abort the WHOLE pytest run (rc=4, ``no tests ran``) so that
+    every real selector then scores as a never-ran failure:
+
+    * **Progress-output fragments** — e.g. ``"[100%]"`` (a captured progress bar).
+      Pytest treats it as a missing file path. Rejected: no ``::``.
+    * **Truncated parametrized ids** — when a parametrize id contains ``", "`` the
+      upstream capture split on the comma and stored only the prefix, leaving an
+      UNBALANCED bracket: ``test_xfail_raises[(AttributeError,`` or
+      ``test_skipif_reporting["hasattr(sys,``. The full id is unrecoverable, and
+      pytest reports ``ERROR: not found`` for it. Rejected: ``[`` count != ``]``.
+
+    A genuine selector is a node id containing ``::`` (``path::Class::test`` or
+    ``path::test[param]``) with balanced ``[]``. Dropping the unrecoverable ones
+    (like the django prose filter) keeps the run grading on the selectors that CAN
+    run — honest as long as ``FAIL_TO_PASS`` survives; a task whose F2P is entirely
+    junk has nothing to resolve and degrades to ungraded upstream. String-only
+    (unit-tested)."""
     s = (selector or "").strip()
-    return bool(s) and "::" in s
+    if not s or "::" not in s:
+        return False
+    return s.count("[") == s.count("]")  # reject truncated parametrized ids
 
 
 def _parse_django(stdout: str, stderr: str, fail_to_pass: list[str],

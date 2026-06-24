@@ -53,6 +53,13 @@ Fixing those three exposed two further **parser/data** breaks in the pytest path
    per-test status lines) and matched ``PASSED``/``FAILED`` by *substring*. With
    ``-rA`` summary lines, a node id named ``...::test_failed`` contains the substring
    ``FAILED`` and was mis-scored as a failure even when it passed.
+6. **Truncated parametrized selectors.** A parametrize id containing ``", "`` was
+   split by the upstream capture, which stored only the prefix — leaving an
+   unbalanced bracket (``test_skipif_reporting["hasattr(sys,``). Handed to pytest it
+   is ``ERROR: not found`` and aborts the run (rc=4). The full id is unrecoverable.
+
+All six lie on the path to a correct verdict; the first three are env, the last three
+are data/parser. None is the agent or the task's intent.
 
 ## Options considered
 
@@ -81,16 +88,21 @@ In `LocalExecGrader._build_and_run`:
 3. **Disable plugin autoload** (`_test_run_env`, a superset of `_scm_env`): set
    `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` for the **test-run** step so stray vendored
    plugins don't load; the repo's own pytest still runs.
-4. **Filter junk selectors** (`is_pytest_selector`): drop non-node-id tokens (e.g.
-   ``[100%]``) from BOTH the command and the parsed lists, mirroring the existing
-   django prose-filter, so one bad token can't abort the run.
-5. **Read real status** : run ``pytest -rA`` (explicit ``<STATUS> <nodeid>`` summary)
+4. **Filter junk + unrunnable selectors** (`is_pytest_selector`): drop non-node-id
+   tokens (``[100%]``) AND truncated parametrized ids (unbalanced ``[``) from BOTH
+   the command and the parsed lists, mirroring the django prose-filter, so one bad
+   token can't abort the run. Honest while ``FAIL_TO_PASS`` survives (the resolution
+   check); a task whose entire F2P is junk has nothing to resolve and degrades to
+   ungraded upstream.
+5. **Read real status**: run ``pytest -rA`` (explicit ``<STATUS> <nodeid>`` summary)
    and rewrite ``_parse_pytest`` to key off the leading STATUS token of a summary
    line whose nodeid matches the selector — never a substring scan.
 
-Verified end-to-end on the `pytest-dev_pytest_sequence` first-5: all 5 moved from
-**1/5 graded → 5/5 graded**, and **4/5 gold patches now correctly resolve `True`**
-(before the whole fix, the env lied and reported 0/5 resolvable).
+Verified end-to-end on the `pytest-dev_pytest_sequence` first-5: all moved from
+**1/5 graded → 5/5 graded**, and **5/5 gold patches now correctly resolve `True`**
+(before the whole fix, the env lied and reported 0/5 resolvable). For `pytest-7432`,
+the 5 unrecoverable selectors are all `PASS_TO_PASS` (72/77 still run) with the F2P
+intact, so the grade stays meaningful.
 
 ## Rationale
 
@@ -117,13 +129,12 @@ result is more real coverage from the same docker-free design, not a new depende
 - **Still host-dependent** (ADR-eval-002 stands): `uv` must be able to fetch 3.8.
   When it can't, the task degrades to `env_build_failed` — now visible (ADR-eval-005)
   rather than silent.
-- **Known residual: parametrized ids with embedded ``, ``.** One of the five
-  (`pytest-7432`) still grades `False`-by-abort: its selectors include parametrize
-  ids like ``test_skipif_reporting["hasattr(sys, 'platform')"]`` whose embedded
-  comma+space breaks node-id tokenization (pytest "not found" → rc=4). This is a
-  selector-representation issue, not env; it grades (visibly, not silently) and is
-  scoped as a follow-up. The fix here still took the sequence from 1/5 to 5/5
-  gradeable and 4/5 correctly resolving.
+- **Dropping truncated selectors loses coverage on those cases.** A param id that
+  contained ``", "`` is unrecoverable from the dataset, so we drop it rather than
+  guess. This silently shrinks ``PASS_TO_PASS`` for the affected task (5/77 for
+  pytest-7432); acceptable because ``FAIL_TO_PASS`` is intact and the alternative is
+  a whole-run abort that grades nothing. The real cure is upstream data with intact
+  parametrize ids.
 
 ## Consequences for the build
 
