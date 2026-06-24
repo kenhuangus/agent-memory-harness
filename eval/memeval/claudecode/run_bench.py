@@ -100,6 +100,10 @@ def _make_grader(benchmark: str, args: argparse.Namespace):
         return None
     if choice in ("local", "localexec", "local-exec"):
         return get_grader("local", timeout=args.grader_timeout)
+    if choice in ("swebench", "swebench-host", "swebenchhost"):
+        # The realistic Docker-free grader also honors --grader-timeout (it builds a
+        # per-instance venv + runs the repo's tests, which can be slow on old pins).
+        return get_grader(choice, timeout=args.grader_timeout)
     return get_grader(choice)  # overlap (or any other registered name)
 
 
@@ -298,9 +302,11 @@ def main(argv: Optional[list[str]] = None) -> int:
                          f"for {sorted(_LOCAL_EXEC_BENCH)}, None for QA and contextbench "
                          "(retrieval-only, scored by its native metric); 'local' = "
                          "host-local per-task venv exec (best-effort; ungraded None "
-                         "when the env can't be built); 'overlap' = cheap gold-patch "
-                         "token-overlap heuristic (NOT real accuracy); 'none' = leave "
-                         "CODE ungraded.")
+                         "when the env can't be built); 'swebench' = Docker-free grader "
+                         "reusing SWE-bench's own specs + log parsers (needs the "
+                         "'swebench' extra; honors --grader-timeout); 'overlap' = cheap "
+                         "gold-patch token-overlap heuristic (NOT real accuracy); 'none' "
+                         "= leave CODE ungraded.")
     ap.add_argument("--grader-timeout", type=int, default=1800,
                     help="Per-task local test-execution timeout (seconds).")
     ap.add_argument("--budget-usd", type=float, default=DEFAULT_BUDGET_USD)
