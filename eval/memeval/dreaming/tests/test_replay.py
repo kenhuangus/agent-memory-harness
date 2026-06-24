@@ -198,13 +198,30 @@ def test_slice_invalid_chunk_bytes_raises(tmp_path: Path) -> None:
     ({"chunk_skipped_parse_failed"}, False, "skipped_parse_failed"),
     ({"chunk_skipped_unavailable_llm"}, False, "skipped_llm_unavailable"),
     ({"daydream.memory_written"}, True, "wrote_memories"),
+    ({"daydream.memory_written"}, False, "wrote_memories"),  # memory_written wins regardless of cursor — engine emits BEFORE cursor advance per ADR-013
     (set(), True, "advanced_no_items"),
-    (set(), False, "no_advance_no_event"),
-    # Whitespace-only path: no events, cursor didn't advance — distinct from #133.
-    (set(), False, "no_advance_no_event"),
+    (set(), False, "no_advance_no_event"),  # whitespace-only path; distinct from #133 (which has skipped_llm_unavailable)
 ])
 def test_classify_outcome_priority(events, advanced, expected) -> None:
     assert classify_outcome(events, cursor_advanced=advanced) == expected
+
+
+def test_classify_outcome_engine_raised_overrides_diary() -> None:
+    """A defensive engine_raised=True wins over ANY diary-derived outcome.
+
+    engine.daydream is fail-open by contract (ADR-006); an exception escaping
+    it is a contract violation. Misclassifying that as the benign
+    no_advance_no_event whitespace-path would hide a real bug. CodeRabbit
+    finding on PR #142.
+    """
+    # Even with success-shaped diary events, engine_raised takes priority:
+    assert classify_outcome(
+        {"daydream.memory_written"}, cursor_advanced=True, engine_raised=True
+    ) == "engine_raised"
+    # Even with empty events + no advance (the benign path), engine_raised wins:
+    assert classify_outcome(
+        set(), cursor_advanced=False, engine_raised=True
+    ) == "engine_raised"
 
 
 # --------------------------------------------------------------------------- #
@@ -325,6 +342,45 @@ def test_replay_e2e_stuck_run_splits_on_advance(
     assert runs[0]["stuck_cursor"] != runs[1]["stuck_cursor"]
     assert runs[0]["consecutive_skips"] == 2
     assert runs[1]["consecutive_skips"] == 2
+
+
+def test_replay_e2e_engine_raised_surfaces_in_outcome(
+    monkeypatch, fixture_5_lines: Path, basedir: Path
+) -> None:
+    """If engine.daydream raises (fail-open contract violation), the replay
+    loop's defensive try/except catches it, populates engine_exc, AND the
+    outcome reflects the failure — NOT the benign no_advance_no_event path.
+
+    Monkeypatching engine.daydream is the right tool here BECAUSE the test
+    is exercising the defensive wrapper around exactly that boundary; we
+    deliberately want to simulate the engine breaking its fail-open contract.
+    """
+    from memeval.dreaming import engine as engine_mod
+
+    def _broken_engine(**kwargs):
+        raise RuntimeError("simulated engine contract violation")
+
+    monkeypatch.setattr(engine_mod, "daydream", _broken_engine)
+    out = io.StringIO()
+    rc = replay_fixtures(
+        fixtures=[fixture_5_lines],
+        basedir=basedir,
+        chunk_bytes=200,
+        whole_fixture=False,
+        max_chunks=2,
+        shared_session_id=None,
+        client=_StubLLMClient(),
+        store=InMemoryStore(),
+        out=out,
+    )
+    assert rc == 0
+    chunks = [r for r in _read_jsonl(out) if r["event_type"] == "replay.chunk"]
+    assert chunks
+    for c in chunks:
+        assert c["outcome"] == "engine_raised", c
+        assert c["engine_exc"] is not None
+        assert "RuntimeError" in c["engine_exc"]
+        assert "simulated engine contract violation" in c["engine_exc"]
 
 
 def test_replay_max_chunks_caps_slices(

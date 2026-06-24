@@ -154,7 +154,12 @@ _EVT_SKIPPED_PARSE = "chunk_skipped_parse_failed"
 _EVT_MEMORY_WRITTEN = "daydream.memory_written"
 
 
-def classify_outcome(event_types: set[str], *, cursor_advanced: bool) -> str:
+def classify_outcome(
+    event_types: set[str],
+    *,
+    cursor_advanced: bool,
+    engine_raised: bool = False,
+) -> str:
     """Classify the outcome of one daydream call from its diary event bag.
 
     Priority order matters: a single call can emit several events; the most
@@ -162,7 +167,15 @@ def classify_outcome(event_types: set[str], *, cursor_advanced: bool) -> str:
     whitespace-only-chunk path (engine returns at line 137-138 before any
     emit) — distinct from ``skipped_llm_unavailable`` which is the issue-#133
     fingerprint.
+
+    ``engine_raised`` wins over the diary-derived classification: engine.daydream
+    is fail-open by contract (ADR-006) and any exception escaping it is a
+    contract violation. Misclassifying that as the benign whitespace-only path
+    would hide a real bug, so it surfaces as its own ``engine_raised`` outcome
+    above all others (CodeRabbit finding on PR #142).
     """
+    if engine_raised:
+        return "engine_raised"
     if _EVT_CHUNK_ERROR in event_types:
         return "chunk_error"
     if _EVT_LOCK_HELD in event_types:
@@ -374,7 +387,9 @@ def replay_fixtures(
                 1 for r in new_records if r["event_type"] == _EVT_MEMORY_WRITTEN
             )
             outcome = classify_outcome(
-                event_types, cursor_advanced=(cursor_after > cursor_before)
+                event_types,
+                cursor_advanced=(cursor_after > cursor_before),
+                engine_raised=engine_exc is not None,
             )
 
             fix_sum.chunks_total += 1
