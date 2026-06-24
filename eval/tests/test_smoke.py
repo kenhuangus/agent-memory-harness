@@ -1226,6 +1226,51 @@ def test_pytest_selector_filter_and_parse() -> None:
     assert st2["PASS_TO_PASS"]["success"] == ["testing/test_x.py::test_b"]
 
 
+def test_patch_target_files() -> None:
+    """`patch_target_files` extracts the +++ b/ post-image paths a diff modifies —
+    used to revert gold-test files to base before applying the gold test_patch."""
+    from memeval import grader as G
+
+    patch = (
+        "diff --git a/testing/test_a.py b/testing/test_a.py\n"
+        "--- a/testing/test_a.py\n+++ b/testing/test_a.py\n"
+        "@@ -1 +1 @@\n-x\n+y\n"
+        "diff --git a/src/pkg/mod.py b/src/pkg/mod.py\n"
+        "--- a/src/pkg/mod.py\n+++ b/src/pkg/mod.py\n"
+        "@@ -1 +1 @@\n-a\n+b\n"
+    )
+    assert G.patch_target_files(patch) == ["testing/test_a.py", "src/pkg/mod.py"]
+    # /dev/null post-image (a deletion) is skipped; empty patch -> [].
+    assert G.patch_target_files("--- a/f\n+++ /dev/null\n") == []
+    assert G.patch_target_files("") == []
+
+
+def test_auto_grader_prefers_swebench_when_available(monkeypatch) -> None:
+    """`auto` picks the swebench grader iff the swebench extra imports, else
+    LocalExecGrader — never breaking grading on a host without the extra."""
+    import argparse
+
+    from memeval import grader as Gmod
+    from memeval.claudecode import run_bench as RB
+    from memeval.grader import LocalExecGrader
+
+    args = argparse.Namespace(grader="auto", grader_timeout=60)
+    bench = next(iter(RB._LOCAL_EXEC_BENCH))
+
+    # Extra absent -> fall back to LocalExecGrader (real instance, no swebench needed).
+    monkeypatch.setattr(RB, "_swebench_available", lambda: False)
+    assert isinstance(RB._make_grader(bench, args), LocalExecGrader)
+
+    # Extra present -> route to the "swebench" grader name (capture without importing
+    # the real package).
+    chosen: dict = {}
+    monkeypatch.setattr(RB, "_swebench_available", lambda: True)
+    monkeypatch.setattr(Gmod, "get_grader",
+                        lambda name, **kw: chosen.setdefault("name", name))
+    RB._make_grader(bench, args)
+    assert chosen["name"] == "swebench"
+
+
 def test_grader_overlap_offline() -> None:
     from memeval import grader as G
     gold = "diff --git a/f.py b/f.py\n+    return x + 1"
