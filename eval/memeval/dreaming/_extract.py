@@ -314,6 +314,14 @@ def _build_memory_item(
     content = raw.get("content")
     if not isinstance(content, str) or not content or len(content) > _MAX_CONTENT_LEN:
         raise _ParseError("invalid or missing 'content'")
+    # Second-pass redact() on kept-memory content. ADR-005 only guarantees
+    # redaction on the INPUT side; the LLM may echo unredacted user text back
+    # in `content`. The rejection path already does this for `content_snippet`
+    # (halliday B1) — kept content is even higher-stakes because it gets
+    # persisted to the store AND recalled into future LLM contexts. The cap
+    # check above applies to the LLM-emitted length; redaction tokens may
+    # grow or shrink it. Surfaced by CodeRabbit on PR #137.
+    content = str(redact(content))
 
     raw_tags = raw.get("tags", [])
     if isinstance(raw_tags, list):

@@ -2604,6 +2604,33 @@ def test_prompt_resolved_emitted_once_per_extract_call(
     assert fields["model"] == client.model
 
 
+def test_kept_memory_content_is_second_pass_redacted() -> None:
+    """B1 generalized to kept content: if the LLM echoes an unredacted secret
+    into a kept-memory `content` field, the second-pass redact() in
+    `_build_memory_item` replaces it with the [REDACTED:<type>] marker BEFORE
+    the MemoryItem is constructed. Defends both the store AND the
+    `daydream.memory_written` diary/stdout surface.
+
+    CodeRabbit finding on PR #137.
+    """
+    # Construct the fake secret at runtime so the source file doesn't carry the
+    # literal pattern (GitGuardian-friendly; mirrors test_redaction.py:78).
+    fake_secret = "sk-ant-api03-" + "A" * 80
+    payload = {
+        "memories": [
+            {"content": f"user pasted {fake_secret}", "tags": ["t1"]},
+        ]
+    }
+    client = _StubClient(_ok_completion(payload))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s-redact", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    assert out is not None and len(out) == 1
+    assert fake_secret not in out[0].content
+    assert "[REDACTED:" in out[0].content
+
+
 def test_prompt_resolved_picks_up_variant_from_env(
     monkeypatch: pytest.MonkeyPatch, spy_extract_emit: list,
 ) -> None:
