@@ -112,6 +112,27 @@ class VendoredSWEBenchCLTest(unittest.TestCase):
             tasks = get_loader("swe_bench_cl").load(None, limit=5)
         self.assertEqual(len(tasks), 5)
 
+    def test_version_backfilled_for_every_task(self) -> None:
+        """The CL dataset omits SWE-bench ``version``; the loader backfills it from the
+        bundled instance_id->version map so the swebench grader can resolve a spec
+        (without it every task is UNGRADED). Offline — reads the bundled JSON only."""
+        with _NoRemoteImports():
+            tasks = get_loader("swe_bench_cl").load(None, limit=None)
+        missing = [t.task_id for t in tasks
+                   if not str((t.metadata or {}).get("version") or "").strip()]
+        self.assertEqual(
+            missing, [],
+            f"{len(missing)} task(s) have no backfilled version: {missing[:10]}")
+        # A backfilled version must resolve a real SWE-bench spec (skip if the optional
+        # swebench package isn't installed in this env).
+        try:
+            from swebench.harness.constants import MAP_REPO_VERSION_TO_SPECS
+        except Exception:  # noqa: BLE001
+            self.skipTest("swebench package not installed")
+        sample = next(t for t in tasks if t.repo == "django/django")
+        self.assertIn(str(sample.metadata["version"]),
+                      MAP_REPO_VERSION_TO_SPECS.get("django/django", {}))
+
 
 if __name__ == "__main__":  # pragma: no cover - manual runner
     unittest.main(verbosity=2)
