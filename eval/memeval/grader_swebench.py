@@ -323,7 +323,15 @@ class SwebenchHostGrader:
         A path-like script (``bin/test``, ``./tests/runtests.py`` — contains ``/`` or
         ends ``.py``) is run THROUGH the venv interpreter (``py bin/test ...``) rather
         than executed directly, so it neither needs the +x bit nor a shebang pointing
-        at the right Python — sympy's ``bin/test`` is the motivating case."""
+        at the right Python — sympy's ``bin/test`` is the motivating case.
+
+        ``tox`` is NOT pytest: sphinx's ``tox --current-env -epy39 -v -- <files>`` uses
+        the ``tox-current-env`` plugin (both installed by the spec's ``pip_packages``)
+        to run the py39 env's command — pytest — IN this venv, forwarding everything
+        after ``--`` to it. It MUST run as ``py -m tox`` with its own flags intact;
+        rewriting it to ``py -m pytest --current-env -epy39 ...`` feeds tox-only flags
+        to pytest, which exits with a usage error -> empty log -> the official parser
+        produces no statuses (the sphinx I-11 failure mode)."""
         if not argv:
             return [py]
         head = argv[0]
@@ -331,10 +339,11 @@ class SwebenchHostGrader:
             return [py, *argv]
         if head in ("python", "python3"):
             return [py, *argv[1:]]
-        if head == "pytest":
+        if head in ("pytest", "pytest-3"):
             return [py, "-m", "pytest", *argv[1:]]
-        if head in ("tox", "pytest-3"):
-            return [py, "-m", "pytest", *argv[1:]]
+        if head == "tox":
+            # Run tox itself (with --current-env / -e / -- intact), not pytest.
+            return [py, "-m", "tox", *argv[1:]]
         # Fallback: run via the interpreter's module runner if it's a known module,
         # else execute the command head as-is.
         return [py, "-m", head, *argv[1:]] if head.isidentifier() else [head, *argv[1:]]

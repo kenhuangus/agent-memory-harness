@@ -216,6 +216,34 @@ class SwebenchHostGraderTests(unittest.TestCase):
             self.assertIsInstance(get_grader(key), SwebenchHostGrader)
 
 
+    def test_with_python_routes_each_test_cmd_head(self):
+        """``_with_python`` maps a spec ``test_cmd``'s argv onto the venv interpreter.
+        The sphinx/tox case is the I-11 regression: ``tox`` must run as ``py -m tox``
+        with its own flags (``--current-env -epy39 -v --``) INTACT — NOT be rewritten
+        to ``py -m pytest`` with tox-only flags leaking through to pytest (which exits
+        usage-error -> empty log -> 'official parser produced no statuses')."""
+        g = self._grader()
+        cases = {
+            # sphinx: tox stays tox, all flags preserved.
+            ("tox", "--current-env", "-epy39", "-v", "--", "tests/foo.py"):
+                ["PY", "-m", "tox", "--current-env", "-epy39", "-v", "--", "tests/foo.py"],
+            # matplotlib/sklearn/xarray/pytest: plain pytest.
+            ("pytest", "-rA", "tests/foo.py"):
+                ["PY", "-m", "pytest", "-rA", "tests/foo.py"],
+            # pytest-3 is just pytest under another name.
+            ("pytest-3", "-rA", "tests/foo.py"):
+                ["PY", "-m", "pytest", "-rA", "tests/foo.py"],
+            # sympy: a path-like script runs THROUGH the interpreter (no +x/shebang).
+            ("bin/test", "-C", "--verbose", "sympy/core/tests/test_x.py"):
+                ["PY", "bin/test", "-C", "--verbose", "sympy/core/tests/test_x.py"],
+            # django: a .py runner runs through the interpreter.
+            ("./tests/runtests.py", "--verbosity", "2", "queries"):
+                ["PY", "./tests/runtests.py", "--verbosity", "2", "queries"],
+        }
+        for argv, expected in cases.items():
+            self.assertEqual(g._with_python("PY", list(argv)), expected, msg=argv[0])
+
+
 if __name__ == "__main__":
     unittest.main()
 
