@@ -153,6 +153,13 @@ def _parse_pytest(stdout: str, fail_to_pass: list[str],
             node = rest.split(" - ", 1)[0].split()[0] if rest else ""
             if node == selector or node.startswith(selector + "["):
                 return status
+            # Bare test name (sympy: ``test_coth``) — the nodeid is the full
+            # ``path::test_coth`` / ``path::Class::test_coth[param]``; match on the
+            # final ``::``-delimited segment so a bare name finds its real result.
+            if "::" not in selector and node:
+                tail = node.rsplit("::", 1)[-1]
+                if tail == selector or tail.startswith(selector + "["):
+                    return status
         return None
 
     def _passed(selector: str) -> bool:
@@ -259,30 +266,54 @@ def is_django_selector(selector: str) -> bool:
     return all(part.isidentifier() for part in s.split(".") if part)
 
 
-def is_pytest_selector(selector: str) -> bool:
-    """True iff ``selector`` is a *runnable* pytest node id, not captured junk.
+def is_bare_test_name(selector: str) -> bool:
+    """True iff ``selector`` is a *bare* pytest test name with no ``::`` path —
+    sympy's ``FAIL_TO_PASS``/``PASS_TO_PASS`` format (``test_coth``, ``test_args``,
+    ``test_issue_12092``), unlike the ``path::Class::test`` node ids most repos use.
 
-    Two failure shapes the SWE-bench-CL ``FAIL_TO_PASS`` / ``PASS_TO_PASS`` lists
-    carry, both of which abort the WHOLE pytest run (rc=4, ``no tests ran``) so that
-    every real selector then scores as a never-ran failure:
+    A bare name is runnable: pytest collects it once we point the command at the
+    test file (recovered from the task's ``test_patch``). We accept a leading
+    ``test``-prefixed token, optionally with a balanced ``[param]`` suffix, whose
+    base is a valid Python identifier — and NOT progress junk (``[100%]``) or a
+    truncated id (unbalanced brackets). String-only (unit-tested)."""
+    s = (selector or "").strip()
+    if not s or "::" in s:
+        return False
+    if s.count("[") != s.count("]"):
+        return False  # truncated parametrized id
+    base = s.split("[", 1)[0]  # drop a balanced [param] suffix
+    return base.isidentifier() and base.startswith("test")
+
+
+def is_pytest_selector(selector: str) -> bool:
+    """True iff ``selector`` is a *runnable* pytest selector, not captured junk.
+
+    Accepts two runnable shapes:
+
+    * **Full node ids** — ``path::Class::test`` / ``path::test[param]`` (most
+      repos). Requires ``::`` and balanced ``[]``.
+    * **Bare test names** — ``test_coth`` (sympy). No ``::``; see
+      :func:`is_bare_test_name`. Runnable once the command targets the test file.
+
+    Rejects the two junk shapes the SWE-bench-CL lists carry, both of which abort
+    the WHOLE pytest run (rc=4, ``no tests ran``) so every real selector then
+    scores as a never-ran failure:
 
     * **Progress-output fragments** — e.g. ``"[100%]"`` (a captured progress bar).
-      Pytest treats it as a missing file path. Rejected: no ``::``.
-    * **Truncated parametrized ids** — when a parametrize id contains ``", "`` the
-      upstream capture split on the comma and stored only the prefix, leaving an
-      UNBALANCED bracket: ``test_xfail_raises[(AttributeError,`` or
-      ``test_skipif_reporting["hasattr(sys,``. The full id is unrecoverable, and
-      pytest reports ``ERROR: not found`` for it. Rejected: ``[`` count != ``]``.
+      No ``::`` AND not a valid bare test name -> rejected.
+    * **Truncated parametrized ids** — a parametrize id containing ``", "`` was
+      split on the comma, leaving an UNBALANCED bracket
+      (``test_xfail_raises[(AttributeError,``). Unrecoverable -> rejected.
 
-    A genuine selector is a node id containing ``::`` (``path::Class::test`` or
-    ``path::test[param]``) with balanced ``[]``. Dropping the unrecoverable ones
-    (like the django prose filter) keeps the run grading on the selectors that CAN
-    run — honest as long as ``FAIL_TO_PASS`` survives; a task whose F2P is entirely
-    junk has nothing to resolve and degrades to ungraded upstream. String-only
-    (unit-tested)."""
+    Dropping the unrecoverable ones (like the django prose filter) keeps the run
+    grading on the selectors that CAN run — honest as long as ``FAIL_TO_PASS``
+    survives; a task whose F2P is entirely junk degrades to ungraded upstream.
+    String-only (unit-tested)."""
     s = (selector or "").strip()
-    if not s or "::" not in s:
+    if not s:
         return False
+    if "::" not in s:
+        return is_bare_test_name(s)
     return s.count("[") == s.count("]")  # reject truncated parametrized ids
 
 
@@ -430,7 +461,31 @@ def _parse_django(stdout: str, stderr: str, fail_to_pass: list[str],
 #: prior behavior), never a wrong guess. Refine per-instance if the dataset ever
 #: carries an explicit ``environment_setup_commit`` / python version.
 _REPO_PYTHON_PIN: dict[str, str] = {
+    # Every repo in SWE-Bench-CL sits at a 2017–2020 base_commit that assumes a
+    # pre-3.12 interpreter. On the host default (3.12) their imports break:
+    # ``distutils`` is gone (sympy: ``from distutils.version import StrictVersion``),
+    # ``pkg_resources`` isn't auto-provided (xarray: ``import pkg_resources``), and
+    # ``imp`` is gone (2019-era pytest). Pin each to 3.8 — the newest interpreter
+    # that still ships distutils + tolerates these era's setuptools/imports, and the
+    # version SWE-bench itself uses for this generation of instances. uv fetches it.
+    "astropy/astropy": "3.8",
+    "django/django": "3.8",
+    "matplotlib/matplotlib": "3.8",
+    "pydata/xarray": "3.8",
     "pytest-dev/pytest": "3.8",
+    "scikit-learn/scikit-learn": "3.8",
+    "sphinx-doc/sphinx": "3.8",
+    "sympy/sympy": "3.8",
+}
+
+#: pytest version cap per pinned interpreter, keyed by the version string from
+#: :data:`_REPO_PYTHON_PIN`. A 3.8 venv (2019-era repo commits) can't run a current
+#: pytest — modern pytest drops the Pythons that era's collection assumes — so cap
+#: it. Unpinned interpreters (key ``""``) get a current pytest. Conservative: an
+#: unlisted pin falls through to plain ``pytest`` rather than guessing a version.
+_PYTEST_SPEC_FOR_PYTHON: dict[str, str] = {
+    "": "pytest",
+    "3.8": "pytest<7.1",
 }
 
 
@@ -701,9 +756,10 @@ class LocalExecGrader:
         # plugin-autoload guard for the actual test run (see _test_run_env).
         scm_env = _scm_env(task)
         test_env = _test_run_env(task)
-        py = self._make_venv(dest, python=_python_for_task(task)) or (
+        pinned = _python_for_task(task)
+        py = self._make_venv(dest, python=pinned) or (
             self._python_exe or "python")
-        self._install_repo(dest, py, env=scm_env)
+        self._install_repo(dest, py, env=scm_env, python=pinned)
 
         # Repo-aware test command. django uses tests/runtests.py (unittest), not pytest.
         runtests = dest / "tests" / "runtests.py"
@@ -742,11 +798,26 @@ class LocalExecGrader:
         selectors = f2p + p2p
         if not selectors:
             return self._ungraded("no runnable pytest selectors after filtering", task)
+        # Bare test names (sympy: ``test_coth``, no ``::`` path) aren't directly
+        # collectable — pytest would read them as missing file paths. Point the
+        # command at the test FILE(S) recovered from the gold ``test_patch`` (the
+        # files those names live in) so pytest collects them; the bare names still
+        # appear in the ``-rA`` nodeids, which _parse_pytest matches by ``::name``
+        # suffix. Full node-id selectors are passed through unchanged.
+        bare = [s for s in selectors if is_bare_test_name(s)]
+        if bare:
+            test_files = patch_target_files(task.test_patch or "")
+            if not test_files:
+                return self._ungraded(
+                    "bare test selectors but no test file in test_patch", task)
+            targets = test_files
+        else:
+            targets = selectors
         # ``-rA`` emits an explicit per-test summary (``PASSED <nodeid>`` /
         # ``FAILED <nodeid>``) that :func:`_parse_pytest` reads; plain ``-q`` prints
         # only dots, which the parser can't attribute to a selector (so every test
         # would score as a never-passed failure).
-        ran = self._run([py, "-m", "pytest", "-rA", *selectors], dest, env=test_env)
+        ran = self._run([py, "-m", "pytest", "-rA", *targets], dest, env=test_env)
         if ran is None:
             return self._ungraded("pytest runner unavailable/raised", task)
         rc, out, _err = ran
@@ -799,18 +870,44 @@ class LocalExecGrader:
             return str(win)
         return None  # venv reported OK but no interpreter on disk (offline stub)
 
-    def _install_repo(self, dest: Any, py: str, *, env: Optional[dict] = None) -> None:
+    def _install_repo(self, dest: Any, py: str, *, env: Optional[dict] = None,
+                      python: Optional[str] = None) -> None:
         """Best-effort editable install of the checkout (+ common test extras) into
         the venv ``py``. Failures are tolerated — many repos import from source.
         ``env`` overlays the install environment (e.g. setuptools-scm pretend
-        version, so a tagless shallow checkout produces a sane package version)."""
+        version, so a tagless shallow checkout produces a sane package version).
+        ``python`` is the pinned interpreter version (e.g. ``"3.8"``) for the task,
+        used to pick a compatible ``pytest`` (see :meth:`_install_pytest`)."""
         for spec in (".[test]", ".[tests]", ".[dev]", "."):
             ran = self._run(["uv", "pip", "install", "--python", py, "-e", spec], dest,
                             env=env)
             if ran is not None and ran[0] == 0:
-                return
-        # Last resort: pip inside the target interpreter.
-        self._run([py, "-m", "pip", "install", "-e", "."], dest, env=env)
+                break
+        else:
+            # Last resort: pip inside the target interpreter.
+            self._run([py, "-m", "pip", "install", "-e", "."], dest, env=env)
+        # The repo install does NOT reliably provide pytest: most SWE-bench repos
+        # (xarray/astropy/sklearn/matplotlib/sphinx) don't list it under the
+        # ``.[test]`` extra we install, so ``python -m pytest`` then fails with
+        # "No module named pytest" -> rc=1 -> EVERY task (even the gold patch)
+        # scores False. Only ``pytest-dev/pytest`` worked, because installing that
+        # repo IS installing pytest. Install pytest explicitly so the runner exists.
+        self._install_pytest(dest, py, env=env, python=python)
+
+    def _install_pytest(self, dest: Any, py: str, *, env: Optional[dict] = None,
+                        python: Optional[str] = None) -> None:
+        """Ensure a runnable ``pytest`` exists in the grade venv ``py``.
+
+        Pinned-interpreter repos (e.g. a 3.8 venv for 2019-era code) cannot run a
+        modern pytest — it drops Python the repo's collection assumes — so cap the
+        pytest major for old interpreters. Unpinned repos get a current pytest.
+        Best-effort: a failure leaves the repo-provided pytest (if any) in place;
+        the run then degrades to UNGRADED upstream rather than a fake False."""
+        spec = _PYTEST_SPEC_FOR_PYTHON.get((python or "").strip(), "pytest")
+        ran = self._run(["uv", "pip", "install", "--python", py, spec], dest, env=env)
+        if ran is None or ran[0] != 0:
+            # Fall back to pip inside the interpreter (uv absent / resolution edge).
+            self._run([py, "-m", "pip", "install", spec], dest, env=env)
 
 
 # --------------------------------------------------------------------------- #

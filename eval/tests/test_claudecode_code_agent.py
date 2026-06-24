@@ -529,10 +529,17 @@ def test_make_grader_auto_routing() -> None:
     import argparse
     from memeval.claudecode import run_bench
 
+    from memeval.grader_swebench import SwebenchHostGrader
+
     args = argparse.Namespace(grader="auto", grader_timeout=1800)
-    # SWE benches -> LocalExecGrader; contextbench + QA benches -> None.
-    assert isinstance(run_bench._make_grader("swe_contextbench", args), G.LocalExecGrader)
-    assert isinstance(run_bench._make_grader("swe_bench_cl", args), G.LocalExecGrader)
+    # SWE benches under `auto`: the swebench host grader WHEN the optional
+    # `swebench` package is importable, else LocalExecGrader (run_bench:_swebench
+    # _available). Assert against that contract so the test is correct whether or
+    # not the extra is installed in the running env.
+    swe_cls = (SwebenchHostGrader if run_bench._swebench_available()
+               else G.LocalExecGrader)
+    assert isinstance(run_bench._make_grader("swe_contextbench", args), swe_cls)
+    assert isinstance(run_bench._make_grader("swe_bench_cl", args), swe_cls)
     assert run_bench._make_grader("contextbench", args) is None      # retrieval-only
     assert run_bench._make_grader("longmemeval", args) is None       # QA
     assert run_bench._make_grader("memoryagentbench", args) is None  # QA

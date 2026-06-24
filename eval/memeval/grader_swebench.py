@@ -71,6 +71,28 @@ def _is_root_preinstall(cmd: str) -> bool:
     return any(sub in s for sub in _ROOT_PREINSTALL_SUBSTRINGS)
 
 
+def _split_env_prefix(tokens: list) -> "tuple[dict, list]":
+    """Peel leading ``VAR=val`` env-assignment tokens off a split command.
+
+    A spec ``test_cmd`` can carry an inline shell env prefix (sympy:
+    ``PYTHONWARNINGS='...' bin/test ...``). After ``shlex.split`` those become
+    leading argv tokens; they must go to the subprocess ENV, not be exec'd as a
+    program. Returns ``(env_overlay, remaining_argv)``. A token counts as an
+    assignment only if everything before the first ``=`` is a valid shell name
+    (``[A-Za-z_][A-Za-z0-9_]*``), so a real argument like ``--opt=val`` or a path
+    is never mistaken for one. Pure + stdlib-only (unit-testable)."""
+    env: dict = {}
+    i = 0
+    for tok in tokens:
+        name, sep, val = tok.partition("=")
+        if not sep or not name or not (name[0].isalpha() or name[0] == "_") \
+                or not all(c.isalnum() or c == "_" for c in name):
+            break
+        env[name] = val
+        i += 1
+    return env, list(tokens[i:])
+
+
 class SwebenchHostGrader:
     """Grade CODE tasks via SWE-bench's own specs + parsers in a host ``uv`` venv.
 
@@ -256,8 +278,15 @@ class SwebenchHostGrader:
         test_cmd = str(spec.get("test_cmd") or "").strip()
         if not test_cmd:
             return self._ungraded(f"spec for {task.repo} has no test_cmd", task)
-        argv = shlex.split(test_cmd) + list(directives)
-        ran = self._run(self._with_python(py, argv), dest)
+        # A spec test_cmd may carry a leading inline env prefix, e.g. sympy's
+        # ``PYTHONWARNINGS='...' bin/test -C --verbose``. shlex.split turns those
+        # ``VAR=val`` tokens into argv[0..]; passing them to _with_python makes it
+        # try to EXEC ``PYTHONWARNINGS=...`` as a program (raises -> ungraded).
+        # Peel them off into the subprocess ENV, where they belong.
+        cmd_env, rest = _split_env_prefix(shlex.split(test_cmd))
+        argv = rest + list(directives)
+        ran = self._run(self._with_python(py, argv), dest,
+                        env=cmd_env or None)
         if ran is None:
             return self._ungraded("test command runner unavailable/raised", task)
         _rc, out, err = ran
@@ -282,11 +311,16 @@ class SwebenchHostGrader:
         """Compose an argv for a test command. A bare ``runtests.py`` script is run
         directly with the interpreter (django: ``python tests/runtests.py ...``); a
         command that already names ``python``/``pytest`` is rebound onto the venv's
-        interpreter; anything else (e.g. ``pytest -q``) is run as ``python -m``."""
+        interpreter; anything else (e.g. ``pytest -q``) is run as ``python -m``.
+
+        A path-like script (``bin/test``, ``./tests/runtests.py`` — contains ``/`` or
+        ends ``.py``) is run THROUGH the venv interpreter (``py bin/test ...``) rather
+        than executed directly, so it neither needs the +x bit nor a shebang pointing
+        at the right Python — sympy's ``bin/test`` is the motivating case."""
         if not argv:
             return [py]
         head = argv[0]
-        if head.endswith(".py"):
+        if head.endswith(".py") or "/" in head:
             return [py, *argv]
         if head in ("python", "python3"):
             return [py, *argv[1:]]
@@ -295,7 +329,7 @@ class SwebenchHostGrader:
         if head in ("tox", "pytest-3"):
             return [py, "-m", "pytest", *argv[1:]]
         # Fallback: run via the interpreter's module runner if it's a known module,
-        # else execute the command head as-is (e.g. ``./tests/runtests.py``).
+        # else execute the command head as-is.
         return [py, "-m", head, *argv[1:]] if head.isidentifier() else [head, *argv[1:]]
 
     def _apply_patch(self, dest: Any, patch: str) -> Optional[bool]:
