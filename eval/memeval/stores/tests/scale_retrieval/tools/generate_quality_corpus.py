@@ -27,6 +27,48 @@ from memeval.stores.tests.scale_retrieval.helpers import (  # noqa: E402
 
 BASE_TS = 1_700_000_000.0
 
+LEXICAL_FAMILIES = (
+    ("museum ceramics drawer", "verified glaze code", "GLZ"),
+    ("rail archive cabinet", "dispatch seal code", "RLY"),
+    ("botanical seed ledger", "germination tray code", "BOT"),
+    ("observatory lens rack", "calibration prism code", "OBS"),
+    ("harbor rope locker", "mooring coil code", "HRB"),
+    ("theater prop vault", "cue lantern code", "THR"),
+)
+
+SEMANTIC_FAMILIES = (
+    ("orchard crew", "buried moisture probes", "root-zone readings", "irrigation"),
+    ("archive conservators", "fiber tension sensors", "binding strain", "humidification"),
+    ("aquarium staff", "dissolved oxygen monitors", "tank readings", "aeration"),
+    ("observatory crew", "mirror drift sensors", "alignment readings", "recalibration"),
+    ("greenhouse crew", "leaf transpiration sensors", "canopy readings", "mist cycling"),
+    ("cold-room staff", "thermal puck sensors", "shelf readings", "compressor cycling"),
+)
+
+HOP_FAMILIES = (
+    ("calls", "callee", "field logistics chain", "middle relay", "terminal depot"),
+    ("depends on", "dependency", "release checklist chain", "review bridge", "approval vault"),
+    ("uses", "used tool", "lab preparation chain", "tool relay", "sterile cabinet"),
+    ("imports", "imported module", "indexing pipeline chain", "schema relay", "parser module"),
+)
+
+TEMPORAL_FAMILIES = (
+    ("harbor shelf checks", ("five crates", "eight crates", "thirteen crates")),
+    ("library holdbacks", ("blue slips", "green slips", "silver slips")),
+    ("greenhouse trays", ("low mist", "medium mist", "high mist")),
+    ("observatory mirrors", ("coarse lock", "fine lock", "drift lock")),
+    ("rail platform signs", ("north flag", "east flag", "west flag")),
+)
+
+MIXED_FAMILIES = (
+    ("gallery access", "depends on", "approved policy", "amber badges", "silver badges"),
+    ("harbor loading", "uses", "dock rule", "cobalt crates", "white crates"),
+    ("archive indexing", "imports", "schema rule", "oxide labels", "linen labels"),
+    ("relay dispatch", "calls", "handoff rule", "violet relays", "black relays"),
+    ("exhibit rename", "renames", "alias rule", "copper aliases", "glass aliases"),
+    ("safety impact", "impacts", "breakage rule", "teal shutdowns", "red shutdowns"),
+)
+
 
 def _item(
     item_id: str,
@@ -101,17 +143,18 @@ def _case(
 
 def _lexical(i: int) -> tuple[list[MemoryItem], ScaleCase]:
     lens = "lexical"
+    domain, attribute, prefix = LEXICAL_FAMILIES[i % len(LEXICAL_FAMILIES)]
     fact_id = f"fact-lex-{i:03d}"
     rare = f"rarelex{i:03d}"
     anchor = f"LexiconAnchor{i:03d}"
     item_id = f"lex-{i:03d}-gold"
     content = (
-        f"{anchor} records the catalog marker {rare} for a museum ceramics drawer; "
-        f"the verified glaze code is GLZ-{(i * 7 + 31) % 97:02d}."
+        f"{anchor} records the catalog marker {rare} for a {domain}; "
+        f"the {attribute} is {prefix}-{(i * 7 + 31) % 97:02d}."
     )
     item = _item(item_id, content, lens=lens, fact_id=fact_id, rare_key=rare,
                  anchor=anchor, timestamp=BASE_TS + i)
-    query = f"{rare} verified glaze code"
+    query = f"{rare} {attribute}"
     case = _case(
         f"lexical-{i:03d}",
         lens,
@@ -126,6 +169,7 @@ def _lexical(i: int) -> tuple[list[MemoryItem], ScaleCase]:
 
 def _semantic(i: int) -> tuple[list[MemoryItem], ScaleCase]:
     lens = "semantic_divergence"
+    crew, sensor, reading, action = SEMANTIC_FAMILIES[i % len(SEMANTIC_FAMILIES)]
     fact_id = f"fact-sem-{i:03d}"
     rare = f"raresem{i:03d}"
     anchor = f"SemanticAnchor{i:03d}"
@@ -134,8 +178,8 @@ def _semantic(i: int) -> tuple[list[MemoryItem], ScaleCase]:
     gold = _item(
         gold_id,
         (
-            f"{anchor} notes that the orchard crew activates irrigation from buried "
-            f"moisture probes when root-zone readings drop below {10 + i % 7} percent. "
+            f"{anchor} notes that the {crew} activates {action} from {sensor} "
+            f"when {reading} drop below {10 + i % 7} percent. "
             f"The internal marker is {rare}."
         ),
         lens=lens,
@@ -147,8 +191,8 @@ def _semantic(i: int) -> tuple[list[MemoryItem], ScaleCase]:
     distractor = _item(
         distractor_id,
         (
-            f"Surface timer memo {i}: visible watering schedules and calendar timers "
-            "are reviewed by the greenhouse shift lead, but no hidden dampness probes are used."
+            f"Surface schedule memo {i}: visible calendar timers are reviewed by the shift lead, "
+            f"but no hidden {sensor} are used."
         ),
         lens=lens,
         fact_id=f"{fact_id}-distractor",
@@ -157,13 +201,13 @@ def _semantic(i: int) -> tuple[list[MemoryItem], ScaleCase]:
         timestamp=BASE_TS + 1_100 + i,
     )
     if i % 6 == 1:
-        query = f"{rare} buried moisture probes"
+        query = f"{rare} {sensor}"
         target = "backend_vector_hash"
         floor = "backend_vector_hash"
         calibration = {"expect_drop": "trivial_floor"}
     else:
         # TODO(track0-task5): distinct discriminating per-case queries for the captained semantic lens.
-        query = "Which note explains watering from hidden soil dampness sensors rather than a timer?"
+        query = f"Which note explains {action} from hidden sensor evidence rather than a timer?"
         target = "accuracy_voyage"
         floor = "backend_vector_hash"
         calibration = {"expect_drop": "unsolved_target"}
@@ -189,40 +233,41 @@ def _semantic(i: int) -> tuple[list[MemoryItem], ScaleCase]:
 
 def _multi_hop(i: int) -> tuple[list[MemoryItem], ScaleCase]:
     lens = "multi_hop_relational"
+    relation, query_noun, chain, bridge_name, terminal_name = HOP_FAMILIES[i % len(HOP_FAMILIES)]
     fact_id = f"fact-hop-{i:03d}"
     rare = f"rarehop{i:03d}"
     a_id, b_id, c_id = f"hop-{i:03d}-a", f"hop-{i:03d}-b", f"hop-{i:03d}-c"
     anchor = f"HopAnchor{i:03d}"
     a = _item(
         a_id,
-        f"{anchor} begins a field logistics chain and [calls]({b_id}.md) the middle relay.",
+        f"{anchor} begins a {chain} and [{relation}]({b_id}.md) the {bridge_name}.",
         lens=lens,
         fact_id=fact_id,
         rare_key=rare,
         anchor=anchor,
         timestamp=BASE_TS + 2_000 + i,
-        links=(("calls", f"{b_id}.md"),),
+        links=((relation, f"{b_id}.md"),),
     )
     b = _item(
         b_id,
-        f"Middle relay {i} validates the cargo docket and [calls]({c_id}.md) the terminal depot.",
+        f"The {bridge_name} {i} validates the docket and [{relation}]({c_id}.md) the {terminal_name}.",
         lens=lens,
         fact_id=fact_id,
         rare_key=f"{rare}b",
         anchor=f"HopBridge{i:03d}",
         timestamp=BASE_TS + 2_100 + i,
-        links=(("calls", f"{c_id}.md"),),
+        links=((relation, f"{c_id}.md"),),
     )
     c = _item(
         c_id,
-        f"Terminal depot {i} stores the final refrigerated crate allocation for marker {rare}.",
+        f"The {terminal_name} {i} stores the final allocation for marker {rare}.",
         lens=lens,
         fact_id=fact_id,
         rare_key=f"{rare}c",
         anchor=f"HopTerminal{i:03d}",
         timestamp=BASE_TS + 2_200 + i,
     )
-    query = f"{anchor} callee"
+    query = f"{anchor} {query_noun}"
     gold_ids = (c_id,)
     calibration = {}
     floor = "backend_markdown"
@@ -257,6 +302,7 @@ def _multi_hop(i: int) -> tuple[list[MemoryItem], ScaleCase]:
 
 def _temporal(i: int) -> tuple[list[MemoryItem], ScaleCase]:
     lens = "temporal_versioned"
+    domain, values = TEMPORAL_FAMILIES[i % len(TEMPORAL_FAMILIES)]
     fact_id = f"fact-temp-{i:03d}"
     rare = f"raretemp{i:03d}"
     logical_id = f"tide-ledger-{i:03d}"
@@ -264,7 +310,7 @@ def _temporal(i: int) -> tuple[list[MemoryItem], ScaleCase]:
     t1, t2, t3 = BASE_TS + 3_000 + i * 10, BASE_TS + 3_000 + i * 10 + 3, BASE_TS + 3_000 + i * 10 + 6
     v1 = _item(
         f"temp-{i:03d}-v1",
-        f"{anchor} threshold status is five crates for harbor shelf checks; marker {rare}.",
+        f"{anchor} threshold status is {values[0]} for {domain}; marker {rare}.",
         lens=lens,
         fact_id=fact_id,
         rare_key=f"{rare}a",
@@ -275,7 +321,7 @@ def _temporal(i: int) -> tuple[list[MemoryItem], ScaleCase]:
     )
     v2 = _item(
         f"temp-{i:03d}-v2",
-        f"{anchor} threshold status is eight crates for harbor shelf checks; marker {rare}.",
+        f"{anchor} threshold status is {values[1]} for {domain}; marker {rare}.",
         lens=lens,
         fact_id=fact_id,
         rare_key=f"{rare}b",
@@ -286,7 +332,7 @@ def _temporal(i: int) -> tuple[list[MemoryItem], ScaleCase]:
     )
     v3 = _item(
         f"temp-{i:03d}-v3",
-        f"{anchor} threshold status is thirteen crates for harbor shelf checks; marker {rare}.",
+        f"{anchor} threshold status is {values[2]} for {domain}; marker {rare}.",
         lens=lens,
         fact_id=fact_id,
         rare_key=f"{rare}c",
@@ -296,14 +342,14 @@ def _temporal(i: int) -> tuple[list[MemoryItem], ScaleCase]:
         version=3,
     )
     as_of = t2 + 1
-    query = f"{anchor} threshold status harbor shelf"
+    query = f"{anchor} threshold status {domain}"
     gold_ids = (v2.item_id,)
     calibration = {}
     if i % 7 == 4:
         as_of = t2 - 1
         calibration = {"expect_drop": "future_gold"}
     elif i % 7 == 5:
-        query = f"{rare} eight crates harbor shelf"
+        query = f"{rare} {values[1]} {domain}"
         calibration = {"expect_drop": "trivial_floor"}
     case = _case(
         f"temporal-{i:03d}",
@@ -323,6 +369,7 @@ def _temporal(i: int) -> tuple[list[MemoryItem], ScaleCase]:
 
 def _mixed(i: int) -> tuple[list[MemoryItem], ScaleCase]:
     lens = "mixed_adversarial"
+    domain, relation, rule, old_value, new_value = MIXED_FAMILIES[i % len(MIXED_FAMILIES)]
     fact_id = f"fact-mix-{i:03d}"
     rare = f"raremix{i:03d}"
     anchor = f"MixAnchor{i:03d}"
@@ -334,19 +381,19 @@ def _mixed(i: int) -> tuple[list[MemoryItem], ScaleCase]:
     root = _item(
         root_id,
         (
-            f"{anchor} controls the gallery access chain and [depends on]({policy_old_id}.md) "
-            f"the approved policy while a future draft [depends on]({policy_new_id}.md) is staged."
+            f"{anchor} controls the {domain} chain and [{relation}]({policy_old_id}.md) "
+            f"the current {rule} while a future draft [{relation}]({policy_new_id}.md) is staged."
         ),
         lens=lens,
         fact_id=fact_id,
         rare_key=rare,
         anchor=anchor,
         timestamp=t_old,
-        links=(("depends on", f"{policy_old_id}.md"), ("depends on", f"{policy_new_id}.md")),
+        links=((relation, f"{policy_old_id}.md"), (relation, f"{policy_new_id}.md")),
     )
     old = _item(
         policy_old_id,
-        f"Approved gallery policy {i} keeps visitor badges amber before {anchor} expands.",
+        f"Current {rule} {i} keeps {old_value} active for {domain} before {anchor} expands.",
         lens=lens,
         fact_id=fact_id,
         rare_key=f"{rare}old",
@@ -355,7 +402,7 @@ def _mixed(i: int) -> tuple[list[MemoryItem], ScaleCase]:
     )
     new = _item(
         policy_new_id,
-        f"Future gallery policy {i} changes visitor badges to silver after the later expansion.",
+        f"Future {rule} {i} changes {old_value} to {new_value} after the later expansion.",
         lens=lens,
         fact_id=fact_id,
         rare_key=f"{rare}new",
@@ -363,7 +410,7 @@ def _mixed(i: int) -> tuple[list[MemoryItem], ScaleCase]:
         timestamp=t_new,
     )
     as_of = t_old + 2
-    query = f"what does `{anchor}` depend on for gallery policy"
+    query = f"what does `{anchor}` {relation} before expansion for {domain}"
     gold_ids = (policy_old_id,)
     calibration = {}
     distractors = (policy_new_id,)
@@ -374,7 +421,7 @@ def _mixed(i: int) -> tuple[list[MemoryItem], ScaleCase]:
         as_of = t_old
         calibration = {"expect_drop": "future_gold"}
     elif i % 8 == 6:
-        query = f"{policy_old_id} approved gallery policy amber"
+        query = f"{policy_old_id} current {rule} {old_value}"
         calibration = {"expect_drop": "trivial_floor"}
     elif i % 8 == 7:
         distractors = (root_id,)
@@ -386,8 +433,8 @@ def _mixed(i: int) -> tuple[list[MemoryItem], ScaleCase]:
         CHALLENGE,
         query,
         gold_ids,
-        target="router_cascade",
-        floor="backend_markdown",
+        target="backend_graph_bfs",
+        floor="backend_vector_hash",
         floor_k=1,
         as_of=as_of,
         distractors=distractors,

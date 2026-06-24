@@ -38,6 +38,44 @@ from memeval.stores.tests.scale_retrieval.helpers import (
 FIXTURES = fixture_dir()
 
 
+def _sample_challenges_by_lens(cases, *, per_lens: int = 6):
+    out = []
+    for lens in LENSES:
+        lens_cases = [
+            case for case in cases
+            if case.kind == "challenge" and case.lens == lens
+        ]
+        out.extend(lens_cases[:per_lens])
+    return out
+
+
+def _quality_subset_for_cases(items, cases, *, extra: int = 150):
+    by_id = {item.item_id: item for item in items}
+    fact_ids = set()
+    direct_ids = set()
+    for case in cases:
+        for item_id in case.gold_primary_ids + case.distractor_ids:
+            item = by_id.get(item_id)
+            if item is None:
+                continue
+            direct_ids.add(item.item_id)
+            fact_id = (item.metadata or {}).get("fact_id")
+            if fact_id:
+                fact_ids.add(fact_id)
+    selected = [
+        item for item in items
+        if item.item_id in direct_ids or (item.metadata or {}).get("fact_id") in fact_ids
+    ]
+    seen = {item.item_id for item in selected}
+    for item in items:
+        if len(selected) >= extra:
+            break
+        if item.item_id not in seen:
+            selected.append(item)
+            seen.add(item.item_id)
+    return selected
+
+
 class MetricHelperTests(unittest.TestCase):
     def test_recall_mrr_ndcg_worked_examples(self) -> None:
         ranked = ["wrong", "gold-a", "noise", "gold-b"]
@@ -126,12 +164,13 @@ class FixtureContractTests(unittest.TestCase):
 
 class OfflineMatrixSmokeTests(unittest.TestCase):
     def test_small_retained_set_runs_over_offline_cells(self) -> None:
-        quality = load_items(FIXTURES / "quality_items.jsonl")
-        filler = load_items(FIXTURES / "filler_items.jsonl")
+        all_quality = load_items(FIXTURES / "quality_items.jsonl")
+        filler = load_items(FIXTURES / "filler_items.jsonl")[:100]
         cases = load_cases(FIXTURES / "cases.retained.jsonl")
         controls = [case for case in cases if case.kind == "control"]
-        challenges = [case for case in cases if case.kind == "challenge"]
-        sample = controls[:6] + challenges[:18]
+        sample_challenges = _sample_challenges_by_lens(cases)
+        sample = controls[:6] + sample_challenges
+        quality = _quality_subset_for_cases(all_quality, sample)
         self.assertGreaterEqual(len(sample), 12)
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -146,7 +185,7 @@ class OfflineMatrixSmokeTests(unittest.TestCase):
                 self.assertIn("future_vector_sqlite_vec", skipped)
 
                 target_solved_by_lens = {}
-                for case in challenges:
+                for case in sample_challenges:
                     with self.subTest(case_id=case.case_id, lens=case.lens, target=case.target):
                         target = runnable_by_name.get(case.target)
                         self.assertIsNotNone(target, f"{case.case_id}: target cell is not runnable")
@@ -159,7 +198,7 @@ class OfflineMatrixSmokeTests(unittest.TestCase):
                         )
                         target_solved_by_lens.setdefault(case.lens, 0)
                         target_solved_by_lens[case.lens] += 1
-                self.assertEqual(set(target_solved_by_lens), {case.lens for case in challenges})
+                self.assertEqual(set(target_solved_by_lens), {case.lens for case in sample_challenges})
 
                 seen_metric_rows = 0
                 markdown_control_recall = []

@@ -100,6 +100,7 @@ class MatrixCell:
     name: str
     store: Any
     columns: dict[str, str]
+    write_summary: dict[str, Any] = field(default_factory=dict)
     _closers: tuple[Any, ...] = ()
 
     def close(self) -> None:
@@ -285,10 +286,43 @@ def _columns(
     }
 
 
-def _write_items(stores: tuple[Any, ...], items: list[MemoryItem]) -> None:
+def _latency_summary(latencies: list[int], *, operation_count: int) -> dict[str, Any]:
+    if not latencies:
+        return {
+            "operation_count": operation_count,
+            "latency_p50_ns": None,
+            "latency_p95_ns": None,
+            "throughput_per_s": None,
+        }
+    ordered = sorted(latencies)
+    p95_index = min(len(ordered) - 1, math.ceil(0.95 * len(ordered)) - 1)
+    total_ns = sum(ordered)
+    throughput = (operation_count / (total_ns / 1_000_000_000.0)) if total_ns else None
+    return {
+        "operation_count": operation_count,
+        "latency_p50_ns": int(median(ordered)),
+        "latency_p95_ns": int(ordered[p95_index]),
+        "throughput_per_s": throughput,
+    }
+
+
+def _write_items(stores: dict[str, Any], items: list[MemoryItem]) -> dict[str, dict[str, Any]]:
+    latencies: dict[str, list[int]] = {name: [] for name in stores}
+    combined: list[int] = []
     for item in items:
-        for store in stores:
+        for name, store in stores.items():
+            start = perf_counter_ns()
             store.write(clone_item(item))
+            elapsed = perf_counter_ns() - start
+            latencies[name].append(elapsed)
+            combined.append(elapsed)
+    out = {
+        name: _latency_summary(values, operation_count=len(values))
+        for name, values in latencies.items()
+    }
+    out["combined"] = _latency_summary(combined, operation_count=len(combined))
+    out["item_count"] = {"operation_count": len(items)}
+    return out
 
 
 def _fresh_bundle(
@@ -298,44 +332,48 @@ def _fresh_bundle(
     embed: Any = None,
     graph_embed: Any = None,
     graph_max_depth: int = 2,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     if root.exists():
         shutil.rmtree(root)
     root.mkdir(parents=True, exist_ok=True)
     markdown = MarkdownStore(root / "markdown")
     vector = SqliteVectorStore(str(root / "vector.db"), embed=embed)
     graph = GraphStore(path=str(root / "graph.db"), max_depth=graph_max_depth, embed=graph_embed)
-    _write_items((markdown, vector, graph), items)
-    return {MARKDOWN: markdown, VECTORS: vector, GRAPH: graph}
+    backends = {MARKDOWN: markdown, VECTORS: vector, GRAPH: graph}
+    write_summary = _write_items(backends, items)
+    return backends, write_summary
 
 
 def _current_cell(name: str, items: list[MemoryItem], root: Path) -> MatrixCell:
     if name == "backend_markdown":
-        backends = _fresh_bundle(items, root / name)
+        backends, writes = _fresh_bundle(items, root / name)
         return MatrixCell(
             name,
             backends[MARKDOWN],
             _columns(lexical_engine="shared_bm25"),
+            writes[MARKDOWN],
             tuple(backends.values()),
         )
     if name == "backend_vector_hash":
-        backends = _fresh_bundle(items, root / name)
+        backends, writes = _fresh_bundle(items, root / name)
         return MatrixCell(
             name,
             backends[VECTORS],
             _columns(vector_index="brute_force"),
+            writes[VECTORS],
             tuple(backends.values()),
         )
     if name == "backend_graph_bfs":
-        backends = _fresh_bundle(items, root / name)
+        backends, writes = _fresh_bundle(items, root / name)
         return MatrixCell(
             name,
             backends[GRAPH],
             _columns(graph_engine="in_memory_bfs"),
+            writes[GRAPH],
             tuple(backends.values()),
         )
     if name == "router_speed":
-        backends = _fresh_bundle(items, root / name)
+        backends, writes = _fresh_bundle(items, root / name)
         router = Router.with_config(backends, speed_profile())
         return MatrixCell(
             name,
@@ -345,10 +383,11 @@ def _current_cell(name: str, items: list[MemoryItem], root: Path) -> MatrixCell:
                 graph_engine="in_memory_bfs",
                 lexical_engine="shared_bm25",
             ),
+            writes["combined"],
             tuple(backends.values()),
         )
     if name == "router_cascade":
-        backends = _fresh_bundle(items, root / name, graph_max_depth=3)
+        backends, writes = _fresh_bundle(items, root / name, graph_max_depth=3)
         config = RouterConfig(
             profile_name="cascade",
             cascade=CascadeConfig(enabled=True, graph_max_depth=3),
@@ -361,10 +400,11 @@ def _current_cell(name: str, items: list[MemoryItem], root: Path) -> MatrixCell:
                 graph_engine="in_memory_bfs",
                 lexical_engine="shared_bm25",
             ),
+            writes["combined"],
             tuple(backends.values()),
         )
     if name == "fusion_rrf":
-        backends = _fresh_bundle(items, root / name)
+        backends, writes = _fresh_bundle(items, root / name)
         config = fusion_profile(method="rrf", per_backend_k=50, rrf_k=60)
         return MatrixCell(
             name,
@@ -374,10 +414,11 @@ def _current_cell(name: str, items: list[MemoryItem], root: Path) -> MatrixCell:
                 graph_engine="in_memory_bfs",
                 lexical_engine="shared_bm25",
             ),
+            writes["combined"],
             tuple(backends.values()),
         )
     if name == "fusion_score":
-        backends = _fresh_bundle(items, root / name)
+        backends, writes = _fresh_bundle(items, root / name)
         config = fusion_profile(method="score", per_backend_k=50)
         return MatrixCell(
             name,
@@ -387,6 +428,7 @@ def _current_cell(name: str, items: list[MemoryItem], root: Path) -> MatrixCell:
                 graph_engine="in_memory_bfs",
                 lexical_engine="shared_bm25",
             ),
+            writes["combined"],
             tuple(backends.values()),
         )
     raise KeyError(name)
@@ -396,7 +438,7 @@ def _voyage_cell(name: str, items: list[MemoryItem], root: Path) -> MatrixCell:
     embed = VoyageEmbedder()
     classifier = SemanticRouterClassifier(embed)
     if name == "accuracy_voyage":
-        backends = _fresh_bundle(items, root / name, embed=embed, graph_embed=embed, graph_max_depth=3)
+        backends, writes = _fresh_bundle(items, root / name, embed=embed, graph_embed=embed, graph_max_depth=3)
         config = accuracy_profile(classifier=classifier, embed=embed, embed_model=embed.model)
         return MatrixCell(
             name,
@@ -406,10 +448,11 @@ def _voyage_cell(name: str, items: list[MemoryItem], root: Path) -> MatrixCell:
                 graph_engine="in_memory_bfs",
                 lexical_engine="shared_bm25",
             ),
+            writes["combined"],
             tuple(backends.values()),
         )
     if name == "accuracy_voyage_rerank":
-        backends = _fresh_bundle(items, root / name, embed=embed, graph_embed=embed, graph_max_depth=3)
+        backends, writes = _fresh_bundle(items, root / name, embed=embed, graph_embed=embed, graph_max_depth=3)
         config = accuracy_profile(classifier=classifier, embed=embed, embed_model=embed.model)
         inner = RouterStore(Router.with_config(backends, config))
         return MatrixCell(
@@ -421,10 +464,11 @@ def _voyage_cell(name: str, items: list[MemoryItem], root: Path) -> MatrixCell:
                 lexical_engine="shared_bm25",
                 reranker="voyage",
             ),
+            writes["combined"],
             tuple(backends.values()),
         )
     if name == "fuse_all_voyage_rerank_rrf":
-        backends = _fresh_bundle(items, root / name, embed=embed, graph_embed=embed, graph_max_depth=3)
+        backends, writes = _fresh_bundle(items, root / name, embed=embed, graph_embed=embed, graph_max_depth=3)
         config = fusion_profile(method="rrf", per_backend_k=50, rrf_k=60)
         inner = RouterStore(Router.with_config(backends, config))
         return MatrixCell(
@@ -436,6 +480,7 @@ def _voyage_cell(name: str, items: list[MemoryItem], root: Path) -> MatrixCell:
                 lexical_engine="shared_bm25",
                 reranker="voyage",
             ),
+            writes["combined"],
             tuple(backends.values()),
         )
     raise KeyError(name)
@@ -532,6 +577,7 @@ def summarize_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "n": len(rows),
         "latency_p50_ns": int(median(latencies)),
         "latency_p95_ns": int(latencies[p95_index]),
+        "throughput_per_s": len(rows) / (sum(latencies) / 1_000_000_000.0) if sum(latencies) else None,
     })
     return out
 

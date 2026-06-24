@@ -1,5 +1,5 @@
 {
-  "candidate_count": 60,
+  "candidate_count": 600,
   "drop_reasons": [
     "unknown_gold",
     "future_gold",
@@ -21,60 +21,60 @@
         "unknown_gold": 0,
         "unsolved_target": 0
       },
-      "generated": 12,
-      "retained": 12
+      "generated": 120,
+      "retained": 120
     },
     "mixed_adversarial": {
-      "dropped": 10,
+      "dropped": 81,
       "dropped_by_reason": {
-        "ambiguous_gold": 1,
-        "floor_not_beaten": 7,
-        "future_gold": 1,
-        "trivial_floor": 0,
-        "unknown_gold": 1,
+        "ambiguous_gold": 6,
+        "floor_not_beaten": 1,
+        "future_gold": 15,
+        "trivial_floor": 44,
+        "unknown_gold": 15,
         "unsolved_target": 0
       },
-      "generated": 12,
-      "retained": 2
+      "generated": 120,
+      "retained": 39
     },
     "multi_hop_relational": {
-      "dropped": 3,
+      "dropped": 74,
       "dropped_by_reason": {
-        "ambiguous_gold": 1,
-        "floor_not_beaten": 0,
+        "ambiguous_gold": 0,
+        "floor_not_beaten": 35,
         "future_gold": 0,
-        "trivial_floor": 1,
-        "unknown_gold": 1,
+        "trivial_floor": 24,
+        "unknown_gold": 15,
         "unsolved_target": 0
       },
-      "generated": 12,
-      "retained": 9
+      "generated": 120,
+      "retained": 46
     },
     "semantic_divergence": {
-      "dropped": 12,
+      "dropped": 120,
       "dropped_by_reason": {
         "ambiguous_gold": 0,
         "floor_not_beaten": 0,
         "future_gold": 0,
-        "trivial_floor": 2,
-        "unknown_gold": 2,
-        "unsolved_target": 8
+        "trivial_floor": 20,
+        "unknown_gold": 20,
+        "unsolved_target": 80
       },
-      "generated": 12,
+      "generated": 120,
       "retained": 0
     },
     "temporal_versioned": {
-      "dropped": 3,
+      "dropped": 34,
       "dropped_by_reason": {
         "ambiguous_gold": 0,
         "floor_not_beaten": 0,
-        "future_gold": 2,
-        "trivial_floor": 1,
+        "future_gold": 17,
+        "trivial_floor": 17,
         "unknown_gold": 0,
         "unsolved_target": 0
       },
-      "generated": 12,
-      "retained": 9
+      "generated": 120,
+      "retained": 86
     }
   },
   "matrix": {
@@ -155,19 +155,19 @@
     ]
   },
   "mode": "offline",
-  "quality_count": 144,
+  "quality_count": 1500,
   "search_depth": 100,
   "totals": {
-    "dropped": 28,
+    "dropped": 309,
     "dropped_by_reason": {
-      "ambiguous_gold": 2,
-      "floor_not_beaten": 7,
-      "future_gold": 3,
-      "trivial_floor": 4,
-      "unknown_gold": 4,
-      "unsolved_target": 8
+      "ambiguous_gold": 6,
+      "floor_not_beaten": 36,
+      "future_gold": 32,
+      "trivial_floor": 105,
+      "unknown_gold": 50,
+      "unsolved_target": 80
     },
-    "generated": 60,
-    "retained": 32
+    "generated": 600,
+    "retained": 291
   }
 }
