@@ -8,6 +8,7 @@ remember→query round-trip.
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -62,3 +63,61 @@ def test_reset_clears_events(tmp_path, capsys):
     res = _run(capsys, ["--store", str(tmp_path), "reset"])
     assert res["reset"] is True
     assert not (tmp_path / "events.jsonl").exists()
+
+
+def test_install_claude_plugin_builds_pinned_bundle_and_runs_claude(
+    tmp_path, capsys, monkeypatch
+):
+    calls: list[list[str]] = []
+    envs: list[dict[str, str]] = []
+    built: dict[str, str] = {}
+
+    def fake_build_bundle(out_dir, *, runtime_bin_dir=None, **_kwargs):
+        built["out_dir"] = str(out_dir)
+        built["runtime_bin_dir"] = str(runtime_bin_dir)
+        return Path(out_dir)
+
+    def fake_run(cmd, *, env, text, capture_output, check):
+        calls.append(cmd)
+        envs.append(env)
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(
+        "cookbook_memory.adapters.claude_code.build.build_bundle",
+        fake_build_bundle,
+    )
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/tmp/sandbox-should-not-leak")
+
+    bundle_dir = tmp_path / "bundle"
+    runtime_bin_dir = tmp_path / "venv" / "bin"
+    result = _run(capsys, [
+        "install-claude-plugin",
+        "--bundle-dir", str(bundle_dir),
+        "--runtime-bin-dir", str(runtime_bin_dir),
+        "--claude", "claude-test",
+    ])
+
+    assert result["ok"] is True
+    assert built == {"out_dir": str(bundle_dir), "runtime_bin_dir": str(runtime_bin_dir)}
+    assert calls == [
+        ["claude-test", "plugin", "uninstall", "cookbook-memory"],
+        ["claude-test", "plugin", "marketplace", "remove", "cookbook-memory"],
+        ["claude-test", "plugin", "marketplace", "add", str(bundle_dir)],
+        ["claude-test", "plugin", "install", "cookbook-memory@cookbook-memory", "--scope", "user"],
+        ["claude-test", "plugin", "details", "cookbook-memory"],
+    ]
+    assert all("CLAUDE_CONFIG_DIR" not in env for env in envs)
+
+
+def test_default_runtime_bin_dir_resolves_memory_cli_from_path(tmp_path, monkeypatch):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    script = bin_dir / "memory-cli"
+    script.write_text("#!/bin/sh\n")
+    script.chmod(0o755)
+
+    monkeypatch.setattr(cli.sys, "argv", ["memory-cli"])
+    monkeypatch.setenv("PATH", str(bin_dir))
+
+    assert cli._default_runtime_bin_dir() == bin_dir.resolve()

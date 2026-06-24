@@ -127,6 +127,27 @@ def test_build_bundle_is_reproducible(tmp_path):
     assert (b / "skills" / "recall" / "SKILL.md").is_file()
 
 
+def test_build_bundle_can_pin_runtime_to_venv_bin(tmp_path):
+    from cookbook_memory.adapters.claude_code.build import build_bundle
+
+    bin_dir = tmp_path / "venv" / "bin"
+    bin_dir.mkdir(parents=True)
+    (bin_dir / "memory-cli").write_text("#!/bin/sh\n")
+    (bin_dir / "memory-hook").write_text("#!/bin/sh\n")
+
+    out = build_bundle(tmp_path / "bundle", runtime_bin_dir=bin_dir)
+
+    server = json.loads((out / ".mcp.json").read_text())["mcpServers"]["cookbook-memory"]
+    assert server["command"] == str((bin_dir / "memory-cli").resolve())
+    assert server["args"] == ["mcp"]
+    assert server["env"]["PATH"].startswith(f"{bin_dir.resolve()}:")
+
+    hooks = json.loads((out / "hooks" / "hooks.json").read_text())["hooks"]
+    stop = hooks["Stop"][0]["hooks"][0]
+    assert stop["command"] == f"{(bin_dir / 'memory-hook').resolve()} Stop"
+    assert stop["env"]["PATH"].startswith(f"{bin_dir.resolve()}:")
+
+
 def test_validate_bundle_rejects_missing_skill(tmp_path):
     from cookbook_memory.adapters.claude_code import build
 

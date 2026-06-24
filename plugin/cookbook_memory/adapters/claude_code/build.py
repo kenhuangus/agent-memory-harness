@@ -23,6 +23,8 @@ Run it via ``memory-cli build-bundle --out <dir>`` or call :func:`build_bundle`.
 
 from __future__ import annotations
 
+import json
+import shlex
 import shutil
 from pathlib import Path
 
@@ -39,13 +41,18 @@ class BundleError(RuntimeError):
     """A required ingredient is missing or the assembled bundle is invalid."""
 
 
-def build_bundle(out_dir: str | Path, *, clean: bool = True) -> Path:
+def build_bundle(
+    out_dir: str | Path, *, clean: bool = True, runtime_bin_dir: str | Path | None = None
+) -> Path:
     """Assemble the shippable Claude Code plugin bundle at ``out_dir``; return it.
 
     Copies the adapter manifests (``.claude-plugin/``, ``.mcp.json``, ``hooks/``)
     and materializes every canonical skill into ``<out_dir>/skills/<name>/``. With
     ``clean`` (default) any existing ``out_dir`` is removed first for a reproducible
-    build. Raises :class:`BundleError` if an ingredient is missing.
+    build. ``runtime_bin_dir`` rewrites the generated bundle to invoke console scripts
+    from a specific environment, which is useful for local installs where Claude Code
+    should not rely on the host's ``python3``. Raises :class:`BundleError` if an
+    ingredient is missing.
     """
     out = Path(out_dir).resolve()
     if clean and out.exists():
@@ -76,8 +83,47 @@ def build_bundle(out_dir: str | Path, *, clean: bool = True) -> Path:
     if materialized == 0:
         raise BundleError(f"no skills found to materialize under {skills_src}")
 
+    if runtime_bin_dir is not None:
+        _pin_runtime_commands(out, Path(runtime_bin_dir))
+
     validate_bundle(out)
     return out
+
+
+def _pin_runtime_commands(bundle_dir: Path, runtime_bin_dir: Path) -> None:
+    """Rewrite the bundle to run from a concrete Python environment.
+
+    The portable committed bundle uses ``python3 -m`` / PATH-resolved commands. A
+    local development install is stricter: point Claude Code at the venv's generated
+    console scripts so MCP, hooks, and the hook-fired ``daydream-cli`` all resolve
+    against the same interpreter and dependencies.
+    """
+    bin_dir = runtime_bin_dir.resolve()
+    memory_cli = bin_dir / "memory-cli"
+    memory_hook = bin_dir / "memory-hook"
+    for label, path in {"memory-cli": memory_cli, "memory-hook": memory_hook}.items():
+        if not path.is_file():
+            raise BundleError(f"{label} not found in runtime bin dir: {path}")
+
+    path_env = f"{bin_dir}:$PATH"
+
+    mcp_path = bundle_dir / ".mcp.json"
+    mcp = json.loads(mcp_path.read_text())
+    server = mcp["mcpServers"]["cookbook-memory"]
+    server["command"] = str(memory_cli)
+    server["args"] = ["mcp"]
+    server.setdefault("env", {})["PATH"] = path_env
+    mcp_path.write_text(json.dumps(mcp, indent=2) + "\n")
+
+    hooks_path = bundle_dir / "hooks" / "hooks.json"
+    hooks_doc = json.loads(hooks_path.read_text())
+    for event_name, groups in hooks_doc["hooks"].items():
+        command = f"{shlex.quote(str(memory_hook))} {shlex.quote(event_name)}"
+        for group in groups:
+            for hook in group.get("hooks", []):
+                hook["command"] = command
+                hook.setdefault("env", {})["PATH"] = path_env
+    hooks_path.write_text(json.dumps(hooks_doc, indent=2) + "\n")
 
 
 def validate_bundle(bundle_dir: str | Path) -> None:

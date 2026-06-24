@@ -36,7 +36,7 @@ classifiers = [
 # PyPI on upload — intentional, since this project ships from git, not PyPI. When
 # the contract becomes its own published package (ADR-eval-001), narrow this to it.
 dependencies = [
-    "agent-memory-eval @ git+https://github.com/kenhuangus/agent-memory-harness.git#subdirectory=eval",
+    "agent-memory-eval[daydream] @ git+https://github.com/kenhuangus/agent-memory-harness.git#subdirectory=eval",
 ]
 
 [project.optional-dependencies]
