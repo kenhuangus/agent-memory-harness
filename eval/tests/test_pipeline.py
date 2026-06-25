@@ -6,6 +6,8 @@ Drives ``run_pipeline`` with a fake ``claude`` runner (no network, no real plugi
 * runs exactly ONE eval stage over ONE sequence and writes a self-describing results
   file with the ``pipeline`` metadata block (benchmark, sequence, stage, model, dreamer,
   version);
+* exposes Claude Code's native file-based memory as a builtin stage without wiring the
+  cookbook-memory plugin substrate;
 * points a plugin-real stage at the shared ``_memory/`` substrate, which persists across
   invocations (no harness copy);
 * runs a dream consolidation pass first when the stage is ``plugin-dreamed``;
@@ -182,6 +184,15 @@ def test_pipeline_base_stage_has_no_plugin(monkeypatch) -> None:
         assert doc["dream"]["status"] == "not-run"  # base runs no dream pass
 
 
+def test_pipeline_builtin_stage_uses_native_memory_without_plugin_substrate() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        substrate = Path(tmp) / "_memory"
+        agent = P._make_agent("builtin", _cfg(tmp, stage="builtin"), substrate)
+
+        assert agent.memory_mode == "builtin"
+        assert agent._project_dir is None
+
+
 def test_pipeline_plugin_real_default_and_primed_stage_options() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         substrate = Path(tmp) / "_memory"
@@ -245,7 +256,7 @@ def test_interactive_config_can_select_base_stage(monkeypatch) -> None:
 
 
 def test_interactive_mode_menu_accepts_a_number(monkeypatch) -> None:
-    # The mode prompt is a numbered menu; "2" selects the 2nd mode (plugin-blank).
+    # The mode prompt is a numbered menu; "2" selects the 2nd mode (builtin).
     prompts: list[str] = []
     answers = iter(["", "", "2", "", "", "", "", ""])
     monkeypatch.setattr(P, "_interactive", lambda: True)
@@ -259,7 +270,7 @@ def test_interactive_mode_menu_accepts_a_number(monkeypatch) -> None:
 
     cfg = P._resolve_config(args)
 
-    assert cfg["stage"] == P._EVAL_STAGES[1] == "plugin-blank"
+    assert cfg["stage"] == P._EVAL_STAGES[1] == "builtin"
     assert any("mode [" in p for p in prompts)  # the mode menu was shown
 
 

@@ -6,6 +6,7 @@ per-repo task chain), or a single VISTA journey (one of the six) — against the
 per-version memory substrate. The stages a run can pick from (one per invocation) are:
 
   * base           -- mode=off, no plugin (the memoryless baseline)
+  * builtin        -- Claude Code's native file-based memory over prior sessions
   * plugin-blank   -- plugin-real against the shared memory substrate
   * plugin-accum   -- plugin-real against the SAME substrate (the default: memory that
                       has accumulated from prior runs is in play)
@@ -156,6 +157,7 @@ def _default_version_slug(cfg: dict, results_dir: "str | Path") -> str:
 #: consolidation pass over the substrate before it evaluates.
 _EVAL_STAGES = (
     "base",
+    "builtin",
     "plugin-blank",
     "plugin-accum",
     "plugin-dreamed",
@@ -166,6 +168,7 @@ _DEFAULT_STAGE = "plugin-accum"
 #: Human-facing one-line descriptions of each mode (stage) for the interactive menu.
 _MODE_LABELS = {
     "base": "no plugin — the memoryless baseline (mode=off)",
+    "builtin": "Claude Code native file-based memory over prior sessions",
     "plugin-blank": "plugin-real natural/unprimed against the shared substrate (start from blank)",
     "plugin-accum": "plugin-real natural/unprimed against the shared substrate (accumulated memory)",
     "plugin-dreamed": "plugin-real after one dream consolidation pass over the substrate",
@@ -174,6 +177,7 @@ _MODE_LABELS = {
 _STAGE_INDEX = {name: i for i, name in enumerate(_EVAL_STAGES, 1)}
 _STAGE_MODE = {
     "base": "off",
+    "builtin": "builtin",
     "plugin-blank": "plugin-real",
     "plugin-accum": "plugin-real",
     "plugin-dreamed": "plugin-real",
