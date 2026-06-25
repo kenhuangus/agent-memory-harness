@@ -17,8 +17,9 @@ Additive, read-only, zero extra dependencies.
 ```
 
 Then open the printed `http://127.0.0.1:8765`.
-Flags: `--store DIR`, `--port N` (8765), `--profile speed|fusion|accuracy|auto`, `--seed [--force]`,
-`--open`, `--margin-threshold F`.
+Flags: `--store DIR`, `--port N` (8765), `--profile speed|fusion|accuracy|accuracy-local|auto`,
+`--seed [--force]`, `--open`, `--margin-threshold F`. `accuracy-local` browses through the local
+MiniLM + sqlite-vec ANN path (needs the `eval[local-ann]` extra; degrades to `fusion` if absent).
 
 The **store** field in the header is editable: type another `.../_memory` (or a run dir with a
 nested `.cookbook-memory`) and press **Load** (or Enter) to switch substrates **live — no restart**
@@ -48,5 +49,5 @@ after `make setup`), falling back to `python3`. The inspector is stdlib-only —
 Tests (dev only — needs `pytest` + `memeval` importable), from the repo root:
 
 ```bash
-PYTHONPATH=. python -m pytest router_ui/tests/ -q   # 24 tests, real-substrate validated
+PYTHONPATH=. python -m pytest router_ui/tests/ -q   # 26 tests, real-substrate validated
 ```

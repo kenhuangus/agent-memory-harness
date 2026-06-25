@@ -77,8 +77,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="substrate dir (a .../_memory). Default: newest results/v*/_memory.")
     parser.add_argument("--port", type=int, default=8765, help="port to serve on (default 8765).")
     parser.add_argument("--host", default="127.0.0.1", help="bind host (default 127.0.0.1; local only).")
-    parser.add_argument("--profile", choices=["speed", "fusion", "accuracy", "auto"], default="auto",
-                        help="routing profile (default auto = build_store's pick).")
+    parser.add_argument("--profile", choices=["speed", "fusion", "accuracy", "accuracy-local", "auto"],
+                        default="auto",
+                        help="routing profile (default auto = build_store's pick). accuracy-local "
+                             "= local MiniLM + sqlite-vec ANN (needs the eval[local-ann] extra).")
     parser.add_argument("--margin-threshold", type=float, default=None,
                         help="ambiguity threshold in classifier-score units (default 1.0).")
     parser.add_argument("--seed", action="store_true", help="build the synthetic demo corpus, then serve it.")
