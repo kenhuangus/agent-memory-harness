@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from typing import Any
 
-__all__ = ["MarkdownStore", "SqliteVectorStore", "GraphStore", "Neo4jGraphStore"]
+__all__ = ["MarkdownStore", "SqliteVectorStore", "GraphStore", "Neo4jGraphStore", "Fts5Store"]
 
 
 def __getattr__(name: str) -> Any:  # lazy re-export; keeps package import cheap
@@ -36,6 +36,9 @@ def __getattr__(name: str) -> Any:  # lazy re-export; keeps package import cheap
     if name == "SqliteVectorStore":
         from .sqlite_store import SqliteVectorStore
         return SqliteVectorStore
+    if name == "Fts5Store":
+        from .fts5_store import Fts5Store
+        return Fts5Store
     if name == "GraphStore":
         from .graph_store import GraphStore
         return GraphStore

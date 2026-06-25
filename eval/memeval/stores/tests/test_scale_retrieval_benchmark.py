@@ -19,6 +19,7 @@ from memeval.schema import MemoryItem
 from memeval.stores.tests.scale_retrieval.helpers import (
     CURRENT_CELL_NAMES,
     DROP_REASONS,
+    FTS5_CELL_NAMES,
     LENSES,
     LOCAL_ANN_CELL_NAMES,
     MatrixCell,
@@ -183,7 +184,8 @@ class OfflineMatrixSmokeTests(unittest.TestCase):
                 runnable_names = [cell.name for cell in runnable]
                 self.assertEqual(runnable_names[:len(CURRENT_CELL_NAMES)], list(CURRENT_CELL_NAMES))
                 self.assertTrue(
-                    set(runnable_names) <= set(CURRENT_CELL_NAMES) | set(LOCAL_ANN_CELL_NAMES)
+                    set(runnable_names)
+                    <= set(CURRENT_CELL_NAMES) | set(LOCAL_ANN_CELL_NAMES) | set(FTS5_CELL_NAMES)
                 )
                 self.assertIn("accuracy_voyage", skipped)
                 self.assertEqual(skipped["accuracy_voyage"].reason, "captained: MEMEVAL_LIVE unset")

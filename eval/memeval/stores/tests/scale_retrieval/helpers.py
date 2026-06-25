@@ -11,6 +11,7 @@ import json
 import math
 import os
 import shutil
+import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 from statistics import median
@@ -32,6 +33,7 @@ from memeval.router import (
 )
 from memeval.schema import MemoryItem
 from memeval.stores.embedders import SentenceTransformersEmbedder, VoyageEmbedder
+from memeval.stores.fts5_store import Fts5Store
 from memeval.stores.graph_store import GraphStore
 from memeval.stores.markdown_store import MarkdownStore
 from memeval.stores.rerankers import MockReranker, RerankedStore, VoyageReranker
@@ -88,6 +90,11 @@ LOCAL_ANN_CELL_NAMES = (
     "future_vector_sqlite_vec",
     "fusion_local_ann",
     "fusion_local_ann_rerank",
+)
+
+FTS5_CELL_NAMES = (
+    "backend_fts5",
+    "fusion_fts5_rrf",
 )
 
 
@@ -380,6 +387,35 @@ def _local_ann_columns_for(name: str) -> dict[str, str]:
     return _local_ann_columns()
 
 
+def _fts5_columns() -> dict[str, str]:
+    return _columns(lexical_engine="fts5")
+
+
+def _fts5_fusion_columns() -> dict[str, str]:
+    return _columns(
+        vector_index="brute_force",
+        graph_engine="in_memory_bfs",
+        lexical_engine="fts5",
+    )
+
+
+def _fts5_columns_for(name: str) -> dict[str, str]:
+    if name == "fusion_fts5_rrf":
+        return _fts5_fusion_columns()
+    return _fts5_columns()
+
+
+def fts5_available() -> bool:
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.execute("CREATE VIRTUAL TABLE probe USING fts5(content, tokenize='unicode61')")
+        return True
+    except sqlite3.Error:
+        return False
+    finally:
+        conn.close()
+
+
 def _local_ann_unavailable_reason() -> Optional[str]:
     if os.environ.get("MEMEVAL_LOCAL_ANN") != "1":
         return "opt-in: MEMEVAL_LOCAL_ANN=1 unset"
@@ -517,6 +553,69 @@ def local_ann_cells(
             raise KeyError(name)
         if isinstance(cell, MatrixCell) or include_skips:
             cells.append(cell)
+    return cells
+
+
+def _fts5_backend_cell(items: list[MemoryItem], root: Path) -> MatrixCell:
+    name = "backend_fts5"
+    cell_root = root / name
+    if cell_root.exists():
+        shutil.rmtree(cell_root)
+    cell_root.mkdir(parents=True, exist_ok=True)
+    fts5 = Fts5Store(str(cell_root / "fts5.db"))
+    writes = _write_items({"fts5": fts5}, items)
+    return MatrixCell(
+        name,
+        fts5,
+        _fts5_columns(),
+        writes["fts5"],
+        (fts5,),
+    )
+
+
+def _fts5_fusion_cell(items: list[MemoryItem], root: Path) -> MatrixCell:
+    name = "fusion_fts5_rrf"
+    cell_root = root / name
+    if cell_root.exists():
+        shutil.rmtree(cell_root)
+    cell_root.mkdir(parents=True, exist_ok=True)
+    fts5 = Fts5Store(str(cell_root / "fts5.db"))
+    vector = SqliteVectorStore(str(cell_root / "vector.db"))
+    graph = GraphStore(path=str(cell_root / "graph.db"), max_depth=2)
+    backends = {"fts5": fts5, VECTORS: vector, GRAPH: graph}
+    writes = _write_items(backends, items)
+    config = fusion_profile(method="rrf", per_backend_k=50, rrf_k=60)
+    return MatrixCell(
+        name,
+        RouterStore(Router.with_config(backends, config)),
+        _fts5_fusion_columns(),
+        writes["combined"],
+        tuple(backends.values()),
+    )
+
+
+def fts5_cells(
+    items: list[MemoryItem],
+    root: str | Path,
+    *,
+    include_skips: bool = True,
+    names: tuple[str, ...] = FTS5_CELL_NAMES,
+) -> list[MatrixCell | Skip]:
+    if not fts5_available():
+        return [
+            Skip(name, "SQLite FTS5 unavailable", _fts5_columns_for(name))
+            for name in names
+        ] if include_skips else []
+    root = Path(root)
+    cells: list[MatrixCell | Skip] = []
+    for name in names:
+        if name == "backend_fts5":
+            cell = _fts5_backend_cell(items, root)
+        elif name == "fusion_fts5_rrf":
+            cell = _fts5_fusion_cell(items, root)
+        else:
+            raise KeyError(name)
+        cells.append(cell)
     return cells
 
 
@@ -697,16 +796,23 @@ def skip_cells() -> list[Skip]:
     local_reason = _local_ann_unavailable_reason()
     if local_reason is not None:
         skips.extend(_local_ann_skips(local_reason))
-    skips.extend([
+    future_skips = [
         Skip("future_vector_usearch_hnsw", "future: usearch_hnsw selector not implemented",
              _columns(vector_index="usearch_hnsw")),
         Skip("future_graph_neo4j_phase_b", "future: native Neo4j graph engine not in matrix yet",
              _columns(graph_engine="neo4j_phase_b")),
         Skip("future_graph_falkordb", "future: FalkorDB graph engine not in matrix yet",
              _columns(graph_engine="falkordb")),
-        Skip("future_lexical_fts5", "future: SQLite FTS5 lexical engine not in matrix yet",
-             _columns(lexical_engine="fts5")),
-    ])
+    ]
+    if not fts5_available():
+        future_skips.append(
+            Skip(
+                "future_lexical_fts5",
+                "future: SQLite FTS5 lexical engine unavailable",
+                _columns(lexical_engine="fts5"),
+            )
+        )
+    skips.extend(future_skips)
     return skips
 
 
@@ -733,6 +839,7 @@ def iter_matrix_cells(
         else:
             cells.extend(_voyage_cell(name, items, root) for name in SKIP_CELL_NAMES[:3])
     cells.extend(local_ann_cells(items, root, include_skips=include_skips))
+    cells.extend(fts5_cells(items, root, include_skips=include_skips))
     if include_skips:
         existing = {cell.name for cell in cells}
         cells.extend(skip for skip in skip_cells() if skip.name not in existing)
@@ -786,6 +893,7 @@ __all__ = [
     "CONTROL",
     "CURRENT_CELL_NAMES",
     "DROP_REASONS",
+    "FTS5_CELL_NAMES",
     "LENSES",
     "LOCAL_ANN_CELL_NAMES",
     "MatrixCell",
@@ -796,6 +904,8 @@ __all__ = [
     "close_cells",
     "evaluate_case",
     "fixture_dir",
+    "fts5_available",
+    "fts5_cells",
     "item_from_record",
     "item_to_record",
     "iter_matrix_cells",

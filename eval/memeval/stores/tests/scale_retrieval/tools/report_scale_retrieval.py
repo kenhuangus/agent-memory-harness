@@ -19,6 +19,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[6]
 EVAL_DIR = ROOT / "eval"
+SCALE_RETRIEVAL_DIR = Path(__file__).resolve().parents[1]
 if str(EVAL_DIR) not in sys.path:
     sys.path.insert(0, str(EVAL_DIR))
 
@@ -32,6 +33,7 @@ from memeval.stores.tests.scale_retrieval.helpers import (  # noqa: E402
     _current_cell,
     close_cells,
     evaluate_case,
+    fts5_cells,
     iter_matrix_cells,
     load_cases,
     load_items,
@@ -171,6 +173,20 @@ def run_matrix(
                 seen.add(local_cell.name)
             finally:
                 local_cell.close()
+        for fts5_cell in fts5_cells(quality + filler, tmp_root, include_skips=True):
+            if isinstance(fts5_cell, Skip):
+                report["cells"][fts5_cell.name] = {
+                    "status": "skip",
+                    "reason": fts5_cell.reason,
+                    "columns": fts5_cell.columns,
+                }
+                seen.add(fts5_cell.name)
+                continue
+            try:
+                record_cell(fts5_cell)
+                seen.add(fts5_cell.name)
+            finally:
+                fts5_cell.close()
         for skip in skip_cells():
             if skip.name in seen:
                 continue
@@ -258,13 +274,13 @@ def write_markdown(report: dict[str, Any], path: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--quality", type=Path, required=True)
-    parser.add_argument("--cases", type=Path, required=True)
-    parser.add_argument("--filler", type=Path)
-    parser.add_argument("--tmp-root", type=Path, required=True)
-    parser.add_argument("--out-json", type=Path, required=True)
-    parser.add_argument("--out-md", type=Path, required=True)
-    parser.add_argument("--manifest", type=Path)
+    parser.add_argument("--quality", type=Path, default=SCALE_RETRIEVAL_DIR / "quality_items.jsonl")
+    parser.add_argument("--cases", type=Path, default=SCALE_RETRIEVAL_DIR / "cases.retained.jsonl")
+    parser.add_argument("--filler", type=Path, default=SCALE_RETRIEVAL_DIR / "filler_items.jsonl")
+    parser.add_argument("--tmp-root", type=Path, default=Path("/tmp/memeval_scale_retrieval_matrix"))
+    parser.add_argument("--out-json", type=Path, default=SCALE_RETRIEVAL_DIR / "results" / "offline_matrix.json")
+    parser.add_argument("--out-md", type=Path, default=SCALE_RETRIEVAL_DIR / "results" / "offline_matrix.md")
+    parser.add_argument("--manifest", type=Path, default=SCALE_RETRIEVAL_DIR / "calibration_manifest.offline.json")
     parser.add_argument("--case-limit", type=int)
     parser.add_argument("--live", action="store_true")
     args = parser.parse_args()
