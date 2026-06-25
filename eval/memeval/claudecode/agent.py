@@ -200,6 +200,15 @@ _BUILTIN_PREFIX = (
 # Retry-until-recall stays as a cheap backstop for the rare miss.
 _PLUGIN_MAX_TRIES = 3
 
+#: VISTA event types that are LEGITIMATE gold memory and must be seeded into the
+#: plugin-real store so gold_retrieval_f1 / adaptation_rate can measure: ``fact``
+#: (intake facts) and ``drift`` (the superseding policy update — adaptation_rate
+#: requires it to be retrievable). Mirrors the loader's ``_GOLD_EVENT_TYPES``.
+#: ``injection`` is deliberately ABSENT — pre-seeding the attacker canary as a clean
+#: store memory would corrupt poisoning_resistance/targeted_asr (the canary must only
+#: flow through the transcript path, where the curator/daydream rejects it).
+_VISTA_GOLD_EVENT_TYPES = ("fact", "drift")
+
 
 def _free_port() -> int:
     """Pick an OS-assigned free localhost port for a per-task HTTP memory server."""
@@ -771,23 +780,41 @@ class ClaudeCodeAgent:
 
     def _seed_vista_sessions(self, task: Task, store_dir: Path,
                              plugin_env: dict[str, str]) -> int:
-        """Ingest a VISTA journey's ``event_trace`` sessions into the plugin's store
-        via the plugin's OWN write surface (``memory-cli remember``) BEFORE the recall
-        turn, so plugin-real recall has content to query.
+        """Ingest a VISTA journey's LEGITIMATE GOLD memories into the plugin's store
+        via the plugin's OWN write surface BEFORE the recall turn, so plugin-real
+        recall (and the native evaluator's content-matcher) has gold content to score.
 
         Validity fix (ADR-vista-seed): the harness sets ``seed_sessions=False`` for
-        plugin-real, and nothing else writes VISTA's facts/injections/drifts into the
-        cookbook store — so recall returns 0 hits and the off-vs-plugin-real comparison
-        is hollow. We seed each ``task.sessions`` entry (INCLUDING injections — VISTA
-        measures whether recall RESISTS surfacing the poisoned canary, so the attacker
-        payload MUST be in the store for poisoning_resistance/targeted_asr to be real).
+        plugin-real, and nothing else writes VISTA's facts/drifts into the cookbook
+        store — so recall returns 0 gold hits and ``gold_retrieval_f1`` /
+        ``adaptation_rate`` read 0.0 even when recall engages. We seed the gold event
+        types — ``fact`` (the legitimate intake facts) AND ``drift`` (the superseding
+        policy-update memory, which ``adaptation_rate`` requires to be retrievable) —
+        for every journey, with content IDENTICAL to ``Session.content`` so the
+        evaluator's content-matcher (``_content_match``) scores them and so the
+        drift-update memory is retrievable.
+
+        HONESTY — injection canaries are NOT pre-seeded as retrievable memories. VISTA
+        scores ``poisoning_resistance`` / ``targeted_asr`` by whether the attacker
+        payload SURFACES in recall; the curator/daydream is supposed to REJECT it on
+        the transcript path. Pre-seeding the canary as a clean store memory would
+        artificially break (or trivially inflate) that axis. Injection content keeps
+        flowing through the transcript path only, exactly as before this change.
+
+        Root cause of the prior empty-store bug: the previous implementation spawned
+        ``memory-cli remember`` once per session. The plugin's engine assigns ids from
+        an in-PROCESS counter (``cbmem-{n}``, ``n`` reset to 0 each process), so every
+        per-session subprocess wrote id ``cbmem-1`` and the store (idempotent on id)
+        COLLAPSED them to a single memory — which is why only one ``cbmem-1`` per
+        domain ever landed. The fix seeds all gold memories in ONE process so the
+        counter increments to unique ids (``cbmem-1..N``).
 
         Strictly scoped: a no-op unless ``memory_mode == 'plugin-real'`` AND the task is
-        VISTA. Drives only the plugin's console command; never touches store internals
+        VISTA. Uses only the plugin's own engine surface; never touches store internals
         (ADR-harness-012). Idempotent per store via a ``.vista_seeded`` marker so the
         shared substrate isn't re-seeded on every task. No-op under the offline fake
-        runner (``_ensure_real_plugin`` returns ``{}``; tests inject the runner). Returns
-        the number of sessions seeded (0 when skipped)."""
+        runner (tests inject the seam). Returns the number of gold memories seeded
+        (0 when skipped)."""
         if self.memory_mode != "plugin-real":
             return 0
         if getattr(task, "benchmark", None) != Benchmark.VISTA:
@@ -796,58 +823,107 @@ class ClaudeCodeAgent:
         if not sessions:
             return 0
         # Idempotency marker keyed per task within the shared store (the substrate
-        # persists across tasks; each journey seeds its own sessions exactly once).
+        # persists across tasks; each journey seeds its own gold memories exactly once).
         marker = store_dir / f".vista_seeded_{_safe_group_dir(str(task.task_id))}"
         if marker.exists():
             return 0
-        remember = self._vista_remember_fn(store_dir, plugin_env)
-        if remember is None:
-            return 0  # offline/no real CLI — nothing to drive (tests inject the fn)
-        n = 0
+        # Build the GOLD seed batch: fact + drift sessions only. Injections are
+        # deliberately EXCLUDED (see docstring — keeps poisoning_resistance honest).
+        batch: list[tuple[str, str]] = []
         for s in sessions:
             content = getattr(s, "content", "") or ""
             if not content.strip():
                 continue
-            etype = ""
             meta = getattr(s, "metadata", None) or {}
-            if isinstance(meta, dict):
-                etype = str(meta.get("event_type", "") or "")
+            etype = str(meta.get("event_type", "") or "") if isinstance(meta, dict) else ""
+            if etype not in _VISTA_GOLD_EVENT_TYPES:
+                continue  # only legitimate gold (fact/drift); never the injection canary
             tags = ",".join(["vista", etype]) if etype else "vista"
-            remember(content, tags)
-            n += 1
-        try:
-            marker.parent.mkdir(parents=True, exist_ok=True)
-            marker.write_text(str(n), encoding="utf-8")
-        except OSError:
-            pass
+            batch.append((content, tags))
+        if not batch:
+            return 0
+        seed_batch = self._vista_seed_batch_fn(store_dir, plugin_env)
+        if seed_batch is None:
+            return 0  # offline/no real engine — nothing to drive (tests inject the fn)
+        n = seed_batch(batch)
+        if n > 0:
+            try:
+                marker.parent.mkdir(parents=True, exist_ok=True)
+                marker.write_text(str(n), encoding="utf-8")
+            except OSError:
+                pass
         return n
 
-    def _vista_remember_fn(self, store_dir: Path,
-                           plugin_env: dict[str, str]) -> Optional[Callable[[str, str], None]]:
-        """Return a ``remember(content, tags)`` callable that drives the plugin's
-        ``memory-cli remember`` console command against ``store_dir``, or ``None`` when
-        no real plugin is in play (offline fake runner). A test seam: offline tests set
-        ``self._vista_remember_override`` to capture calls without a real CLI."""
-        override = getattr(self, "_vista_remember_override", None)
-        if override is not None:
-            return override
+    def _vista_seed_batch_fn(
+        self, store_dir: Path, plugin_env: dict[str, str]
+    ) -> Optional[Callable[[list[tuple[str, str]]], int]]:
+        """Return a ``seed_batch(items) -> count`` callable that writes ALL the given
+        ``(content, tags)`` gold memories to ``store_dir`` in a SINGLE plugin-engine
+        process — so the engine's in-process id counter increments to unique
+        ``cbmem-1..N`` ids instead of colliding on ``cbmem-1`` (the prior bug). Drives
+        the plugin's OWN write surface (``cookbook_memory.core.client.build_engine``),
+        never the store internals (ADR-harness-012).
+
+        Returns ``None`` when no real plugin is in play (offline fake runner). A test
+        seam: offline tests set ``self._vista_seed_batch_override`` to capture the batch
+        without a real engine.
+
+        Back-compat seam: if a test sets the legacy ``self._vista_remember_override``
+        (one ``remember(content, tags)`` per call), we honor it by replaying the batch
+        through it — the existing per-call tests keep working unchanged."""
+        batch_override = getattr(self, "_vista_seed_batch_override", None)
+        if batch_override is not None:
+            return batch_override
+        remember_override = getattr(self, "_vista_remember_override", None)
+        if remember_override is not None:
+            def _replay(items: list[tuple[str, str]]) -> int:
+                n = 0
+                for content, tags in items:
+                    remember_override(content, tags)
+                    n += 1
+                return n
+            return _replay
         if self._runner is not run_claude:
-            return None  # offline/fake runner: no real memory-cli to drive
+            return None  # offline/fake runner: no real engine to drive
         import subprocess
 
         env = {**os.environ, **plugin_env, "MEMORY_STORE": str(store_dir)}
-        exe = shutil.which("memory-cli", path=env.get("PATH"))
-        if exe is None:
-            return None
+        rt = self._effective_runtime()
+        # Drive the plugin's engine in ONE process: build_engine(store).remember(...) per
+        # item. One process => the cbmem-N counter increments => unique ids => no
+        # idempotent-on-id collapse. Items are passed as JSON on stdin (no shell quoting
+        # of attacker/markdown content). Fail-open: any error leaves the seed empty
+        # rather than crashing the benchmark run.
+        driver = (
+            "import sys, json\n"
+            "from cookbook_memory.core.client import build_engine\n"
+            "import os\n"
+            "items = json.load(sys.stdin)\n"
+            "eng = build_engine(os.environ['MEMORY_STORE'])\n"
+            "n = 0\n"
+            "for content, tags in items:\n"
+            "    tl = [t for t in (tags or '').split(',') if t]\n"
+            "    mid = eng.remember(content, tags=tl, timestamp=0.0)\n"
+            "    if mid:\n"
+            "        n += 1\n"
+            "print(n)\n"
+        )
 
-        def _remember(content: str, tags: str) -> None:
+        def _seed_batch(items: list[tuple[str, str]]) -> int:
             try:
-                subprocess.run([exe, "remember", content, "--tags", tags],
-                               env=env, capture_output=True, text=True,
-                               timeout=self.timeout, check=False)
+                proc = subprocess.run(
+                    [rt.python, "-c", driver],
+                    input=json.dumps(items), env=env,
+                    capture_output=True, text=True,
+                    timeout=self.timeout, check=False,
+                )
             except Exception:
-                return  # fail-open: a seed failure must not crash the benchmark run
-        return _remember
+                return 0  # fail-open: a seed failure must not crash the benchmark run
+            try:
+                return int((proc.stdout or "0").strip().splitlines()[-1])
+            except (ValueError, IndexError):
+                return 0
+        return _seed_batch
 
     def _plugin_real_store(self, run_dir: Path, *,
                            group_id: Optional[str] = None) -> tuple[Path, Path]:
