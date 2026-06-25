@@ -119,6 +119,16 @@ uv run memeval-pipeline --yes --sequence pytest-dev_pytest_sequence --limit 3 --
 memeval-pipeline --help                          # all flags
 ```
 
+Inspect what a run actually saved with the **router memory-inspector** web UI (browse the
+plugin's memories + evaluate how the router routed them — see
+[`router_ui/README.md`](router_ui/README.md)):
+
+```bash
+make viewer                                      # newest results/v*/_memory substrate
+make viewer ARGS="--seed --open"                 # synthetic demo corpus + open browser
+make viewer ARGS="--store /path/to/_memory"      # a specific store (or pick one in-UI via Browse…)
+```
+
 For the individual `memeval-bench` commands below, prefix with `uv run` (or activate `.venv`):
 
 ```bash
