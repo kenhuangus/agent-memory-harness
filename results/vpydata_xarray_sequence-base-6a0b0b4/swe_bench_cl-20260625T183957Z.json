@@ -1,0 +1,148 @@
+{
+  "schema": 1,
+  "memory_version": "vpydata_xarray_sequence-base-6a0b0b4",
+  "benchmark": "swe_bench_cl",
+  "timestamp": "20260625T183957Z",
+  "pipeline": {
+    "version": "vpydata_xarray_sequence-base-6a0b0b4",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "6a0b0b4",
+    "benchmark": "swe_bench_cl",
+    "sequence": "pydata_xarray_sequence",
+    "stage": "base",
+    "limit": null,
+    "n_tasks": 22,
+    "model": "claude-haiku-4-5",
+    "code_mode": "agentic",
+    "grader": "swebench",
+    "plugin_workers": 1,
+    "budget_usd": 0.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "inclusionai/ling-2.6-flash"
+    },
+    "memory_store": "results/vpydata_xarray_sequence-base-6a0b0b4/_memory",
+    "n_stages": 1,
+    "n_eval_stages": 1,
+    "stages": [
+      "base"
+    ],
+    "timestamp": "20260625T183957Z",
+    "started_at": 1782412797.699879,
+    "ended_at": 1782419142.9102082,
+    "stages_run": [
+      "base"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": null
+    }
+  },
+  "dream": {
+    "status": "not-run"
+  },
+  "runs": [
+    {
+      "run_id": "pipeline-base",
+      "timestamp": "2026-06-25T20:25:42+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "claude-code:claude-haiku-4-5:off",
+      "memory": false,
+      "label": "claude-code:claude-haiku-4-5:off",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.0,
+        "relevancy": 0.0,
+        "accuracy": 0.2727272727272727,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 22,
+        "extra": {}
+      },
+      "n_tasks": 22,
+      "entries_used": 22,
+      "entries_available": 22,
+      "limit": null,
+      "selection": "flat",
+      "cost_usd": 0.0,
+      "tokens_in": 2020,
+      "tokens_out": 408448,
+      "partial": false,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 1,
+        "memory_reached": 0,
+        "memory_hit": 0,
+        "recall_attempted": 0,
+        "recall_with_hits": 0,
+        "graded_n": 22,
+        "resolved": 6,
+        "ungraded": 0,
+        "grade_reasons": {
+          "graded": 22
+        },
+        "errors": [
+          {
+            "task_id": "pydata__xarray-4695",
+            "stage": "solve",
+            "error": "TimeoutExpired: Command '['claude', '-p', 'Edit the source files in this checkout directly to fix the issue, then run the tests to confirm. Do NOT output a diff or paste a patch \u2014 just m"
+          }
+        ]
+      },
+      "notes": "single-stage pipeline \u00b7 swe_bench_cl \u00b7 stage base",
+      "pipeline_stage": "base",
+      "stage_index": 1,
+      "git_sha": "6a0b0b4",
+      "git_tag": "vpydata_xarray_sequence-base-6a0b0b4",
+      "memory_health": {
+        "before": {
+          "store_dir": "results/vpydata_xarray_sequence-base-6a0b0b4/_memory/.cookbook-memory",
+          "events": 0,
+          "daydream_events": 0,
+          "recall_events": 0,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 0,
+          "daydream_memory_written": 0,
+          "memory_items": null,
+          "graph_nodes": null,
+          "markdown_items": 0,
+          "durable_items": 0
+        },
+        "after": {
+          "store_dir": "results/vpydata_xarray_sequence-base-6a0b0b4/_memory/.cookbook-memory",
+          "events": 0,
+          "daydream_events": 0,
+          "recall_events": 0,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 0,
+          "daydream_memory_written": 0,
+          "memory_items": null,
+          "graph_nodes": null,
+          "markdown_items": 0,
+          "durable_items": 0
+        },
+        "delta": {
+          "events": 0,
+          "daydream_events": 0,
+          "recall_events": 0,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 0,
+          "daydream_memory_written": 0,
+          "markdown_items": 0,
+          "durable_items": 0
+        }
+      },
+      "warnings": []
+    }
+  ]
+}

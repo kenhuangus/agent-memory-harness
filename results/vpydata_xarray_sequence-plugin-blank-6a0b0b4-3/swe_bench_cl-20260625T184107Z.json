@@ -1,0 +1,153 @@
+{
+  "schema": 1,
+  "memory_version": "vpydata_xarray_sequence-plugin-blank-6a0b0b4-3",
+  "benchmark": "swe_bench_cl",
+  "timestamp": "20260625T184107Z",
+  "pipeline": {
+    "version": "vpydata_xarray_sequence-plugin-blank-6a0b0b4-3",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "6a0b0b4",
+    "benchmark": "swe_bench_cl",
+    "sequence": "pydata_xarray_sequence",
+    "stage": "plugin-blank",
+    "limit": null,
+    "n_tasks": 22,
+    "model": "claude-haiku-4-5",
+    "code_mode": "agentic",
+    "grader": "swebench",
+    "plugin_workers": 1,
+    "budget_usd": 0.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "inclusionai/ling-2.6-flash"
+    },
+    "memory_store": "results/vpydata_xarray_sequence-plugin-blank-6a0b0b4-3/_memory",
+    "n_stages": 1,
+    "n_eval_stages": 1,
+    "stages": [
+      "plugin-blank"
+    ],
+    "timestamp": "20260625T184107Z",
+    "started_at": 1782412867.7771766,
+    "ended_at": 1782424364.3580546,
+    "stages_run": [
+      "plugin-blank"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": {
+        "ok": true,
+        "code": "ok",
+        "remembered": true,
+        "hits": 1
+      }
+    }
+  },
+  "dream": {
+    "status": "not-run"
+  },
+  "runs": [
+    {
+      "run_id": "pipeline-plugin-blank",
+      "timestamp": "2026-06-25T21:52:44+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "claude-code:claude-haiku-4-5:plugin-real",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:plugin-real+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.03877106828513648,
+        "relevancy": 0.0,
+        "accuracy": 0.3181818181818182,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 22,
+        "extra": {}
+      },
+      "n_tasks": 22,
+      "entries_used": 22,
+      "entries_available": 22,
+      "limit": null,
+      "selection": "flat",
+      "cost_usd": 0.0,
+      "tokens_in": 2222,
+      "tokens_out": 242102,
+      "partial": false,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 1,
+        "memory_reached": 21,
+        "memory_hit": 14,
+        "recall_attempted": 21,
+        "recall_with_hits": 14,
+        "graded_n": 22,
+        "resolved": 7,
+        "ungraded": 0,
+        "grade_reasons": {
+          "graded": 22
+        },
+        "errors": [
+          {
+            "task_id": "pydata__xarray-4695",
+            "stage": "solve",
+            "error": "TimeoutExpired: Command '['claude', '-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits', '--model', 'claude-haiku-4-5"
+          }
+        ]
+      },
+      "notes": "single-stage pipeline \u00b7 swe_bench_cl \u00b7 stage plugin-blank",
+      "pipeline_stage": "plugin-blank",
+      "stage_index": 2,
+      "git_sha": "6a0b0b4",
+      "git_tag": "vpydata_xarray_sequence-plugin-blank-6a0b0b4-3",
+      "memory_health": {
+        "before": {
+          "store_dir": "results/vpydata_xarray_sequence-plugin-blank-6a0b0b4-3/_memory/.cookbook-memory",
+          "events": 0,
+          "daydream_events": 0,
+          "recall_events": 0,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 0,
+          "daydream_memory_written": 0,
+          "memory_items": null,
+          "graph_nodes": null,
+          "markdown_items": 0,
+          "durable_items": 0
+        },
+        "after": {
+          "store_dir": "results/vpydata_xarray_sequence-plugin-blank-6a0b0b4-3/_memory/.cookbook-memory",
+          "events": 281,
+          "daydream_events": 680,
+          "recall_events": 11,
+          "recall_with_hits": 7,
+          "recall_zero_hits": 4,
+          "recall_errors": 0,
+          "daydream_completed": 120,
+          "daydream_memory_written": 10,
+          "memory_items": 10,
+          "graph_nodes": 10,
+          "markdown_items": 0,
+          "durable_items": 10
+        },
+        "delta": {
+          "events": 281,
+          "daydream_events": 680,
+          "recall_events": 11,
+          "recall_with_hits": 7,
+          "recall_zero_hits": 4,
+          "recall_errors": 0,
+          "daydream_completed": 120,
+          "daydream_memory_written": 10,
+          "markdown_items": 0,
+          "durable_items": 10
+        }
+      },
+      "warnings": []
+    }
+  ]
+}

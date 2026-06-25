@@ -1,0 +1,81 @@
+{
+  "benchmark": "swe_bench_cl",
+  "pipeline": {
+    "version": "vpydata_xarray_sequence-plugin-blank-6a0b0b4-3",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "6a0b0b4",
+    "benchmark": "swe_bench_cl",
+    "sequence": "pydata_xarray_sequence",
+    "stage": "plugin-blank",
+    "limit": null,
+    "n_tasks": 22,
+    "model": "claude-haiku-4-5",
+    "code_mode": "agentic",
+    "grader": "swebench",
+    "plugin_workers": 1,
+    "budget_usd": 0.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "inclusionai/ling-2.6-flash"
+    },
+    "memory_store": "results/vpydata_xarray_sequence-plugin-blank-6a0b0b4-3/_memory",
+    "n_stages": 1,
+    "n_eval_stages": 1,
+    "stages": [
+      "plugin-blank"
+    ],
+    "timestamp": "20260625T184107Z",
+    "started_at": 1782412867.7771766,
+    "ended_at": 1782424364.3580546,
+    "stages_run": [
+      "plugin-blank"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": {
+        "ok": true,
+        "code": "ok",
+        "remembered": true,
+        "hits": 1
+      }
+    }
+  },
+  "dream": {
+    "status": "not-run"
+  },
+  "stages": [
+    {
+      "stage": "plugin-blank",
+      "stage_index": 2,
+      "metrics": {
+        "accuracy": 0.3181818181818182,
+        "relevancy": 0.0,
+        "recency": 0.0,
+        "efficiency": 0.03877106828513648
+      },
+      "n_tasks": 22,
+      "cost_usd": 0.0,
+      "graded_n": 22,
+      "resolved": 7,
+      "ungraded": 0,
+      "grade_reasons": {
+        "graded": 22
+      },
+      "memory_reached": 21,
+      "memory_hit": 14,
+      "recall_attempted": 21,
+      "recall_with_hits": 14,
+      "memory_health": {
+        "recall_events": 11,
+        "recall_with_hits": 7,
+        "recall_zero_hits": 4,
+        "daydream_completed": 120,
+        "daydream_memory_written": 10,
+        "durable_items_after": 10
+      },
+      "warnings": []
+    }
+  ],
+  "deltas": {}
+}
