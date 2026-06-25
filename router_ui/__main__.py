@@ -88,6 +88,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--open", action="store_true", help="open the page in a browser.")
     args = parser.parse_args(argv)
 
+    # Load the repo-root .env (VOYAGE_API_KEY, MEMEVAL_LOCAL_ANN, etc.) FIRST, like every other
+    # entrypoint (daydream-cli, bench runner, plugin), so profile auto-selection sees the same
+    # keys without the user having to `export`. A shell-exported var still wins (override=False).
+    from memeval.dotenv_loader import load_root_dotenv
+    load_root_dotenv()
+
     if args.seed:
         target = Path(args.store) if args.store else Path(tempfile.mkdtemp(prefix="inspect-demo-")) / "_memory"
         _guard_results(target, args.force)
