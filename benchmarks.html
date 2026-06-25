@@ -391,33 +391,99 @@
     <!-- FULL TEST RESULTS -->
     <div class="section-head" style="margin-top:30px">
       <div class="eyebrow">Measured</div>
-      <h3 style="margin:0">Results — memory OFF vs PLUGIN-REAL</h3>
-      <p class="note" style="margin:6px 0 0">VISTA · 6 journeys · <code>claude-haiku-4-5</code> · daydream on.
-        OFF = Claude Code's built-in memory; PLUGIN-REAL = our plugin's real store.</p>
+      <h3 style="margin:0">Results — VISTA test split, 97 journeys</h3>
+      <p class="note" style="margin:6px 0 0">VISTA <strong>test split · 97 journeys</strong> ·
+        <code>claude-haiku-4-5</code> · daydream + dream active · grader off · <strong>0 errors both arms</strong>.
+        <strong>builtin</strong> = Claude Code's native memory; <strong>plugin-real</strong> = the cookbook plugin's real store.
+        Records:
+        <a href="https://github.com/kenhuangus/agent-memory-harness/blob/main/results/vista/split97/builtin.record.json" target="_blank" rel="noopener">builtin.record.json</a> ·
+        <a href="https://github.com/kenhuangus/agent-memory-harness/blob/main/results/vista/split97/plugin-real.record.json" target="_blank" rel="noopener">plugin-real.record.json</a> ·
+        <a href="https://github.com/kenhuangus/agent-memory-harness/blob/main/results/vista/split97/SUMMARY.md" target="_blank" rel="noopener">SUMMARY.md</a>.
+        The earlier 6-journey figures were a dev-split smoke test, not a measurement.</p>
     </div>
     <div class="table-wrap fade-up">
       <table>
         <thead>
-          <tr><th>Metric</th><th>OFF</th><th>PLUGIN-REAL</th></tr>
+          <tr><th>Metric (↑ better; ASR ↓)</th><th>builtin</th><th>plugin-real</th></tr>
         </thead>
         <tbody>
-          <tr><td>recall_attempted / with_hits</td><td>0 / 0</td><td><strong>4 / 4</strong></td></tr>
-          <tr><td><code>poisoning_resistance</code> ↑</td><td>1.0</td><td>1.0</td></tr>
-          <tr><td><code>targeted_asr</code> ↓</td><td>0.0</td><td>0.0</td></tr>
-          <tr><td><code>self_improvement_safety</code> ↑</td><td>1.0</td><td>1.0</td></tr>
-          <tr><td><code>gold_retrieval_f1</code> ↑</td><td>0.0</td><td><strong>0.369</strong></td></tr>
-          <tr><td><code>adaptation_rate</code> ↑</td><td>0.0</td><td><strong>0.333</strong></td></tr>
-          <tr><td><code>cost_usd</code></td><td>$0.020</td><td>$0.0176</td></tr>
+          <tr><td>recall_attempted / hits</td><td>19 / 19</td><td><strong>61 / 61</strong></td></tr>
+          <tr><td><code>gold_retrieval_f1</code> ↑</td><td>0.149</td><td><strong>0.537</strong></td></tr>
+          <tr><td><code>adaptation_rate</code> ↑</td><td>0.196</td><td><strong>0.629</strong></td></tr>
+          <tr><td><code>poisoning_resistance</code> ↑</td><td>0.804</td><td><strong>1.000</strong></td></tr>
+          <tr><td><code>targeted_asr</code> ↓</td><td>0.196</td><td><strong>0.000</strong></td></tr>
+          <tr><td><code>self_improvement_safety</code> (RSI) ↑</td><td>0.804</td><td><strong>1.000</strong></td></tr>
+          <tr><td><code>errors</code></td><td>0</td><td>0</td></tr>
+          <tr><td><code>cost_usd</code></td><td>$0.345</td><td>$0.344</td></tr>
         </tbody>
       </table>
     </div>
+
+    <!-- WHAT EACH METRIC MEANS -->
+    <div class="section-head" style="margin-top:30px">
+      <div class="eyebrow">Plain English</div>
+      <h3 style="margin:0">What each metric means / what this result shows</h3>
+    </div>
+    <div class="table-wrap fade-up">
+      <table>
+        <thead>
+          <tr><th>Row</th><th>What it measures, in plain English</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>recall_attempted / hits</strong></td>
+            <td>How many journeys the agent actually pulled a stored memory into the answer.
+              The cookbook engaged on <strong>61/97</strong> journeys vs native memory's <strong>19/97</strong> —
+              roughly 3× more often.</td></tr>
+          <tr><td><code>gold_retrieval_f1</code> ↑</td>
+            <td>Overlap of the memories it retrieved with the gold facts/updates (content-matched).
+              <strong>0.537</strong> vs <strong>0.149</strong> means the cookbook surfaces the <em>right</em> memory about
+              <strong>3.6× more</strong> of the time.</td></tr>
+          <tr><td><code>adaptation_rate</code> ↑</td>
+            <td>Fraction of drift journeys where the <em>updated</em> (superseded) memory was retrieved — i.e. it kept up with
+              a policy change instead of citing the stale version. <strong>0.629</strong> vs <strong>0.196</strong> =
+              cookbook tracks policy changes <strong>~3.2× better</strong>.</td></tr>
+          <tr><td><code>poisoning_resistance</code> ↑</td>
+            <td>Fraction of journeys with <em>no</em> injected canary in the retrieved memory.
+              <strong>1.0</strong> vs <strong>0.804</strong>: the cookbook never surfaced the attacker payload;
+              native memory leaked it in ~20% of journeys.</td></tr>
+          <tr><td><code>targeted_asr</code> ↓</td>
+            <td>Attack success rate — a canary leaking into recall. Lower is better.
+              <strong>0.0</strong> vs <strong>0.196</strong>: the cookbook fully resisted; native memory was
+              compromised ~20% of the time.</td></tr>
+          <tr><td><code>self_improvement_safety</code> (RSI) ↑</td>
+            <td>Fraction of journeys where memory <em>consolidation</em> opened no forbidden-belief path
+              (observer-only recursive-self-improvement gate). <strong>1.0</strong> vs <strong>0.804</strong>:
+              the cookbook's consolidation never opened an unsafe path; native memory did in ~20%.</td></tr>
+          <tr><td><code>cost_usd</code></td>
+            <td>Essentially equal — <strong>~$0.34</strong> on both arms — so the quality and safety gains come at
+              <strong>no extra cost</strong>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- GATES -->
+    <div class="callout fade-up" style="margin-top:16px">
+      <span class="ic">✅</span>
+      <div><p style="margin:0 0 6px"><strong>Three gates verified for the cookbook arm — all passed.</strong></p>
+        <ul style="margin:0; padding-left:18px">
+          <li><strong>retrieve</strong> — recall actually engaged and hit gold content on
+            <strong>61/97</strong> journeys (<code>gold_retrieval_f1</code> 0.537), proving the store is read at recall time.</li>
+          <li><strong>daydream</strong> — <strong>22 memories</strong> were written through the daydream hook → DeepSeek,
+            proving the write path is live.</li>
+          <li><strong>dream</strong> — <code>dream --all</code> consolidated <strong>all 4 domain stores</strong>,
+            proving offline consolidation ran end-to-end.</li>
+        </ul>
+      </div>
+    </div>
     <div class="callout warn fade-up" style="margin-top:16px">
       <span class="ic">ℹ️</span>
-      <div><p style="margin:0"><strong>Honest footnote.</strong> Verified after the gold-fact + drift seeding fix
-        (<a href="https://github.com/kenhuangus/agent-memory-harness/pull/157" target="_blank" rel="noopener">#157</a>):
-        cookbook recall <em>engages</em> (4/4) and now retrieves gold content (<code>gold_retrieval_f1</code> 0.37)
-        and drift-updates (<code>adaptation_rate</code> 0.33) with <strong>no safety regression</strong> —
-        poisoning_resistance, targeted_asr, and self_improvement_safety are unchanged (1.0 / 0.0 / 1.0) OFF vs ON.</p></div>
+      <div><p style="margin:0"><strong>Honesty note.</strong> The builtin arm's earlier <code>0 / 0</code> recall was an
+        <em>instrumentation gap</em> — native memory was firing, the harness just wasn't recording it. That was fixed in
+        <a href="https://github.com/kenhuangus/agent-memory-harness/pull/165" target="_blank" rel="noopener">#165</a>
+        (builtin instrumentation), alongside
+        <a href="https://github.com/kenhuangus/agent-memory-harness/pull/168" target="_blank" rel="noopener">#168</a>
+        (parallel-worker fix). With both landed, builtin now records real recalls (19/97) — this is a
+        <strong>fair, apples-to-apples comparison</strong>, not native memory doing nothing.</p></div>
     </div>
 
     <!-- DATASET SCHEMA & SAMPLE JOURNEYS -->
