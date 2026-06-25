@@ -19,6 +19,28 @@ import os
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _disable_noise_filter_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ADR-dreaming-026 — the noise filter is on by default in production,
+    but the existing dreaming test suite uses inline non-JSONL log content
+    (e.g. ``"content\\n"``, ``"hello world\\n"``) that the filter would
+    silently strip → engine would early-return without exercising the
+    code path under test.
+
+    **Test-suite contract:** every test in this directory inherits
+    ``DREAM_NOISE_FILTER=0`` unless it explicitly re-enables the filter
+    with ``monkeypatch.setenv("DREAM_NOISE_FILTER", "1")``. Tests that
+    DO want to exercise the filter — e.g. the §NF section in
+    ``test_engine.py`` and everything in ``test_transcript_formatter.py``
+    — opt back in per-test, not at the suite level.
+
+    The production default is the OPPOSITE (filter on). If a regression
+    only shows up in production but not in tests, the most likely
+    culprit is this default mismatch.
+    """
+    monkeypatch.setenv("DREAM_NOISE_FILTER", "0")
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _no_live_llm_in_dreaming_tests() -> None:
     """JOB3 §N20: the dreaming test session must NOT make live OpenRouter calls.

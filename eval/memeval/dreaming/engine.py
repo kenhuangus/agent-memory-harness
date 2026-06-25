@@ -31,11 +31,13 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Callable
 
 from memeval.dreaming._extract import _default_id_gen, extract_memories
+from memeval.dreaming.transcript_formatter import format_chunk
 from memeval.dreaming._state import (
     RECENT_MEMORY_CAP,
     SidecarState,
@@ -139,6 +141,38 @@ def daydream(
 
                     effective_now = now if now is not None else time.time()
                     chunk_text = chunk.decode(errors="replace")
+
+                    # ADR-dreaming-026 noise filter: render the raw JSONL chunk
+                    # into a structured per-block transcript view before
+                    # redaction + LLM. Collapses queue-ops / attachments /
+                    # system events / unknown-shape blocks to one-liners;
+                    # preserves model turns + tool I/O with explicit markers.
+                    # Opt-out via DREAM_NOISE_FILTER=0. Length cap via
+                    # DREAM_PARSER_LIMIT (0 = no truncation, the default;
+                    # matches the parser's `"full"` CLI mode).
+                    if os.environ.get("DREAM_NOISE_FILTER", "1") != "0":
+                        bytes_raw = len(chunk_text)
+                        chunk_text = format_chunk(
+                            chunk_text,
+                            limit=int(os.environ.get("DREAM_PARSER_LIMIT", "0") or "0"),
+                        )
+                        bytes_formatted = len(chunk_text)
+                        emit(
+                            "daydream.noise_filtered",
+                            session_id=session_id,
+                            chunk_id=cursor,
+                            bytes_raw=bytes_raw,
+                            bytes_formatted=bytes_formatted,
+                            ratio=(bytes_formatted / bytes_raw) if bytes_raw else 1.0,
+                        )
+                        # If the filter stripped everything (e.g. all lines
+                        # are non-JSON harness noise), avoid a wasted LLM call
+                        # on an empty envelope. Same semantics as the raw-
+                        # empty early-return at the top of this block — cursor
+                        # does NOT advance, so the next call retries.
+                        if not chunk_text.strip():
+                            return
+
                     redacted, detected = redact_with_counts(chunk_text)
 
                     _write_audit_fail_open(
