@@ -162,12 +162,29 @@ class SwebenchHostGrader:
     def _venv_root_dir(self) -> Path:
         """The directory holding the shared per-sequence venvs. Persists across a
         sequence's tasks (unlike each task's throwaway checkout dir), so the interpreter
-        + third-party deps are provisioned once and reused."""
+        + third-party deps are provisioned once and reused.
+
+        Created lazily under the system temp dir and registered for removal at process
+        exit, so the (potentially large) shared venvs are not leaked under ``/tmp``.
+        Also removable explicitly via :meth:`cleanup`."""
         from pathlib import Path
         if self._venv_root is None:
+            import atexit
             import tempfile
             self._venv_root = Path(tempfile.mkdtemp(prefix="memeval-swe-seqvenv-"))
+            atexit.register(self.cleanup)
         return self._venv_root
+
+    def cleanup(self) -> None:
+        """Remove the shared per-sequence venv root (and its cached venvs). Idempotent
+        and best-effort — safe to call explicitly or via the atexit hook."""
+        import shutil
+        root = self._venv_root
+        if root is None:
+            return
+        self._venv_root = None
+        self._seq_venvs.clear()
+        shutil.rmtree(root, ignore_errors=True)
 
     @staticmethod
     def _resolve_spec(repo: str, version: str) -> Optional[dict]:
@@ -221,7 +238,10 @@ class SwebenchHostGrader:
 
         # Install only the sequence-invariant pieces here (pre_install + pip_packages);
         # the editable install of each task's checkout happens per task in _install.
-        self._install_shared(py, spec)
+        # Run from the per-sequence scratch dir so pre_install shell steps that use
+        # relative paths / write into cwd land beside this sequence's venv, not in the
+        # shared root.
+        self._install_shared(py, spec, dest=scratch)
         self._seq_venvs[key] = (seq_dir, py)
         log.info("SwebenchHostGrader: prewarmed shared venv for %s@%s at %s",
                  repo, version, seq_dir)

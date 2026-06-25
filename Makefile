@@ -19,10 +19,11 @@ help:
 	@echo "  test-redaction - run only the redaction tests"
 
 # One-command setup: idempotent. Creates ./.venv on Python 3.13 if missing, then
-# installs the harness (with dreaming + dev extras) and the plugin (for plugin-real).
+# installs the harness (with dreaming + dev extras + the swebench grader, the pipeline's
+# DEFAULT --grader) and the plugin (for plugin-real).
 setup:
 	@test -d $(VENV) || uv venv --python 3.13 $(VENV)
-	uv pip install -e 'eval[claudecode,daydream,hf,dev]'
+	uv pip install -e 'eval[claudecode,daydream,hf,dev,swebench]'
 	# Plugin installed --no-deps so its `agent-memory-eval @ git+…` dep doesn't clobber
 	# the LOCAL editable eval above; install its `[mcp]` runtime (memory-cli's MCP server)
 	# EXPLICITLY so plugin-real turns actually work — without it every plugin turn dies on
@@ -36,7 +37,7 @@ setup:
 # local Claude Code installation a user normally runs.
 install-claude-plugin:
 	@test -d $(VENV) || uv venv --python 3.13 $(VENV)
-	uv pip install -e 'eval[claudecode,daydream,hf,dev]'
+	uv pip install -e 'eval[claudecode,daydream,hf,dev,swebench]'
 	uv pip install --no-deps -e plugin
 	uv pip install 'mcp>=1.0'
 	$(UVRUN) memory-cli install-claude-plugin --bundle-dir "$(LOCAL_CLAUDE_BUNDLE)" --runtime-bin-dir "$(VENV_BIN)" --claude "$(CLAUDE)"

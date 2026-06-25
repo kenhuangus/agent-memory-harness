@@ -32,6 +32,7 @@ from .. import MEMORY_VERSION
 from ..cost import price_for
 from ..schema import MemoryItem, RetrievedItem, Task, TaskKind
 from . import checkout as _checkout
+from . import sandbox
 from .checkout import CheckoutError, GitRunner, capture_diff, prepare_checkout
 from .cli import ClaudeResult, run_claude, run_claude_primed
 from .platform import ClaudeRuntime, detect, to_wsl_path
@@ -146,10 +147,10 @@ _PLUGIN_REAL_PREFIX_CODE = (
     "just make the edits.\n\n"
 )
 #: The shipping plugin's model-callable recall tool — used only for the allowlist
-#: fallback on the non-sandbox opt-out path. The canonical grant is the sandbox
-#: settings.json rule (``sandbox.RECALL_MCP_TOOL`` / ``ensure_plugin_tool_allowed``); keep
-#: this string in sync with it.
-_PLUGIN_REAL_RECALL_TOOL = "mcp__plugin_cookbook-memory_cookbook-memory__recall"
+#: fallback on the non-sandbox opt-out path. Sourced from the single canonical constant
+#: in ``sandbox`` (also what the sandbox settings.json grant uses), so the grant and the
+#: fallback can never drift apart.
+_PLUGIN_REAL_RECALL_TOOL = sandbox.RECALL_MCP_TOOL
 _CODE_ALLOWED_TOOLS = [
     "Bash",
     "Edit",
@@ -823,7 +824,6 @@ class ClaudeCodeAgent:
         if self._runner is not run_claude:
             self._real_plugin_env = {}      # offline/fake-runner: nothing to install
             return self._real_plugin_env
-        from . import sandbox
         self._real_plugin_env = sandbox.setup_real_plugin(
             claude_exe=(self._runtime.exe if self._runtime else None))
         return self._real_plugin_env
@@ -893,7 +893,6 @@ class ClaudeCodeAgent:
         rather than reconstruct it we GLOB for ``<session_id>.jsonl`` anywhere under the
         sandbox ``projects/`` tree — robust to the slug format. Returns ``(None, None)``
         when the session_id or the file can't be found."""
-        from . import sandbox  # local import (mirrors _ensure_real_plugin; avoids a module cycle)
         raw = res.raw if isinstance(res.raw, dict) else {}
         session_id = raw.get("session_id") or raw.get("sessionId")
         if not session_id:
@@ -1029,7 +1028,6 @@ class ClaudeCodeAgent:
         sandbox (the ``MEMEVAL_SANDBOX=0`` opt-out, or a non-sandboxed run), there is no
         settings grant, so we fall back to the explicit allowlist so headless recall isn't
         silently denied — accepting the (documented) asymmetry only in that opt-out path."""
-        from . import sandbox
         return None if sandbox.active_config_dir() is not None else base_allowlist
 
     def _root_dir(self) -> Path:

@@ -583,6 +583,19 @@ def test_make_grader_auto_routing() -> None:
     assert g.timeout == 4242
 
 
+def test_swebench_grader_venv_root_is_cleaned_up() -> None:
+    # The shared per-sequence venv root is a temp dir; cleanup() removes it (so whole
+    # venvs aren't leaked under /tmp) and is idempotent. Exercised without the swebench
+    # extra — _venv_root_dir/cleanup touch no swebench API.
+    from memeval.grader_swebench import SwebenchHostGrader
+    g = SwebenchHostGrader()
+    root = g._venv_root_dir()
+    assert root.is_dir()
+    g.cleanup()
+    assert not root.is_dir() and g._venv_root is None
+    g.cleanup()  # idempotent — no error on a second call
+
+
 def test_run_bench_code_mode_default_agentic() -> None:
     # The CLI default for --code-mode is 'agentic' (the genuine coding agent),
     # threaded into the constructed agent. Capture the parsed args by stubbing
