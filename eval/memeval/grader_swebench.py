@@ -60,6 +60,13 @@ log = logging.getLogger(__name__)
 _ROOT_PREINSTALL_PREFIXES = ("apt-get", "apt ", "apt-", "locale-gen", "dpkg", "add-apt")
 _ROOT_PREINSTALL_SUBSTRINGS = ("sudo", "> /etc", ">/etc", "/etc/", "locale-gen")
 
+#: Repos whose host ``uv`` venv needs SWE-bench's conda-base parity (pip via ``--seed``,
+#: and possibly era-pinned base deps — see :meth:`SwebenchHostGrader._era_base_pins`).
+#: Scoped deliberately: only these repos get the extra setup, so grading every OTHER
+#: repo stays byte-identical to the pre-fix behavior (no cross-benchmark blast radius).
+#: Extend this set (with the same eval-first validation) as other eras are characterized.
+_CONDA_BASE_REPOS = frozenset({"sphinx-doc/sphinx"})
+
 
 def _is_root_preinstall(cmd: str) -> bool:
     """True iff ``cmd`` needs root/apt/locale/system paths (skip on host)."""
@@ -230,7 +237,8 @@ class SwebenchHostGrader:
         seq_dir = self._venv_root_dir() / f"{repo.replace('/', '__')}__{version}"
         scratch = seq_dir / "checkout"
         scratch.mkdir(parents=True, exist_ok=True)
-        py = self._make_venv(scratch, python=str(spec.get("python") or "") or None)
+        py = self._make_venv(scratch, python=str(spec.get("python") or "") or None,
+                             seed=self._needs_seed(repo))
         if py is None:
             log.info("SwebenchHostGrader: could not provision interpreter for %s@%s; "
                      "sequence prewarm skipped (per-task venv will be used)", repo, version)
@@ -374,7 +382,8 @@ class SwebenchHostGrader:
             py: Optional[str] = shared[1]
             prewarmed = True
         else:
-            py = self._make_venv(dest, python=str(spec.get("python") or "") or None, task=task)
+            py = self._make_venv(dest, python=str(spec.get("python") or "") or None,
+                                 task=task, seed=self._needs_seed(repo))
             prewarmed = False
         if py is None:
             # Fall back to a configured interpreter ONLY if no pin was requested;
@@ -389,7 +398,8 @@ class SwebenchHostGrader:
 
         # shared=True skips the sequence-invariant install (already done at prewarm); only
         # this checkout's spec-install + editable install run.
-        self._install(dest, py, spec, shared=prewarmed)
+        self._install(dest, py, spec, shared=prewarmed,
+                      era_pins=self._era_base_pins(repo, version))
 
         # Build the official eval command: spec.test_cmd + the test directives. This
         # is EXACTLY how swebench's make_eval_script_list_py composes the command;
@@ -497,7 +507,7 @@ class SwebenchHostGrader:
                 getattr(r, "stderr", "") or "")
 
     def _make_venv(self, dest: Any, *, python: Optional[str] = None,
-                   task: Any = None) -> Optional[str]:
+                   task: Any = None, seed: bool = False) -> Optional[str]:
         """Provision a venv beside the checkout and return its python exe path, or
         ``None``.
 
@@ -511,13 +521,23 @@ class SwebenchHostGrader:
         grades. Each substitution is logged + recorded (``python_substitutions``) and is
         a documented host-substitution (NOT leaderboard-comparable). Offline (stub
         runner) ``uv venv`` reports rc 0 but writes no interpreter -> ``None`` (caller
-        falls back), and no fallback search runs."""
+        falls back), and no fallback search runs.
+
+        ``seed`` adds ``--seed`` (pip/setuptools/wheel) — opt-in PER REPO via
+        :meth:`_needs_seed`, so a repo that doesn't need it gets a venv byte-identical
+        to before (no behavior change for the rest of the benchmark suite)."""
         from pathlib import Path
 
         venv = Path(dest).parent / ".venv-swe-grade"
 
         def _try(cand: Optional[str]) -> tuple[str, Optional[str]]:
-            argv = ["uv", "venv", "--clear"]
+            # --seed installs pip/setuptools/wheel into the venv. A fresh uv venv has
+            # NONE; SWE-bench's conda base env does, and spec install commands assume
+            # pip (e.g. ``python -m pip install -e .[test]``). Without it that install
+            # fails -> the [test] extra (pytest) never lands -> the test command can't
+            # run -> empty log -> "official parser produced no statuses". Gated to repos
+            # that need it (see _needs_seed) so other benchmarks are unaffected.
+            argv = ["uv", "venv", "--seed", "--clear"] if seed else ["uv", "venv", "--clear"]
             if cand:
                 argv += ["--python", cand]
             argv.append(str(venv))
@@ -587,7 +607,51 @@ class SwebenchHostGrader:
             "grading under nearest available python %s (host-substitution — NOT "
             "leaderboard-comparable)", tid, pin, used)
 
-    def _install(self, dest: Any, py: str, spec: dict, *, shared: bool = False) -> None:
+    @staticmethod
+    def _version_tuple(version: str) -> Optional[tuple]:
+        """Parse a spec version (``"3.0"`` / ``"4.1"``) into a comparable ``(major,
+        minor)`` tuple, or ``None`` if unparseable."""
+        parts = str(version or "").strip().split(".")
+        try:
+            return (int(parts[0]), int(parts[1]) if len(parts) > 1 else 0)
+        except (ValueError, IndexError):
+            return None
+
+    @staticmethod
+    def _needs_seed(repo: str) -> bool:
+        """Whether this repo's grading venv should be created with ``--seed`` (pip etc.).
+        Scoped to :data:`_CONDA_BASE_REPOS` so every other repo's venv is byte-identical
+        to before — no cross-benchmark behavior change."""
+        return (repo or "").strip().lower() in _CONDA_BASE_REPOS
+
+    def _era_base_pins(self, repo: str, version: str) -> list:
+        """Era-appropriate base packages a fresh ``--seed`` venv gets WRONG for some OLD
+        repo eras (``--seed`` / pip install the LATEST):
+
+        * setuptools >= 81 dropped ``pkg_resources`` — old sphinx ``registry.py`` does
+          ``from pkg_resources import iter_entry_points``;
+        * docutils >= 0.16 dropped the top-level ``roman`` module — old sphinx
+          ``writers/latex.py`` does ``from roman import toRoman``.
+
+        SWE-bench's conda base shipped era-correct versions; on the host we clamp them
+        for the AFFECTED eras only (newer versions REQUIRE the modern deps, so a blanket
+        clamp would regress them). Installed LAST by :meth:`_install` so neither the spec
+        install nor the editable install can pull them forward again. ``[]`` = no clamp.
+        Scoped to :data:`_CONDA_BASE_REPOS` — every other repo gets ``[]``, unchanged.
+
+        Scope (eval-infra follow-up, cc @kenhuangus): this unblocks sphinx 3.x — 22/44 of
+        the sphinx sequence. sphinx >= 4.x fails DIFFERENTLY (tox-current-env does not
+        engage on the newer ``tox.ini``; tox builds an isolated ``.tox/py39`` without
+        pytest -> 'No module named pytest'), a separate tox/plugin-compat fix, not a pin.
+        """
+        if (repo or "").strip().lower() not in _CONDA_BASE_REPOS:
+            return []
+        ver = self._version_tuple(version)
+        return (["setuptools<60", "docutils<0.16"]
+                if ver is not None and ver < (4, 0) else [])
+
+    def _install(self, dest: Any, py: str, spec: dict, *, shared: bool = False,
+                 era_pins: "tuple | list" = ()) -> None:
         """Run the spec's install steps in the venv, best-effort. ROOT/apt
         ``pre_install`` entries are SKIPPED (host can't run them, logged). Failures
         are tolerated — many repos import from source; the test-run step decides
@@ -596,7 +660,10 @@ class SwebenchHostGrader:
         When the venv was prewarmed for the sequence (``shared=True``), the
         sequence-invariant pieces (``pre_install`` + ``pip_packages``) were already
         installed by :meth:`_install_shared`, so only the per-task pieces (the spec
-        ``install`` command and the editable install of THIS checkout) run here."""
+        ``install`` command and the editable install of THIS checkout) run here.
+
+        ``era_pins`` (from :meth:`_era_base_pins`) are clamped LAST so neither the spec
+        install nor the editable install can leave them resolved too-new."""
         if not shared:
             self._install_shared(py, spec, dest=dest)
         # install command (e.g. ``python setup.py install`` / ``pip install -e .``) —
@@ -606,6 +673,10 @@ class SwebenchHostGrader:
             self._run(self._rebind(install, py), dest)
         # Best-effort editable install of the checkout itself (source imports) — per-task.
         self._run(["uv", "pip", "install", "--python", py, "-e", "."], dest)
+        # Era-appropriate base-dep clamp (see _era_base_pins), LAST so it wins over any
+        # too-new resolve from the installs above.
+        if era_pins:
+            self._run(["uv", "pip", "install", "--python", py, *era_pins], dest)
 
     def _install_shared(self, py: str, spec: dict, *, dest: Any = None) -> None:
         """Install the sequence-invariant pieces into the venv (``pre_install`` +

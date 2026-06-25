@@ -22,6 +22,7 @@ import json
 import os
 import shutil
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -408,6 +409,15 @@ class ClaudeCodeAgent:
         self._group_scoped_store = bool(group_scoped_store)
         # plugin-real: built+installed once per agent; caches the MCP-server PATH env.
         self._real_plugin_env: Optional[dict[str, str]] = None
+        # Serializes the one-time real-plugin build+install. With --plugin-workers N>1
+        # the worker threads share this ONE ClaudeAgent, so all of them would otherwise
+        # see _real_plugin_env=None at startup and concurrently call
+        # sandbox.setup_real_plugin() against the SAME shared _plugin-bundle dir. That
+        # path rmtree+copytree's the bundle and re-adds the marketplace, so one worker
+        # wipes/rebuilds the dir while another reads it -> "Directory not empty" /
+        # missing marketplace.json. The lock makes the build run exactly once (the
+        # bundle is identical across workers); the rest wait then reuse the cache.
+        self._real_plugin_lock = threading.Lock()
         self.k = k
         self.timeout = timeout
         self.name = f"claude-code:{model}:{memory_mode}"
@@ -1025,14 +1035,27 @@ class ClaudeCodeAgent:
     def _ensure_real_plugin(self) -> dict[str, str]:
         """Build + install the real plugin into the sandbox once per agent; cache the
         PATH env its MCP server needs. Offline tests inject a runner, so skip the real
-        install when no real CLI is in play."""
+        install when no real CLI is in play.
+
+        Build-once under a double-checked lock: with --plugin-workers N>1 several
+        worker threads share this agent and reach here concurrently. The fast path
+        (cache already populated) stays lock-free; the first caller takes the lock,
+        builds+installs the shared bundle exactly once, and every other worker waits
+        on the lock then returns the cached env. Without this, concurrent
+        setup_real_plugin() calls rebuild the same _plugin-bundle dir and race
+        (rmtree/copytree + marketplace add) -> "Directory not empty" / missing
+        marketplace.json."""
         if self._real_plugin_env is not None:
             return self._real_plugin_env
-        if self._runner is not run_claude:
-            self._real_plugin_env = {}      # offline/fake-runner: nothing to install
-            return self._real_plugin_env
-        self._real_plugin_env = sandbox.setup_real_plugin(
-            claude_exe=(self._runtime.exe if self._runtime else None))
+        with self._real_plugin_lock:
+            # Re-check under the lock: another worker may have built it while we waited.
+            if self._real_plugin_env is not None:
+                return self._real_plugin_env
+            if self._runner is not run_claude:
+                self._real_plugin_env = {}  # offline/fake-runner: nothing to install
+                return self._real_plugin_env
+            self._real_plugin_env = sandbox.setup_real_plugin(
+                claude_exe=(self._runtime.exe if self._runtime else None))
         return self._real_plugin_env
 
     def _drain_daydream(self, task: Task, res: ClaudeResult, store_dir: Path,
