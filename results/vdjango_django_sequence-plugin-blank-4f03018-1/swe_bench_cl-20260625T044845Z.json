@@ -1,0 +1,165 @@
+{
+  "schema": 1,
+  "memory_version": "vdjango_django_sequence-plugin-blank-4f03018-1",
+  "benchmark": "swe_bench_cl",
+  "timestamp": "20260625T044845Z",
+  "pipeline": {
+    "version": "vdjango_django_sequence-plugin-blank-4f03018-1",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "4f03018",
+    "benchmark": "swe_bench_cl",
+    "sequence": "django_django_sequence",
+    "stage": "plugin-blank",
+    "limit": null,
+    "n_tasks": 50,
+    "model": "claude-haiku-4-5",
+    "code_mode": "agentic",
+    "grader": "swebench",
+    "plugin_workers": 1,
+    "budget_usd": 10.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash"
+    },
+    "memory_store": "/Users/nerd/Git/agent-memory-harness/results/vdjango_django_sequence-plugin-blank-4f03018-1/_memory",
+    "n_stages": 1,
+    "n_eval_stages": 1,
+    "stages": [
+      "plugin-blank"
+    ],
+    "timestamp": "20260625T044845Z",
+    "started_at": 1782362925.2860491,
+    "ended_at": 1782384712.7593868,
+    "stages_run": [
+      "plugin-blank"
+    ],
+    "preflight": {
+      "warnings": [
+        {
+          "code": "plugin_memory_round_trip_failed",
+          "message": "plugin synthetic memory preflight failed"
+        }
+      ],
+      "plugin_memory_probe": {
+        "ok": false,
+        "code": "plugin_memory_round_trip_failed",
+        "remembered": false,
+        "hits": 0
+      }
+    }
+  },
+  "dream": {
+    "status": "not-run"
+  },
+  "runs": [
+    {
+      "run_id": "pipeline-plugin-blank",
+      "timestamp": "2026-06-25T10:51:52+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "claude-code:claude-haiku-4-5:plugin-real",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:plugin-real+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.0,
+        "relevancy": 0.0,
+        "accuracy": 0.125,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 50,
+        "extra": {}
+      },
+      "n_tasks": 50,
+      "entries_used": 50,
+      "entries_available": 50,
+      "limit": null,
+      "selection": "flat",
+      "cost_usd": 1.977965,
+      "tokens_in": 5080,
+      "tokens_out": 394577,
+      "partial": false,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 1,
+        "memory_reached": 43,
+        "memory_hit": 0,
+        "recall_attempted": 43,
+        "recall_with_hits": 0,
+        "graded_n": 48,
+        "resolved": 6,
+        "ungraded": 2,
+        "grade_reasons": {
+          "get_test_directives yielded no test files from test_patch": 1,
+          "graded": 48,
+          "official parser produced no statuses": 1
+        },
+        "errors": [
+          {
+            "task_id": "django__django-13406",
+            "stage": "solve",
+            "error": "TimeoutExpired: Command '['/Users/nerd/.local/bin/claude', '-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits', '--model', 'claude-haiku-4-5', '--a"
+          }
+        ]
+      },
+      "notes": "single-stage pipeline \u00b7 swe_bench_cl \u00b7 stage plugin-blank",
+      "pipeline_stage": "plugin-blank",
+      "stage_index": 2,
+      "git_sha": "4f03018",
+      "git_tag": "vdjango_django_sequence-plugin-blank-4f03018-1",
+      "memory_health": {
+        "before": {
+          "store_dir": "/Users/nerd/Git/agent-memory-harness/results/vdjango_django_sequence-plugin-blank-4f03018-1/_memory/.cookbook-memory",
+          "events": 0,
+          "daydream_events": 0,
+          "recall_events": 0,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 0,
+          "daydream_memory_written": 0,
+          "memory_items": null,
+          "graph_nodes": null,
+          "markdown_items": 0,
+          "durable_items": 0
+        },
+        "after": {
+          "store_dir": "/Users/nerd/Git/agent-memory-harness/results/vdjango_django_sequence-plugin-blank-4f03018-1/_memory/.cookbook-memory",
+          "events": 692,
+          "daydream_events": 185,
+          "recall_events": 12,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 12,
+          "recall_errors": 0,
+          "daydream_completed": 136,
+          "daydream_memory_written": 0,
+          "memory_items": 0,
+          "graph_nodes": null,
+          "markdown_items": 0,
+          "durable_items": 0
+        },
+        "delta": {
+          "events": 692,
+          "daydream_events": 185,
+          "recall_events": 12,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 12,
+          "recall_errors": 0,
+          "daydream_completed": 136,
+          "daydream_memory_written": 0,
+          "markdown_items": 0,
+          "durable_items": 0
+        }
+      },
+      "warnings": [
+        {
+          "code": "daydream_completed_without_writes",
+          "message": "daydream completed but wrote no durable memories"
+        }
+      ]
+    }
+  ]
+}

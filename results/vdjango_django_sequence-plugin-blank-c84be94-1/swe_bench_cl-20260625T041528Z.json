@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "memory_version": "vdjango_django_sequence-plugin-blank-c84be94-1",
+  "benchmark": "swe_bench_cl",
+  "timestamp": "20260625T041528Z",
+  "pipeline": {
+    "version": "vdjango_django_sequence-plugin-blank-c84be94-1",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "c84be94",
+    "benchmark": "swe_bench_cl",
+    "sequence": "django_django_sequence",
+    "stage": "plugin-blank",
+    "limit": null,
+    "n_tasks": 50,
+    "model": "claude-haiku-4-5",
+    "code_mode": "agentic",
+    "grader": "swebench",
+    "plugin_workers": 1,
+    "budget_usd": 10.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash"
+    },
+    "memory_store": "/Users/nerd/Git/agent-memory-harness/results/vdjango_django_sequence-plugin-blank-c84be94-1/_memory",
+    "n_stages": 1,
+    "n_eval_stages": 1,
+    "stages": [
+      "plugin-blank"
+    ],
+    "timestamp": "20260625T041528Z",
+    "started_at": 1782360928.3739939,
+    "ended_at": null,
+    "stages_run": [
+      "plugin-blank"
+    ],
+    "preflight": {
+      "warnings": [
+        {
+          "code": "plugin_memory_round_trip_failed",
+          "message": "plugin synthetic memory preflight failed"
+        }
+      ],
+      "plugin_memory_probe": {
+        "ok": false,
+        "code": "plugin_memory_round_trip_failed",
+        "remembered": false,
+        "hits": 0
+      }
+    }
+  },
+  "dream": {
+    "status": "not-run"
+  },
+  "runs": [
+    {
+      "run_id": "pipeline-plugin-blank",
+      "timestamp": "2026-06-25T04:39:00+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "claude-code:claude-haiku-4-5:plugin-real",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:plugin-real+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.0,
+        "relevancy": 0.0,
+        "accuracy": 0.0,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 2,
+        "extra": {}
+      },
+      "n_tasks": 2,
+      "entries_used": 2,
+      "entries_available": 50,
+      "limit": null,
+      "selection": "flat",
+      "cost_usd": 0.166533,
+      "tokens_in": 143,
+      "tokens_out": 33278,
+      "partial": true,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 0,
+        "memory_reached": 0,
+        "memory_hit": 0,
+        "recall_attempted": 0,
+        "recall_with_hits": 0,
+        "graded_n": 0,
+        "resolved": 0,
+        "ungraded": 2,
+        "grade_reasons": {
+          "swebench not installed (No module named 'swebench'); install the 'swebench' extra": 2
+        },
+        "errors": []
+      },
+      "notes": "single-stage pipeline \u00b7 swe_bench_cl \u00b7 stage plugin-blank",
+      "pipeline_stage": "plugin-blank",
+      "stage_index": 2,
+      "git_sha": "c84be94",
+      "git_tag": "vdjango_django_sequence-plugin-blank-c84be94-1"
+    }
+  ]
+}

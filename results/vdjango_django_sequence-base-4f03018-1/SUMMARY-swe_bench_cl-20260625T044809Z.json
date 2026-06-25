@@ -1,0 +1,77 @@
+{
+  "benchmark": "swe_bench_cl",
+  "pipeline": {
+    "version": "vdjango_django_sequence-base-4f03018-1",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "4f03018",
+    "benchmark": "swe_bench_cl",
+    "sequence": "django_django_sequence",
+    "stage": "base",
+    "limit": null,
+    "n_tasks": 50,
+    "model": "claude-haiku-4-5",
+    "code_mode": "agentic",
+    "grader": "swebench",
+    "plugin_workers": 1,
+    "budget_usd": 10.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash"
+    },
+    "memory_store": "/Users/nerd/Git/agent-memory-harness/results/vdjango_django_sequence-base-4f03018-1/_memory",
+    "n_stages": 1,
+    "n_eval_stages": 1,
+    "stages": [
+      "base"
+    ],
+    "timestamp": "20260625T044809Z",
+    "started_at": 1782362889.939927,
+    "ended_at": 1782375763.4486048,
+    "stages_run": [
+      "base"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": null
+    }
+  },
+  "dream": {
+    "status": "not-run"
+  },
+  "stages": [
+    {
+      "stage": "base",
+      "stage_index": 1,
+      "metrics": {
+        "accuracy": 0.16326530612244897,
+        "relevancy": 0.0,
+        "recency": 0.0,
+        "efficiency": 0.0
+      },
+      "n_tasks": 50,
+      "cost_usd": 4.008984,
+      "graded_n": 49,
+      "resolved": 8,
+      "ungraded": 1,
+      "grade_reasons": {
+        "get_test_directives yielded no test files from test_patch": 1,
+        "graded": 49
+      },
+      "memory_reached": 0,
+      "memory_hit": 0,
+      "recall_attempted": 0,
+      "recall_with_hits": 0,
+      "memory_health": {
+        "recall_events": 0,
+        "recall_with_hits": 0,
+        "recall_zero_hits": 0,
+        "daydream_completed": 0,
+        "daydream_memory_written": 0,
+        "durable_items_after": 0
+      },
+      "warnings": []
+    }
+  ],
+  "deltas": {}
+}
