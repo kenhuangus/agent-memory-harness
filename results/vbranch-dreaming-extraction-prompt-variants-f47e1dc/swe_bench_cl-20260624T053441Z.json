@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "memory_version": "vbranch-dreaming-extraction-prompt-variants-f47e1dc",
+  "benchmark": "swe_bench_cl",
+  "timestamp": "20260624T053441Z",
+  "pipeline": {
+    "version": "vbranch-dreaming-extraction-prompt-variants-f47e1dc",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "f47e1dc",
+    "sequence": "django_django_sequence",
+    "limit": null,
+    "n_tasks": 50,
+    "model": "claude-haiku-4-5",
+    "code_mode": "agentic",
+    "grader": "auto",
+    "plugin_workers": 1,
+    "budget_usd": 10.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash"
+    },
+    "memory_store": "/Users/nerd/Git/agent-memory-harness/results/vbranch-dreaming-extraction-prompt-variants-f47e1dc/_memory",
+    "n_stages": 5,
+    "n_eval_stages": 4,
+    "stages": [
+      "base",
+      "plugin-blank",
+      "plugin-accum",
+      "dream",
+      "plugin-dreamed"
+    ],
+    "timestamp": "20260624T053441Z",
+    "started_at": 1782279281.4915369,
+    "ended_at": null,
+    "stages_run": [
+      "plugin-blank",
+      "plugin-accum",
+      "plugin-dreamed"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": {
+        "ok": true,
+        "code": "ok",
+        "remembered": true,
+        "hits": 1
+      }
+    }
+  },
+  "dream": {
+    "status": "not-run"
+  },
+  "runs": [
+    {
+      "run_id": "pipeline-plugin-blank",
+      "timestamp": "2026-06-24T05:59:46+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "claude-code:claude-haiku-4-5:plugin-real",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:plugin-real+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.0,
+        "relevancy": 0.0,
+        "accuracy": 0.0,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 6,
+        "extra": {}
+      },
+      "n_tasks": 6,
+      "entries_used": 6,
+      "entries_available": 50,
+      "limit": null,
+      "selection": "flat",
+      "cost_usd": 0.279432,
+      "tokens_in": 522,
+      "tokens_out": 55782,
+      "partial": true,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 0,
+        "memory_reached": 6,
+        "memory_hit": 0,
+        "recall_attempted": 6,
+        "recall_with_hits": 0,
+        "graded_n": 5,
+        "resolved": 0,
+        "ungraded": 1,
+        "grade_reasons": {
+          "gold_test_apply_failed": 1,
+          "graded": 5
+        },
+        "errors": []
+      },
+      "notes": "5-stage SWE-Bench-CL pipeline \u00b7 stage 2 (plugin-blank)",
+      "pipeline_stage": "plugin-blank",
+      "stage_index": 2,
+      "git_sha": "f47e1dc",
+      "git_tag": "vbranch-dreaming-extraction-prompt-variants-f47e1dc"
+    }
+  ]
+}

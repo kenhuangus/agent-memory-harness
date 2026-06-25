@@ -1,0 +1,1 @@
+{"cursor": 27478, "last_summary": "Issue: _pytest.capture.EncodedFile mode includes 'b' (binary), causing TypeError when youtube_dl writes bytes. Fix needed in _pytest/capture.py's EncodedFile class mode property.", "recent_memory_ids": ["mem_b451ab73"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
