@@ -328,8 +328,43 @@ def test_resolve_profile_auto_offline(monkeypatch):
     from router_ui.substrate import resolve_profile
     monkeypatch.delenv("VOYAGE_API_KEY", raising=False)
     monkeypatch.delenv("MEMORY_PROFILE", raising=False)
+    monkeypatch.delenv("MEMEVAL_LOCAL_ANN", raising=False)
     eff, src = resolve_profile("auto")
     assert eff == "fusion" and "offline" in src
     assert resolve_profile("speed")[0] == "speed"
     with pytest.raises(ValueError):
         resolve_profile("bogus")
+
+
+def test_resolve_profile_accuracy_local(monkeypatch):
+    from router_ui.substrate import resolve_profile
+    monkeypatch.delenv("MEMORY_PROFILE", raising=False)
+    monkeypatch.delenv("VOYAGE_API_KEY", raising=False)
+    monkeypatch.delenv("MEMEVAL_LOCAL_ANN", raising=False)
+    # explicit
+    assert resolve_profile("accuracy-local") == ("accuracy-local", "explicit")
+    # auto picks accuracy-local when MEMEVAL_LOCAL_ANN=1 (and no Voyage key)
+    monkeypatch.setenv("MEMEVAL_LOCAL_ANN", "1")
+    eff, src = resolve_profile("auto")
+    assert eff == "accuracy-local" and "MEMEVAL_LOCAL_ANN" in src
+    # an explicit $MEMORY_PROFILE still wins over the flag
+    monkeypatch.setenv("MEMORY_PROFILE", "fusion")
+    assert resolve_profile("auto")[0] == "fusion"
+
+
+def test_accuracy_local_degrades_when_embedder_unavailable(seeded, monkeypatch):
+    # When the MiniLM embedder can't be built (no extra / no model — the CI floor), an explicit
+    # accuracy-local request must degrade to fusion with a recorded warning, never crash.
+    store, _ = seeded
+    monkeypatch.delenv("VOYAGE_API_KEY", raising=False)
+
+    def _unavailable(warnings):
+        warnings.append("accuracy-local profile unavailable (forced for test)")
+        return None
+
+    monkeypatch.setattr("router_ui.substrate._try_minilm", _unavailable)
+    sub = open_substrate(str(store), "accuracy-local")
+    assert sub.profile == "fusion"
+    assert any("accuracy-local profile unavailable" in w for w in sub.warnings)
+    # browse still works on the degraded substrate
+    assert sub.summary()["total_unique"] > 0

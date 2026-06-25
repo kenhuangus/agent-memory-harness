@@ -77,14 +77,22 @@ def main(argv: list[str] | None = None) -> int:
                         help="substrate dir (a .../_memory). Default: newest results/v*/_memory.")
     parser.add_argument("--port", type=int, default=8765, help="port to serve on (default 8765).")
     parser.add_argument("--host", default="127.0.0.1", help="bind host (default 127.0.0.1; local only).")
-    parser.add_argument("--profile", choices=["speed", "fusion", "accuracy", "auto"], default="auto",
-                        help="routing profile (default auto = build_store's pick).")
+    parser.add_argument("--profile", choices=["speed", "fusion", "accuracy", "accuracy-local", "auto"],
+                        default="auto",
+                        help="routing profile (default auto = build_store's pick). accuracy-local "
+                             "= local MiniLM + sqlite-vec ANN (needs the eval[local-ann] extra).")
     parser.add_argument("--margin-threshold", type=float, default=None,
                         help="ambiguity threshold in classifier-score units (default 1.0).")
     parser.add_argument("--seed", action="store_true", help="build the synthetic demo corpus, then serve it.")
     parser.add_argument("--force", action="store_true", help="allow --seed to write inside a results/ dir.")
     parser.add_argument("--open", action="store_true", help="open the page in a browser.")
     args = parser.parse_args(argv)
+
+    # Load the repo-root .env (VOYAGE_API_KEY, MEMEVAL_LOCAL_ANN, etc.) FIRST, like every other
+    # entrypoint (daydream-cli, bench runner, plugin), so profile auto-selection sees the same
+    # keys without the user having to `export`. A shell-exported var still wins (override=False).
+    from memeval.dotenv_loader import load_root_dotenv
+    load_root_dotenv()
 
     if args.seed:
         target = Path(args.store) if args.store else Path(tempfile.mkdtemp(prefix="inspect-demo-")) / "_memory"

@@ -36,6 +36,7 @@ from memeval.router import (
     VECTORS,
     Router,
     RouterStore,
+    accuracy_local_profile,
     accuracy_profile,
     fusion_profile,
     speed_profile,
@@ -44,6 +45,7 @@ from memeval.okf import _doc_relpath, split_doc
 from memeval.schema import MemoryItem
 from memeval.stores import GraphStore, MarkdownStore, SqliteVectorStore
 from memeval.stores.relations import classify_relation
+from memeval.stores.sqlite_store import SQLITE_VEC_ANN_OVERFETCH, SQLITE_VEC_DIM
 
 #: Backend names in canonical read / de-dup order (matches ``RouterStore._READ_ORDER``).
 READ_ORDER = (MARKDOWN, VECTORS, GRAPH)
@@ -118,20 +120,26 @@ class _EmptyStore:
 def resolve_profile(profile: Optional[str]) -> tuple[str, str]:
     """Resolve a requested profile to ``(effective, source)``, mirroring ``build_store``.
 
-    ``auto`` (or empty) reproduces the plugin's pick: ``$MEMORY_PROFILE`` if set, else
-    ``accuracy`` when ``$VOYAGE_API_KEY`` is present, else ``fusion``. An explicit
-    ``speed`` / ``fusion`` / ``accuracy`` is taken verbatim.
+    ``auto`` (or empty) reproduces the plugin's pick, in precedence order: ``$MEMORY_PROFILE``
+    if set → ``$MEMEVAL_LOCAL_ANN=1`` → ``accuracy-local`` (local MiniLM + sqlite-vec ANN) →
+    ``$VOYAGE_API_KEY`` → ``accuracy`` → ``fusion``. An explicit ``speed`` / ``fusion`` /
+    ``accuracy`` / ``accuracy-local`` is taken verbatim.
     """
+    valid = ("speed", "fusion", "accuracy", "accuracy-local")
     p = (profile or "auto").strip().lower()
     if p in ("", "auto"):
         env = (os.environ.get("MEMORY_PROFILE") or "").strip().lower()
-        if env in ("speed", "fusion", "accuracy"):
+        if env in valid:
             return env, f"auto→$MEMORY_PROFILE={env}"
+        if os.environ.get("MEMEVAL_LOCAL_ANN") == "1":
+            return "accuracy-local", "auto→accuracy-local ($MEMEVAL_LOCAL_ANN=1)"
         if os.environ.get("VOYAGE_API_KEY"):
             return "accuracy", "auto→accuracy ($VOYAGE_API_KEY present)"
         return "fusion", "auto→fusion (offline, no $VOYAGE_API_KEY)"
-    if p not in ("speed", "fusion", "accuracy"):
-        raise ValueError(f"unknown profile {profile!r}; choose speed|fusion|accuracy|auto")
+    if p not in valid:
+        raise ValueError(
+            f"unknown profile {profile!r}; choose speed|fusion|accuracy|accuracy-local|auto"
+        )
     return p, "explicit"
 
 
@@ -498,9 +506,10 @@ def open_substrate(store_dir: str, profile: Optional[str] = "auto", *,
 
     Mirrors ``build_store``'s profile selection and backend layout. A backend whose
     artifact is absent becomes a read-only :class:`_EmptyStore` (never created on disk).
-    The accuracy profile (real Voyage embedder, dim 1024) is built only when its key is
-    present; if it can't be constructed the substrate degrades to the offline fusion
-    profile with a recorded warning, so browsing always works.
+    The real-embedder profiles are built only when available — ``accuracy`` needs
+    ``$VOYAGE_API_KEY``; ``accuracy-local`` needs the ``local-ann`` extra + the MiniLM model
+    (then sqlite-vec ANN). If the embedder can't be constructed the substrate degrades to the
+    offline fusion profile with a recorded warning, so browsing always works.
     """
     root = resolve_store_root(store_dir)
     effective, source = resolve_profile(profile)
@@ -511,15 +520,23 @@ def open_substrate(store_dir: str, profile: Optional[str] = "auto", *,
     status = {n: ("ok" if (root / _ARTIFACT[n]).exists() else "absent") for n in READ_ORDER}
 
     embed = None
+    local_ann = False
     if effective == "accuracy":
         embed = _try_voyage(warnings)
         if embed is None:
             effective = "fusion"
             source += " → degraded to fusion (accuracy embedder unavailable)"
+    elif effective == "accuracy-local":
+        embed = _try_minilm(warnings)
+        if embed is None:
+            effective = "fusion"
+            source += " → degraded to fusion (local MiniLM embedder unavailable)"
+        else:
+            local_ann = True
 
     backends = {
         MARKDOWN: _open_markdown(root, status),
-        VECTORS: _open_vectors(root, status, embed),
+        VECTORS: _open_vectors(root, status, embed, local_ann=local_ann),
         GRAPH: _open_graph(root, status, embed),
     }
 
@@ -534,9 +551,10 @@ def open_substrate(store_dir: str, profile: Optional[str] = "auto", *,
 
 
 def _build_config(effective: str, embed, warnings: list):
-    if effective == "accuracy" and embed is not None:
+    if effective in ("accuracy", "accuracy-local") and embed is not None:
         from memeval.router import SemanticRouterClassifier
-        return accuracy_profile(
+        factory = accuracy_local_profile if effective == "accuracy-local" else accuracy_profile
+        return factory(
             classifier=SemanticRouterClassifier(embed),
             embed=embed,
             embed_model=getattr(embed, "model", None),
@@ -560,16 +578,39 @@ def _try_voyage(warnings: list):
         return None
 
 
+def _try_minilm(warnings: list):
+    """Construct a local MiniLM embedder for the accuracy-local profile, or record why it's
+    absent. Probes once so the substrate degrades to fusion BEFORE any mixed-dimension read
+    when the package/model is unavailable (mirrors ``build_store``)."""
+    try:
+        from memeval.stores.embedders import SentenceTransformersEmbedder
+        embed = SentenceTransformersEmbedder()
+        embed.embed("local profile availability probe", input_type="query")
+        return embed
+    except Exception as exc:
+        warnings.append(
+            f"accuracy-local profile unavailable ({type(exc).__name__}: {exc}); install the "
+            "local-ann extra (uv pip install -e 'eval[local-ann]') and allow the model "
+            "(MEMEVAL_ALLOW_MODEL_DOWNLOAD=1), or use --profile fusion. Falling back to offline fusion."
+        )
+        return None
+
+
 def _open_markdown(root: Path, status: dict):
     if status[MARKDOWN] != "ok":
         return _EmptyStore()
     return MarkdownStore(root / _ARTIFACT[MARKDOWN])
 
 
-def _open_vectors(root: Path, status: dict, embed):
+def _open_vectors(root: Path, status: dict, embed, *, local_ann: bool = False):
     if status[VECTORS] != "ok":
         return _EmptyStore()  # do NOT create memory.db on an empty substrate
     db = str(root / _ARTIFACT[VECTORS])
+    if local_ann and embed is not None:
+        # MiniLM + sqlite-vec ANN (accuracy-local) — mirror build_store's wiring.
+        return SqliteVectorStore(db, embed=embed, embed_model=getattr(embed, "model", None),
+                                 dim=SQLITE_VEC_DIM, vector_index="sqlite_vec",
+                                 ann_overfetch=SQLITE_VEC_ANN_OVERFETCH, exact_rerank=True)
     if embed is not None:
         return SqliteVectorStore(db, embed=embed, embed_model=getattr(embed, "model", None),
                                  dim=getattr(embed, "dim", 1024))
