@@ -1,4 +1,4 @@
-.PHONY: help setup install-claude-plugin pipeline typecheck test test-daydream test-redaction
+.PHONY: help setup install-claude-plugin pipeline viewer typecheck test test-daydream test-redaction
 
 # Everything runs through `uv` against a project-local .venv on Python 3.13 — no
 # bare pip/python, no manual activation. `uv run` auto-uses ./.venv.
@@ -13,6 +13,7 @@ help:
 	@echo "  setup          - create .venv (Python 3.13) + install eval + plugin (uv)"
 	@echo "  install-claude-plugin - install plugin into the user's real Claude Code config"
 	@echo "  pipeline       - run ONE stage over ONE sequence (ARGS='--yes ...' to override)"
+	@echo "  viewer         - launch the router memory-inspector web UI (ARGS='--seed --open ...')"
 	@echo "  test           - run the full pytest suite"
 	@echo "  typecheck      - mypy --strict on memeval/dreaming/ (ADR-dreaming-010)"
 	@echo "  test-daydream  - run only the dreaming-domain tests"
@@ -52,6 +53,15 @@ install-claude-plugin:
 #   make pipeline ARGS="--yes --benchmark vista --sequence coding --stage plugin-accum"
 pipeline:
 	$(UVRUN) memeval-pipeline $(ARGS)
+
+# Launch the router memory-inspector web UI to browse the memories the plugin saved
+# during a run and evaluate how the router routed them. Defaults to the newest pipeline
+# substrate (results/v*/_memory); override/extend with ARGS, e.g.:
+#   make viewer ARGS="--seed --open"           # synthetic demo corpus + open browser
+#   make viewer ARGS="--store /path/to/_memory --port 9000"
+# Delegates to router_ui/run.sh, which uses the repo .venv and sets PYTHONPATH.
+viewer:
+	./router_ui/run.sh $(ARGS)
 
 typecheck:
 	# strict-typecheck scope: production dreaming code only — the redaction
