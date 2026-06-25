@@ -941,3 +941,77 @@ def test_cli_not_in_mypy_override_list(pyproject_path: Path) -> None:
             assert override.get("disallow_untyped_defs", True) is True, (
                 "memeval.dreaming.cli must not be in disallow_untyped_defs=false override"
             )
+
+
+# --------------------------------------------------------------------------- #
+# §R — `python -m` entry-point regression (daydream-workflow-hardening)
+#
+# The Claude Code plugin's Stop/PreCompact hooks invoke daydream as
+# `python -m memeval.dreaming.cli daydream` (hooks_handler._daydream_command).
+# A module run via `-m` only executes code under an `if __name__ ==
+# "__main__"` guard. cli.py originally lacked that guard AND there was no
+# memeval/dreaming/__main__.py, so the hook subprocess imported the module
+# and exited 0 WITHOUT calling main() — every hook-fired daydream was a
+# silent no-op (no LLM call, no store write, no cursor advance). These tests
+# pin that `-m` actually reaches main().
+# --------------------------------------------------------------------------- #
+
+
+def _run_m(module: str, payload: dict) -> subprocess.CompletedProcess:
+    """Run `python -m <module> daydream` with a temp MEMORY_STORE and the
+    EchoClient provider so no network/key is needed. Returns the completed
+    process; the side effect we assert on is the cli_resolved diary event,
+    which is only emitted once main() -> _handle_daydream actually runs."""
+    tmp = tempfile.mkdtemp()
+    store = Path(tmp) / "store"
+    store.mkdir()
+    log = store / "transcript.jsonl"
+    log.write_text('{"role":"user","content":"hello world"}\n', encoding="utf-8")
+    body = dict(payload)
+    body.setdefault("transcript_path", str(log))
+    env = dict(os.environ)
+    env["MEMORY_STORE"] = str(store)
+    env["DREAM_PROVIDER"] = "echo"
+    env.pop("OPENROUTER_API_KEY", None)
+    result = subprocess.run(
+        [sys.executable, "-m", module, "daydream"],
+        input=json.dumps(body),
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    # The diary file only exists if event_context was entered, which only
+    # happens once _handle_daydream runs — i.e. main() was actually called.
+    diary = store / "dream" / "msess.daydream-events.jsonl"
+    result._diary_exists = (store / "dream").exists() and any(  # type: ignore[attr-defined]
+        (store / "dream").glob("*.daydream-events.jsonl")
+    )
+    return result
+
+
+def test_dash_m_cli_module_invokes_main() -> None:
+    """`python -m memeval.dreaming.cli daydream` must run main() (not import-and-exit)."""
+    result = _run_m("memeval.dreaming.cli", {"session_id": "msess"})
+    assert result.returncode == 0, result.stderr
+    assert result._diary_exists, (  # type: ignore[attr-defined]
+        "no daydream diary written — main() never ran under `-m memeval.dreaming.cli`; "
+        "the __main__ guard is missing (hook subprocess would be a silent no-op)"
+    )
+
+
+def test_dash_m_package_invokes_main() -> None:
+    """`python -m memeval.dreaming daydream` must run main() via __main__.py."""
+    result = _run_m("memeval.dreaming", {"session_id": "msess"})
+    assert result.returncode == 0, result.stderr
+    assert result._diary_exists, (  # type: ignore[attr-defined]
+        "no daydream diary written — main() never ran under `-m memeval.dreaming`; "
+        "memeval/dreaming/__main__.py is missing or does not call main()"
+    )
+
+
+def test_cli_has_main_guard_in_source() -> None:
+    """Static guard: cli.py must contain an `if __name__ == '__main__'` block calling main()."""
+    src = _cli_source()
+    assert '__name__ == "__main__"' in src or "__name__ == '__main__'" in src, (
+        "cli.py is missing the __main__ guard required for `python -m memeval.dreaming.cli`"
+    )
