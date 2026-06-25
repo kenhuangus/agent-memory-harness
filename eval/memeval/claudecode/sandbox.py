@@ -56,6 +56,58 @@ ENV_TOGGLE = "MEMEVAL_SANDBOX"
 
 _FALSEY = {"0", "false", "no", "off", ""}
 
+#: The shipping cookbook-memory plugin's recall MCP tool (its model-callable surface).
+#: Pre-approved in the sandbox settings.json so a plugin-real turn can call it WITHOUT a
+#: restrictive ``--allowedTools`` allowlist — the plugin run then uses the IDENTICAL CLI
+#: invocation as the no-plugin control (no allowlist, same permission mode), so the only
+#: difference between control and plugin is the memory tool itself, not a stricter Claude
+#: environment. The whole-server rule (no ``__tool`` suffix) future-proofs against the
+#: plugin exposing more memory tools (e.g. remember).
+RECALL_MCP_TOOL = "mcp__plugin_cookbook-memory_cookbook-memory__recall"
+_PLUGIN_MCP_SERVER_RULE = "mcp__plugin_cookbook-memory_cookbook-memory"
+
+
+def _sandbox_settings() -> dict:
+    """The sandbox ``settings.json`` contents: pre-approve the cookbook-memory plugin's
+    MCP tools so plugin-real turns need no ``--allowedTools`` allowlist (keeping the
+    control and plugin Claude environments identical except for memory)."""
+    return {"permissions": {"allow": [_PLUGIN_MCP_SERVER_RULE]}}
+
+
+def ensure_plugin_tool_allowed(config_dir: Optional[Path] = None) -> bool:
+    """Make sure the sandbox ``settings.json`` pre-approves the cookbook-memory plugin's
+    MCP tools, IN PLACE, without disturbing anything else (auth, other permissions).
+
+    Idempotent and migration-safe: a sandbox built before this rule existed (empty
+    ``settings.json``) is upgraded by merging the allow-rule into ``permissions.allow``;
+    an already-correct sandbox is left untouched. Returns True if a write happened.
+
+    This is what lets a plugin-real turn drop its restrictive ``--allowedTools`` and run
+    the SAME CLI as the no-plugin control: the recall tool is granted here, in config we
+    own, rather than by a flag that would also constrain the native toolset."""
+    d = (config_dir or default_config_dir()).resolve()
+    settings = d / "settings.json"
+    try:
+        data = json.loads(settings.read_text()) if settings.is_file() else {}
+    except (ValueError, OSError):
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    perms = data.get("permissions")
+    if not isinstance(perms, dict):
+        perms = {}
+    allow = perms.get("allow")
+    if not isinstance(allow, list):
+        allow = []
+    if _PLUGIN_MCP_SERVER_RULE in allow or RECALL_MCP_TOOL in allow:
+        return False  # already granted (server-wide rule or the exact tool)
+    allow.append(_PLUGIN_MCP_SERVER_RULE)
+    perms["allow"] = allow
+    data["permissions"] = perms
+    d.mkdir(parents=True, exist_ok=True)
+    settings.write_text(json.dumps(data, indent=2) + "\n")
+    return True
+
 
 def default_config_dir() -> Path:
     """The project-local sandbox dir: ``eval/.claude-sandbox`` (gitignored).
@@ -243,21 +295,25 @@ def setup_real_plugin(
 def build(config_dir: Optional[Path] = None, *, overwrite: bool = False) -> Path:
     """Create (or refresh) the sandbox config dir and return its path.
 
-    Writes a minimal ``settings.json`` (empty object — no hooks, no MCP, no
-    auto-memory) and nothing else. Auth is **not** seeded: the host token is not
-    portable into a sandbox (see the module docstring), so the sandbox is logged
-    in once, interactively, with ``CLAUDE_CONFIG_DIR=<dir> claude`` then ``/login``.
-    No skills, agents, or global ``CLAUDE.md`` are ever copied — the whole point
-    is that the host config does not leak in.
+    Writes a minimal ``settings.json`` whose ONLY content is a permissions allow-rule
+    pre-approving the cookbook-memory plugin's MCP tools (:func:`_sandbox_settings`) —
+    no hooks, no auto-memory, no skills/agents/CLAUDE.md (the whole point is that the
+    host config does not leak in). That single allow-rule is what lets a plugin-real turn
+    run with the IDENTICAL CLI as the no-plugin control (no ``--allowedTools`` allowlist,
+    same ``--permission-mode``): the recall tool is granted by settings, not by a
+    restrictive flag, so the control and plugin Claude environments differ only by memory.
 
-    ``overwrite=True`` resets the minimal ``settings.json`` but leaves any auth
-    state the sandbox has already acquired in place (so a rebuild doesn't force a
-    re-login)."""
+    Auth is **not** seeded: the host token is not portable into a sandbox (see the module
+    docstring), so the sandbox is logged in once, interactively, with
+    ``CLAUDE_CONFIG_DIR=<dir> claude`` then ``/login``.
+
+    ``overwrite=True`` resets ``settings.json`` to that baseline but leaves any auth state
+    the sandbox has already acquired in place (so a rebuild doesn't force a re-login)."""
     d = (config_dir or default_config_dir()).resolve()
     d.mkdir(parents=True, exist_ok=True)
     settings = d / "settings.json"
     if overwrite or not settings.exists():
-        settings.write_text(json.dumps({}) + "\n")
+        settings.write_text(json.dumps(_sandbox_settings(), indent=2) + "\n")
     return d
 
 

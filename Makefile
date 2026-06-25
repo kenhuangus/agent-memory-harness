@@ -12,17 +12,18 @@ help:
 	@echo "Targets:"
 	@echo "  setup          - create .venv (Python 3.13) + install eval + plugin (uv)"
 	@echo "  install-claude-plugin - install plugin into the user's real Claude Code config"
-	@echo "  pipeline       - run the 5-stage SWE-Bench-CL pipeline (ARGS='--yes ...' to override)"
+	@echo "  pipeline       - run ONE stage over ONE sequence (ARGS='--yes ...' to override)"
 	@echo "  test           - run the full pytest suite"
 	@echo "  typecheck      - mypy --strict on memeval/dreaming/ (ADR-dreaming-010)"
 	@echo "  test-daydream  - run only the dreaming-domain tests"
 	@echo "  test-redaction - run only the redaction tests"
 
 # One-command setup: idempotent. Creates ./.venv on Python 3.13 if missing, then
-# installs the harness (with dreaming + dev extras) and the plugin (for plugin-real).
+# installs the harness (with dreaming + dev extras + the swebench grader, the pipeline's
+# DEFAULT --grader) and the plugin (for plugin-real).
 setup:
 	@test -d $(VENV) || uv venv --python 3.13 $(VENV)
-	uv pip install -e 'eval[claudecode,daydream,hf,dev]'
+	uv pip install -e 'eval[claudecode,daydream,hf,dev,swebench]'
 	# Plugin installed --no-deps so its `agent-memory-eval @ git+…` dep doesn't clobber
 	# the LOCAL editable eval above; install its `[mcp]` runtime (memory-cli's MCP server)
 	# EXPLICITLY so plugin-real turns actually work — without it every plugin turn dies on
@@ -36,14 +37,19 @@ setup:
 # local Claude Code installation a user normally runs.
 install-claude-plugin:
 	@test -d $(VENV) || uv venv --python 3.13 $(VENV)
-	uv pip install -e 'eval[claudecode,daydream,hf,dev]'
+	uv pip install -e 'eval[claudecode,daydream,hf,dev,swebench]'
 	uv pip install --no-deps -e plugin
 	uv pip install 'mcp>=1.0'
 	$(UVRUN) memory-cli install-claude-plugin --bundle-dir "$(LOCAL_CLAUDE_BUNDLE)" --runtime-bin-dir "$(VENV_BIN)" --claude "$(CLAUDE)"
 
-# Run the 5-stage SWE-Bench-CL pipeline against the live cookbook-memory plugin.
+# Run ONE pipeline stage over ONE sequence against the live cookbook-memory plugin.
+# Each invocation runs a single stage (base | plugin-blank | plugin-accum |
+# plugin-dreamed; default plugin-accum) over one --sequence of one --benchmark
+# (swe_bench_cl or vista) against the persistent per-version memory substrate. For
+# SWE-Bench-CL sequences the grading venv is built once per sequence and reused.
 # Defaults to a small interactive run; override with ARGS, e.g.:
 #   make pipeline ARGS="--yes --sequence django_django_sequence --limit 20 --budget-usd 20"
+#   make pipeline ARGS="--yes --benchmark vista --sequence coding --stage plugin-accum"
 pipeline:
 	$(UVRUN) memeval-pipeline $(ARGS)
 

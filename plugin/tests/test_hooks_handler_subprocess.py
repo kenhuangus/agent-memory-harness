@@ -247,6 +247,77 @@ def test_handle_emits_hook_subprocess_fired_event_on_stop(monkeypatch: pytest.Mo
     assert len(fired) == 1
 
 
+def test_fired_event_records_child_returncode_and_output_tails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Successful child launch records whether the daydream CLI actually complained."""
+
+    def fake_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess:
+        return subprocess.CompletedProcess(
+            args=args[0],
+            returncode=7,
+            stdout="out-detail",
+            stderr="err-detail",
+        )
+
+    monkeypatch.setattr(hooks_handler.subprocess, "run", fake_run)
+    _make_settings_via_env(monkeypatch, tmp_path)
+    hooks_handler.handle(
+        "Stop",
+        {"session_id": "s1", "transcript_path": str(tmp_path / "missing.jsonl")},
+    )
+    parsed = [
+        json.loads(line)
+        for line in (tmp_path / "events.jsonl").read_text().splitlines()
+        if line.strip()
+    ]
+    fired = [e for e in parsed if e["op"] == "daydream.hook_subprocess_fired"]
+    assert fired[0]["meta"]["returncode"] == 7
+    assert fired[0]["meta"]["stdout_tail"] == "out-detail"
+    assert fired[0]["meta"]["stderr_tail"] == "err-detail"
+
+
+def test_fired_event_records_payload_shape(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The parent hook logs the payload facts needed to debug daydream no-ops."""
+    transcript = tmp_path / "transcript.jsonl"
+    transcript.write_text("{}", encoding="utf-8")
+    recorder = _Recorder()
+    _patch_subprocess(monkeypatch, recorder)
+    _make_settings_via_env(monkeypatch, tmp_path)
+    hooks_handler.handle("Stop", {"session_id": "s1", "transcript_path": str(transcript)})
+    parsed = [
+        json.loads(line)
+        for line in (tmp_path / "events.jsonl").read_text().splitlines()
+        if line.strip()
+    ]
+    fired = [e for e in parsed if e["op"] == "daydream.hook_subprocess_fired"]
+    assert fired[0]["meta"]["has_session_id"] is True
+    assert fired[0]["meta"]["has_transcript_path"] is True
+    assert fired[0]["meta"]["transcript_path"] == str(transcript)
+    assert fired[0]["meta"]["transcript_exists"] is True
+    assert fired[0]["meta"]["payload_keys"] == ["session_id", "transcript_path"]
+
+
+def test_incomplete_payload_event_emitted_when_transcript_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Missing transcript_path is explicit, not hidden behind a generic fired event."""
+    recorder = _Recorder()
+    _patch_subprocess(monkeypatch, recorder)
+    _make_settings_via_env(monkeypatch, tmp_path)
+    hooks_handler.handle("Stop", {"session_id": "s1"})
+    parsed = [
+        json.loads(line)
+        for line in (tmp_path / "events.jsonl").read_text().splitlines()
+        if line.strip()
+    ]
+    incomplete = [e for e in parsed if e["op"] == "daydream.hook_payload_incomplete"]
+    assert len(incomplete) == 1
+    assert incomplete[0]["meta"]["has_session_id"] is True
+    assert incomplete[0]["meta"]["has_transcript_path"] is False
+    assert incomplete[0]["meta"]["payload_keys"] == ["session_id"]
+
+
 def test_handle_emits_hook_subprocess_failed_event_on_exception(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """§D criterion 25 — caught exception → `daydream.hook_subprocess_failed` event."""
     recorder = _Recorder(raises=RuntimeError("boom"))

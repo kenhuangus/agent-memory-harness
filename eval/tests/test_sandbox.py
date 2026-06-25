@@ -67,7 +67,12 @@ class BuildSandbox(unittest.TestCase):
             out = sandbox.build(d)
             self.assertEqual(out, d.resolve())
             self.assertTrue((d / "settings.json").is_file())
-            self.assertEqual(json.loads((d / "settings.json").read_text()), {})
+            # The ONLY content is the cookbook-memory plugin MCP allow-rule (so a
+            # plugin-real turn needs no restrictive --allowedTools); no hooks/skills/etc.
+            settings = json.loads((d / "settings.json").read_text())
+            self.assertEqual(settings, sandbox._sandbox_settings())
+            self.assertIn(sandbox._PLUGIN_MCP_SERVER_RULE,
+                          settings["permissions"]["allow"])
             self.assertTrue(sandbox.exists(d))
             # Auth is NOT seeded — a fresh build is logged out.
             self.assertFalse((d / ".credentials.json").exists())
@@ -96,7 +101,56 @@ class BuildSandbox(unittest.TestCase):
             sandbox.build(d)
             (d / "settings.json").write_text('{"tampered": true}')
             sandbox.build(d, overwrite=True)
-            self.assertEqual(json.loads((d / "settings.json").read_text()), {})
+            self.assertEqual(json.loads((d / "settings.json").read_text()),
+                             sandbox._sandbox_settings())
+
+    def test_ensure_plugin_tool_allowed_upgrades_legacy_empty_settings(self) -> None:
+        # A sandbox built before this rule existed has an empty settings.json; the
+        # ensure helper merges the allow-rule in (so plugin-real needs no --allowedTools).
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td) / "sbx"
+            d.mkdir(parents=True)
+            (d / "settings.json").write_text("{}\n")
+            wrote = sandbox.ensure_plugin_tool_allowed(d)
+            self.assertTrue(wrote)
+            allow = json.loads((d / "settings.json").read_text())["permissions"]["allow"]
+            self.assertIn(sandbox._PLUGIN_MCP_SERVER_RULE, allow)
+
+    def test_ensure_plugin_tool_allowed_is_idempotent(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td) / "sbx"
+            sandbox.build(d)  # already has the rule
+            self.assertFalse(sandbox.ensure_plugin_tool_allowed(d))  # no rewrite needed
+
+    def test_ensure_plugin_tool_allowed_preserves_existing_permissions(self) -> None:
+        # Existing allow rules + other settings keys are kept; the plugin rule is added.
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td) / "sbx"
+            d.mkdir(parents=True)
+            (d / "settings.json").write_text(json.dumps({
+                "permissions": {"allow": ["Bash"], "deny": ["WebFetch"]},
+                "model": "claude-haiku-4-5",
+            }))
+            sandbox.ensure_plugin_tool_allowed(d)
+            data = json.loads((d / "settings.json").read_text())
+            self.assertIn("Bash", data["permissions"]["allow"])
+            self.assertIn(sandbox._PLUGIN_MCP_SERVER_RULE, data["permissions"]["allow"])
+            self.assertEqual(data["permissions"]["deny"], ["WebFetch"])
+            self.assertEqual(data["model"], "claude-haiku-4-5")
+
+    def test_ensure_plugin_tool_allowed_skips_when_exact_tool_present(self) -> None:
+        # If the exact recall tool (not the server-wide rule) is already allowed, no
+        # rewrite — the tool is already granted.
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td) / "sbx"
+            d.mkdir(parents=True)
+            (d / "settings.json").write_text(json.dumps(
+                {"permissions": {"allow": [sandbox.RECALL_MCP_TOOL]}}))
+            self.assertFalse(sandbox.ensure_plugin_tool_allowed(d))
 
 
 class SeedAuthFromHost(unittest.TestCase):

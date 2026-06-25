@@ -48,10 +48,11 @@ def stage_row(
     }
     if extra:
         row_extra.update(extra)
+    bench = pipeline_meta.get("benchmark", "")
     return result_record(
         rr,
         run_id=f"pipeline-{stage}",
-        notes=f"5-stage SWE-Bench-CL pipeline · stage {stage_index} ({stage})",
+        notes=f"single-stage pipeline · {bench} · stage {stage}",
         extra=row_extra,
     )
 
@@ -150,16 +151,20 @@ def build_summary(
             entry["native_cl"] = _native_headline(native_by_stage[stage])
         stages_out.append(entry)
 
-    base = _metrics_of(by_stage.get("base", {}))
-    blank = _metrics_of(by_stage.get("plugin-blank", {}))
-    accum = _metrics_of(by_stage.get("plugin-accum", {}))
-    final = _metrics_of(by_stage.get("plugin-dreamed", {}))
-
+    # Cross-stage deltas only mean something when more than one stage ran. A single-stage
+    # run (the norm now) carries just one stage row, so emit deltas only for the
+    # transitions whose BOTH endpoints are present in this run's rows.
+    metrics_by_stage = {s: _metrics_of(by_stage[s]) for s in by_stage}
+    _transitions = (
+        ("base_to_blank", "base", "plugin-blank"),
+        ("blank_to_accum", "plugin-blank", "plugin-accum"),
+        ("accum_to_dreamed", "plugin-accum", "plugin-dreamed"),
+        ("base_to_final", "base", "plugin-dreamed"),
+    )
     deltas = {
-        "base_to_blank": {k: _delta(base, blank, k) for k in _SUMMARY_METRICS},
-        "blank_to_accum": {k: _delta(blank, accum, k) for k in _SUMMARY_METRICS},
-        "accum_to_dreamed": {k: _delta(accum, final, k) for k in _SUMMARY_METRICS},
-        "base_to_final": {k: _delta(base, final, k) for k in _SUMMARY_METRICS},
+        name: {k: _delta(metrics_by_stage[a], metrics_by_stage[b], k) for k in _SUMMARY_METRICS}
+        for name, a, b in _transitions
+        if a in metrics_by_stage and b in metrics_by_stage
     }
 
     return {
@@ -304,15 +309,18 @@ def render_summary_md(summary: dict) -> str:
         )
     lines.append("")
 
-    # Deltas (base -> final the headline).
-    lines.append("## Deltas")
-    lines.append("")
-    lines.append("| Transition | " + " | ".join(_SUMMARY_METRICS) + " |")
-    lines.append("|" + "---|" * (len(_SUMMARY_METRICS) + 1))
-    for label, d in summary.get("deltas", {}).items():
-        cells = " | ".join(_fmt(d.get(k), signed=True) for k in _SUMMARY_METRICS)
-        lines.append(f"| {label} | {cells} |")
-    lines.append("")
+    # Deltas (base -> final the headline) — only when more than one stage ran, since a
+    # single-stage run has no cross-stage transition to report.
+    deltas = summary.get("deltas", {})
+    if deltas:
+        lines.append("## Deltas")
+        lines.append("")
+        lines.append("| Transition | " + " | ".join(_SUMMARY_METRICS) + " |")
+        lines.append("|" + "---|" * (len(_SUMMARY_METRICS) + 1))
+        for label, d in deltas.items():
+            cells = " | ".join(_fmt(d.get(k), signed=True) for k in _SUMMARY_METRICS)
+            lines.append(f"| {label} | {cells} |")
+        lines.append("")
 
     # Native CL headline per stage (if captured).
     native_stages = [s for s in summary.get("stages", []) if s.get("native_cl")]

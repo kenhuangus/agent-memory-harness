@@ -34,6 +34,7 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any, Optional
 
 from ...core.config import Settings
@@ -66,6 +67,8 @@ _TIMEOUT_BY_EVENT = {
     "PreCompact": 120,
 }
 
+_OUTPUT_TAIL_CHARS = 4000
+
 
 def _build_subprocess_env(settings: Settings) -> dict[str, str]:
     """Return the minimum-surface env for the daydream subprocess (halliday F4)."""
@@ -80,12 +83,46 @@ def _daydream_command() -> list[str]:
     return [sys.executable, "-m", "memeval.dreaming.cli", "daydream"]
 
 
+def _text_tail(value: object) -> str:
+    """Return a bounded text tail for child-process diagnostics."""
+    if value is None:
+        return ""
+    text = value if isinstance(value, str) else str(value)
+    return text[-_OUTPUT_TAIL_CHARS:]
+
+
+def _payload_diagnostics(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return non-secret hook-payload facts useful for debugging daydream no-ops."""
+    transcript_raw = payload.get("transcript_path")
+    transcript_path = str(transcript_raw) if transcript_raw is not None else ""
+    diag: dict[str, Any] = {
+        "payload_keys": sorted(str(key) for key in payload.keys()),
+        "has_session_id": bool(payload.get("session_id")),
+        "has_transcript_path": bool(transcript_path),
+    }
+    if transcript_path:
+        diag["transcript_path"] = transcript_path
+        try:
+            diag["transcript_exists"] = Path(transcript_path).is_file()
+        except OSError:
+            diag["transcript_exists"] = False
+    return diag
+
+
 def _fire_daydream_subprocess(
     event_name: str, payload: dict[str, Any], settings: Settings, events: EventStream
 ) -> None:
     """Shell out to the daydream CLI module; fail-open per ADR-harness-006."""
+    payload_diag = _payload_diagnostics(payload)
+    if not payload_diag["has_session_id"] or not payload_diag["has_transcript_path"]:
+        events.emit(
+            "daydream.hook_payload_incomplete",
+            session_id=settings.session_id,
+            hook=event_name,
+            **payload_diag,
+        )
     try:
-        subprocess.run(
+        completed = subprocess.run(
             _daydream_command(),
             input=json.dumps(payload),
             capture_output=True,
@@ -121,6 +158,10 @@ def _fire_daydream_subprocess(
         "daydream.hook_subprocess_fired",
         session_id=settings.session_id,
         hook=event_name,
+        returncode=completed.returncode,
+        stdout_tail=_text_tail(completed.stdout),
+        stderr_tail=_text_tail(completed.stderr),
+        **payload_diag,
     )
 
 

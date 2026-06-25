@@ -503,6 +503,33 @@ def test_full_agentic_loop_accuracy_one() -> None:
     assert rr.metrics.accuracy == 1.0
 
 
+def test_off_control_run_isolates_mcp() -> None:
+    # The memoryless control (off) agentic CODE turn must pass strict_mcp=True (no
+    # --mcp-config), so it ignores ALL installed MCP servers — it stays plugin-free even
+    # if a concurrent plugin run installed the cookbook-memory plugin into the SHARED
+    # sandbox config dir.
+    seen: dict = {}
+    flag: dict = {}
+    git = _make_fake_git(edited_flag=flag)
+
+    def fake(prompt, *, cwd, strict_mcp=False, mcp_config=None, **kw) -> ClaudeResult:
+        seen["strict_mcp"] = strict_mcp
+        seen["mcp_config"] = mcp_config
+        (Path(cwd) / "orm.py").write_text("def f():\n    return []\n", encoding="utf-8")
+        flag["edited"] = True
+        return ClaudeResult(text="done", tokens_in=5, tokens_out=1)
+
+    grader = G.LocalExecGrader(runner=_make_fake_cmd(), git_runner=git)
+    with tempfile.TemporaryDirectory() as tmp:
+        agent = ClaudeCodeAgent(memory_mode="off", code_mode="agentic",
+                                runner=fake, git_runner=git, runtime=_NATIVE, workdir=tmp)
+        run_agent(Benchmark.SWE_CONTEXTBENCH, agent, memory=False,
+                  path_or_id=_fixture("swe_contextbench.json"), limit=1,
+                  seed_sessions=False, grader=grader)
+    assert seen["strict_mcp"] is True           # control isolates MCP
+    assert seen["mcp_config"] is None            # ...and provides no MCP config
+
+
 def test_full_agentic_loop_noop_agent_accuracy_zero() -> None:
     # A no-op agent that writes nothing -> empty diff -> grader False -> accuracy 0.
     flag: dict = {}
@@ -554,6 +581,19 @@ def test_make_grader_auto_routing() -> None:
     g = run_bench._make_grader("swe_bench_cl", args_swe)
     assert isinstance(g, SwebenchHostGrader)
     assert g.timeout == 4242
+
+
+def test_swebench_grader_venv_root_is_cleaned_up() -> None:
+    # The shared per-sequence venv root is a temp dir; cleanup() removes it (so whole
+    # venvs aren't leaked under /tmp) and is idempotent. Exercised without the swebench
+    # extra — _venv_root_dir/cleanup touch no swebench API.
+    from memeval.grader_swebench import SwebenchHostGrader
+    g = SwebenchHostGrader()
+    root = g._venv_root_dir()
+    assert root.is_dir()
+    g.cleanup()
+    assert not root.is_dir() and g._venv_root is None
+    g.cleanup()  # idempotent — no error on a second call
 
 
 def test_run_bench_code_mode_default_agentic() -> None:
@@ -638,7 +678,7 @@ def test_agentic_code_plugin_records_retrieval() -> None:
     assert calls["n"] == 2
 
 
-def test_agentic_code_plugin_real_records_retrieval() -> None:
+def test_agentic_code_plugin_real_records_retrieval(monkeypatch) -> None:
     # plugin-real-mode agentic CODE = the SHIPPING plugin (cookbook-memory) as a
     # black box. The fake CLI stands in for the installed plugin: it edits the
     # checkout (so a diff is produced) AND writes a recall event (with meta.hits) to
@@ -653,6 +693,13 @@ def test_agentic_code_plugin_real_records_retrieval() -> None:
     # {} and seeding no-ops, and _run_primed falls back to a plain call (priming only
     # engages when self._runner is run_claude) — so this also verifies the fallback
     # still reaches the plugin's recall.
+    #
+    # Force the NO-sandbox branch so the --allowedTools fallback (the explicit
+    # allowlist) is exercised deterministically regardless of whether a sandbox dir
+    # happens to exist on this machine. The sandbox-active branch (allowed_tools=None)
+    # is covered by test_plugin_real_allowed_tools_none_when_sandbox_active.
+    import memeval.claudecode.sandbox as _sandbox
+    monkeypatch.setattr(_sandbox, "active_config_dir", lambda: None)
     import json as _json
 
     flag: dict = {}
@@ -660,10 +707,11 @@ def test_agentic_code_plugin_real_records_retrieval() -> None:
     git = _make_fake_git(edited_flag=flag)
 
     def fake(prompt, *, cwd, permission_mode="bypassPermissions", allowed_tools=None,
-             **kw):
+             strict_mcp=True, **kw):
         calls["n"] += 1
         calls["tools"] = allowed_tools
         calls["permission"] = permission_mode
+        calls["strict_mcp"] = strict_mcp
         # Edit the checkout (so a diff is produced) ...
         (Path(cwd) / "orm.py").write_text("def filter_empty():\n    return []\n",
                                           encoding="utf-8")
@@ -698,6 +746,9 @@ def test_agentic_code_plugin_real_records_retrieval() -> None:
     assert calls["tools"] == _PLUGIN_REAL_CODE_ALLOWED_TOOLS
     assert _PLUGIN_REAL_RECALL_TOOL in calls["tools"]
     assert calls["permission"] == "acceptEdits"
+    # plugin-real must NOT isolate MCP — it relies on the INSTALLED plugin's server, so
+    # strict_mcp is False (the control run is the one that isolates MCP).
+    assert calls["strict_mcp"] is False
     # Recall fired on the first try, so the retry loop stops after one call per task
     # (2 tasks -> exactly 2 runner invocations, no wasteful retries).
     assert calls["n"] == 2
@@ -767,6 +818,24 @@ def test_plugin_real_store_flat_when_not_group_scoped() -> None:
         pd, sd = a._plugin_real_store(Path(tmp) / "co", group_id="any_sequence")
         assert pd == sub.resolve()                       # group ignored
         assert sd == (sub / ".cookbook-memory").resolve()
+
+
+def test_plugin_real_allowed_tools_none_when_sandbox_active(monkeypatch) -> None:
+    """With a sandbox active, its settings.json grants the recall tool, so plugin-real
+    passes NO --allowedTools — the SAME CLI as the no-plugin control."""
+    import memeval.claudecode.sandbox as S
+    a = ClaudeCodeAgent(memory_mode="plugin-real")
+    monkeypatch.setattr(S, "active_config_dir", lambda: "/some/sandbox")
+    assert a._plugin_real_allowed_tools(["X", "Y"]) is None
+
+
+def test_plugin_real_allowed_tools_falls_back_without_sandbox(monkeypatch) -> None:
+    """Without a sandbox (the MEMEVAL_SANDBOX=0 opt-out) there is no settings grant, so
+    the explicit allowlist is used so headless recall isn't denied."""
+    import memeval.claudecode.sandbox as S
+    a = ClaudeCodeAgent(memory_mode="plugin-real")
+    monkeypatch.setattr(S, "active_config_dir", lambda: None)
+    assert a._plugin_real_allowed_tools(["X", "Y"]) == ["X", "Y"]
 
 
 # --------------------------------------------------------------------------- #

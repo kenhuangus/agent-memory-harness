@@ -330,12 +330,16 @@ def run_agent(
     loader = get_loader(bench)
     all_tasks = loader.load(path_or_id, limit=None)
 
-    # Named-sequence filter: restrict to ONE group_id (e.g. a SWE-Bench-CL sequence),
-    # ordered by Task.order, so the pipeline runs "X tasks of sequence Y" deterministically
-    # (the shared substrate no longer records which sequence a run saw -- the caller does).
+    # Named-sequence filter: restrict to ONE sequence, ordered by Task.order, so the
+    # pipeline runs "X tasks of sequence Y" deterministically (the shared substrate no
+    # longer records which sequence a run saw -- the caller does). A sequence matches a
+    # ``group_id`` (e.g. a SWE-Bench-CL sequence) OR a ``task_id`` (e.g. a single VISTA
+    # journey, which is its own selectable unit); journey/group ids are distinct strings,
+    # so this widening never changes existing group-based selection.
     if sequence is not None:
         all_tasks = sorted(
-            (t for t in all_tasks if str(t.group_id or "") == sequence),
+            (t for t in all_tasks
+             if str(t.group_id or "") == sequence or str(t.task_id or "") == sequence),
             key=lambda t: int(t.order),
         )
         if not all_tasks:

@@ -105,7 +105,12 @@ def _make_fake_plugin_runner(turns: dict):
 # Shared substrate: every task points at ONE store; memory accumulates by
 # persistence with NO harness copy.
 # --------------------------------------------------------------------------- #
-def test_shared_project_dir_accumulates_memory_across_tasks() -> None:
+def test_shared_project_dir_accumulates_memory_across_tasks(monkeypatch) -> None:
+    # Force the no-sandbox branch so the --allowedTools fallback (just the recall tool)
+    # is asserted deterministically, independent of any sandbox dir on this machine. The
+    # sandbox-active branch (allowed_tools=None) is covered in test_claudecode_code_agent.
+    import memeval.claudecode.sandbox as _sandbox
+    monkeypatch.setattr(_sandbox, "active_config_dir", lambda: None)
     turns: dict = {}
     runner = _make_fake_plugin_runner(turns)
     with tempfile.TemporaryDirectory() as tmp:

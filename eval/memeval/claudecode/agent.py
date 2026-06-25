@@ -32,6 +32,7 @@ from .. import MEMORY_VERSION
 from ..cost import price_for
 from ..schema import Benchmark, MemoryItem, RetrievedItem, Task, TaskKind
 from . import checkout as _checkout
+from . import sandbox
 from .checkout import CheckoutError, GitRunner, capture_diff, prepare_checkout
 from .cli import ClaudeResult, run_claude, run_claude_primed
 from .platform import ClaudeRuntime, detect, to_wsl_path
@@ -145,7 +146,11 @@ _PLUGIN_REAL_PREFIX_CODE = (
     "issue and run the tests to confirm. Do NOT output a diff or paste a patch — "
     "just make the edits.\n\n"
 )
-_PLUGIN_REAL_RECALL_TOOL = "mcp__plugin_cookbook-memory_cookbook-memory__recall"
+#: The shipping plugin's model-callable recall tool — used only for the allowlist
+#: fallback on the non-sandbox opt-out path. Sourced from the single canonical constant
+#: in ``sandbox`` (also what the sandbox settings.json grant uses), so the grant and the
+#: fallback can never drift apart.
+_PLUGIN_REAL_RECALL_TOOL = sandbox.RECALL_MCP_TOOL
 _CODE_ALLOWED_TOOLS = [
     "Bash",
     "Edit",
@@ -417,8 +422,10 @@ class ClaudeCodeAgent:
             if self.code_mode == "agentic":
                 return self._solve_code_agentic(task, ctx, run_dir)
             code_prompt = _build_code_prompt(task)
+            # Blind CODE is memoryless; strict_mcp=True keeps it plugin-free even if the
+            # shared sandbox has a plugin installed by a concurrent run.
             res = self._run(code_prompt, run_dir, _SYS_CODE,
-                            mcp_config=None, allowed_tools=None)
+                            mcp_config=None, allowed_tools=None, strict_mcp=True)
             ctx.record_generate(res.text, res.tokens_in, res.tokens_out,
                                 model_name=self.model)
             return _extract_diff(res.text)
@@ -426,15 +433,21 @@ class ClaudeCodeAgent:
         prompt = _build_prompt(task)
 
         if self.memory_mode == "builtin":
+            # builtin = Claude Code's OWN file-based memory; no plugin/MCP. strict_mcp=True
+            # keeps it plugin-free under a shared sandbox a concurrent run may have changed.
             _write_session_files(run_dir, task)
             res = self._run(_BUILTIN_PREFIX + prompt, run_dir, _SYS_BUILTIN,
-                            mcp_config=None, allowed_tools=None)
+                            mcp_config=None, allowed_tools=None, strict_mcp=True)
         elif self.memory_mode == "plugin":
             res = self._solve_plugin(task, ctx, _PLUGIN_PREFIX + prompt, run_dir)
         elif self.memory_mode == "plugin-real":
             res = self._solve_plugin_real(task, ctx, _PLUGIN_REAL_PREFIX + prompt, run_dir)
-        else:  # off
-            res = self._run(prompt, run_dir, _SYS_PLAIN, mcp_config=None, allowed_tools=None)
+        else:  # off (control)
+            # strict_mcp=True (no --mcp-config) ignores all installed MCP servers, so the
+            # control turn never picks up a plugin a concurrent run installed into the
+            # shared sandbox config dir.
+            res = self._run(prompt, run_dir, _SYS_PLAIN, mcp_config=None, allowed_tools=None,
+                            strict_mcp=True)
 
         ctx.record_generate(res.text, res.tokens_in, res.tokens_out, model_name=self.model)
         return res.text
@@ -566,10 +579,12 @@ class ClaudeCodeAgent:
         mode = self.memory_mode
         if mode == "builtin":
             # Lay the history out as files in the CHECKOUT so the agent greps them.
+            # builtin uses no plugin/MCP; strict_mcp=True keeps it plugin-free under a
+            # shared sandbox a concurrent run may have changed.
             _write_session_files(checkout, task)
             return self._run(_BUILTIN_PREFIX + base_prompt, checkout, _SYS_CODE_AGENT,
                              mcp_config=None, allowed_tools=None,
-                             permission_mode="acceptEdits")
+                             permission_mode="acceptEdits", strict_mcp=True)
         if mode == "plugin":
             bundle, log, tools = self._seed_plugin_store_okf(run_dir, task)
             rt = self._effective_runtime()
@@ -613,11 +628,13 @@ class ClaudeCodeAgent:
             # Drive the coding turn through the PRIMED runner with a retry-until-recall
             # backstop (mirrors the QA _solve_plugin_real loop) so the headless MCP
             # startup race no longer silently drops the shipping plugin's `recall`.
-            # --allowedTools is restrictive, so the code turn must explicitly allow
-            # both normal edit/test tools and the shipping plugin recall tool. Without
-            # this the CLI asks for permission to use recall and the headless run denies
-            # it. Recall reach is counted via the plugin's OWN events stream
+            # Tool environment: when the sandbox is active its settings.json grants the
+            # recall tool, so we pass NO --allowedTools — the SAME unrestricted CLI as the
+            # no-plugin control (so the only difference is memory). Only the non-sandbox
+            # opt-out falls back to the explicit allowlist (else headless recall is
+            # denied). Recall reach is counted via the plugin's OWN events stream
             # (_count_recall_events), not the harness recall log.
+            allowed = self._plugin_real_allowed_tools(_PLUGIN_REAL_CODE_ALLOWED_TOOLS)
             before_writes = _count_daydream_writes(store_dir)
             res: Optional[ClaudeResult] = None
             for _ in range(_PLUGIN_MAX_TRIES):
@@ -625,7 +642,7 @@ class ClaudeCodeAgent:
                 res = self._run_primed(
                     _PLUGIN_REAL_PREFIX_CODE + base_prompt, checkout,
                     _SYS_CODE_AGENT_PLUGIN_REAL, mcp_config=None,
-                    allowed_tools=_PLUGIN_REAL_CODE_ALLOWED_TOOLS,
+                    allowed_tools=allowed, strict_mcp=False,  # use the INSTALLED plugin's MCP
                     permission_mode="acceptEdits", extra_env=extra_env)
                 if _count_recall_events(events) > before:
                     break  # the agent reached the recall tool -> plugin MCP connected
@@ -634,10 +651,14 @@ class ClaudeCodeAgent:
             # task/stage touches the shared store. Pure barrier -- no copying.
             self._drain_daydream(task, res, store_dir, events, plugin_env, before_writes)
             return res  # type: ignore[return-value]
-        # off: no seeding, no memory.
+        # off (control): no seeding, no memory. strict_mcp=True ignores ALL configured/
+        # installed MCP servers (no --mcp-config given), so the control turn is guaranteed
+        # plugin-free even when a concurrent plugin run has installed the cookbook-memory
+        # plugin into the SHARED sandbox config dir — the base→plugin comparison stays
+        # honest under parallel runs.
         return self._run(_CODE_AGENT_PREFIX + base_prompt, checkout, _SYS_CODE_AGENT,
                          mcp_config=None, allowed_tools=None,
-                         permission_mode="acceptEdits")
+                         permission_mode="acceptEdits", strict_mcp=True)
 
     def _run_plugin_http(self, prompt: str, run_dir: Path, bundle: Path, log: Path,
                          rt: ClaudeRuntime, tools: list[str]) -> ClaudeResult:
@@ -728,13 +749,17 @@ class ClaudeCodeAgent:
         self._seed_vista_sessions(task, store_dir, plugin_env)
         events = store_dir / "events.jsonl"
 
+        # Tool environment matches the no-plugin control: with the sandbox active its
+        # settings.json grants the recall tool, so pass NO --allowedTools; only the
+        # non-sandbox opt-out falls back to allow-listing just the recall tool.
+        allowed = self._plugin_real_allowed_tools([_PLUGIN_REAL_RECALL_TOOL])
         before_writes = _count_daydream_writes(store_dir)
         res: Optional[ClaudeResult] = None
         for _ in range(_PLUGIN_MAX_TRIES):
             before = _count_recall_events(events)
             res = self._run_primed(prompt, run_dir, _SYS_PLUGIN_REAL,
                                    mcp_config=None,
-                                   allowed_tools=[_PLUGIN_REAL_RECALL_TOOL],
+                                   allowed_tools=allowed, strict_mcp=False,  # INSTALLED plugin MCP
                                    extra_env=extra_env)
             if _count_recall_events(events) > before:
                 break  # the agent reached the recall tool -> plugin MCP connected
@@ -885,7 +910,6 @@ class ClaudeCodeAgent:
         if self._runner is not run_claude:
             self._real_plugin_env = {}      # offline/fake-runner: nothing to install
             return self._real_plugin_env
-        from . import sandbox
         self._real_plugin_env = sandbox.setup_real_plugin(
             claude_exe=(self._runtime.exe if self._runtime else None))
         return self._real_plugin_env
@@ -955,7 +979,6 @@ class ClaudeCodeAgent:
         rather than reconstruct it we GLOB for ``<session_id>.jsonl`` anywhere under the
         sandbox ``projects/`` tree — robust to the slug format. Returns ``(None, None)``
         when the session_id or the file can't be found."""
-        from . import sandbox  # local import (mirrors _ensure_real_plugin; avoids a module cycle)
         raw = res.raw if isinstance(res.raw, dict) else {}
         session_id = raw.get("session_id") or raw.get("sessionId")
         if not session_id:
@@ -1079,6 +1102,19 @@ class ClaudeCodeAgent:
         tests have no claude installed) so the config is still produced."""
         return self._runtime or detect() or ClaudeRuntime(
             kind="native", exe="claude", python=sys.executable or "python")
+
+    def _plugin_real_allowed_tools(self, base_allowlist: list[str]) -> Optional[list[str]]:
+        """Resolve ``--allowedTools`` for a plugin-real turn so it faces the SAME Claude
+        tool environment as the no-plugin control.
+
+        When the sandbox is active, its ``settings.json`` already pre-approves the plugin's
+        recall MCP tool (``sandbox.ensure_plugin_tool_allowed``), so we pass ``None`` — no
+        ``--allowedTools`` allowlist, exactly like the control run, leaving the full native
+        toolset unrestricted and only the recall tool added via settings. Without a
+        sandbox (the ``MEMEVAL_SANDBOX=0`` opt-out, or a non-sandboxed run), there is no
+        settings grant, so we fall back to the explicit allowlist so headless recall isn't
+        silently denied — accepting the (documented) asymmetry only in that opt-out path."""
+        return None if sandbox.active_config_dir() is not None else base_allowlist
 
     def _root_dir(self) -> Path:
         """The run-tree root: the injected ``workdir`` or a stable temp dir, version-keyed

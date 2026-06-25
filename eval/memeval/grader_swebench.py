@@ -139,6 +139,15 @@ class SwebenchHostGrader:
         self.python_substitutions: dict[str, str] = {}
         #: cached sorted [(major, minor), ...] of uv-provisionable CPython versions.
         self._uv_minors_cache: Optional[list] = None
+        #: Per-sequence shared venv cache: (repo, version) -> (venv_dir, python_exe).
+        #: Every task of one SWE-Bench-CL sequence shares a repo+version, hence the same
+        #: interpreter + third-party deps; build that ONCE per sequence and reuse it,
+        #: re-running only the cheap editable install of each task's checkout. Lives for
+        #: the grader instance's lifetime (one per run).
+        self._seq_venvs: dict[tuple[str, str], tuple[Path, str]] = {}
+        #: Root holding the shared per-sequence venvs (persists across tasks within a
+        #: run, unlike the per-task checkout temp dir). Lazily created on first use.
+        self._venv_root: Optional[Path] = None
 
     # -- honesty-rule degradation (mirrors LocalExecGrader._ungraded) -------- #
     def _ungraded(self, reason: str, task: Optional[Task] = None) -> None:
@@ -148,6 +157,95 @@ class SwebenchHostGrader:
         tid = getattr(task, "task_id", None) or "?"
         log.warning("SwebenchHostGrader UNGRADED [task=%s]: %s", tid, reason)
         return None
+
+    # -- per-sequence shared venv (built ahead of the sequence's tasks) ------ #
+    def _venv_root_dir(self) -> Path:
+        """The directory holding the shared per-sequence venvs. Persists across a
+        sequence's tasks (unlike each task's throwaway checkout dir), so the interpreter
+        + third-party deps are provisioned once and reused.
+
+        Created lazily under the system temp dir and registered for removal at process
+        exit, so the (potentially large) shared venvs are not leaked under ``/tmp``.
+        Also removable explicitly via :meth:`cleanup`."""
+        from pathlib import Path
+        if self._venv_root is None:
+            import atexit
+            import tempfile
+            self._venv_root = Path(tempfile.mkdtemp(prefix="memeval-swe-seqvenv-"))
+            atexit.register(self.cleanup)
+        return self._venv_root
+
+    def cleanup(self) -> None:
+        """Remove the shared per-sequence venv root (and its cached venvs). Idempotent
+        and best-effort — safe to call explicitly or via the atexit hook."""
+        import shutil
+        root = self._venv_root
+        if root is None:
+            return
+        self._venv_root = None
+        self._seq_venvs.clear()
+        shutil.rmtree(root, ignore_errors=True)
+
+    @staticmethod
+    def _resolve_spec(repo: str, version: str) -> Optional[dict]:
+        """Resolve the SWE-bench install spec for ``repo@version``, or ``None`` when the
+        optional ``swebench`` package or the spec entry is absent."""
+        try:
+            from swebench.harness.constants import MAP_REPO_VERSION_TO_SPECS
+        except Exception:  # noqa: BLE001 - missing optional dep
+            return None
+        return MAP_REPO_VERSION_TO_SPECS.get(repo, {}).get(version)
+
+    def prewarm_sequence(self, repo: str, version: str) -> Optional[str]:
+        """Build the shared venv for a ``repo@version`` SWE-Bench-CL sequence AHEAD of
+        its tasks, returning the venv's python exe (or ``None`` if it can't be built).
+
+        Provisions the pinned interpreter and installs the sequence-invariant pieces —
+        ``pre_install`` and ``pip_packages`` (the heavy third-party wheels every task in
+        the sequence shares) — exactly once. Per-task grading then only re-runs the cheap
+        editable install of that task's own checkout into this shared venv. Idempotent:
+        a second call for the same ``(repo, version)`` returns the cached interpreter.
+
+        Best-effort and fail-open: a build failure caches nothing and returns ``None``,
+        so grading falls back to the per-task venv path and is never blocked."""
+        repo = (repo or "").strip()
+        version = str(version or "").strip()
+        if not repo or not version:
+            return None
+        key = (repo, version)
+        cached = self._seq_venvs.get(key)
+        if cached is not None:
+            return cached[1]
+
+        spec = self._resolve_spec(repo, version)
+        if not spec:
+            log.info("SwebenchHostGrader: no spec for %s@%s; skipping sequence prewarm",
+                     repo, version)
+            return None
+
+        # A per-(repo,version) subdir under the shared root holds this sequence's venv.
+        # The venv lands at ``seq_dir/.venv-swe-grade`` (beside a scratch ``checkout``
+        # dir _make_venv derives from its arg's parent); create the scratch dir so the
+        # run cwd exists.
+        seq_dir = self._venv_root_dir() / f"{repo.replace('/', '__')}__{version}"
+        scratch = seq_dir / "checkout"
+        scratch.mkdir(parents=True, exist_ok=True)
+        py = self._make_venv(scratch, python=str(spec.get("python") or "") or None)
+        if py is None:
+            log.info("SwebenchHostGrader: could not provision interpreter for %s@%s; "
+                     "sequence prewarm skipped (per-task venv will be used)", repo, version)
+            return None
+
+        # Install only the sequence-invariant pieces here (pre_install + pip_packages);
+        # the editable install of each task's checkout happens per task in _install.
+        # Run from the per-sequence scratch dir so pre_install shell steps that use
+        # relative paths / write into cwd land beside this sequence's venv, not in the
+        # shared root.
+        self._install_shared(py, spec, dest=scratch)
+        self._seq_venvs[key] = (seq_dir, py)
+        log.info("SwebenchHostGrader: prewarmed shared venv for %s@%s at %s",
+                 repo, version, seq_dir)
+        return py
 
     def __call__(self, task: Task, prediction: str) -> Optional[bool]:
         self.last_reason = None  # reset per call; set only on a None (ungraded) path
@@ -265,7 +363,19 @@ class SwebenchHostGrader:
         # Provision the pinned interpreter via uv. The pinned (often old) python is
         # the whole point — SWE-bench commits assume a then-current interpreter; a
         # host-default venv breaks historical code. If we cannot get it, UNGRADED.
-        py = self._make_venv(dest, python=str(spec.get("python") or "") or None, task=task)
+        #
+        # Prefer the sequence's prewarmed shared venv (one per repo@version) when present
+        # — its interpreter + third-party deps are already installed, so only this task's
+        # editable checkout install runs below. Otherwise build a per-task venv as before.
+        repo = (task.repo or "").strip()
+        version = str((task.metadata or {}).get("version") or "").strip()
+        shared = self._seq_venvs.get((repo, version))
+        if shared is not None:
+            py: Optional[str] = shared[1]
+            prewarmed = True
+        else:
+            py = self._make_venv(dest, python=str(spec.get("python") or "") or None, task=task)
+            prewarmed = False
         if py is None:
             # Fall back to a configured interpreter ONLY if no pin was requested;
             # if a pin was requested and neither uv NOR a nearest-available substitute
@@ -275,8 +385,11 @@ class SwebenchHostGrader:
                     f"could not provision python {spec.get('python')} "
                     f"(nor any uv-available fallback >= it)", task)
             py = self._python_exe or "python"
+            prewarmed = False
 
-        self._install(dest, py, spec)
+        # shared=True skips the sequence-invariant install (already done at prewarm); only
+        # this checkout's spec-install + editable install run.
+        self._install(dest, py, spec, shared=prewarmed)
 
         # Build the official eval command: spec.test_cmd + the test directives. This
         # is EXACTLY how swebench's make_eval_script_list_py composes the command;
@@ -474,27 +587,42 @@ class SwebenchHostGrader:
             "grading under nearest available python %s (host-substitution — NOT "
             "leaderboard-comparable)", tid, pin, used)
 
-    def _install(self, dest: Any, py: str, spec: dict) -> None:
+    def _install(self, dest: Any, py: str, spec: dict, *, shared: bool = False) -> None:
         """Run the spec's install steps in the venv, best-effort. ROOT/apt
         ``pre_install`` entries are SKIPPED (host can't run them, logged). Failures
         are tolerated — many repos import from source; the test-run step decides
-        gradeability (no parseable output -> UNGRADED there, not here)."""
-        # pre_install: skip root/apt/locale entries; attempt the rest in the checkout.
+        gradeability (no parseable output -> UNGRADED there, not here).
+
+        When the venv was prewarmed for the sequence (``shared=True``), the
+        sequence-invariant pieces (``pre_install`` + ``pip_packages``) were already
+        installed by :meth:`_install_shared`, so only the per-task pieces (the spec
+        ``install`` command and the editable install of THIS checkout) run here."""
+        if not shared:
+            self._install_shared(py, spec, dest=dest)
+        # install command (e.g. ``python setup.py install`` / ``pip install -e .``) —
+        # per-task because it runs against THIS checkout's source.
+        install = str(spec.get("install") or "").strip()
+        if install:
+            self._run(self._rebind(install, py), dest)
+        # Best-effort editable install of the checkout itself (source imports) — per-task.
+        self._run(["uv", "pip", "install", "--python", py, "-e", "."], dest)
+
+    def _install_shared(self, py: str, spec: dict, *, dest: Any = None) -> None:
+        """Install the sequence-invariant pieces into the venv (``pre_install`` +
+        ``pip_packages``) — the heavy third-party wheels every task of a sequence shares.
+        Done once per sequence at prewarm; ``dest`` is the cwd for ``pre_install`` shell
+        steps (the shared venv's scratch dir at prewarm, the checkout otherwise)."""
+        cwd = dest if dest is not None else (self._venv_root_dir())
+        # pre_install: skip root/apt/locale entries; attempt the rest.
         for cmd in (spec.get("pre_install") or []):
             if _is_root_preinstall(cmd):
                 log.info("SwebenchHostGrader: skipping root/apt pre_install: %s", cmd)
                 continue
-            self._run(self._shell(cmd), dest)
-        # install command (e.g. ``python setup.py install`` / ``pip install -e .``).
-        install = str(spec.get("install") or "").strip()
-        if install:
-            self._run(self._rebind(install, py), dest)
+            self._run(self._shell(cmd), cwd)
         # pip_packages: install each into the venv.
         pkgs = list(spec.get("pip_packages") or [])
         if pkgs:
-            self._run(["uv", "pip", "install", "--python", py, *pkgs], dest)
-        # Best-effort editable install of the checkout itself (source imports).
-        self._run(["uv", "pip", "install", "--python", py, "-e", "."], dest)
+            self._run(["uv", "pip", "install", "--python", py, *pkgs], cwd)
 
     @staticmethod
     def _shell(cmd: str) -> list:
