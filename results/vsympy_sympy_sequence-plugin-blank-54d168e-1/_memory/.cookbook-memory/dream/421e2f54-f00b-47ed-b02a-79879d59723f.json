@@ -1,0 +1,1 @@
+{"cursor": 29658, "last_summary": "The user wants to fix the `posify` function in sympy/sympy so that it preserves the `finite` assumption (and possibly other assumptions like integer, rational, prime, even, odd) on symbols.", "recent_memory_ids": ["mem_cf59dbbe"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

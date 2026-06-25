@@ -1,0 +1,159 @@
+{
+  "schema": 1,
+  "memory_version": "vsympy_sympy_sequence-base-54d168e-1",
+  "benchmark": "swe_bench_cl",
+  "timestamp": "20260625T044323Z",
+  "pipeline": {
+    "version": "vsympy_sympy_sequence-base-54d168e-1",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "54d168e",
+    "benchmark": "swe_bench_cl",
+    "sequence": "sympy_sympy_sequence",
+    "stage": "base",
+    "limit": null,
+    "n_tasks": 50,
+    "model": "claude-haiku-4-5",
+    "code_mode": "agentic",
+    "grader": "swebench",
+    "plugin_workers": 1,
+    "budget_usd": 20.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash"
+    },
+    "memory_store": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsympy_sympy_sequence-base-54d168e-1/_memory",
+    "n_stages": 1,
+    "n_eval_stages": 1,
+    "stages": [
+      "base"
+    ],
+    "timestamp": "20260625T044323Z",
+    "started_at": 1782362603.414262,
+    "ended_at": 1782380322.8781881,
+    "stages_run": [
+      "base"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": null
+    }
+  },
+  "dream": {
+    "status": "not-run"
+  },
+  "runs": [
+    {
+      "run_id": "pipeline-base",
+      "timestamp": "2026-06-25T09:38:42+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "claude-code:claude-haiku-4-5:off",
+      "memory": false,
+      "label": "claude-code:claude-haiku-4-5:off",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.0,
+        "relevancy": 0.0,
+        "accuracy": 0.6122448979591837,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 50,
+        "extra": {}
+      },
+      "n_tasks": 50,
+      "entries_used": 50,
+      "entries_available": 50,
+      "limit": null,
+      "selection": "flat",
+      "cost_usd": 4.995997,
+      "tokens_in": 3922,
+      "tokens_out": 998415,
+      "partial": false,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 3,
+        "memory_reached": 0,
+        "memory_hit": 0,
+        "recall_attempted": 0,
+        "recall_with_hits": 0,
+        "graded_n": 49,
+        "resolved": 30,
+        "ungraded": 1,
+        "grade_reasons": {
+          "graded": 49,
+          "official parser produced no statuses": 1
+        },
+        "errors": [
+          {
+            "task_id": "sympy__sympy-15875",
+            "stage": "solve",
+            "error": "TimeoutExpired: Command '['/Users/keith/.local/bin/claude', '-p', 'Edit the source files in this checkout directly to fix the issue, then run the tests to confirm. Do NOT output a diff or paste a patch \u2014 just make th"
+          },
+          {
+            "task_id": "sympy__sympy-13615",
+            "stage": "solve",
+            "error": "TimeoutExpired: Command '['/Users/keith/.local/bin/claude', '-p', \"Edit the source files in this checkout directly to fix the issue, then run the tests to confirm. Do NOT output a diff or paste a patch \u2014 just make th"
+          },
+          {
+            "task_id": "sympy__sympy-18698",
+            "stage": "solve",
+            "error": "TimeoutExpired: Command '['/Users/keith/.local/bin/claude', '-p', 'Edit the source files in this checkout directly to fix the issue, then run the tests to confirm. Do NOT output a diff or paste a patch \u2014 just make th"
+          }
+        ]
+      },
+      "notes": "single-stage pipeline \u00b7 swe_bench_cl \u00b7 stage base",
+      "pipeline_stage": "base",
+      "stage_index": 1,
+      "git_sha": "54d168e",
+      "git_tag": "vsympy_sympy_sequence-base-54d168e-1",
+      "memory_health": {
+        "before": {
+          "store_dir": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsympy_sympy_sequence-base-54d168e-1/_memory/.cookbook-memory",
+          "events": 0,
+          "daydream_events": 0,
+          "recall_events": 0,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 0,
+          "daydream_memory_written": 0,
+          "memory_items": null,
+          "graph_nodes": null,
+          "markdown_items": 0,
+          "durable_items": 0
+        },
+        "after": {
+          "store_dir": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsympy_sympy_sequence-base-54d168e-1/_memory/.cookbook-memory",
+          "events": 0,
+          "daydream_events": 0,
+          "recall_events": 0,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 0,
+          "daydream_memory_written": 0,
+          "memory_items": null,
+          "graph_nodes": null,
+          "markdown_items": 0,
+          "durable_items": 0
+        },
+        "delta": {
+          "events": 0,
+          "daydream_events": 0,
+          "recall_events": 0,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 0,
+          "daydream_memory_written": 0,
+          "markdown_items": 0,
+          "durable_items": 0
+        }
+      },
+      "warnings": []
+    }
+  ]
+}

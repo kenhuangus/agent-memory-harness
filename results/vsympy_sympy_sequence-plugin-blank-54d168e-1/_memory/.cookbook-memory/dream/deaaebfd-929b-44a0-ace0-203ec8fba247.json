@@ -1,0 +1,1 @@
+{"cursor": 27268, "last_summary": "sympy has a bug in hyperbolic.py's coth.eval method: variable 'cotm' is used before assignment, causing NameError on subs(coth(log(tan(x)), N) for certain integers.", "recent_memory_ids": ["mem_cf75f924"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
