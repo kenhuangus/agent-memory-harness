@@ -888,7 +888,13 @@ class ClaudeCodeAgent:
         import subprocess
 
         env = {**os.environ, **plugin_env, "MEMORY_STORE": str(store_dir)}
-        rt = self._effective_runtime()
+        # The plugin package (``cookbook_memory``) is importable only under the
+        # interpreter that runs the installed ``memory-cli`` console script — NOT
+        # necessarily the harness's own python. Resolve that interpreter from the
+        # ``memory-cli`` shebang so the seed driver imports the plugin successfully.
+        py = self._plugin_python(env.get("PATH"))
+        if py is None:
+            return None  # no resolvable plugin interpreter — skip rather than crash
         # Drive the plugin's engine in ONE process: build_engine(store).remember(...) per
         # item. One process => the cbmem-N counter increments => unique ids => no
         # idempotent-on-id collapse. Items are passed as JSON on stdin (no shell quoting
@@ -912,7 +918,7 @@ class ClaudeCodeAgent:
         def _seed_batch(items: list[tuple[str, str]]) -> int:
             try:
                 proc = subprocess.run(
-                    [rt.python, "-c", driver],
+                    [py, "-c", driver],
                     input=json.dumps(items), env=env,
                     capture_output=True, text=True,
                     timeout=self.timeout, check=False,
@@ -924,6 +930,37 @@ class ClaudeCodeAgent:
             except (ValueError, IndexError):
                 return 0
         return _seed_batch
+
+    @staticmethod
+    def _plugin_python(path: Optional[str]) -> Optional[str]:
+        """Resolve the interpreter that can import the ``cookbook_memory`` plugin, by
+        reading the shebang of the installed ``memory-cli`` console script on ``path``.
+
+        The plugin is installed into its OWN venv (its console scripts go on PATH via
+        the sandbox), which may differ from the harness's interpreter — so a bare
+        ``sys.executable`` / ``rt.python`` can't import ``cookbook_memory``. The
+        console-script shebang points at exactly the right interpreter. Falls back to
+        the current interpreter when the shebang can't be read (best-effort)."""
+        exe = shutil.which("memory-cli", path=path)
+        if exe is None:
+            return None
+        try:
+            first = Path(exe).read_text(encoding="utf-8", errors="ignore").splitlines()[0]
+        except (OSError, IndexError):
+            first = ""
+        if first.startswith("#!"):
+            interp = first[2:].strip().split()[0] if first[2:].strip() else ""
+            # A ``#!/usr/bin/env python`` shebang names env, not the interpreter path;
+            # fall through to the env-resolved python in that case.
+            if interp and "env" not in Path(interp).name:
+                return interp
+        # Fallback: a same-dir ``python``/``python3`` next to the console script.
+        bin_dir = Path(exe).parent
+        for cand in ("python3", "python"):
+            p = bin_dir / cand
+            if p.exists():
+                return str(p)
+        return sys.executable or "python"
 
     def _plugin_real_store(self, run_dir: Path, *,
                            group_id: Optional[str] = None) -> tuple[Path, Path]:
