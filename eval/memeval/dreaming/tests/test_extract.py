@@ -296,8 +296,16 @@ def test_extract_memories_not_list_returns_none() -> None:
     assert out is None
 
 
-def test_extract_fenced_response_returns_none() -> None:
-    """Markdown-fenced JSON fails closed (rubric 68)."""
+def test_extract_fenced_response_is_now_tolerated() -> None:
+    """Markdown-fenced JSON is recovered, not failed-closed.
+
+    Previously (rubric 68) a fenced completion fell through ``json.loads``
+    and was dropped as ``chunk_skipped_parse_failed`` — silently discarding
+    every memory from models that fence by default (e.g.
+    ``deepseek/deepseek-chat``) despite a paid, successful LLM call. The
+    tolerant parser now recovers the payload; ``{"memories": []}`` parses to
+    the real "nothing to extract" result ``[]`` (not ``None``).
+    """
     fenced = '```json\n{"memories": []}\n```'
     client = _StubClient(Completion(text=fenced, tokens_in=1, tokens_out=1))
     out = extract_memories(
@@ -307,7 +315,7 @@ def test_extract_fenced_response_returns_none() -> None:
         now=0.0,
         id_gen=_default_id_gen,
     )
-    assert out is None
+    assert out == []
 
 
 def test_extract_drops_items_missing_content_keeps_others() -> None:
@@ -2651,3 +2659,83 @@ def test_prompt_resolved_picks_up_variant_from_env(
     assert fields["prompt_sha256"] == (
         _hashlib.sha256(EXTRACTION_SYSTEM_PROMPT_V3.encode("utf-8")).hexdigest()
     )
+
+
+# --------------------------------------------------------------------------- #
+# Code-fenced / prose-wrapped JSON tolerance (fix: was silently dropping all
+# memories when a model fenced its JSON, e.g. deepseek/deepseek-chat).
+# --------------------------------------------------------------------------- #
+def test_fenced_json_block_parses_and_yields_memories(
+    spy_extract_emit: list,
+) -> None:
+    """(a) ```json {...} ``` fence → memories extracted, no parse-failed event."""
+    body = json.dumps({"memories": [{"content": "fenced memory"}], "rejected": []})
+    fenced = f"```json\n{body}\n```"
+    client = _StubClient(Completion(text=fenced, tokens_in=5, tokens_out=5))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_id_counter(),
+    )
+    assert isinstance(out, list)
+    assert len(out) == 1
+    assert out[0].content == "fenced memory"
+    names = [e[0] for e in spy_extract_emit]
+    assert "chunk_skipped_parse_failed" not in names
+
+
+def test_bare_fence_without_lang_tag_parses(spy_extract_emit: list) -> None:
+    """(b) bare ``` {...} ``` fence (no json tag) → memories extracted."""
+    body = json.dumps({"memories": [{"content": "bare fence"}], "rejected": []})
+    fenced = f"```\n{body}\n```"
+    client = _StubClient(Completion(text=fenced, tokens_in=5, tokens_out=5))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_id_counter(),
+    )
+    assert isinstance(out, list)
+    assert len(out) == 1
+    assert out[0].content == "bare fence"
+    assert "chunk_skipped_parse_failed" not in [e[0] for e in spy_extract_emit]
+
+
+def test_leading_prose_then_json_parses(spy_extract_emit: list) -> None:
+    """(c) prose preamble then a JSON object → recovered via {...} span."""
+    body = json.dumps({"memories": [{"content": "after prose"}], "rejected": []})
+    text = f"Sure! Here is the JSON you asked for:\n\n{body}"
+    client = _StubClient(Completion(text=text, tokens_in=5, tokens_out=5))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_id_counter(),
+    )
+    assert isinstance(out, list)
+    assert len(out) == 1
+    assert out[0].content == "after prose"
+    assert "chunk_skipped_parse_failed" not in [e[0] for e in spy_extract_emit]
+
+
+def test_plain_unfenced_json_still_works(spy_extract_emit: list) -> None:
+    """(d) regression — plain unfenced JSON parses exactly as before."""
+    client = _StubClient(_ok_completion_with_rejections([{"content": "plain"}], []))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_id_counter(),
+    )
+    assert isinstance(out, list)
+    assert len(out) == 1
+    assert out[0].content == "plain"
+    assert "chunk_skipped_parse_failed" not in [e[0] for e in spy_extract_emit]
+
+
+def test_genuine_non_json_still_yields_parse_failed_and_zero_writes(
+    spy_extract_emit: list,
+) -> None:
+    """(e) true garbage → None, one chunk_skipped_parse_failed (behavior preserved)."""
+    client = _StubClient(Completion(text="this is not json at all", tokens_in=5, tokens_out=5))
+    out = extract_memories(
+        redact("x"), client=client, session_id="s1", now=0.0,
+        id_gen=_default_id_gen,
+    )
+    assert out is None
+    names = [e[0] for e in spy_extract_emit]
+    assert names.count("chunk_skipped_parse_failed") == 1
+    assert "daydream.candidate_rejected" not in names

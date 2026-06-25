@@ -40,6 +40,7 @@ _logger = logging.getLogger(__name__)
 __all__ = [
     "extract_memories",
     "_ParseError",
+    "_loads_lenient",
 ]
 
 #: Memory `content` strings longer than this are rejected at parse time per
@@ -88,6 +89,55 @@ _REJECTED_MISSING = _RejectedMissing()
 
 class _ParseError(Exception):
     """Per-item parse failure inside `_build_memory_item`. Engine drops the row."""
+
+
+def _loads_lenient(text: str) -> Any:
+    """``json.loads`` tolerant of code-fenced / prose-wrapped completions.
+
+    Many models (e.g. ``deepseek/deepseek-chat``) ignore the "JSON only,
+    no markdown fences" instruction and wrap their object in a ```json …```
+    fence or precede it with prose. A bare ``json.loads`` on that throws and
+    the whole chunk is silently dropped as ``chunk_skipped_parse_failed``
+    despite a paid, successful LLM call.
+
+    Recovery, in order: (1) ``json.loads`` the raw text; (2) strip a leading
+    ```` ``` ```` / ```` ```json ```` fence and trailing ```` ``` ````, then
+    parse; (3) fall back to the substring from the first ``{`` to the last
+    ``}``. On genuinely non-JSON input every attempt fails and the final
+    ``json.JSONDecodeError`` propagates, so the caller preserves its EXISTING
+    ``chunk_skipped_parse_failed`` behavior exactly. Pure stdlib.
+    """
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        # Drop the opening fence line (``` or ```json/```JSON) and the
+        # closing ``` fence, then parse what's between.
+        inner = stripped[3:]
+        newline = inner.find("\n")
+        if newline != -1:
+            # Discard an optional language tag on the opening fence line.
+            inner = inner[newline + 1 :]
+        if inner.rstrip().endswith("```"):
+            inner = inner.rstrip()[:-3]
+        try:
+            return json.loads(inner.strip())
+        except json.JSONDecodeError:
+            pass
+
+    # Fallback: extract the outermost {...} span from surrounding prose.
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end > start:
+        # Re-raises json.JSONDecodeError on failure → caller emits
+        # chunk_skipped_parse_failed, exactly as before.
+        return json.loads(text[start : end + 1])
+
+    # Nothing recoverable — re-raise the original-style error for the caller.
+    return json.loads(text)
 
 
 def _default_id_gen() -> str:
@@ -167,7 +217,7 @@ def extract_memories(
         return None
 
     try:
-        data = json.loads(completion.text)
+        data = _loads_lenient(completion.text)
     except json.JSONDecodeError as exc:
         emit("chunk_skipped_parse_failed", reason=str(exc))
         return None
