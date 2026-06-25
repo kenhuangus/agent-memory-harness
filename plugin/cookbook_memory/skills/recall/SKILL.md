@@ -1,26 +1,29 @@
 ---
 name: recall
 description: >-
-  Search the agent's persistent memory for notes relevant to the current task —
-  prior decisions, facts, context, or conventions saved in earlier turns or
-  sessions. Use when the user refers to something decided or learned before
-  ("what did we decide about X", "remember the Y config", "how did we do Z last
-  time"), or when prior context would help and isn't in the current conversation.
+  Search persistent memory for relevant notes from past sessions — prior
+  decisions, conventions, gotchas, and how similar work was handled. Recall is
+  cheap and fail-open, so call it rather than guess: before starting a task,
+  editing a file, fixing a failing test, or choosing an approach — and whenever
+  the user refers back ("what did we decide about X", "how did we do Z").
 ---
 
 # Recall from persistent memory
 
-Use the `recall` memory tool to retrieve relevant memories before answering, whenever
-the task could benefit from something decided or learned earlier. (The tool is
-exposed by the memory plugin's MCP server; the exact tool id is harness-specific.)
+Retrieve relevant memories before you act, whenever past work could bear on the task.
+(The tool is exposed by the memory plugin's MCP server; the exact tool id is
+harness-specific.)
 
-- Call `recall(query, k)` with a focused natural-language query describing what you
-  need. `k` defaults to 5; raise it when you want broader context.
-- Each hit has `id`, `content`, `score` (higher = more relevant), and `tokens`.
-  Hits come back ranked, best first.
-- Fold the relevant hits into your reasoning; cite what you used. If recall returns
-  nothing, proceed without it — memory is supplementary, never required (the system
-  is fail-open).
+**Default to recalling.** It's fast and fail-open — a miss costs nothing, a skipped
+hit means repeating a mistake or contradicting an earlier decision. Recall at the
+start of a task and at each decision point: opening a file, diagnosing a failing
+test, picking an approach, hitting something unfamiliar — not only when asked.
 
-The conscious agent is recall-only — saving memories happens automatically in the
-background (the Daydreamer watches the session), so there is no remember tool to call.
+- Call `recall(query, k)` with a focused natural-language query. `k` defaults to 5;
+  raise it for broader context.
+- Hits return ranked (best first), each with `id`, `content`, `score`, `tokens`.
+- Fold relevant hits into your reasoning; cite what you used. Empty result? Just
+  proceed.
+
+Recall-only: saving happens in the background (the Daydreamer watches the session),
+so there's no remember tool.

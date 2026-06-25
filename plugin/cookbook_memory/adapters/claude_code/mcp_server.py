@@ -39,7 +39,13 @@ def run(*, store: Optional[str] = None) -> int:
 
     @server.tool()
     def recall(query: str, k: int = 5) -> list[dict]:
-        """Search persistent memory; return the most relevant notes (ranked)."""
+        """Search persistent memory for relevant notes from past sessions; ranked hits.
+
+        Call proactively before starting a task, editing a file, debugging a test, or
+        deciding between approaches — a past session may have hit this code or recorded
+        a relevant decision. Cheap and fail-open; empty results are fine. ``k`` caps
+        hits (default 5).
+        """
         return [h.to_dict() for h in client.recall(query, k)]
 
     server.run()  # stdio transport
