@@ -241,7 +241,7 @@ def test_interactive_mode_menu_accepts_a_number(monkeypatch) -> None:
 
 
 def test_interactive_config_can_select_vista(monkeypatch) -> None:
-    # benchmark = "vista" resets the sequence default to the vista default (coding); the
+    # benchmark = "vista" resets the sequence default to the vista default journey; the
     # sequence prompt then accepts that default.
     answers = iter(["vista", "", "", "", "", "", "", ""])
     monkeypatch.setattr(P, "_interactive", lambda: True)
@@ -251,7 +251,31 @@ def test_interactive_config_can_select_vista(monkeypatch) -> None:
     cfg = P._resolve_config(args)
 
     assert cfg["benchmark"] == "vista"
-    assert cfg["sequence"] == "coding"
+    assert cfg["sequence"] == "coding-pr-review-001"
+
+
+def test_vista_sequences_are_the_six_journeys() -> None:
+    # VISTA exposes its six journeys (by task_id), not the three domains.
+    seqs = list(P._sequences("vista"))
+    assert len(seqs) == 6
+    assert "coding-pr-review-001" in seqs
+    assert "research-synthesis-001" in seqs
+    # the old domain ids are no longer selectable sequences
+    assert "coding" not in seqs and "project" not in seqs
+
+
+def test_in_sequence_matches_group_id_or_task_id() -> None:
+    import types
+    swe = types.SimpleNamespace(group_id="django_django_sequence", task_id="t1")
+    vista = types.SimpleNamespace(group_id="coding", task_id="coding-pr-review-001")
+    # SWE-Bench-CL: matched by group_id (the sequence).
+    assert P._in_sequence(swe, "django_django_sequence")
+    assert not P._in_sequence(swe, "t1-other")
+    # VISTA: matched by its journey task_id (the selectable unit). The registry only
+    # offers journey ids as VISTA sequences, so the journey is what's ever passed here.
+    assert P._in_sequence(vista, "coding-pr-review-001")
+    # A non-matching id (neither this task's group nor its id) is excluded.
+    assert not P._in_sequence(vista, "research-synthesis-001")
 
 
 def test_pipeline_grader_defaults_to_swebench() -> None:
@@ -333,7 +357,7 @@ def test_pipeline_benchmark_flag_selects_vista() -> None:
     args = P._build_parser().parse_args(["--benchmark", "vista"])
     cfg = P._resolve_config(args)
     assert cfg["benchmark"] == "vista"
-    assert cfg["sequence"] == "coding"  # vista default sequence
+    assert cfg["sequence"] == "coding-pr-review-001"  # vista default journey
 
 
 def test_pipeline_rejects_cross_benchmark_sequence() -> None:

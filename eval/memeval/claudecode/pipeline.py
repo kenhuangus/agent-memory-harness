@@ -1,9 +1,9 @@
 """The single-stage memory pipeline driven by the live cookbook-memory plugin.
 
 Installed as ``memeval-pipeline`` (and ``python -m memeval.claudecode.pipeline``). Runs
-ONE eval stage over the X tasks of ONE named sequence — a SWE-Bench-CL sequence (the
-"domain"), or a VISTA journey-domain — against the persistent per-version memory
-substrate. The four stages a run can pick from (one per invocation) are:
+ONE eval stage over the X tasks of ONE named sequence — a SWE-Bench-CL sequence (a
+per-repo task chain), or a single VISTA journey (one of the six) — against the persistent
+per-version memory substrate. The four stages a run can pick from (one per invocation) are:
 
   * base           -- mode=off, no plugin (the memoryless baseline)
   * plugin-blank   -- plugin-real against the shared memory substrate
@@ -45,11 +45,11 @@ from .. import MEMORY_VERSION
 from ..cost import DEFAULT_BUDGET_USD
 from ..schema import Benchmark
 
-#: The benchmarks the pipeline can drive, each with its selectable sequences (the
-#: "domains") mapped to an approximate task count for the menu, plus a default. A
-#: sequence is a ``group_id`` the loader filters on (ADR-eval): SWE-Bench-CL sequences
-#: are per-repo task chains; VISTA's are the three journey domains (each holding two of
-#: the six journeys).
+#: The benchmarks the pipeline can drive, each with its selectable sequences mapped to an
+#: approximate task count for the menu, plus a default. A sequence is matched by
+#: ``group_id`` OR ``task_id`` (ADR-eval): SWE-Bench-CL sequences are per-repo task chains
+#: (matched by group_id); VISTA's are its six individual journeys (matched by task_id, one
+#: task each).
 _BENCHMARKS: dict[str, dict[str, Any]] = {
     "swe_bench_cl": {
         "label": "SWE-Bench-CL",
@@ -65,17 +65,24 @@ _BENCHMARKS: dict[str, dict[str, Any]] = {
             "pytest-dev_pytest_sequence": 19,
         },
         "default_sequence": "pytest-dev_pytest_sequence",  # smallest -> cheapest
+        "unit": "sequence",
     },
     "vista": {
         "label": "VISTA",
-        # The three VISTA journey domains (group_id == journey ``domain``); each holds
-        # two of the six journeys, so picking a domain runs that domain's journeys.
+        "unit": "journey",
+        # The six VISTA journeys, each its own selectable sequence (one journey == one
+        # Task, matched by task_id). The journey's domain (project/coding/research) is
+        # preserved on the task's ``competency`` and used by the native evaluator; here
+        # each journey is run on its own.
         "sequences": {
-            "project": 2,
-            "coding": 2,
-            "research": 2,
+            "project-stewardship-inquiry-001": 1,
+            "coding-pr-review-001": 1,
+            "research-synthesis-001": 1,
+            "synth-project-train-001": 1,
+            "synth-coding-train-001": 1,
+            "synth-research-train-001": 1,
         },
-        "default_sequence": "coding",
+        "default_sequence": "coding-pr-review-001",
     },
 }
 _DEFAULT_BENCHMARK = "swe_bench_cl"
@@ -174,8 +181,9 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="memeval-pipeline",
         description="Run ONE eval stage over ONE sequence against the live cookbook-memory "
                     "plugin and the persistent per-version memory substrate. Pick the "
-                    "benchmark (swe_bench_cl or vista), the sequence (the domain), and the "
-                    "stage (base | plugin-blank | plugin-accum | plugin-dreamed).",
+                    "benchmark (swe_bench_cl or vista), the sequence (a SWE-Bench-CL "
+                    "sequence or one of the six VISTA journeys), and the stage (base | "
+                    "plugin-blank | plugin-accum | plugin-dreamed).",
     )
     ap.add_argument("-y", "--yes", "--non-interactive", dest="yes", action="store_true",
                     help="Non-interactive: use flags where given, defaults otherwise; no prompts.")
@@ -187,8 +195,9 @@ def _build_parser() -> argparse.ArgumentParser:
                          f"{', '.join(_EVAL_STAGES)}. Default {_DEFAULT_STAGE}. "
                          f"'plugin-dreamed' runs a dream consolidation pass first.")
     ap.add_argument("--sequence", default=None,
-                    help="Sequence (the domain) to run — depends on --benchmark. "
-                         "SWE-Bench-CL: a per-repo sequence id; VISTA: project|coding|research.")
+                    help="Sequence to run — depends on --benchmark. SWE-Bench-CL: a "
+                         "per-repo sequence id (a chain of tasks); VISTA: a single "
+                         "journey id (one of the six journeys).")
     ap.add_argument("--limit", type=int, default=None,
                     help=f"How many tasks of the sequence to run (by Task.order). "
                          f"Default {_DEFAULT_LIMIT}; 0 = the whole sequence.")
@@ -289,25 +298,27 @@ def _ask_mode(default: str) -> str:
 
 
 def _ask_sequence(benchmark: str, default: str) -> str:
-    """Numbered menu for the sequence (the benchmark's 'domain') — type a number or the
+    """Numbered menu for the sequence (the benchmark's run unit) — type a number or the
     id. Enter accepts the default. Non-tty -> the default."""
     if not _interactive():
         return default
     seqs = list(_sequences(benchmark).items())
-    label = _bench_spec(benchmark)["label"]
-    print(f"  sequence (the {label} 'domain' — type a number or id):")
+    spec = _bench_spec(benchmark)
+    unit = spec.get("unit", "sequence")
+    print(f"  {unit} (the {spec['label']} run unit — type a number or id):")
     for i, (name, size) in enumerate(seqs, 1):
         marker = " (default)" if name == default else ""
-        print(f"    {i}. {name}  ·  {size} tasks{marker}")
+        plural = "task" if size == 1 else "tasks"
+        print(f"    {i}. {name}  ·  {size} {plural}{marker}")
     while True:
-        raw = input(f"  sequence [{default}]: ").strip()
+        raw = input(f"  {unit} [{default}]: ").strip()
         if not raw:
             return default
         if raw.isdigit() and 1 <= int(raw) <= len(seqs):
             return seqs[int(raw) - 1][0]
         if raw in _sequences(benchmark):
             return raw
-        print(f"    ! enter 1-{len(seqs)} or a valid sequence id")
+        print(f"    ! enter 1-{len(seqs)} or a valid {unit} id")
 
 
 def _resolve_config(args: argparse.Namespace) -> dict:
@@ -444,6 +455,14 @@ def _grader(cfg: dict):
     return _make_grader(cfg["benchmark"], shim)
 
 
+def _in_sequence(task: Any, sequence: str) -> bool:
+    """Whether ``task`` belongs to the selected sequence. A sequence matches a
+    ``group_id`` (a SWE-Bench-CL sequence) OR a ``task_id`` (a single VISTA journey, the
+    selectable unit there) — mirrors ``run_agent``'s sequence filter."""
+    return (str(getattr(task, "group_id", "") or "") == sequence
+            or str(getattr(task, "task_id", "") or "") == sequence)
+
+
 def _stage_task_total(cfg: dict) -> int:
     """How many tasks this stage will run — the sequence's size capped by ``--limit`` —
     so progress can be shown as ``[done/total]`` (the loader does the same selection)."""
@@ -451,7 +470,7 @@ def _stage_task_total(cfg: dict) -> int:
 
     bench = Benchmark.from_str(cfg["benchmark"])
     n = sum(1 for t in get_loader(bench).load(cfg["path"], limit=None)
-            if str(t.group_id or "") == cfg["sequence"])
+            if _in_sequence(t, cfg["sequence"]))
     return min(n, cfg["limit"]) if cfg["limit"] else n
 
 
@@ -723,7 +742,7 @@ def _prewarm_sequence_venv(cfg: dict, grader: Any) -> None:
 
     bench = Benchmark.from_str(cfg["benchmark"])
     seq_tasks = [t for t in get_loader(bench).load(cfg["path"], limit=None)
-                 if str(t.group_id or "") == cfg["sequence"]]
+                 if _in_sequence(t, cfg["sequence"])]
     # A SWE-Bench-CL sequence is one repo+version across all its tasks; resolve it from
     # the first task that carries both.
     repo = version = ""
@@ -760,7 +779,7 @@ def _native_cl_for_stage(stage: str, cfg: dict, substrate: Path) -> Optional[dic
 
     bench = Benchmark.from_str(cfg["benchmark"])
     tasks = [t for t in get_loader(bench).load(cfg["path"], limit=None)
-             if str(t.group_id or "") == cfg["sequence"]]
+             if _in_sequence(t, cfg["sequence"])]
     tasks.sort(key=lambda t: int(t.order))
     if cfg["limit"]:
         tasks = tasks[: cfg["limit"]]
