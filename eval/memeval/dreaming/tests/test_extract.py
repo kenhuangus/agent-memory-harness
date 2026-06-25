@@ -1388,12 +1388,12 @@ def test_no_partial_parse_means_all_rejection_rows_emitted(
 # §E — Events: allow-set + new event shape
 # --------------------------------------------------------------------------- #
 def test_extract_event_allow_set_ast() -> None:
-    """§E1 — AST walk gives exactly the 7 expected event names.
+    """§E1 — AST walk gives exactly the 8 expected event names.
 
-    Extended to 7 by ``daydream.prompt_resolved`` — the per-chunk
-    forensic anchor that carries the active variant + sha256 + char_count
-    so the diary/replay stream is self-describing without storing the
-    4 KB prompt body.
+    Now 8 (was 7) — ``daydream.llm_call`` joined per ADR-dreaming-025:
+    full-fidelity per-call debug event carrying system prompt + user content
+    + raw model response. Sibling to ``daydream.prompt_resolved`` (identity
+    only); both retained so consumers can filter on either surface.
     """
     src = Path(_extract.__file__).read_text(encoding="utf-8")
     tree = ast.parse(src)
@@ -1416,6 +1416,7 @@ def test_extract_event_allow_set_ast() -> None:
         "daydream.candidate_rejected",
         "daydream.rejected_field_missing",
         "daydream.prompt_resolved",
+        "daydream.llm_call",
     }
     assert names == expected, (
         f"event allow-set drift: missing={expected - names}, "
@@ -2610,6 +2611,81 @@ def test_prompt_resolved_emitted_once_per_extract_call(
     )
     assert fields["prompt_chars"] == len(EXTRACTION_SYSTEM_PROMPT)
     assert fields["model"] == client.model
+
+
+def test_llm_call_event_carries_full_prompt_content_response(
+    monkeypatch: pytest.MonkeyPatch, spy_extract_emit: list,
+) -> None:
+    """ADR-025: daydream.llm_call records the FULL system prompt, the FULL
+    redacted user content (envelope-wrapped chunk), and the FULL raw model
+    response on every call. This is the developer-debug surface; tested
+    against V0 so we can pin specific known substrings."""
+    monkeypatch.delenv("DREAM_EXTRACTION_VARIANT", raising=False)
+    payload_text = _ok_completion({"memories": [{"content": "x"}]}).text
+    client = _StubClient(Completion(text=payload_text, tokens_in=42, tokens_out=7))
+    extract_memories(
+        redact("the rabbit ate the carrot"),
+        client=client, session_id="s-full", now=0.0, id_gen=_default_id_gen,
+    )
+    calls = [e for e in spy_extract_emit if e[0] == "daydream.llm_call"]
+    assert len(calls) == 1, f"expected exactly one llm_call event, got {len(calls)}"
+    _, fields = calls[0]
+    assert fields["session_id"] == "s-full"
+    assert fields["variant"] == "V0"
+    # System prompt is the full V0 body — pin on a distinctive substring.
+    assert "selective memory curator" in fields["system_prompt"]
+    # User content is the envelope-wrapped redacted chunk; check both the
+    # envelope framing AND the inner user text round-trip.
+    assert "<transcript nonce=" in fields["user_content"]
+    assert "the rabbit ate the carrot" in fields["user_content"]
+    # Response text is the raw completion text verbatim.
+    assert fields["response_text"] == payload_text
+    # Numeric metadata.
+    assert fields["tokens_in"] == 42
+    assert fields["tokens_out"] == 7
+    assert fields["model"] == client.model
+    # Identity correlates with the prompt_resolved breadcrumb (same sha256).
+    resolved = [e for e in spy_extract_emit if e[0] == "daydream.prompt_resolved"]
+    assert resolved and resolved[0][1]["prompt_sha256"] == fields["prompt_sha256"]
+
+
+def test_llm_call_event_fires_even_on_empty_completion(
+    spy_extract_emit: list,
+) -> None:
+    """Empty completion (#133-shape ADR-012 failure) — daydream.llm_call MUST
+    fire BEFORE the empty-text early return so the diagnostic surface
+    captures the case where the model returned nothing usable."""
+    client = _StubClient(Completion(text="", tokens_in=5, tokens_out=0))
+    extract_memories(
+        redact("x"), client=client, session_id="s-empty",
+        now=0.0, id_gen=_default_id_gen,
+    )
+    calls = [e for e in spy_extract_emit if e[0] == "daydream.llm_call"]
+    assert len(calls) == 1
+    fields = calls[0][1]
+    assert fields["response_text"] == ""
+    assert fields["tokens_in"] == 5
+    assert fields["tokens_out"] == 0
+    # The skip event also fires after — both are in the diary, with the
+    # llm_call providing the WHY (empty response) and the skip providing
+    # the ENGINE-LEVEL effect (no cursor advance).
+    names = [e[0] for e in spy_extract_emit]
+    assert names.index("daydream.llm_call") < names.index("chunk_skipped_unavailable_llm")
+
+
+def test_llm_call_event_fires_on_malformed_json_too(
+    spy_extract_emit: list,
+) -> None:
+    """Garbage response — llm_call still captures the raw text so a developer
+    can see what the model actually returned vs what was expected."""
+    client = _StubClient(Completion(text="not json at all", tokens_in=1, tokens_out=1))
+    extract_memories(
+        redact("x"), client=client, session_id="s-bad",
+        now=0.0, id_gen=_default_id_gen,
+    )
+    calls = [e for e in spy_extract_emit if e[0] == "daydream.llm_call"]
+    assert len(calls) == 1
+    assert calls[0][1]["response_text"] == "not json at all"
 
 
 def test_kept_memory_content_is_second_pass_redacted() -> None:

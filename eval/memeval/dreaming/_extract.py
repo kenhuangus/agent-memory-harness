@@ -211,6 +211,27 @@ def extract_memories(
     completion: Completion = client.complete(
         wrapped, system=system, max_tokens=max_tokens
     )
+    # Per-call full-fidelity logging: full system prompt + full redacted user
+    # content + full raw response. Fires UNCONDITIONALLY after the call returns
+    # — so the empty-completion (#133-shape) case is also captured. Sized to
+    # be the diagnostic surface developers actually need; intentionally NOT
+    # redacted further at the emit seam beyond ADR-005's input redaction (the
+    # diary is local-only per ADR-011 §Policy + dev-only debug per
+    # ADR-dreaming-025). Identity (variant + sha256) on the record dedups via
+    # the prompt_resolved breadcrumb above.
+    emit(
+        "daydream.llm_call",
+        session_id=session_id,
+        variant=identity.variant,
+        prompt_sha256=identity.sha256,
+        system_prompt=str(system),
+        user_content=str(wrapped),
+        response_text=completion.text,
+        tokens_in=completion.tokens_in,
+        tokens_out=completion.tokens_out,
+        cost_usd=cost_of(client.model, completion.tokens_in, completion.tokens_out),
+        model=client.model,
+    )
 
     if not completion.text:
         emit("chunk_skipped_unavailable_llm", session_id=session_id)
