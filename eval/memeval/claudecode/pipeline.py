@@ -144,10 +144,19 @@ def _default_version_slug(cfg: dict, results_dir: "str | Path") -> str:
     return f"{base}-{1}"  # pathological: fall back to -1
 
 
-#: The eval stages a run can pick from (exactly one per invocation). ``plugin-dreamed``
-#: runs a dream consolidation pass over the substrate before it evaluates.
+#: The eval stages a run can pick from (exactly one per invocation). Each stage IS a
+#: pipeline mode — the variation of the run. ``plugin-dreamed`` runs a dream
+#: consolidation pass over the substrate before it evaluates.
 _EVAL_STAGES = ("base", "plugin-blank", "plugin-accum", "plugin-dreamed")
 _DEFAULT_STAGE = "plugin-accum"
+
+#: Human-facing one-line descriptions of each mode (stage) for the interactive menu.
+_MODE_LABELS = {
+    "base": "no plugin — the memoryless baseline (mode=off)",
+    "plugin-blank": "plugin-real against the shared substrate (start from blank)",
+    "plugin-accum": "plugin-real against the shared substrate (accumulated memory)",
+    "plugin-dreamed": "plugin-real after one dream consolidation pass over the substrate",
+}
 _STAGE_INDEX = {"base": 1, "plugin-blank": 2, "plugin-accum": 3, "plugin-dreamed": 4}
 _STAGE_MODE = {
     "base": "off",
@@ -185,11 +194,11 @@ def _build_parser() -> argparse.ArgumentParser:
                          f"Default {_DEFAULT_LIMIT}; 0 = the whole sequence.")
     ap.add_argument("--model", default="claude-haiku-4-5")
     ap.add_argument("--code-mode", choices=["blind", "agentic"], default="agentic")
-    ap.add_argument("--grader", default="auto",
-                    help="CODE grader: 'auto' (default: local test execution for SWE "
-                         "tasks), 'local' (host test execution; the real resolve rate), "
-                         "'swebench' (Docker-free grader reusing SWE-bench's own specs + "
-                         "parsers; needs the 'swebench' extra), 'overlap' (cheap "
+    ap.add_argument("--grader", default="swebench",
+                    help="CODE grader: 'swebench' (default: Docker-free grader reusing "
+                         "SWE-bench's own specs + log parsers; needs the 'swebench' "
+                         "extra), 'auto' (local test execution for SWE tasks), 'local' "
+                         "(host test execution; the real resolve rate), 'overlap' (cheap "
                          "heuristic), or 'none'.")
     ap.add_argument("--grader-timeout", type=int, default=1800)
     ap.add_argument("--budget-usd", type=float, default=DEFAULT_BUDGET_USD)
@@ -259,6 +268,26 @@ def _ask_benchmark(default: str) -> str:
         print(f"    ! enter 1-{len(names)} or one of: {', '.join(names)}")
 
 
+def _ask_mode(default: str) -> str:
+    """Numbered menu for the pipeline mode (the stage / run variation) — type a number
+    or the id. Enter accepts the default. Non-tty -> the default."""
+    if not _interactive():
+        return default
+    print("  mode (the pipeline variation — type a number or id):")
+    for i, name in enumerate(_EVAL_STAGES, 1):
+        marker = " (default)" if name == default else ""
+        print(f"    {i}. {name}  ·  {_MODE_LABELS[name]}{marker}")
+    while True:
+        raw = input(f"  mode [{default}]: ").strip()
+        if not raw:
+            return default
+        if raw.isdigit() and 1 <= int(raw) <= len(_EVAL_STAGES):
+            return _EVAL_STAGES[int(raw) - 1]
+        if raw in _EVAL_STAGES:
+            return raw
+        print(f"    ! enter 1-{len(_EVAL_STAGES)} or one of: {', '.join(_EVAL_STAGES)}")
+
+
 def _ask_sequence(benchmark: str, default: str) -> str:
     """Numbered menu for the sequence (the benchmark's 'domain') — type a number or the
     id. Enter accepts the default. Non-tty -> the default."""
@@ -304,7 +333,7 @@ def _resolve_config(args: argparse.Namespace) -> dict:
         if not args.sequence:  # a benchmark switch should reset the sequence default
             seq = _default_sequence(benchmark)
         seq = _ask_sequence(benchmark, seq)
-        stage = _ask("stage", stage, choices=list(_EVAL_STAGES))
+        stage = _ask_mode(stage)
         limit = _ask("tasks to run (0 = whole sequence)", limit, cast=int)
         model = _ask("model", model)
         grader = _ask("grader", grader,

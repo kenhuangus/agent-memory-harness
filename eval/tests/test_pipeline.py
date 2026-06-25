@@ -210,7 +210,7 @@ def test_interactive_config_defaults_to_single_accum_stage(monkeypatch) -> None:
 
 
 def test_interactive_config_can_select_base_stage(monkeypatch) -> None:
-    # benchmark, sequence default; stage = "base"; rest default.
+    # benchmark, sequence default; mode = "base"; rest default.
     answers = iter(["", "", "base", "", "", "", "", ""])
     monkeypatch.setattr(P, "_interactive", lambda: True)
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
@@ -219,6 +219,25 @@ def test_interactive_config_can_select_base_stage(monkeypatch) -> None:
     cfg = P._resolve_config(args)
 
     assert cfg["stage"] == "base"
+
+
+def test_interactive_mode_menu_accepts_a_number(monkeypatch) -> None:
+    # The mode prompt is a numbered menu; "2" selects the 2nd mode (plugin-blank).
+    prompts: list[str] = []
+    answers = iter(["", "", "2", "", "", "", "", ""])
+    monkeypatch.setattr(P, "_interactive", lambda: True)
+
+    def fake_input(prompt: str) -> str:
+        prompts.append(prompt)
+        return next(answers)
+
+    monkeypatch.setattr("builtins.input", fake_input)
+    args = P._build_parser().parse_args([])
+
+    cfg = P._resolve_config(args)
+
+    assert cfg["stage"] == P._EVAL_STAGES[1] == "plugin-blank"
+    assert any("mode [" in p for p in prompts)  # the mode menu was shown
 
 
 def test_interactive_config_can_select_vista(monkeypatch) -> None:
@@ -235,10 +254,10 @@ def test_interactive_config_can_select_vista(monkeypatch) -> None:
     assert cfg["sequence"] == "coding"
 
 
-def test_pipeline_grader_defaults_to_auto() -> None:
+def test_pipeline_grader_defaults_to_swebench() -> None:
     args = P._build_parser().parse_args([])
     cfg = P._resolve_config(args)
-    assert cfg["grader"] == "auto"
+    assert cfg["grader"] == "swebench"
 
 
 def test_interactive_config_respects_selected_grader(monkeypatch) -> None:
