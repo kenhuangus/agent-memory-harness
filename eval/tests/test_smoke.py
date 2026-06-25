@@ -870,6 +870,14 @@ def test_claudecode_platform_path_translation_and_argv() -> None:
     nat = ClaudeRuntime(kind="native", exe="claude")
     argv, cwd = build_argv(nat, "hi", cwd="/work", model="claude-haiku-4-5")
     assert argv[:3] == ["claude", "-p", "hi"] and cwd == "/work"
+    # strict_mcp WITHOUT --mcp-config must still emit --strict-mcp-config: that
+    # combination loads ZERO MCP servers, which is how a memoryless control turn stays
+    # plugin-free even if a concurrent run installed a plugin into the shared sandbox.
+    argv2, _ = build_argv(nat, "hi", cwd="/work", strict_mcp=True)
+    assert "--strict-mcp-config" in argv2 and "--mcp-config" not in argv2
+    # and without strict_mcp, it's absent
+    argv3, _ = build_argv(nat, "hi", cwd="/work")
+    assert "--strict-mcp-config" not in argv3
     # WSL argv wraps with `wsl -d <distro> --cd <wslpath> -- <exe>`, translates mcp path
     wsl = ClaudeRuntime(kind="wsl", exe="/home/k/.local/bin/claude", distro="Ubuntu")
     argv, cwd = build_argv(wsl, "hi", cwd=r"C:\w", mcp_config=r"C:\w\.mcp.json", strict_mcp=True)

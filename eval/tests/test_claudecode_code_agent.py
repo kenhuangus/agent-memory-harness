@@ -503,6 +503,33 @@ def test_full_agentic_loop_accuracy_one() -> None:
     assert rr.metrics.accuracy == 1.0
 
 
+def test_off_control_run_isolates_mcp() -> None:
+    # The memoryless control (off) agentic CODE turn must pass strict_mcp=True (no
+    # --mcp-config), so it ignores ALL installed MCP servers — it stays plugin-free even
+    # if a concurrent plugin run installed the cookbook-memory plugin into the SHARED
+    # sandbox config dir.
+    seen: dict = {}
+    flag: dict = {}
+    git = _make_fake_git(edited_flag=flag)
+
+    def fake(prompt, *, cwd, strict_mcp=False, mcp_config=None, **kw) -> ClaudeResult:
+        seen["strict_mcp"] = strict_mcp
+        seen["mcp_config"] = mcp_config
+        (Path(cwd) / "orm.py").write_text("def f():\n    return []\n", encoding="utf-8")
+        flag["edited"] = True
+        return ClaudeResult(text="done", tokens_in=5, tokens_out=1)
+
+    grader = G.LocalExecGrader(runner=_make_fake_cmd(), git_runner=git)
+    with tempfile.TemporaryDirectory() as tmp:
+        agent = ClaudeCodeAgent(memory_mode="off", code_mode="agentic",
+                                runner=fake, git_runner=git, runtime=_NATIVE, workdir=tmp)
+        run_agent(Benchmark.SWE_CONTEXTBENCH, agent, memory=False,
+                  path_or_id=_fixture("swe_contextbench.json"), limit=1,
+                  seed_sessions=False, grader=grader)
+    assert seen["strict_mcp"] is True           # control isolates MCP
+    assert seen["mcp_config"] is None            # ...and provides no MCP config
+
+
 def test_full_agentic_loop_noop_agent_accuracy_zero() -> None:
     # A no-op agent that writes nothing -> empty diff -> grader False -> accuracy 0.
     flag: dict = {}
@@ -667,10 +694,11 @@ def test_agentic_code_plugin_real_records_retrieval(monkeypatch) -> None:
     git = _make_fake_git(edited_flag=flag)
 
     def fake(prompt, *, cwd, permission_mode="bypassPermissions", allowed_tools=None,
-             **kw):
+             strict_mcp=True, **kw):
         calls["n"] += 1
         calls["tools"] = allowed_tools
         calls["permission"] = permission_mode
+        calls["strict_mcp"] = strict_mcp
         # Edit the checkout (so a diff is produced) ...
         (Path(cwd) / "orm.py").write_text("def filter_empty():\n    return []\n",
                                           encoding="utf-8")
@@ -705,6 +733,9 @@ def test_agentic_code_plugin_real_records_retrieval(monkeypatch) -> None:
     assert calls["tools"] == _PLUGIN_REAL_CODE_ALLOWED_TOOLS
     assert _PLUGIN_REAL_RECALL_TOOL in calls["tools"]
     assert calls["permission"] == "acceptEdits"
+    # plugin-real must NOT isolate MCP — it relies on the INSTALLED plugin's server, so
+    # strict_mcp is False (the control run is the one that isolates MCP).
+    assert calls["strict_mcp"] is False
     # Recall fired on the first try, so the retry loop stops after one call per task
     # (2 tasks -> exactly 2 runner invocations, no wasteful retries).
     assert calls["n"] == 2

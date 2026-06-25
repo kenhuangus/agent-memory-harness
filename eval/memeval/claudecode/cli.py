@@ -72,8 +72,12 @@ def _flags(
         flags += ["--model", model]
     if mcp_config:
         flags += ["--mcp-config", mcp_config]
-        if strict_mcp:
-            flags += ["--strict-mcp-config"]
+    # --strict-mcp-config means "only MCP servers from --mcp-config, ignore all others".
+    # Emit it whenever requested, INCLUDING when no --mcp-config is given: that combination
+    # loads ZERO MCP servers, which is exactly how a memoryless control turn stays
+    # plugin-free even if a concurrent run installed a plugin into the shared sandbox.
+    if strict_mcp:
+        flags += ["--strict-mcp-config"]
     if allowed_tools:
         flags += ["--allowedTools", ",".join(allowed_tools)]
     if append_system_prompt:

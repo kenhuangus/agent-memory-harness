@@ -421,8 +421,10 @@ class ClaudeCodeAgent:
             if self.code_mode == "agentic":
                 return self._solve_code_agentic(task, ctx, run_dir)
             code_prompt = _build_code_prompt(task)
+            # Blind CODE is memoryless; strict_mcp=True keeps it plugin-free even if the
+            # shared sandbox has a plugin installed by a concurrent run.
             res = self._run(code_prompt, run_dir, _SYS_CODE,
-                            mcp_config=None, allowed_tools=None)
+                            mcp_config=None, allowed_tools=None, strict_mcp=True)
             ctx.record_generate(res.text, res.tokens_in, res.tokens_out,
                                 model_name=self.model)
             return _extract_diff(res.text)
@@ -430,15 +432,21 @@ class ClaudeCodeAgent:
         prompt = _build_prompt(task)
 
         if self.memory_mode == "builtin":
+            # builtin = Claude Code's OWN file-based memory; no plugin/MCP. strict_mcp=True
+            # keeps it plugin-free under a shared sandbox a concurrent run may have changed.
             _write_session_files(run_dir, task)
             res = self._run(_BUILTIN_PREFIX + prompt, run_dir, _SYS_BUILTIN,
-                            mcp_config=None, allowed_tools=None)
+                            mcp_config=None, allowed_tools=None, strict_mcp=True)
         elif self.memory_mode == "plugin":
             res = self._solve_plugin(task, ctx, _PLUGIN_PREFIX + prompt, run_dir)
         elif self.memory_mode == "plugin-real":
             res = self._solve_plugin_real(task, ctx, _PLUGIN_REAL_PREFIX + prompt, run_dir)
-        else:  # off
-            res = self._run(prompt, run_dir, _SYS_PLAIN, mcp_config=None, allowed_tools=None)
+        else:  # off (control)
+            # strict_mcp=True (no --mcp-config) ignores all installed MCP servers, so the
+            # control turn never picks up a plugin a concurrent run installed into the
+            # shared sandbox config dir.
+            res = self._run(prompt, run_dir, _SYS_PLAIN, mcp_config=None, allowed_tools=None,
+                            strict_mcp=True)
 
         ctx.record_generate(res.text, res.tokens_in, res.tokens_out, model_name=self.model)
         return res.text
@@ -570,10 +578,12 @@ class ClaudeCodeAgent:
         mode = self.memory_mode
         if mode == "builtin":
             # Lay the history out as files in the CHECKOUT so the agent greps them.
+            # builtin uses no plugin/MCP; strict_mcp=True keeps it plugin-free under a
+            # shared sandbox a concurrent run may have changed.
             _write_session_files(checkout, task)
             return self._run(_BUILTIN_PREFIX + base_prompt, checkout, _SYS_CODE_AGENT,
                              mcp_config=None, allowed_tools=None,
-                             permission_mode="acceptEdits")
+                             permission_mode="acceptEdits", strict_mcp=True)
         if mode == "plugin":
             bundle, log, tools = self._seed_plugin_store_okf(run_dir, task)
             rt = self._effective_runtime()
@@ -631,7 +641,7 @@ class ClaudeCodeAgent:
                 res = self._run_primed(
                     _PLUGIN_REAL_PREFIX_CODE + base_prompt, checkout,
                     _SYS_CODE_AGENT_PLUGIN_REAL, mcp_config=None,
-                    allowed_tools=allowed,
+                    allowed_tools=allowed, strict_mcp=False,  # use the INSTALLED plugin's MCP
                     permission_mode="acceptEdits", extra_env=extra_env)
                 if _count_recall_events(events) > before:
                     break  # the agent reached the recall tool -> plugin MCP connected
@@ -640,10 +650,14 @@ class ClaudeCodeAgent:
             # task/stage touches the shared store. Pure barrier -- no copying.
             self._drain_daydream(task, res, store_dir, events, plugin_env, before_writes)
             return res  # type: ignore[return-value]
-        # off: no seeding, no memory.
+        # off (control): no seeding, no memory. strict_mcp=True ignores ALL configured/
+        # installed MCP servers (no --mcp-config given), so the control turn is guaranteed
+        # plugin-free even when a concurrent plugin run has installed the cookbook-memory
+        # plugin into the SHARED sandbox config dir — the base→plugin comparison stays
+        # honest under parallel runs.
         return self._run(_CODE_AGENT_PREFIX + base_prompt, checkout, _SYS_CODE_AGENT,
                          mcp_config=None, allowed_tools=None,
-                         permission_mode="acceptEdits")
+                         permission_mode="acceptEdits", strict_mcp=True)
 
     def _run_plugin_http(self, prompt: str, run_dir: Path, bundle: Path, log: Path,
                          rt: ClaudeRuntime, tools: list[str]) -> ClaudeResult:
@@ -738,7 +752,7 @@ class ClaudeCodeAgent:
             before = _count_recall_events(events)
             res = self._run_primed(prompt, run_dir, _SYS_PLUGIN_REAL,
                                    mcp_config=None,
-                                   allowed_tools=allowed,
+                                   allowed_tools=allowed, strict_mcp=False,  # INSTALLED plugin MCP
                                    extra_env=extra_env)
             if _count_recall_events(events) > before:
                 break  # the agent reached the recall tool -> plugin MCP connected
