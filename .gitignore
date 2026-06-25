@@ -46,3 +46,9 @@ Thumbs.db
 
 # Daydream sidecar state (per ADR-harness-004)
 *.daydream-state.json
+
+# VISTA seed live-run sandbox + scratch (not source)
+eval/.claude-sandbox-vcs/
+eval/projects/
+eval/_*.sh
+eval/_*.py

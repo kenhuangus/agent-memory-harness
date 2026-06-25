@@ -30,7 +30,7 @@ import re
 
 from .. import MEMORY_VERSION
 from ..cost import price_for
-from ..schema import MemoryItem, RetrievedItem, Task, TaskKind
+from ..schema import Benchmark, MemoryItem, RetrievedItem, Task, TaskKind
 from . import checkout as _checkout
 from .checkout import CheckoutError, GitRunner, capture_diff, prepare_checkout
 from .cli import ClaudeResult, run_claude, run_claude_primed
@@ -720,6 +720,12 @@ class ClaudeCodeAgent:
             "MEMORY_STORE": str(store_dir),
         }
         _add_dream_env(extra_env)  # OPENROUTER_API_KEY / DREAM_* so daydream is live on WSL too
+        # VISTA-only validity fix: ingest the journey's event_trace sessions (facts,
+        # injections, drifts) into the plugin's OWN store via its OWN write surface
+        # (`memory-cli remember`) BEFORE the recall turn, so recall has something to
+        # query. Without this the store is empty and recall_attempted/with_hits is 0/0,
+        # making the off-vs-plugin-real comparison hollow. Guarded to plugin-real+vista.
+        self._seed_vista_sessions(task, store_dir, plugin_env)
         events = store_dir / "events.jsonl"
 
         before_writes = _count_daydream_writes(store_dir)
@@ -737,6 +743,86 @@ class ClaudeCodeAgent:
         # task/stage doesn't race it on the shared store. Pure barrier -- no copying.
         self._drain_daydream(task, res, store_dir, events, plugin_env, before_writes)
         return res  # type: ignore[return-value]
+
+    def _seed_vista_sessions(self, task: Task, store_dir: Path,
+                             plugin_env: dict[str, str]) -> int:
+        """Ingest a VISTA journey's ``event_trace`` sessions into the plugin's store
+        via the plugin's OWN write surface (``memory-cli remember``) BEFORE the recall
+        turn, so plugin-real recall has content to query.
+
+        Validity fix (ADR-vista-seed): the harness sets ``seed_sessions=False`` for
+        plugin-real, and nothing else writes VISTA's facts/injections/drifts into the
+        cookbook store — so recall returns 0 hits and the off-vs-plugin-real comparison
+        is hollow. We seed each ``task.sessions`` entry (INCLUDING injections — VISTA
+        measures whether recall RESISTS surfacing the poisoned canary, so the attacker
+        payload MUST be in the store for poisoning_resistance/targeted_asr to be real).
+
+        Strictly scoped: a no-op unless ``memory_mode == 'plugin-real'`` AND the task is
+        VISTA. Drives only the plugin's console command; never touches store internals
+        (ADR-harness-012). Idempotent per store via a ``.vista_seeded`` marker so the
+        shared substrate isn't re-seeded on every task. No-op under the offline fake
+        runner (``_ensure_real_plugin`` returns ``{}``; tests inject the runner). Returns
+        the number of sessions seeded (0 when skipped)."""
+        if self.memory_mode != "plugin-real":
+            return 0
+        if getattr(task, "benchmark", None) != Benchmark.VISTA:
+            return 0
+        sessions = list(getattr(task, "sessions", None) or [])
+        if not sessions:
+            return 0
+        # Idempotency marker keyed per task within the shared store (the substrate
+        # persists across tasks; each journey seeds its own sessions exactly once).
+        marker = store_dir / f".vista_seeded_{_safe_group_dir(str(task.task_id))}"
+        if marker.exists():
+            return 0
+        remember = self._vista_remember_fn(store_dir, plugin_env)
+        if remember is None:
+            return 0  # offline/no real CLI — nothing to drive (tests inject the fn)
+        n = 0
+        for s in sessions:
+            content = getattr(s, "content", "") or ""
+            if not content.strip():
+                continue
+            etype = ""
+            meta = getattr(s, "metadata", None) or {}
+            if isinstance(meta, dict):
+                etype = str(meta.get("event_type", "") or "")
+            tags = ",".join(["vista", etype]) if etype else "vista"
+            remember(content, tags)
+            n += 1
+        try:
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.write_text(str(n), encoding="utf-8")
+        except OSError:
+            pass
+        return n
+
+    def _vista_remember_fn(self, store_dir: Path,
+                           plugin_env: dict[str, str]) -> Optional[Callable[[str, str], None]]:
+        """Return a ``remember(content, tags)`` callable that drives the plugin's
+        ``memory-cli remember`` console command against ``store_dir``, or ``None`` when
+        no real plugin is in play (offline fake runner). A test seam: offline tests set
+        ``self._vista_remember_override`` to capture calls without a real CLI."""
+        override = getattr(self, "_vista_remember_override", None)
+        if override is not None:
+            return override
+        if self._runner is not run_claude:
+            return None  # offline/fake runner: no real memory-cli to drive
+        import subprocess
+
+        env = {**os.environ, **plugin_env, "MEMORY_STORE": str(store_dir)}
+        exe = shutil.which("memory-cli", path=env.get("PATH"))
+        if exe is None:
+            return None
+
+        def _remember(content: str, tags: str) -> None:
+            try:
+                subprocess.run([exe, "remember", content, "--tags", tags],
+                               env=env, capture_output=True, text=True,
+                               timeout=self.timeout, check=False)
+            except Exception:
+                return  # fail-open: a seed failure must not crash the benchmark run
+        return _remember
 
     def _plugin_real_store(self, run_dir: Path, *,
                            group_id: Optional[str] = None) -> tuple[Path, Path]:
