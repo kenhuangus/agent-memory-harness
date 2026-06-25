@@ -7,8 +7,8 @@ is :class:`memeval.harness.InMemoryStore`; the real backends here are:
 
 * :class:`markdown_store.MarkdownStore`   — OKF-native + inverted keyword index (literal recall)
 * :class:`sqlite_store.SqliteVectorStore` — ``sqlite3`` + a char-n-gram hashing embedder + brute-force
-  cosine (v1, stdlib); a real dense embedder (Voyage/bge) injects via ``embed=`` and an ANN index
-  (HNSW/FAISS) is a deferred paid-path upgrade
+  cosine (v1, stdlib); a real dense embedder (Voyage/MiniLM) injects via ``embed=`` and the
+  opt-in ``vector_index="sqlite_vec"`` path uses sqlite-vec ANN with exact rerank
 * :class:`graph_store.GraphStore`         — in-memory OKF-link graph, seed-then-traverse (v1, stdlib);
   a typed-edge graph DB (Neo4j) is the paid-path seam (``uri=``)
 * :class:`neo4j_store.Neo4jGraphStore`    — the ``uri=`` upgrade of ``GraphStore``: a typed-edge graph DB

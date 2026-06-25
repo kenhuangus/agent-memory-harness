@@ -35,6 +35,7 @@ from memeval.stores.tests.scale_retrieval.helpers import (  # noqa: E402
     iter_matrix_cells,
     load_cases,
     load_items,
+    local_ann_cells,
     summarize_rows,
     skip_cells,
 )
@@ -148,13 +149,31 @@ def run_matrix(
         }
 
     if not live:
+        seen: set[str] = set()
         for name in CURRENT_CELL_NAMES:
             cell = _current_cell(name, quality + filler, tmp_root)
             try:
                 record_cell(cell)
+                seen.add(cell.name)
             finally:
                 cell.close()
+        for local_cell in local_ann_cells(quality + filler, tmp_root, include_skips=True):
+            if isinstance(local_cell, Skip):
+                report["cells"][local_cell.name] = {
+                    "status": "skip",
+                    "reason": local_cell.reason,
+                    "columns": local_cell.columns,
+                }
+                seen.add(local_cell.name)
+                continue
+            try:
+                record_cell(local_cell)
+                seen.add(local_cell.name)
+            finally:
+                local_cell.close()
         for skip in skip_cells():
+            if skip.name in seen:
+                continue
             report["cells"][skip.name] = {
                 "status": "skip",
                 "reason": skip.reason,

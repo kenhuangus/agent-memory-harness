@@ -31,11 +31,15 @@ from memeval.router import (
     VECTORS,
 )
 from memeval.schema import MemoryItem
-from memeval.stores.embedders import VoyageEmbedder
+from memeval.stores.embedders import SentenceTransformersEmbedder, VoyageEmbedder
 from memeval.stores.graph_store import GraphStore
 from memeval.stores.markdown_store import MarkdownStore
-from memeval.stores.rerankers import RerankedStore, VoyageReranker
-from memeval.stores.sqlite_store import SqliteVectorStore
+from memeval.stores.rerankers import MockReranker, RerankedStore, VoyageReranker
+from memeval.stores.sqlite_store import (
+    SQLITE_VEC_ANN_OVERFETCH,
+    SQLITE_VEC_DIM,
+    SqliteVectorStore,
+)
 
 
 LENSES = (
@@ -72,10 +76,18 @@ SKIP_CELL_NAMES = (
     "accuracy_voyage_rerank",
     "fuse_all_voyage_rerank_rrf",
     "future_vector_sqlite_vec",
+    "fusion_local_ann",
+    "fusion_local_ann_rerank",
     "future_vector_usearch_hnsw",
     "future_graph_neo4j_phase_b",
     "future_graph_falkordb",
     "future_lexical_fts5",
+)
+
+LOCAL_ANN_CELL_NAMES = (
+    "future_vector_sqlite_vec",
+    "fusion_local_ann",
+    "fusion_local_ann_rerank",
 )
 
 
@@ -332,16 +344,180 @@ def _fresh_bundle(
     embed: Any = None,
     graph_embed: Any = None,
     graph_max_depth: int = 2,
+    vector_kwargs: Optional[dict[str, Any]] = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if root.exists():
         shutil.rmtree(root)
     root.mkdir(parents=True, exist_ok=True)
     markdown = MarkdownStore(root / "markdown")
-    vector = SqliteVectorStore(str(root / "vector.db"), embed=embed)
+    vector = SqliteVectorStore(
+        str(root / "vector.db"), embed=embed, **(vector_kwargs or {})
+    )
     graph = GraphStore(path=str(root / "graph.db"), max_depth=graph_max_depth, embed=graph_embed)
     backends = {MARKDOWN: markdown, VECTORS: vector, GRAPH: graph}
     write_summary = _write_items(backends, items)
     return backends, write_summary
+
+
+def _local_ann_columns(*, reranker: str = "none") -> dict[str, str]:
+    return _columns(vector_index="sqlite_vec", reranker=reranker)
+
+
+def _local_ann_fusion_columns(*, reranker: str = "none") -> dict[str, str]:
+    return _columns(
+        vector_index="sqlite_vec",
+        graph_engine="in_memory_bfs",
+        lexical_engine="shared_bm25",
+        reranker=reranker,
+    )
+
+
+def _local_ann_columns_for(name: str) -> dict[str, str]:
+    if name == "fusion_local_ann":
+        return _local_ann_fusion_columns()
+    if name == "fusion_local_ann_rerank":
+        return _local_ann_fusion_columns(reranker="mock")
+    return _local_ann_columns()
+
+
+def _local_ann_unavailable_reason() -> Optional[str]:
+    if os.environ.get("MEMEVAL_LOCAL_ANN") != "1":
+        return "opt-in: MEMEVAL_LOCAL_ANN=1 unset"
+    embed = SentenceTransformersEmbedder()
+    try:
+        embed.embed("local ANN availability probe", input_type="query")
+    except RuntimeError as exc:
+        return str(exc)
+    probe = SqliteVectorStore(
+        ":memory:",
+        embed=embed,
+        dim=SQLITE_VEC_DIM,
+        vector_index="sqlite_vec",
+        ann_overfetch=SQLITE_VEC_ANN_OVERFETCH,
+        exact_rerank=True,
+    )
+    try:
+        if probe.vector_index != "sqlite_vec":
+            return probe.vector_index_status
+    finally:
+        probe.close()
+    return None
+
+
+def _local_ann_skips(reason: str) -> list[Skip]:
+    return [
+        Skip(name, reason, _local_ann_columns_for(name))
+        for name in LOCAL_ANN_CELL_NAMES
+    ]
+
+
+def _local_ann_vector_store(path: str, embed: SentenceTransformersEmbedder) -> SqliteVectorStore:
+    return SqliteVectorStore(
+        path,
+        embed=embed,
+        embed_model=embed.model,
+        dim=SQLITE_VEC_DIM,
+        vector_index="sqlite_vec",
+        ann_overfetch=SQLITE_VEC_ANN_OVERFETCH,
+        exact_rerank=True,
+    )
+
+
+def _close_stores(stores: Any) -> None:
+    for store in stores:
+        close = getattr(store, "close", None)
+        if callable(close):
+            close()
+
+
+def _local_ann_vector_cell(items: list[MemoryItem], root: Path) -> MatrixCell | Skip:
+    name = "future_vector_sqlite_vec"
+    cell_root = root / name
+    if cell_root.exists():
+        shutil.rmtree(cell_root)
+    cell_root.mkdir(parents=True, exist_ok=True)
+    embed = SentenceTransformersEmbedder()
+    vector = _local_ann_vector_store(str(cell_root / "vector.db"), embed)
+    if vector.vector_index != "sqlite_vec":
+        reason = vector.vector_index_status
+        vector.close()
+        return Skip(name, reason, _local_ann_columns())
+    writes = _write_items({VECTORS: vector}, items)
+    return MatrixCell(
+        name,
+        vector,
+        _local_ann_columns(),
+        writes[VECTORS],
+        (vector,),
+    )
+
+
+def _local_ann_fusion_cell(
+    name: str,
+    items: list[MemoryItem],
+    root: Path,
+) -> MatrixCell | Skip:
+    cell_root = root / name
+    if cell_root.exists():
+        shutil.rmtree(cell_root)
+    cell_root.mkdir(parents=True, exist_ok=True)
+    embed = SentenceTransformersEmbedder()
+    markdown = MarkdownStore(cell_root / "markdown")
+    vector = _local_ann_vector_store(str(cell_root / "vector.db"), embed)
+    graph = GraphStore(path=str(cell_root / "graph.db"), max_depth=2)
+    backends = {MARKDOWN: markdown, VECTORS: vector, GRAPH: graph}
+    if vector.vector_index != "sqlite_vec":
+        reason = vector.vector_index_status
+        _close_stores(backends.values())
+        return Skip(name, reason, _local_ann_columns_for(name))
+    writes = _write_items(backends, items)
+    reranker = MockReranker() if name == "fusion_local_ann_rerank" else None
+    config = fusion_profile(
+        method="rrf",
+        per_backend_k=50,
+        rrf_k=60,
+        reranker=reranker,
+        rerank_top_n=50,
+    )
+    return MatrixCell(
+        name,
+        RouterStore(Router.with_config(backends, config)),
+        _local_ann_columns_for(name),
+        writes["combined"],
+        tuple(backends.values()),
+    )
+
+
+def local_ann_cell(items: list[MemoryItem], root: Path) -> MatrixCell | Skip:
+    cells = local_ann_cells(items, root, names=("future_vector_sqlite_vec",))
+    return cells[0]
+
+
+def local_ann_cells(
+    items: list[MemoryItem],
+    root: str | Path,
+    *,
+    include_skips: bool = True,
+    names: tuple[str, ...] = LOCAL_ANN_CELL_NAMES,
+) -> list[MatrixCell | Skip]:
+    reason = _local_ann_unavailable_reason()
+    if reason is not None:
+        return [
+            Skip(name, reason, _local_ann_columns_for(name))
+            for name in names
+        ] if include_skips else []
+    root = Path(root)
+    cells: list[MatrixCell | Skip] = []
+    for name in names:
+        if name == "future_vector_sqlite_vec":
+            cell = _local_ann_vector_cell(items, root)
+        elif name in {"fusion_local_ann", "fusion_local_ann_rerank"}:
+            cell = _local_ann_fusion_cell(name, items, root)
+        else:
+            raise KeyError(name)
+        if isinstance(cell, MatrixCell) or include_skips:
+            cells.append(cell)
+    return cells
 
 
 def _current_cell(name: str, items: list[MemoryItem], root: Path) -> MatrixCell:
@@ -487,7 +663,7 @@ def _voyage_cell(name: str, items: list[MemoryItem], root: Path) -> MatrixCell:
 
 
 def skip_cells() -> list[Skip]:
-    return [
+    skips = [
         Skip(
             "accuracy_voyage",
             "captained: MEMEVAL_LIVE unset",
@@ -517,8 +693,11 @@ def skip_cells() -> list[Skip]:
                 reranker="voyage",
             ),
         ),
-        Skip("future_vector_sqlite_vec", "future: sqlite_vec selector not implemented",
-             _columns(vector_index="sqlite_vec")),
+    ]
+    local_reason = _local_ann_unavailable_reason()
+    if local_reason is not None:
+        skips.extend(_local_ann_skips(local_reason))
+    skips.extend([
         Skip("future_vector_usearch_hnsw", "future: usearch_hnsw selector not implemented",
              _columns(vector_index="usearch_hnsw")),
         Skip("future_graph_neo4j_phase_b", "future: native Neo4j graph engine not in matrix yet",
@@ -527,7 +706,8 @@ def skip_cells() -> list[Skip]:
              _columns(graph_engine="falkordb")),
         Skip("future_lexical_fts5", "future: SQLite FTS5 lexical engine not in matrix yet",
              _columns(lexical_engine="fts5")),
-    ]
+    ])
+    return skips
 
 
 def iter_matrix_cells(
@@ -552,11 +732,10 @@ def iter_matrix_cells(
             )
         else:
             cells.extend(_voyage_cell(name, items, root) for name in SKIP_CELL_NAMES[:3])
-    elif include_skips:
-        cells.extend(skip_cells())
+    cells.extend(local_ann_cells(items, root, include_skips=include_skips))
     if include_skips:
         existing = {cell.name for cell in cells}
-        cells.extend(skip for skip in skip_cells()[3:] if skip.name not in existing)
+        cells.extend(skip for skip in skip_cells() if skip.name not in existing)
     return cells
 
 
@@ -608,6 +787,7 @@ __all__ = [
     "CURRENT_CELL_NAMES",
     "DROP_REASONS",
     "LENSES",
+    "LOCAL_ANN_CELL_NAMES",
     "MatrixCell",
     "ScaleCase",
     "Skip",
@@ -621,6 +801,8 @@ __all__ = [
     "iter_matrix_cells",
     "load_cases",
     "load_items",
+    "local_ann_cell",
+    "local_ann_cells",
     "manifest_drop_table",
     "metrics_for_ranked_ids",
     "mrr_at_k",

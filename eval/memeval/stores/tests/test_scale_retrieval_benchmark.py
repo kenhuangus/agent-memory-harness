@@ -20,6 +20,7 @@ from memeval.stores.tests.scale_retrieval.helpers import (
     CURRENT_CELL_NAMES,
     DROP_REASONS,
     LENSES,
+    LOCAL_ANN_CELL_NAMES,
     MatrixCell,
     Skip,
     close_cells,
@@ -179,10 +180,16 @@ class OfflineMatrixSmokeTests(unittest.TestCase):
                 runnable = [cell for cell in cells if isinstance(cell, MatrixCell)]
                 runnable_by_name = {cell.name: cell for cell in runnable}
                 skipped = {cell.name: cell for cell in cells if isinstance(cell, Skip)}
-                self.assertEqual([cell.name for cell in runnable], list(CURRENT_CELL_NAMES))
+                runnable_names = [cell.name for cell in runnable]
+                self.assertEqual(runnable_names[:len(CURRENT_CELL_NAMES)], list(CURRENT_CELL_NAMES))
+                self.assertTrue(
+                    set(runnable_names) <= set(CURRENT_CELL_NAMES) | set(LOCAL_ANN_CELL_NAMES)
+                )
                 self.assertIn("accuracy_voyage", skipped)
                 self.assertEqual(skipped["accuracy_voyage"].reason, "captained: MEMEVAL_LIVE unset")
-                self.assertIn("future_vector_sqlite_vec", skipped)
+                for name in LOCAL_ANN_CELL_NAMES:
+                    if name not in runnable_names:
+                        self.assertIn(name, skipped)
 
                 target_solved_by_lens = {}
                 for case in sample_challenges:

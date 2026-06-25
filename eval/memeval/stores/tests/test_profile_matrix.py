@@ -47,6 +47,7 @@ from memeval.router import (
     Router,
     RouterConfig,
     RuleBasedClassifier,
+    accuracy_local_profile,
     accuracy_profile,
     speed_profile,
     GRAPH,
@@ -306,10 +307,22 @@ class ProfilePresetContractTests(unittest.TestCase):
         # consult2 is left at its declared default — no RRF ships in PR2.5.
         self.assertFalse(cfg.consult2.enabled)
 
+    def test_accuracy_local_profile_has_distinct_name(self) -> None:
+        sentinel_embed = object()
+        cfg = accuracy_local_profile(
+            classifier=RuleBasedClassifier(RouterConfig()),
+            embed=sentinel_embed,
+            embed_model="sentence-transformers/all-MiniLM-L6-v2",
+        )
+        self.assertTrue(cfg.cascade.enabled)
+        self.assertIs(cfg.embed, sentinel_embed)
+        self.assertEqual(cfg.profile_name, "accuracy-local")
+
     def test_factories_are_exported(self) -> None:
         import memeval.router as router_mod
         self.assertIn("speed_profile", router_mod.__all__)
         self.assertIn("accuracy_profile", router_mod.__all__)
+        self.assertIn("accuracy_local_profile", router_mod.__all__)
 
 
 class ProfileMatrixShapeTests(unittest.TestCase):

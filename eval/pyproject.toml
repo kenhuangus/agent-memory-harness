@@ -57,6 +57,10 @@ hf = ["datasets>=2.19.0"]
 # Embedding-based relevancy / vector stores (optional; offline path is numpy-free).
 embeddings = ["numpy>=1.26"]
 
+# Opt-in local semantic retrieval: MiniLM embeddings plus sqlite-vec ANN.
+# Heavy packages are lazy-imported, and the default smoke path does not install them.
+local-ann = ["sentence-transformers>=3.0", "sqlite-vec>=0.1.9,<0.2"]
+
 # Real CODE scoring runs on the host with no extra dependency: memeval.grader.
 # The Claude Code CLI acts as a genuine coding agent (real checkout, edit, run
 # tests) and LocalExecGrader applies the agent's patch + the gold tests in a
