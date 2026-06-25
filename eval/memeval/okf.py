@@ -286,7 +286,7 @@ def memory_item_to_doc(item: MemoryItem) -> str:
     """Render a :class:`MemoryItem` as an OKF concept document (frontmatter+body)."""
     meta = dict(item.metadata or {})
     fm: dict[str, Any] = {
-        "type": meta.pop("okf_type", None) or item.source or "Memory",
+        "type": meta.pop("okf_type", None) or "Memory",  # CONTENT type; provenance -> x_source
         "title": meta.pop("okf_title", None) or item.item_id,
         "description": meta.pop("okf_description", None) or _summary(item.content),
         "resource": meta.pop("okf_resource", None) or f"memeval://memory/{item.item_id}",
@@ -307,6 +307,12 @@ def memory_item_to_doc(item: MemoryItem) -> str:
     if item.tokens:
         fm["x_tokens"] = int(item.tokens)
     meta.pop("okf_links", None)  # links live in the body, not re-emitted here
+    # x_metadata_json is for metadata NOT already in a dedicated x_ field. Drop ONLY the
+    # one known redundancy — daydream's `extracted_from` duplicating x_session_id —
+    # KEY-AWARE so any other metadata (even one whose value happens to equal an id) is
+    # kept, i.e. round-trip stays lossless for our own docs.
+    if meta.get("extracted_from") == item.session_id:
+        meta.pop("extracted_from", None)
     if meta:
         fm["x_metadata_json"] = json.dumps(meta, sort_keys=True, default=str)
     return f"{_FM_DELIM}\n{_dump_frontmatter(fm)}\n{_FM_DELIM}\n\n{item.content.rstrip()}\n"
@@ -359,9 +365,19 @@ def doc_to_memory_item(text: str, *, fallback_id: str = "") -> MemoryItem:
     )
 
 
-def _summary(content: str, n: int = 140) -> str:
+def _summary(content: str, n: int = 200) -> str:
+    """A short human description: the FIRST sentence (reads as prose, not a mid-word
+    chop), capped at ``n`` chars as a safety net. A sentence boundary is ``.!?`` followed
+    by whitespace AND a capital letter (or end-of-string), so domain dots (``bpaste.net``)
+    and lowercase abbreviations (``e.g.``/``i.e.``) do NOT split. Deliberately
+    conservative — when no clean boundary is found it returns the whole (capped) string
+    rather than a bad cut; a richer summary can be supplied upstream via ``okf_description``."""
     s = " ".join((content or "").split())
-    return (s[: n - 1] + "…") if len(s) > n else (s or "(empty)")
+    if not s:
+        return "(empty)"
+    m = re.match(r"(.+?[.!?])(?:\s+[A-Z]|\s*$)", s)
+    first = m.group(1) if m else s
+    return (first[: n - 1] + "…") if len(first) > n else first
 
 
 def _id_from_resource(resource: Any) -> Optional[str]:
@@ -372,7 +388,10 @@ def _id_from_resource(resource: Any) -> Optional[str]:
 
 
 def _doc_relpath(item: MemoryItem) -> str:
-    """Bundle-relative path: <type-slug>/<id-slug>.md (the OKF directory layout)."""
+    """Bundle-relative path: ``<group>/<id-slug>.md``. ``<group>`` is the on-disk STORAGE
+    grouping (``okf_type`` or ``source``) — which may differ from the frontmatter content
+    ``type`` (e.g. a daydream memory files under ``daydream/`` yet has ``type: Memory``).
+    (Making the layout content-typed too is a separate, migration-bearing change.)"""
     typ = (item.metadata or {}).get("okf_type") or item.source or "memory"
     return f"{_slug(typ, default='memory')}/{_slug(item.item_id)}.md"
 
@@ -383,9 +402,11 @@ def _doc_relpath(item: MemoryItem) -> str:
 def export_bundle(items: Iterable[MemoryItem], out_dir: str | Path) -> dict[str, Any]:
     """Write ``items`` as a conformant OKF bundle under ``out_dir``.
 
-    Lays out ``<type>/<id>.md`` concept docs, a per-type ``index.md`` (progressive
-    disclosure), a root ``index.md`` carrying ``okf_version``, and a ``log.md``
-    change history (ordered by item timestamp). Returns a small manifest.
+    Lays out ``<group>/<id>.md`` concept docs (``<group>`` = ``okf_type`` or ``source``
+    — the storage grouping, which may differ from the content ``type`` field), a
+    per-group ``index.md`` (progressive disclosure), a root ``index.md`` carrying
+    ``okf_version``, and a ``log.md`` change history (ordered by item timestamp). Returns
+    a small manifest.
     """
     root = Path(out_dir)
     root.mkdir(parents=True, exist_ok=True)
