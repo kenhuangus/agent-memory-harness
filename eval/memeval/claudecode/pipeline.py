@@ -1,24 +1,28 @@
-"""The 5-stage SWE-Bench-CL pipeline driven by the live cookbook-memory plugin.
+"""The single-stage memory pipeline driven by the live cookbook-memory plugin.
 
-Installed as ``memeval-pipeline`` (and ``python -m memeval.claudecode.pipeline``). Runs,
-over the same X tasks of ONE named SWE-Bench-CL sequence, five stages that together test
-whether an accumulating + dream-consolidated memory makes the agent get better over time:
+Installed as ``memeval-pipeline`` (and ``python -m memeval.claudecode.pipeline``). Runs
+ONE eval stage over the X tasks of ONE named sequence — a SWE-Bench-CL sequence (the
+"domain"), or a VISTA journey-domain — against the persistent per-version memory
+substrate. The four stages a run can pick from (one per invocation) are:
 
-  1. base          -- mode=off, no plugin (the baseline)
-  2. plugin-blank   -- plugin-real, empty shared memory substrate
-  3. plugin-accum   -- plugin-real, the SAME substrate (now holding stage-2's memory)
-  4. dream          -- one real whole-store consolidation pass over the shared substrate
-                       (memeval.dreaming.worker.dream, the daydream-cli dream --all surface);
-                       a no-op in practice until the TTL/contradiction/governance knobs are on
-  5. plugin-dreamed -- plugin-real, the SAME substrate (final; reflects any dream mutations)
+  * base           -- mode=off, no plugin (the memoryless baseline)
+  * plugin-blank   -- plugin-real against the shared memory substrate
+  * plugin-accum   -- plugin-real against the SAME substrate (the default: memory that
+                      has accumulated from prior runs is in play)
+  * plugin-dreamed -- plugin-real after ONE whole-store consolidation (dream) pass over
+                      the substrate runs first; reflects any dream mutations
+
+The previous five-stage orchestration (base -> blank -> accum -> dream -> dreamed in one
+go, with base->final deltas) is gone: each run is a single stage so a sequence can be
+driven one stage at a time, and stages compose across separate invocations through the
+persistent substrate rather than within one run.
 
 Memory is ONE shared substrate per pipeline VERSION at ``results/v{version}/_memory/``
 (ADR-eval-003): the harness only ensures that directory exists and points
-``CLAUDE_PROJECT_DIR`` at it; the plugin owns everything inside. Accumulation across
-stages 2->3->5 happens purely because the directory persists -- the harness never copies,
-seeds, or prunes the store. The version is the git tag on HEAD, or branch+commit SHA for
-untagged runs unless ``--results-version`` explicitly names a reusable bucket
-(ADR-eval-004).
+``CLAUDE_PROJECT_DIR`` at it; the plugin owns everything inside. Accumulation across runs
+happens purely because the directory persists -- the harness never copies, seeds, or
+prunes the store. The version is the git tag on HEAD, or branch+commit SHA for untagged
+runs unless ``--results-version`` explicitly names a reusable bucket (ADR-eval-004).
 
 The wrapper is interactive by default (offer + confirm the defaults) with a
 non-interactive ``--yes`` mode for CI/scripts. Drives the SAME machinery the per-dev
@@ -41,25 +45,110 @@ from .. import MEMORY_VERSION
 from ..cost import DEFAULT_BUDGET_USD
 from ..schema import Benchmark
 
-_BENCHMARK = "swe_bench_cl"
-
-#: The 8 SWE-Bench-CL sequences (the "domains"), largest first; sizes for the prompt.
-_SEQUENCES = {
-    "django_django_sequence": 50,
-    "sympy_sympy_sequence": 50,
-    "sphinx-doc_sphinx_sequence": 44,
-    "matplotlib_matplotlib_sequence": 34,
-    "scikit-learn_scikit-learn_sequence": 32,
-    "astropy_astropy_sequence": 22,
-    "pydata_xarray_sequence": 22,
-    "pytest-dev_pytest_sequence": 19,
+#: The benchmarks the pipeline can drive, each with its selectable sequences (the
+#: "domains") mapped to an approximate task count for the menu, plus a default. A
+#: sequence is a ``group_id`` the loader filters on (ADR-eval): SWE-Bench-CL sequences
+#: are per-repo task chains; VISTA's are the three journey domains (each holding two of
+#: the six journeys).
+_BENCHMARKS: dict[str, dict[str, Any]] = {
+    "swe_bench_cl": {
+        "label": "SWE-Bench-CL",
+        # The 8 SWE-Bench-CL sequences, largest first; sizes for the prompt.
+        "sequences": {
+            "django_django_sequence": 50,
+            "sympy_sympy_sequence": 50,
+            "sphinx-doc_sphinx_sequence": 44,
+            "matplotlib_matplotlib_sequence": 34,
+            "scikit-learn_scikit-learn_sequence": 32,
+            "astropy_astropy_sequence": 22,
+            "pydata_xarray_sequence": 22,
+            "pytest-dev_pytest_sequence": 19,
+        },
+        "default_sequence": "pytest-dev_pytest_sequence",  # smallest -> cheapest
+    },
+    "vista": {
+        "label": "VISTA",
+        # The three VISTA journey domains (group_id == journey ``domain``); each holds
+        # two of the six journeys, so picking a domain runs that domain's journeys.
+        "sequences": {
+            "project": 2,
+            "coding": 2,
+            "research": 2,
+        },
+        "default_sequence": "coding",
+    },
 }
-_DEFAULT_SEQUENCE = "pytest-dev_pytest_sequence"  # smallest -> cheapest to iterate
+_DEFAULT_BENCHMARK = "swe_bench_cl"
 _DEFAULT_LIMIT = 20
 
-#: The eval stages (the dream stage runs between accum and dreamed; it is not an eval).
+
+def _bench_spec(benchmark: str) -> dict[str, Any]:
+    try:
+        return _BENCHMARKS[benchmark]
+    except KeyError:
+        raise SystemExit(
+            f"unknown --benchmark {benchmark!r}; choose one of {list(_BENCHMARKS)}"
+        ) from None
+
+
+def _sequences(benchmark: str) -> dict[str, int]:
+    return _bench_spec(benchmark)["sequences"]
+
+
+def _default_sequence(benchmark: str) -> str:
+    return _bench_spec(benchmark)["default_sequence"]
+
+
+def _git_short_sha(cwd: "str | Path | None" = None) -> str:
+    """The current short commit SHA, or ``"nogit"`` when git is unavailable."""
+    import subprocess
+    try:
+        out = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                             cwd=str(cwd) if cwd else None, capture_output=True,
+                             text=True, timeout=10, check=False)
+    except Exception:  # noqa: BLE001 - slug provenance, never fatal
+        return "nogit"
+    return out.stdout.strip() if out.returncode == 0 and out.stdout.strip() else "nogit"
+
+
+def _slugify(token: str) -> str:
+    """Filesystem-safe token: non ``[A-Za-z0-9._-]`` -> ``-``, runs squeezed, trimmed."""
+    import re
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "-", str(token)).strip("-")
+    return re.sub(r"-{2,}", "-", safe) or "x"
+
+
+def _default_version_slug(cfg: dict, results_dir: "str | Path") -> str:
+    """The default version slug for a run: ``sequence-type-sha-int`` (ADR-eval-004's
+    per-version substrate, but keyed to THIS run rather than the branch).
+
+    * ``sequence`` -- the selected sequence / VISTA group id
+    * ``type``     -- the run type (the stage: base | plugin-blank | plugin-accum |
+                      plugin-dreamed)
+    * ``sha``      -- the current short git SHA (``nogit`` when unavailable)
+    * ``int``      -- a dedup integer: the lowest ``>= 1`` whose results directory does
+                      not already exist, so a brand-new run gets a fresh substrate while
+                      the slug stays short when there's no collision.
+
+    The slug is what the interactive prompt offers as the default and what the user can
+    edit to reuse a prior substrate. It is passed to ``resolve_pipeline_version`` as the
+    explicit version override (``normalize_version`` adds the ``v`` prefix)."""
+    from ..results import normalize_version
+
+    base = f"{_slugify(cfg['sequence'])}-{_slugify(cfg['stage'])}-{_slugify(_git_short_sha())}"
+    root = Path(results_dir)
+    for i in range(1, 10_000):
+        candidate = f"{base}-{i}"
+        if not (root / normalize_version(candidate)).exists():
+            return candidate
+    return f"{base}-{1}"  # pathological: fall back to -1
+
+
+#: The eval stages a run can pick from (exactly one per invocation). ``plugin-dreamed``
+#: runs a dream consolidation pass over the substrate before it evaluates.
 _EVAL_STAGES = ("base", "plugin-blank", "plugin-accum", "plugin-dreamed")
-_STAGE_INDEX = {"base": 1, "plugin-blank": 2, "plugin-accum": 3, "plugin-dreamed": 5}
+_DEFAULT_STAGE = "plugin-accum"
+_STAGE_INDEX = {"base": 1, "plugin-blank": 2, "plugin-accum": 3, "plugin-dreamed": 4}
 _STAGE_MODE = {
     "base": "off",
     "plugin-blank": "plugin-real",
@@ -74,16 +163,23 @@ _STAGE_MODE = {
 def _build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         prog="memeval-pipeline",
-        description="Run the 5-stage SWE-Bench-CL pipeline against the live cookbook-memory "
-                    "plugin: base -> plugin/blank -> plugin/accumulated -> dream -> "
-                    "plugin/dreamed, sharing ONE persistent per-version memory substrate, "
-                    "then write a base->final summary.",
+        description="Run ONE eval stage over ONE sequence against the live cookbook-memory "
+                    "plugin and the persistent per-version memory substrate. Pick the "
+                    "benchmark (swe_bench_cl or vista), the sequence (the domain), and the "
+                    "stage (base | plugin-blank | plugin-accum | plugin-dreamed).",
     )
     ap.add_argument("-y", "--yes", "--non-interactive", dest="yes", action="store_true",
                     help="Non-interactive: use flags where given, defaults otherwise; no prompts.")
+    ap.add_argument("--benchmark", default=None, choices=list(_BENCHMARKS),
+                    help=f"Which benchmark to drive: {', '.join(_BENCHMARKS)}. "
+                         f"Default {_DEFAULT_BENCHMARK}.")
+    ap.add_argument("--stage", default=None, choices=list(_EVAL_STAGES),
+                    help=f"The single eval stage to run (one per invocation): "
+                         f"{', '.join(_EVAL_STAGES)}. Default {_DEFAULT_STAGE}. "
+                         f"'plugin-dreamed' runs a dream consolidation pass first.")
     ap.add_argument("--sequence", default=None,
-                    help=f"SWE-Bench-CL sequence (the Y domain). One of: "
-                         f"{', '.join(_SEQUENCES)}. Default {_DEFAULT_SEQUENCE}.")
+                    help="Sequence (the domain) to run — depends on --benchmark. "
+                         "SWE-Bench-CL: a per-repo sequence id; VISTA: project|coding|research.")
     ap.add_argument("--limit", type=int, default=None,
                     help=f"How many tasks of the sequence to run (by Task.order). "
                          f"Default {_DEFAULT_LIMIT}; 0 = the whole sequence.")
@@ -105,21 +201,16 @@ def _build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--results-dir", default="results",
                     help="Root for results/v{version}/ (and the shared _memory/ substrate).")
     ap.add_argument("--results-version", default=None,
-                    help="Explicit reusable results/memory version bucket. By default, "
-                         "untagged runs use branch name + commit SHA for fresh memory "
-                         "per commit; pass this when you intentionally want reuse.")
+                    help="Explicit results/memory version slug (the substrate bucket). "
+                         "Default is a 'sequence-type-sha-int' slug — the selected "
+                         "sequence, the run type (stage), the current git SHA, and a "
+                         "dedup integer that bumps when a dir of that exact name already "
+                         "exists — offered as the interactive prompt default. Pass a "
+                         "prior slug (here or at the prompt) to reuse its substrate and "
+                         "accumulate memory across runs.")
     ap.add_argument("--native-cl", dest="native_cl", action="store_true", default=False,
-                    help="Capture paper-native CL metrics per eval stage (default off).")
+                    help="Capture paper-native CL metrics for the stage (default off).")
     ap.add_argument("--no-native-cl", dest="native_cl", action="store_false")
-    ap.add_argument("--skip-base", action="store_true",
-                    help="Skip stage 1 (the memoryless 'base' baseline). Useful when "
-                         "iterating on the plugin path — base is slow and unaffected by "
-                         "plugin/memory changes. Its results row is omitted (no base→final "
-                         "delta in the summary).")
-    ap.add_argument("--stages", default=None,
-                    help="Comma-separated subset of eval stages to run, in order "
-                         "(base,plugin-blank,plugin-accum,plugin-dreamed). Overrides "
-                         "--skip-base. E.g. --stages plugin-blank,plugin-accum.")
     return ap
 
 
@@ -148,13 +239,34 @@ def _ask(label: str, default: Any, *, cast=str, choices: "list[str] | None" = No
             print(f"    ! expected {cast.__name__}, got {raw!r}")
 
 
-def _ask_sequence(default: str) -> str:
-    """Numbered menu for the SWE-Bench-CL sequence — type a number (1-8) or the id.
-    Enter accepts the default. Non-tty -> the default."""
+def _ask_benchmark(default: str) -> str:
+    """Numbered menu for the benchmark. Enter accepts the default; non-tty -> default."""
     if not _interactive():
         return default
-    seqs = list(_SEQUENCES.items())
-    print("  sequence (the SWE-Bench-CL 'domain' — type a number or id):")
+    names = list(_BENCHMARKS)
+    print("  benchmark (type a number or id):")
+    for i, name in enumerate(names, 1):
+        marker = " (default)" if name == default else ""
+        print(f"    {i}. {name}  ·  {_BENCHMARKS[name]['label']}{marker}")
+    while True:
+        raw = input(f"  benchmark [{default}]: ").strip()
+        if not raw:
+            return default
+        if raw.isdigit() and 1 <= int(raw) <= len(names):
+            return names[int(raw) - 1]
+        if raw in _BENCHMARKS:
+            return raw
+        print(f"    ! enter 1-{len(names)} or one of: {', '.join(names)}")
+
+
+def _ask_sequence(benchmark: str, default: str) -> str:
+    """Numbered menu for the sequence (the benchmark's 'domain') — type a number or the
+    id. Enter accepts the default. Non-tty -> the default."""
+    if not _interactive():
+        return default
+    seqs = list(_sequences(benchmark).items())
+    label = _bench_spec(benchmark)["label"]
+    print(f"  sequence (the {label} 'domain' — type a number or id):")
     for i, (name, size) in enumerate(seqs, 1):
         marker = " (default)" if name == default else ""
         print(f"    {i}. {name}  ·  {size} tasks{marker}")
@@ -164,7 +276,7 @@ def _ask_sequence(default: str) -> str:
             return default
         if raw.isdigit() and 1 <= int(raw) <= len(seqs):
             return seqs[int(raw) - 1][0]
-        if raw in _SEQUENCES:
+        if raw in _sequences(benchmark):
             return raw
         print(f"    ! enter 1-{len(seqs)} or a valid sequence id")
 
@@ -172,43 +284,60 @@ def _ask_sequence(default: str) -> str:
 def _resolve_config(args: argparse.Namespace) -> dict:
     """Resolve the run config from flags + (when interactive) prompts. Any flag passed
     explicitly pre-fills its prompt default; --yes skips all prompts."""
-    seq = args.sequence or _DEFAULT_SEQUENCE
+    benchmark = args.benchmark or _DEFAULT_BENCHMARK
+    # The sequence default tracks the benchmark, so an explicit --sequence overrides but a
+    # bare --benchmark still lands on a valid sequence for that benchmark.
+    seq = args.sequence or _default_sequence(benchmark)
+    stage = args.stage or _DEFAULT_STAGE
     limit = _DEFAULT_LIMIT if args.limit is None else args.limit
     model = args.model
     grader = args.grader
     budget = args.budget_usd
-    skip_base = bool(args.skip_base)
+    # An explicit --results-version always wins; otherwise the version is the
+    # sequence-type-sha-int slug (offered as the prompt default, editable to reuse a
+    # prior substrate). Computed below once sequence + stage are final.
+    results_version = args.results_version
 
     if not args.yes and _interactive():
-        print("\nConfigure the 5-stage SWE-Bench-CL pipeline — press Enter to accept each default.\n")
-        seq = _ask_sequence(seq)
+        print("\nConfigure the single-stage memory pipeline — press Enter to accept each default.\n")
+        benchmark = _ask_benchmark(benchmark)
+        if not args.sequence:  # a benchmark switch should reset the sequence default
+            seq = _default_sequence(benchmark)
+        seq = _ask_sequence(benchmark, seq)
+        stage = _ask("stage", stage, choices=list(_EVAL_STAGES))
         limit = _ask("tasks to run (0 = whole sequence)", limit, cast=int)
         model = _ask("model", model)
         grader = _ask("grader", grader,
                       choices=["auto", "local", "swebench", "overlap", "none"])
         budget = _ask("budget (USD, 0 = no cap)", budget, cast=float)
-        if not args.stages:
-            skip_default = "y" if skip_base else "n"
-            skip_base = _ask("skip stage 1 base run?", skip_default,
-                             choices=["y", "n"]).lower() in ("y", "yes")
+
+    if benchmark not in _BENCHMARKS:
+        raise SystemExit(f"unknown --benchmark {benchmark!r}; choose one of {list(_BENCHMARKS)}")
+    if seq not in _sequences(benchmark):
+        raise SystemExit(
+            f"unknown --sequence {seq!r} for benchmark {benchmark!r}; "
+            f"choose one of {list(_sequences(benchmark))}")
+    if stage not in _EVAL_STAGES:
+        raise SystemExit(f"unknown --stage {stage!r}; choose one of {list(_EVAL_STAGES)}")
+
+    # Version slug: ask + accept it interactively, defaulting to sequence-type-sha-int.
+    # (--results-version, when given, is authoritative and skips the prompt + default.)
+    if results_version is None:
+        cfg_for_slug = {"sequence": seq, "stage": stage}
+        default_slug = _default_version_slug(cfg_for_slug, args.results_dir)
+        if not args.yes and _interactive():
+            results_version = _ask("version slug (reuse a prior one to accumulate memory)",
+                                   default_slug)
+        else:
+            results_version = default_slug
+
+    if not args.yes and _interactive():
         print()
 
-    if seq not in _SEQUENCES:
-        raise SystemExit(f"unknown --sequence {seq!r}; choose one of {list(_SEQUENCES)}")
-
-    # Which eval stages to run (in canonical order). --stages wins; else --skip-base drops
-    # the memoryless baseline.
-    if args.stages:
-        requested = [s.strip() for s in args.stages.split(",") if s.strip()]
-        bad = [s for s in requested if s not in _EVAL_STAGES]
-        if bad:
-            raise SystemExit(f"unknown --stages {bad}; choose from {list(_EVAL_STAGES)}")
-        stages = [s for s in _EVAL_STAGES if s in requested]  # canonical order, deduped
-    else:
-        stages = [s for s in _EVAL_STAGES if not (skip_base and s == "base")]
-
     return {
+        "benchmark": benchmark,
         "sequence": seq,
+        "stage": stage,
         "limit": None if int(limit) <= 0 else int(limit),
         "model": model,
         "grader": grader,
@@ -219,9 +348,8 @@ def _resolve_config(args: argparse.Namespace) -> dict:
         "timeout": args.timeout,
         "path": args.path,
         "results_dir": args.results_dir,
-        "results_version": args.results_version,
+        "results_version": results_version,
         "native_cl": args.native_cl,
-        "stages": stages,
     }
 
 
@@ -237,14 +365,18 @@ def _dream_meta() -> dict:
 
 
 def _pipeline_meta(cfg: dict, version_info: dict, substrate: Path, stamp: str) -> dict:
+    stage = cfg["stage"]
+    runs_dream = stage == "plugin-dreamed"
     return {
         "version": version_info["version"],
         "version_exact": version_info.get("version_exact"),
         "untagged": version_info.get("untagged"),
         "git_sha": version_info.get("git_sha", ""),
+        "benchmark": cfg["benchmark"],
         "sequence": cfg["sequence"],          # the Y domain -- NOT in memory anymore
+        "stage": stage,                        # the single eval stage this run drove
         "limit": cfg["limit"],
-        "n_tasks": None,                       # filled from the first stage's actual count
+        "n_tasks": None,                       # filled from the stage's actual count
         "model": cfg["model"],
         "code_mode": cfg["code_mode"],
         "grader": cfg["grader"],
@@ -252,9 +384,11 @@ def _pipeline_meta(cfg: dict, version_info: dict, substrate: Path, stamp: str) -
         "budget_usd": cfg["budget_usd"],
         "dream": _dream_meta(),
         "memory_store": str(substrate),
-        "n_stages": 5,
-        "n_eval_stages": len(_EVAL_STAGES),
-        "stages": ["base", "plugin-blank", "plugin-accum", "dream", "plugin-dreamed"],
+        # Single-stage run: exactly one eval stage (plus an upfront dream pass for
+        # plugin-dreamed). Kept for self-description; no cross-stage orchestration.
+        "n_stages": 2 if runs_dream else 1,
+        "n_eval_stages": 1,
+        "stages": (["dream", stage] if runs_dream else [stage]),
         "timestamp": stamp,
         "started_at": None,                    # epoch seconds, set when the run starts
         "ended_at": None,                      # epoch seconds, set when the run ends
@@ -278,7 +412,7 @@ def _grader(cfg: dict):
     """Resolve the CODE grader, reusing run_bench's resolver via a tiny args shim."""
     from .run_bench import _make_grader
     shim = types.SimpleNamespace(grader=cfg["grader"], grader_timeout=cfg["grader_timeout"])
-    return _make_grader(_BENCHMARK, shim)
+    return _make_grader(cfg["benchmark"], shim)
 
 
 def _stage_task_total(cfg: dict) -> int:
@@ -286,7 +420,8 @@ def _stage_task_total(cfg: dict) -> int:
     so progress can be shown as ``[done/total]`` (the loader does the same selection)."""
     from ..loaders import get_loader
 
-    n = sum(1 for t in get_loader(Benchmark.from_str(_BENCHMARK)).load(cfg["path"], limit=None)
+    bench = Benchmark.from_str(cfg["benchmark"])
+    n = sum(1 for t in get_loader(bench).load(cfg["path"], limit=None)
             if str(t.group_id or "") == cfg["sequence"])
     return min(n, cfg["limit"]) if cfg["limit"] else n
 
@@ -533,14 +668,55 @@ def _run_eval_stage(stage: str, cfg: dict, substrate: Path, *, cost: Any,
 
     agent = _make_agent(stage, cfg, substrate)
     workers = cfg["plugin_workers"] if _STAGE_MODE[stage] == "plugin-real" else 1
+    grader = _grader(cfg)
+    _prewarm_sequence_venv(cfg, grader)  # build the sequence's shared venv ahead of its tasks
     return run_agent(
-        Benchmark.from_str(_BENCHMARK), agent,
+        Benchmark.from_str(cfg["benchmark"]), agent,
         memory=(_STAGE_MODE[stage] != "off"),
         limit=cfg["limit"], sequence=cfg["sequence"],
-        path_or_id=cfg["path"], cost=cost, grader=_grader(cfg),
+        path_or_id=cfg["path"], cost=cost, grader=grader,
         progress_cb=_make_progress_cb(stage, total, on_task=on_task, cost_base=cost_base),
         seed_sessions=False, workers=workers,
     )
+
+
+def _prewarm_sequence_venv(cfg: dict, grader: Any) -> None:
+    """Build the sequence's shared grading venv AHEAD of its tasks, when the resolved
+    grader supports it (the SWE-bench host grader). Every task of a SWE-Bench-CL sequence
+    shares one repo@version, so the interpreter + third-party deps are provisioned once
+    here and reused across the sequence; per-task grading then only re-installs that task's
+    checkout. No-op for graders without ``prewarm_sequence`` (overlap/local/none, VISTA's
+    QA path) and fail-open: a prewarm failure just falls back to the per-task venv."""
+    prewarm = getattr(grader, "prewarm_sequence", None)
+    if not callable(prewarm):
+        return
+    from ..loaders import get_loader
+
+    bench = Benchmark.from_str(cfg["benchmark"])
+    seq_tasks = [t for t in get_loader(bench).load(cfg["path"], limit=None)
+                 if str(t.group_id or "") == cfg["sequence"]]
+    # A SWE-Bench-CL sequence is one repo+version across all its tasks; resolve it from
+    # the first task that carries both.
+    repo = version = ""
+    for t in seq_tasks:
+        repo = (getattr(t, "repo", "") or "").strip()
+        version = str((getattr(t, "metadata", None) or {}).get("version") or "").strip()
+        if repo and version:
+            break
+    if not (repo and version):
+        return
+    print(f"  prewarming shared grading venv for sequence {cfg['sequence']} "
+          f"({repo}@{version})…", flush=True)
+    try:
+        py = prewarm(repo, version)
+    except Exception as exc:  # noqa: BLE001 - prewarm is best-effort; never abort the stage
+        print(f"  venv prewarm skipped: {type(exc).__name__}: {str(exc)[:120]}",
+              file=sys.stderr, flush=True)
+        return
+    if py:
+        print(f"  ✓ shared venv ready ({py})", flush=True)
+    else:
+        print("  venv prewarm not available — falling back to per-task venvs", flush=True)
 
 
 def _native_cl_for_stage(stage: str, cfg: dict, substrate: Path) -> Optional[dict]:
@@ -553,7 +729,7 @@ def _native_cl_for_stage(stage: str, cfg: dict, substrate: Path) -> Optional[dic
     from ..loaders import get_loader
     from ..native.registry import get_native_evaluator
 
-    bench = Benchmark.from_str(_BENCHMARK)
+    bench = Benchmark.from_str(cfg["benchmark"])
     tasks = [t for t in get_loader(bench).load(cfg["path"], limit=None)
              if str(t.group_id or "") == cfg["sequence"]]
     tasks.sort(key=lambda t: int(t.order))
@@ -660,10 +836,10 @@ def _ensure_sandbox_ready() -> None:
     The harness sandboxes ``claude`` so a run never picks up the host's skills / agents /
     CLAUDE.md / auth. But ``active_config_dir()`` only returns the sandbox once it has been
     BUILT (its ``settings.json`` exists), and the sandbox was previously built lazily inside
-    the first plugin-real stage — so stage 1 (base) ran against the HOST config. Build it up
-    front here so all 5 stages resolve to the sandbox, then PROBE the sandbox's auth with a
-    real ``claude -p`` turn and abort if it's logged out (a file check alone is a false
-    positive on macOS, where the token lives in the keychain, not on disk).
+    the first plugin-real stage — so a memoryless base stage ran against the HOST config.
+    Build it up front here so the stage resolves to the sandbox, then PROBE the sandbox's
+    auth with a real ``claude -p`` turn and abort if it's logged out (a file check alone is
+    a false positive on macOS, where the token lives in the keychain, not on disk).
 
     Skipped when the sandbox is explicitly disabled (``MEMEVAL_SANDBOX=0``) — an intentional
     opt-out — or when ``MEMEVAL_PIPELINE_SKIP_AUTH_PROBE`` is set (offline tests)."""
@@ -722,14 +898,17 @@ def _warn_if_memory_cannot_accumulate() -> None:
 
 
 def run_pipeline(cfg: dict) -> dict:
-    """Run all 5 stages and write the results + summary. Returns the summary dict."""
+    """Run the single selected stage over one sequence and write results + summary.
+    Returns the summary dict."""
     from ..cost import CostTracker
     from ..results import resolve_pipeline_version, run_timestamp
     from . import pipeline_summary as PS
 
     import time
 
-    _ensure_sandbox_ready()  # MUST be first — every stage uses the sandbox, never the host
+    benchmark = cfg["benchmark"]
+    stage = cfg["stage"]
+    _ensure_sandbox_ready()  # MUST be first — the stage uses the sandbox, never the host
     _warn_if_memory_cannot_accumulate()  # OPENROUTER_API_KEY gates daydream memory extraction
     version_info = resolve_pipeline_version(override=cfg.get("results_version"))
     version = version_info["version"]
@@ -740,8 +919,8 @@ def run_pipeline(cfg: dict) -> dict:
 
     meta = _pipeline_meta(cfg, version_info, substrate, stamp)
     meta["started_at"] = time.time()
-    print(f"pipeline v{version.lstrip('v')} · sequence {cfg['sequence']} · "
-          f"limit {cfg['limit']} · model {cfg['model']}")
+    print(f"pipeline v{version.lstrip('v')} · {benchmark} · sequence {cfg['sequence']} · "
+          f"stage {stage} · limit {cfg['limit']} · model {cfg['model']}")
     print(f"shared memory substrate: {substrate}")
     if version_info.get("untagged"):
         src = version_info.get("source")
@@ -764,51 +943,41 @@ def run_pipeline(cfg: dict) -> dict:
     in_progress: dict[str, Any] = {"stage": None, "row": None}
 
     def _write_partial() -> None:
-        # Completed stage rows + the in-progress stage's partial row (if any), so the
-        # results file exists from the first task and grows live — not only between stages.
+        # The completed stage row + the in-progress partial row (if any), so the results
+        # file exists from the first task and grows live as the stage runs.
         live = list(rows)
         if in_progress["row"] is not None:
             live.append(in_progress["row"])
-        PS.write_pipeline_results(benchmark=_BENCHMARK, version=version, timestamp=stamp,
+        PS.write_pipeline_results(benchmark=benchmark, version=version, timestamp=stamp,
                                   rows=live, pipeline_meta=meta, dream=dream,
                                   root=str(results_root))
 
-    def _on_task(stage: str, partial: Any) -> None:
-        # After each task within a stage, refresh that stage's partial row and rewrite
-        # the results file so progress is visible on disk immediately.
-        in_progress["stage"] = stage
-        in_progress["row"] = PS.stage_row(partial, stage=stage,
-                                          stage_index=_STAGE_INDEX[stage], pipeline_meta=meta)
+    def _on_task(stage_name: str, partial: Any) -> None:
+        # After each task, refresh the stage's partial row and rewrite the results file
+        # so progress is visible on disk immediately.
+        in_progress["stage"] = stage_name
+        in_progress["row"] = PS.stage_row(partial, stage=stage_name,
+                                          stage_index=_STAGE_INDEX[stage_name], pipeline_meta=meta)
         _write_partial()
 
-    active = cfg.get("stages") or list(_EVAL_STAGES)
+    active = [stage]
     meta["stages_run"] = active
     meta["preflight"] = _preflight(cfg, substrate, active)
     cost = CostTracker(budget_usd=cfg["budget_usd"]) if cfg["budget_usd"] and cfg["budget_usd"] > 0 else None
     total = _stage_task_total(cfg)
     meta["n_tasks"] = total
-    nat = " + native-CL passes" if cfg["native_cl"] else ""
-    skipped = [s for s in _EVAL_STAGES if s not in active]
-    skip_note = f" (skipping: {', '.join(skipped)})" if skipped else ""
-    print(f"running {len(active)} eval stage(s){skip_note} × {total} tasks{nat} "
+    nat = " + native-CL pass" if cfg["native_cl"] else ""
+    dream_note = " (dream pass first)" if stage == "plugin-dreamed" else ""
+    print(f"running stage {stage}{dream_note} × {total} tasks{nat} "
           f"(plugin stages run {cfg['plugin_workers']} at a time)…", flush=True)
     _write_partial()  # create the results file immediately (header + pipeline metadata)
-    print(f"results file: {PS.benchmark_results_path(_BENCHMARK, version=version, timestamp=stamp, root=str(results_root))}",
+    print(f"results file: {PS.benchmark_results_path(benchmark, version=version, timestamp=stamp, root=str(results_root))}",
           flush=True)
 
-    # Pre-dream eval stages (base / plugin-blank / plugin-accum), in canonical order.
-    for stage in ("base", "plugin-blank", "plugin-accum"):
-        if stage not in active:
-            continue
-        row = _run_one(stage, cfg, substrate, cost, native_by_stage, meta, total,
-                       on_task=lambda p, s=stage: _on_task(s, p))
-        rows.append(row)
-        in_progress["row"] = None  # stage finished -> its final row is in `rows`
-        _write_partial()
-
-    # Stage 4 (dream) + stage 5 (plugin-dreamed) only run if the final stage is selected.
-    if "plugin-dreamed" in active:
-        print("\n── stage 4/5 · dream ──────────", flush=True)
+    # plugin-dreamed runs ONE whole-store consolidation pass over the substrate first, so
+    # the stage reflects any dream mutations. The other stages run no dream pass.
+    if stage == "plugin-dreamed":
+        print("\n── dream ──────────", flush=True)
         print("  running whole-store consolidation (daydream-cli dream --all surface)…",
               flush=True)
         dream = _run_dream_stage(substrate)
@@ -825,17 +994,17 @@ def run_pipeline(cfg: dict) -> dict:
                   flush=True)
         _write_partial()
 
-        rows.append(_run_one("plugin-dreamed", cfg, substrate, cost, native_by_stage, meta, total,
-                             on_task=lambda p: _on_task("plugin-dreamed", p)))
-        in_progress["row"] = None
+    rows.append(_run_one(stage, cfg, substrate, cost, native_by_stage, meta, total,
+                         on_task=lambda p: _on_task(stage, p)))
+    in_progress["row"] = None
     meta["ended_at"] = time.time()
 
-    path = PS.write_pipeline_results(benchmark=_BENCHMARK, version=version, timestamp=stamp,
+    path = PS.write_pipeline_results(benchmark=benchmark, version=version, timestamp=stamp,
                                      rows=rows, pipeline_meta=meta, dream=dream,
                                      root=str(results_root))
-    summary = PS.build_summary(benchmark=_BENCHMARK, rows=rows, pipeline_meta=meta,
+    summary = PS.build_summary(benchmark=benchmark, rows=rows, pipeline_meta=meta,
                                dream=dream, native_by_stage=native_by_stage)
-    md_path, json_path = PS.write_summary(benchmark=_BENCHMARK, version=version,
+    md_path, json_path = PS.write_summary(benchmark=benchmark, version=version,
                                           timestamp=stamp, summary=summary,
                                           root=str(results_root))
     print(f"\nresults: {path}")
@@ -855,12 +1024,12 @@ def _run_one(stage: str, cfg: dict, substrate: Path, cost: Any,
 
     idx = _STAGE_INDEX[stage]
     t0 = time.monotonic()
-    # The CostTracker is shared across stages (one --budget-usd cap for the whole run),
-    # so its spent_usd is CUMULATIVE. Subtract the spend at stage start so each stage's
-    # cost reflects only THAT stage, not the running pipeline total.
+    # A --budget-usd cap is enforced via a shared CostTracker; its spent_usd is
+    # cumulative across any pre-stage spend (e.g. the dream pass), so subtract the spend
+    # at stage start to report only THIS stage's cost.
     cost_base = cost.spent_usd if cost is not None else 0.0
     memory_before = _store_health(substrate)
-    print(f"\n── stage {idx}/5 · {stage} (mode={_STAGE_MODE[stage]}) · {total} tasks "
+    print(f"\n── stage {stage} (mode={_STAGE_MODE[stage]}) · {total} tasks "
           f"──────────", flush=True)
     rr = _run_eval_stage(stage, cfg, substrate, cost=cost, total=total, on_task=on_task,
                          cost_base=cost_base)
@@ -871,17 +1040,17 @@ def _run_one(stage: str, cfg: dict, substrate: Path, cost: Any,
     m = rr.metrics
     secs = int(time.monotonic() - t0)
     resolved = sum(1 for t in rr.trajectories if t.success)
-    print(f"  ✓ stage {idx} done · {resolved}/{rr.n_tasks} resolved · acc={m.accuracy:.3f} "
+    print(f"  ✓ stage {stage} done · {resolved}/{rr.n_tasks} resolved · acc={m.accuracy:.3f} "
           f"rel={m.relevancy:.3f} eff={m.efficiency:.3f} · ${rr.cost_usd:.4f} · {secs}s",
           flush=True)
     if cfg["native_cl"]:
-        print(f"  computing native CL metrics for stage {idx} "
+        print(f"  computing native CL metrics for stage {stage} "
               f"(mem-on / re-test / mem-off passes)…", flush=True)
         try:
             report = _native_cl_for_stage(stage, cfg, substrate)
             if report is not None:
                 native_by_stage[stage] = report
-                print(f"  ✓ native CL captured for stage {idx}", flush=True)
+                print(f"  ✓ native CL captured for stage {stage}", flush=True)
         except Exception as exc:  # native CL is supplementary -- never abort the stage
             print(f"  native CL skipped: {type(exc).__name__}: {str(exc)[:120]}",
                   file=sys.stderr, flush=True)
@@ -917,11 +1086,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     if not args.yes and _interactive():
         limit_txt = "whole sequence" if cfg["limit"] is None else f"{cfg['limit']} tasks"
         budget_txt = "no cap" if not cfg["budget_usd"] else f"${cfg['budget_usd']:.0f}"
-        print("About to run the 5-stage pipeline:")
-        print(f"  sequence  {cfg['sequence']}  ·  {limit_txt}")
+        dream_txt = " (dream pass first)" if cfg["stage"] == "plugin-dreamed" else ""
+        print("About to run one stage of the pipeline:")
+        print(f"  benchmark {cfg['benchmark']}  ·  sequence {cfg['sequence']}  ·  {limit_txt}")
+        print(f"  stage     {cfg['stage']}{dream_txt}")
+        print(f"  version   {cfg['results_version']}")
         print(f"  model     {cfg['model']}  ·  grader {cfg['grader']}  ·  budget {budget_txt}")
         print(f"  native CL {'on' if cfg['native_cl'] else 'off'}")
-        ans = _ask("run these 5 stages now?", "y", choices=["y", "n"]).lower()
+        ans = _ask("run this stage now?", "y", choices=["y", "n"]).lower()
         if ans not in ("y", "yes"):
             print("aborted.")
             return 0
