@@ -754,6 +754,44 @@ def test_agentic_code_plugin_real_records_retrieval(monkeypatch) -> None:
     assert calls["n"] == 2
 
 
+def test_agentic_code_plugin_real_natural_unprimed_does_not_force_recall(monkeypatch) -> None:
+    import memeval.claudecode.sandbox as _sandbox
+    monkeypatch.setattr(_sandbox, "active_config_dir", lambda: None)
+
+    flag: dict = {}
+    calls: dict = {"n": 0, "prompt": "", "strict_mcp": None, "permission": None}
+    git = _make_fake_git(edited_flag=flag)
+
+    def fake(prompt, *, cwd, permission_mode="bypassPermissions", strict_mcp=True, **kw):
+        calls["n"] += 1
+        calls["prompt"] = prompt
+        calls["strict_mcp"] = strict_mcp
+        calls["permission"] = permission_mode
+        (Path(cwd) / "orm.py").write_text("def filter_empty():\n    return []\n",
+                                          encoding="utf-8")
+        flag["edited"] = True
+        return ClaudeResult(text="done", tokens_in=20, tokens_out=4)
+
+    grader = G.LocalExecGrader(runner=_make_fake_cmd(), git_runner=git)
+    with tempfile.TemporaryDirectory() as tmp:
+        agent = ClaudeCodeAgent(
+            memory_mode="plugin-real", code_mode="agentic", runner=fake,
+            git_runner=git, runtime=_NATIVE, workdir=tmp,
+        )
+        rr = run_agent(Benchmark.SWE_CONTEXTBENCH, agent, memory=True,
+                       path_or_id=_fixture("swe_contextbench.json"), limit=1,
+                       seed_sessions=False, grader=grader)
+
+    kinds = [s.kind for t in rr.trajectories for s in t.steps]
+    assert "generate" in kinds
+    assert "retrieve" not in kinds
+    assert calls["n"] == 1
+    assert "Persistent memory is available through recall if prior fixes would help" in calls["prompt"]
+    assert "First call the recall tool" not in calls["prompt"]
+    assert calls["permission"] == "acceptEdits"
+    assert calls["strict_mcp"] is False
+
+
 # --------------------------------------------------------------------------- #
 # Daydream write accounting (Fix #2) + group-scoped substrate (Fix #1)
 # --------------------------------------------------------------------------- #

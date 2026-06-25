@@ -17,6 +17,7 @@ Stdlib + pytest only.
 from __future__ import annotations
 
 import json
+import types
 import tempfile
 from pathlib import Path
 
@@ -179,6 +180,28 @@ def test_pipeline_base_stage_has_no_plugin(monkeypatch) -> None:
         doc = json.loads(list(Path(tmp).rglob("swe_bench_cl-*.json"))[0].read_text())
         assert [r["pipeline_stage"] for r in doc["runs"]] == ["base"]
         assert doc["dream"]["status"] == "not-run"  # base runs no dream pass
+
+
+def test_pipeline_plugin_real_default_and_primed_stage_options() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        substrate = Path(tmp) / "_memory"
+        cfg = _cfg(tmp)
+
+        default = P._make_agent("plugin-blank", cfg, substrate)
+        assert default.memory_mode == "plugin-real"
+        assert default.plugin_real_recall_policy == "natural"
+        assert default.plugin_real_invocation == "unprimed"
+
+        primed = P._make_agent("plugin-primed", cfg, substrate)
+        assert primed.plugin_real_recall_policy == "natural"
+        assert primed.plugin_real_invocation == "primed"
+
+
+def test_pipeline_natural_plugin_stage_allows_zero_recall_warning() -> None:
+    warnings = P._stage_warnings(
+        "plugin-blank", _cfg("/tmp"), types.SimpleNamespace(metadata={"graded_n": 1}),
+        before={}, after={}, delta={"recall_events": 0})
+    assert [w["code"] for w in warnings] == []
 
 
 def test_pipeline_results_path_is_version_scoped(monkeypatch) -> None:
@@ -503,5 +526,5 @@ def test_pipeline_disabled_sandbox_is_explicit_optout(monkeypatch) -> None:
     monkeypatch.setenv("MEMEVAL_SANDBOX", "0")
     probed = {"n": 0}
     monkeypatch.setattr(P, "_sandbox_auth_probe", lambda *a, **k: probed.__setitem__("n", probed["n"] + 1) or True)
-    P._ensure_sandbox_ready()  # must NOT raise, must NOT probe
+    P._ensure_sandbox_ready("claude-haiku-4-5")  # must NOT raise, must NOT probe
     assert probed["n"] == 0
