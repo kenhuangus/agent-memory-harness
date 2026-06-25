@@ -1,0 +1,4 @@
+captured_cases.jsonl
+__pycache__/
+*.pyc
+.pytest_cache/
