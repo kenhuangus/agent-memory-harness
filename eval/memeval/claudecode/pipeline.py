@@ -8,10 +8,10 @@ per-version memory substrate. The stages a run can pick from (one per invocation
   * base           -- mode=off, no plugin (the memoryless baseline)
   * builtin        -- Claude Code's native file-based memory over prior sessions
   * plugin-blank   -- plugin-real against the shared memory substrate
-  * plugin-accum   -- plugin-real against the SAME substrate (the default: memory that
-                      has accumulated from prior runs is in play)
-  * plugin-dreamed -- plugin-real after ONE whole-store consolidation (dream) pass over
-                      the substrate runs first; reflects any dream mutations
+  * plugin-accum   -- plugin-real seeded from a selected previous run's memory substrate,
+                      then evaluated in this run's own versioned namespace
+  * plugin-dreamed -- plugin-real seeded from a selected previous run's memory substrate,
+                      after ONE dreaming pass over the substrate
   * plugin-primed  -- plugin-real with natural recall and primed stream-json invocation
 
 The previous five-stage orchestration (base -> blank -> accum -> dream -> dreamed in one
@@ -20,11 +20,12 @@ driven one stage at a time, and stages compose across separate invocations throu
 persistent substrate rather than within one run.
 
 Memory is ONE shared substrate per pipeline VERSION at ``results/v{version}/_memory/``
-(ADR-eval-003): the harness only ensures that directory exists and points
-``CLAUDE_PROJECT_DIR`` at it; the plugin owns everything inside. Accumulation across runs
-happens purely because the directory persists -- the harness never copies, seeds, or
-prunes the store. The version is the git tag on HEAD, or branch+commit SHA for untagged
-runs unless ``--results-version`` explicitly names a reusable bucket (ADR-eval-004).
+(ADR-eval-003): the harness ensures that directory exists and points
+``CLAUDE_PROJECT_DIR`` at it; the plugin owns everything inside. ``plugin-accum`` and
+``plugin-dreamed`` seed the run's fresh namespace from a selected previous run's
+``_memory`` folder before evaluation. The version is the git tag on HEAD, or
+branch+commit SHA for untagged runs unless ``--results-version`` explicitly names a
+bucket (ADR-eval-004).
 
 The wrapper is interactive by default (offer + confirm the defaults) with a
 non-interactive ``--yes`` mode for CI/scripts. Drives the SAME machinery the per-dev
@@ -36,6 +37,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sqlite3
 import sys
 import tempfile
@@ -88,7 +90,13 @@ _BENCHMARKS: dict[str, dict[str, Any]] = {
     },
 }
 _DEFAULT_BENCHMARK = "swe_bench_cl"
-_DEFAULT_LIMIT = 20
+_DEFAULT_LIMIT = 0
+_DEFAULT_MODEL = "claude-haiku-4-5"
+_MODEL_CHOICES = (
+    ("claude-haiku-4-5", "fastest / cheapest default"),
+    ("claude-sonnet-4-6", "stronger coding model"),
+    ("claude-opus-4-8", "highest-quality model"),
+)
 
 
 def _bench_spec(benchmark: str) -> dict[str, Any]:
@@ -152,6 +160,92 @@ def _default_version_slug(cfg: dict, results_dir: "str | Path") -> str:
     return f"{base}-{1}"  # pathological: fall back to -1
 
 
+def _pipeline_docs(version_dir: Path) -> list[dict[str, Any]]:
+    docs: list[dict[str, Any]] = []
+    for path in sorted(version_dir.glob("*.json")):
+        if path.name.startswith("SUMMARY-"):
+            continue
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc.get("pipeline"), dict):
+            docs.append(doc)
+    return docs
+
+
+def _memory_source_candidates(
+    results_dir: "str | Path", *, benchmark: str, sequence: str,
+    exclude_version: "str | None" = None,
+) -> list[dict[str, Any]]:
+    """Previous run memory folders matching this benchmark+sequence, newest first."""
+    from ..results import normalize_version
+
+    root = Path(results_dir)
+    excluded = normalize_version(exclude_version) if exclude_version else None
+    out: list[dict[str, Any]] = []
+    if not root.is_dir():
+        return out
+    for version_dir in root.iterdir():
+        if not version_dir.is_dir() or not version_dir.name.startswith("v"):
+            continue
+        if excluded and version_dir.name == excluded:
+            continue
+        memory = version_dir / "_memory"
+        if not memory.is_dir():
+            continue
+        matches = []
+        for doc in _pipeline_docs(version_dir):
+            pipe = doc.get("pipeline") or {}
+            if pipe.get("benchmark") == benchmark and pipe.get("sequence") == sequence:
+                matches.append(doc)
+        if not matches:
+            continue
+        latest_doc = max(
+            matches,
+            key=lambda d: str((d.get("pipeline") or {}).get("timestamp") or d.get("timestamp") or ""),
+        )
+        pipe = latest_doc.get("pipeline") or {}
+        health = _store_health(memory)
+        try:
+            child_mtimes = [p.stat().st_mtime for p in memory.rglob("*") if p.exists()]
+            mtime = max([memory.stat().st_mtime, *child_mtimes])
+        except OSError:
+            mtime = version_dir.stat().st_mtime
+        out.append({
+            "version": version_dir.name,
+            "path": str(memory.resolve()),
+            "stage": pipe.get("stage"),
+            "timestamp": pipe.get("timestamp") or latest_doc.get("timestamp"),
+            "mtime": mtime,
+            "durable_items": health.get("durable_items", 0),
+        })
+    return sorted(out, key=lambda c: c["mtime"], reverse=True)
+
+
+def _resolve_memory_source(raw: str, results_dir: "str | Path") -> Path:
+    """Resolve a user-supplied source as either a path or a results version slug."""
+    from ..results import normalize_version
+
+    p = Path(raw).expanduser()
+    if not p.is_absolute():
+        p = Path.cwd() / p
+    if p.exists():
+        if p.name == ".cookbook-memory":
+            p = p.parent
+        if not (p / ".cookbook-memory").is_dir():
+            raise SystemExit(
+                f"selected memory folder {p} does not contain .cookbook-memory"
+            )
+        return p.resolve()
+    by_version = Path(results_dir) / normalize_version(raw) / "_memory"
+    if by_version.is_dir():
+        return by_version.resolve()
+    raise SystemExit(
+        f"selected memory source {raw!r} was not found as a path or results version"
+    )
+
+
 #: The eval stages a run can pick from (exactly one per invocation). Each stage IS a
 #: pipeline mode — the variation of the run. ``plugin-dreamed`` runs a dream
 #: consolidation pass over the substrate before it evaluates.
@@ -169,9 +263,9 @@ _DEFAULT_STAGE = "plugin-accum"
 _MODE_LABELS = {
     "base": "no plugin — the memoryless baseline (mode=off)",
     "builtin": "Claude Code native file-based memory over prior sessions",
-    "plugin-blank": "plugin-real natural/unprimed against the shared substrate (start from blank)",
-    "plugin-accum": "plugin-real natural/unprimed against the shared substrate (accumulated memory)",
-    "plugin-dreamed": "plugin-real after one dream consolidation pass over the substrate",
+    "plugin-blank": "plugin-real starting from blank memory",
+    "plugin-accum": "plugin-real seeded from an existing memory store",
+    "plugin-dreamed": "plugin-real seeded from existing memory, then dreamed before eval",
     "plugin-primed": "plugin-real, natural recall prompt, primed stream-json invocation",
 }
 _STAGE_INDEX = {name: i for i, name in enumerate(_EVAL_STAGES, 1)}
@@ -188,6 +282,7 @@ _STAGE_PLUGIN_REAL_OPTIONS = {
         "plugin_real_invocation": "primed",
     },
 }
+_SOURCE_MEMORY_STAGES = {"plugin-accum", "plugin-dreamed"}
 
 
 # --------------------------------------------------------------------------- #
@@ -217,7 +312,7 @@ def _build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--limit", type=int, default=None,
                     help=f"How many tasks of the sequence to run (by Task.order). "
                          f"Default {_DEFAULT_LIMIT}; 0 = the whole sequence.")
-    ap.add_argument("--model", default="claude-haiku-4-5")
+    ap.add_argument("--model", default=_DEFAULT_MODEL)
     ap.add_argument("--code-mode", choices=["blind", "agentic"], default="agentic")
     ap.add_argument("--grader", default="swebench",
                     help="CODE grader: 'swebench' (default: Docker-free grader reusing "
@@ -240,8 +335,14 @@ def _build_parser() -> argparse.ArgumentParser:
                          "sequence, the run type (stage), the current git SHA, and a "
                          "dedup integer that bumps when a dir of that exact name already "
                          "exists — offered as the interactive prompt default. Pass a "
-                         "prior slug (here or at the prompt) to reuse its substrate and "
-                         "accumulate memory across runs.")
+                         "prior slug only when you intentionally want to write into that "
+                         "same namespace.")
+    ap.add_argument("--source-memory", default=None,
+                    help="For plugin-accum and plugin-dreamed: existing memory folder or "
+                         "results version to seed this run from. Accepts a path to "
+                         "_memory, a path to .cookbook-memory, or a results version slug. "
+                         "Defaults to the newest prior memory folder for the selected "
+                         "benchmark+sequence.")
     ap.add_argument("--native-cl", dest="native_cl", action="store_true", default=False,
                     help="Capture paper-native CL metrics for the stage (default off).")
     ap.add_argument("--no-native-cl", dest="native_cl", action="store_false")
@@ -337,6 +438,51 @@ def _ask_sequence(benchmark: str, default: str) -> str:
         print(f"    ! enter 1-{len(seqs)} or a valid {unit} id")
 
 
+def _ask_model(default: str) -> str:
+    """Numbered menu for common models. Typed custom model ids are accepted."""
+    if not _interactive():
+        return default
+    print("  model (type a number or model id):")
+    names = [name for name, _label in _MODEL_CHOICES]
+    for i, (name, label) in enumerate(_MODEL_CHOICES, 1):
+        marker = " (default)" if name == default else ""
+        print(f"    {i}. {name}  ·  {label}{marker}")
+    while True:
+        raw = input(f"  model [{default}]: ").strip()
+        if not raw:
+            return default
+        if raw.isdigit() and 1 <= int(raw) <= len(names):
+            return names[int(raw) - 1]
+        return raw
+
+
+def _ask_memory_source(stage: str, candidates: list[dict[str, Any]], default: str) -> str:
+    """Numbered menu for stages that require a prior memory folder."""
+    if not _interactive():
+        return default
+    by_path = {str(c["path"]): c for c in candidates}
+    default_candidate = by_path.get(default)
+    default_label = (
+        str(default_candidate.get("version")) if default_candidate else Path(default).name
+    )
+    print(f"  source memory for {stage} (type a number, version, or path):")
+    for i, c in enumerate(candidates, 1):
+        marker = " (default)" if c["path"] == default else ""
+        stage = c.get("stage") or "unknown-stage"
+        timestamp = c.get("timestamp") or "unknown-time"
+        print(f"    {i}. {c['version']}  ·  {timestamp}  ·  {stage}{marker}")
+    while True:
+        raw = input(f"  source memory [{default_label}]: ").strip()
+        if not raw:
+            return default
+        if raw.isdigit() and 1 <= int(raw) <= len(candidates):
+            return str(candidates[int(raw) - 1]["path"])
+        for c in candidates:
+            if raw == c.get("version"):
+                return str(c["path"])
+        return raw
+
+
 def _resolve_config(args: argparse.Namespace) -> dict:
     """Resolve the run config from flags + (when interactive) prompts. Any flag passed
     explicitly pre-fills its prompt default; --yes skips all prompts."""
@@ -350,9 +496,10 @@ def _resolve_config(args: argparse.Namespace) -> dict:
     grader = args.grader
     budget = args.budget_usd
     # An explicit --results-version always wins; otherwise the version is the
-    # sequence-type-sha-int slug (offered as the prompt default, editable to reuse a
-    # prior substrate). Computed below once sequence + stage are final.
+    # sequence-type-sha-int slug (offered as the prompt default for this run's output
+    # namespace). Computed below once sequence + stage are final.
     results_version = args.results_version
+    source_memory = args.source_memory
 
     if not args.yes and _interactive():
         print("\nConfigure the single-stage memory pipeline — press Enter to accept each default.\n")
@@ -362,7 +509,7 @@ def _resolve_config(args: argparse.Namespace) -> dict:
         seq = _ask_sequence(benchmark, seq)
         stage = _ask_mode(stage)
         limit = _ask("tasks to run (0 = whole sequence)", limit, cast=int)
-        model = _ask("model", model)
+        model = _ask_model(model)
         grader = _ask("grader", grader,
                       choices=["auto", "local", "swebench", "overlap", "none"])
         budget = _ask("budget (USD, 0 = no cap)", budget, cast=float)
@@ -382,10 +529,44 @@ def _resolve_config(args: argparse.Namespace) -> dict:
         cfg_for_slug = {"sequence": seq, "stage": stage}
         default_slug = _default_version_slug(cfg_for_slug, args.results_dir)
         if not args.yes and _interactive():
-            results_version = _ask("version slug (reuse a prior one to accumulate memory)",
-                                   default_slug)
+            results_version = _ask("version slug (where this run writes)", default_slug)
         else:
             results_version = default_slug
+
+    if stage in _SOURCE_MEMORY_STAGES:
+        candidates = _memory_source_candidates(
+            args.results_dir,
+            benchmark=benchmark,
+            sequence=seq,
+            exclude_version=results_version,
+        )
+        usable_candidates = [c for c in candidates if int(c.get("durable_items") or 0) > 0]
+        if source_memory is None and usable_candidates:
+            default_source = str(usable_candidates[0]["path"])
+            if not args.yes and _interactive():
+                source_memory = _ask_memory_source(stage, usable_candidates, default_source)
+            else:
+                source_memory = default_source
+        elif source_memory is None and candidates:
+            raise SystemExit(
+                f"{stage} found previous memory folders for {benchmark} / {seq}, but "
+                "none contained durable memories"
+            )
+        elif source_memory is None and not args.yes and _interactive():
+            raise SystemExit(
+                f"{stage} requires a pre-existing memory folder for this "
+                f"benchmark+sequence ({benchmark} / {seq}), but none were found under "
+                f"{args.results_dir!r}. Run plugin-blank first or pass --source-memory."
+            )
+        elif source_memory is None:
+            raise SystemExit(
+                f"{stage} requires --source-memory or a discoverable previous memory "
+                f"folder for {benchmark} / {seq} under {args.results_dir!r}"
+            )
+        if source_memory is not None:
+            resolved_source = _resolve_memory_source(source_memory, args.results_dir)
+            _source_memory_health_or_die(resolved_source, stage)
+            source_memory = str(resolved_source)
 
     if not args.yes and _interactive():
         print()
@@ -405,6 +586,7 @@ def _resolve_config(args: argparse.Namespace) -> dict:
         "path": args.path,
         "results_dir": args.results_dir,
         "results_version": results_version,
+        "source_memory": source_memory,
         "native_cl": args.native_cl,
     }
 
@@ -440,6 +622,8 @@ def _pipeline_meta(cfg: dict, version_info: dict, substrate: Path, stamp: str) -
         "budget_usd": cfg["budget_usd"],
         "dream": _dream_meta(),
         "memory_store": str(substrate),
+        "source_memory": cfg.get("source_memory"),
+        "source_memory_health": None,
         # Single-stage run: exactly one eval stage (plus an upfront dream pass for
         # plugin-dreamed). Kept for self-description; no cross-stage orchestration.
         "n_stages": 2 if runs_dream else 1,
@@ -566,7 +750,7 @@ def _store_health(substrate: Path) -> dict[str, Any]:
     all_names = [*names, *daydream_names]
     memory_items = _sqlite_count(store_dir / "memory.db", "items")
     graph_nodes = _sqlite_count(store_dir / "graph.db", "nodes")
-    markdown_items = len(list(store_dir.glob("*.md"))) if store_dir.is_dir() else 0
+    markdown_items = len(list(store_dir.rglob("*.md"))) if store_dir.is_dir() else 0
     durable_counts = [n for n in (memory_items, graph_nodes, markdown_items) if n is not None]
     return {
         "store_dir": str(store_dir),
@@ -588,6 +772,44 @@ def _store_health(substrate: Path) -> dict[str, Any]:
         "graph_nodes": graph_nodes,
         "markdown_items": markdown_items,
         "durable_items": max(durable_counts) if durable_counts else 0,
+    }
+
+
+def _source_memory_health_or_die(source: Path, stage: str) -> dict[str, Any]:
+    health = _store_health(source)
+    if health.get("durable_items", 0) <= 0:
+        raise SystemExit(
+            f"{stage} requires a source memory store with durable memories, but "
+            f"{source} is empty"
+        )
+    return health
+
+
+def _seed_source_memory(cfg: dict, substrate: Path) -> Optional[dict[str, Any]]:
+    """Copy a selected previous ``_memory`` folder into this run namespace."""
+    stage = str(cfg.get("stage") or "")
+    if stage not in _SOURCE_MEMORY_STAGES:
+        return None
+    raw = cfg.get("source_memory")
+    if not raw:
+        raise SystemExit(
+            f"{stage} requires --source-memory or a discoverable previous memory "
+            "folder for the selected benchmark+sequence"
+        )
+    source = _resolve_memory_source(str(raw), cfg["results_dir"])
+    substrate = substrate.resolve()
+    if source == substrate:
+        raise SystemExit(
+            f"{stage} must write to its own versioned namespace; choose a "
+            "different --results-version from --source-memory"
+        )
+    health = _source_memory_health_or_die(source, stage)
+    substrate.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source, substrate, dirs_exist_ok=True)
+    return {
+        "path": str(source),
+        "copied_to": str(substrate),
+        "health": health,
     }
 
 
@@ -814,8 +1036,8 @@ def _native_cl_for_stage(stage: str, cfg: dict, substrate: Path) -> Optional[dic
 def _run_dream_stage(substrate: Path) -> dict:
     """Dream stage -- run ONE real whole-store consolidation pass over the shared substrate.
 
-    Wired to the SAME surface the plugin's ``daydream-cli dream --all`` uses: build the
-    RouterStore for the store dir (``cookbook_memory.core.contract.build_store`` via the
+    Wired to the SAME dreaming surface the plugin uses: build the RouterStore for the
+    store dir (``cookbook_memory.core.contract.build_store`` via the
     dreaming CLI's ``_make_store`` seam, ADR-harness-011) and run
     ``memeval.dreaming.worker.dream`` against it under the basedir dream-lock. The worker
     is real (Jobs 1-4: TTL prune, dedup, contradiction, governance) and returns a
@@ -981,20 +1203,27 @@ def run_pipeline(cfg: dict) -> dict:
     stamp = run_timestamp()
     results_root = Path(cfg["results_dir"])
     substrate = (results_root / version / "_memory").resolve()
-    substrate.mkdir(parents=True, exist_ok=True)  # the harness's ONLY store responsibility
+    substrate.mkdir(parents=True, exist_ok=True)
+    source_memory_info = _seed_source_memory(cfg, substrate)
 
     meta = _pipeline_meta(cfg, version_info, substrate, stamp)
+    if source_memory_info:
+        meta["source_memory"] = source_memory_info["path"]
+        meta["source_memory_health"] = source_memory_info["health"]
+        meta["source_memory_copied_to"] = source_memory_info["copied_to"]
     meta["started_at"] = time.time()
     print(f"pipeline v{version.lstrip('v')} · {benchmark} · sequence {cfg['sequence']} · "
           f"stage {stage} · limit {cfg['limit']} · model {cfg['model']}")
     print(f"shared memory substrate: {substrate}")
+    if source_memory_info:
+        print(f"source memory copied from: {source_memory_info['path']}")
     if version_info.get("untagged"):
         src = version_info.get("source")
         if src == "branch-commit":
             note = (f"NOTE: HEAD is untagged -> version keyed by branch "
                     f"'{version_info.get('branch')}' plus commit {version_info.get('git_sha')} "
-                    f"({version}). Use --results-version to intentionally reuse a memory "
-                    f"substrate across commits; tag the commit for an archival, comparable run.")
+                    f"({version}). Use --results-version to intentionally choose the output "
+                    f"namespace; tag the commit for an archival, comparable run.")
         elif src == "override":
             note = (f"NOTE: HEAD is untagged -> using explicit reusable results version "
                     f"{version}.")
@@ -1044,7 +1273,7 @@ def run_pipeline(cfg: dict) -> dict:
     # the stage reflects any dream mutations. The other stages run no dream pass.
     if stage == "plugin-dreamed":
         print("\n── dream ──────────", flush=True)
-        print("  running whole-store consolidation (daydream-cli dream --all surface)…",
+        print("  running whole-store dreaming consolidation…",
               flush=True)
         dream = _run_dream_stage(substrate)
         _dream_status = dream.get("status") or dream.get("mode") or "ok"

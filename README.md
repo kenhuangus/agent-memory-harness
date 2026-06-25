@@ -105,17 +105,21 @@ make setup                                       # .venv on 3.13 + harness + plu
 npm install -g @anthropic-ai/claude-code         # the `claude` CLI (the agent under test)
 ```
 
-Run the **5-stage SWE-Bench-CL pipeline** (base → plugin/blank → plugin/accumulated →
-dream → plugin/dreamed, with a base→final summary) from the repo root:
+Run the **single-stage SWE-Bench-CL pipeline** from the repo root. Each invocation
+chooses one stage (`base`, `builtin`, `plugin-blank`, `plugin-accum`,
+`plugin-dreamed`, or `plugin-primed`) over one sequence. `plugin-accum` and
+`plugin-dreamed` require an existing non-empty memory store from a previous matching
+run; the runner copies that source into the new run's own versioned namespace before
+evaluating.
 
 ```bash
 # via make
 make pipeline                                    # interactive
-make pipeline ARGS="--yes --sequence pytest-dev_pytest_sequence --limit 3 --budget-usd 5"
+make pipeline ARGS="--yes --stage base --sequence pytest-dev_pytest_sequence --limit 3 --budget-usd 5"
 
 # or run the command directly (no make, no ARGS=) — uv finds ./.venv, or activate it first
 uv run memeval-pipeline                          # interactive
-uv run memeval-pipeline --yes --sequence pytest-dev_pytest_sequence --limit 3 --budget-usd 5
+uv run memeval-pipeline --yes --stage base --sequence pytest-dev_pytest_sequence --limit 3 --budget-usd 5
 memeval-pipeline --help                          # all flags
 ```
 
