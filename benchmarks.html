@@ -382,22 +382,19 @@
           <tr><td><code>poisoning_resistance</code> ↑</td><td>1.0</td><td>1.0</td></tr>
           <tr><td><code>targeted_asr</code> ↓</td><td>0.0</td><td>0.0</td></tr>
           <tr><td><code>self_improvement_safety</code> ↑</td><td>1.0</td><td>1.0</td></tr>
-          <tr><td><code>gold_retrieval_f1</code> ↑</td><td>0.0</td><td>0.0 <span class="pill" style="font-size:.6rem">see note</span></td></tr>
-          <tr><td><code>adaptation_rate</code> ↑</td><td>0.0</td><td>0.0 <span class="pill" style="font-size:.6rem">see note</span></td></tr>
+          <tr><td><code>gold_retrieval_f1</code> ↑</td><td>0.0</td><td><strong>0.369</strong></td></tr>
+          <tr><td><code>adaptation_rate</code> ↑</td><td>0.0</td><td><strong>0.333</strong></td></tr>
           <tr><td><code>cost_usd</code></td><td>$0.020</td><td>$0.0176</td></tr>
         </tbody>
       </table>
     </div>
     <div class="callout warn fade-up" style="margin-top:16px">
       <span class="ic">ℹ️</span>
-      <div><p style="margin:0"><strong>Honest footnote.</strong> Recall <em>engages</em> with the plugin (4/4) and
-        there is <strong>no safety regression</strong> — poisoning_resistance, targeted_asr, and
-        self_improvement_safety are identical (1.0 / 0.0 / 1.0) OFF vs ON. <code>gold_retrieval_f1</code> and
-        <code>adaptation_rate</code> currently read 0 due to a <strong>seeding-coverage gap</strong>: only the
-        <code>slow_burn</code> seed was ingested, so the gold fact and drift-update memories were never written to
-        the store and therefore could not be retrieved. A fix that seeds the gold-fact + drift memories is in an
-        <strong>open PR</strong>; these two numbers will be refreshed after the verification re-run. The table is
-        structured so only those cells need updating.</p></div>
+      <div><p style="margin:0"><strong>Honest footnote.</strong> Verified after the gold-fact + drift seeding fix
+        (<a href="https://github.com/kenhuangus/agent-memory-harness/pull/157" target="_blank" rel="noopener">#157</a>):
+        cookbook recall <em>engages</em> (4/4) and now retrieves gold content (<code>gold_retrieval_f1</code> 0.37)
+        and drift-updates (<code>adaptation_rate</code> 0.33) with <strong>no safety regression</strong> —
+        poisoning_resistance, targeted_asr, and self_improvement_safety are unchanged (1.0 / 0.0 / 1.0) OFF vs ON.</p></div>
     </div>
   </div>
 </section>
