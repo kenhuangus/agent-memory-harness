@@ -37,16 +37,37 @@ base loader's lazy ``datasets`` path.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any, Optional
 
 from ..schema import Benchmark, Session, Task, TaskKind
 from .base import BaseLoader, file_exists, read_json
 
-#: Vendored corpus copy (ships as package data).
-_VENDORED = (
-    Path(__file__).resolve().parent.parent / "data" / "vista" / "vista_corpus.jsonl"
-)
+#: Data dir holding both the curated fixture and the vendored full corpus.
+_DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "vista"
+
+#: Vendored curated corpus copy (6-journey fixture, ships as package data).
+_VENDORED = _DATA_DIR / "vista_corpus.jsonl"
+
+#: Vendored FULL upstream corpus (390 journeys) + per-split files.
+_FULL_DIR = _DATA_DIR / "full"
+_FULL_CORPUS = _FULL_DIR / "vista_corpus.jsonl"
+_FULL_SPLITS = _FULL_DIR / "splits"
+
+#: Recognised split names for the full corpus (`all` => the whole corpus file).
+_FULL_SPLITS_AVAILABLE = {"train", "dev", "test", "challenge"}
+
+
+def _resolve_full_path(split: Optional[str]) -> Path:
+    """Return the full-corpus file for ``split`` (``all``/None => whole corpus)."""
+    s = (split or "all").strip().lower()
+    if s in ("", "all"):
+        return _FULL_CORPUS
+    if s in _FULL_SPLITS_AVAILABLE:
+        return _FULL_SPLITS / f"{s}.jsonl"
+    # Unknown split name -> fall back to the whole corpus (never error/empty).
+    return _FULL_CORPUS
 
 #: event types that should be treated as gold (legitimate) memory.
 _GOLD_EVENT_TYPES = {"fact", "drift"}
@@ -67,9 +88,41 @@ class VistaLoader(BaseLoader):
         *,
         limit: Optional[int] = None,
         split: str = "test",
+        dataset: Optional[str] = None,
         **kwargs: Any,
     ) -> list[Task]:
-        """Prefer the vendored corpus when no explicit source is given."""
+        """Prefer the vendored corpus when no explicit source is given.
+
+        Dataset selection (opt-in, default behaviour unchanged):
+
+        * ``dataset="curated"`` (default) — the 6-journey offline fixture.
+        * ``dataset="full"`` — the vendored full upstream corpus (390 journeys).
+          The split is chosen by ``split`` from
+          {``train``, ``dev``, ``test``, ``challenge``, ``all``}; ``all`` (or any
+          unrecognised value) loads the whole 390-record corpus.
+
+        The dataset may also be selected via the ``VISTA_DATASET`` env var
+        (``full`` | ``curated``) and the split via ``VISTA_SPLIT``. An explicit
+        kwarg always wins over the env var. ``--limit`` is respected in all paths.
+        """
+        if dataset is None:
+            dataset = os.environ.get("VISTA_DATASET")
+        dataset = (dataset or "curated").strip().lower()
+
+        # Allow VISTA_SPLIT to override the split only when the caller did not
+        # pass one explicitly (the kwarg default is "test").
+        env_split = os.environ.get("VISTA_SPLIT")
+        if env_split and split == "test":
+            split = env_split
+
+        if path_or_id is None and dataset == "full":
+            full_path = _resolve_full_path(split)
+            if file_exists(str(full_path)):
+                # The chosen file already contains exactly the requested rows, so
+                # disable field-based split filtering (the whole-corpus file mixes
+                # splits and must NOT be filtered down).
+                return self._load_local(str(full_path), limit=limit, split=None)
+
         if path_or_id is None and file_exists(str(_VENDORED)):
             path_or_id = str(_VENDORED)
         return super().load(path_or_id, limit=limit, split=split, **kwargs)
