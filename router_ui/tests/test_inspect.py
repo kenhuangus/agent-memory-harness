@@ -246,6 +246,46 @@ def test_reopen_validates_input(seeded, tmp_path):
     assert h.state.substrate.store_dir == str(store)
 
 
+def test_pick_store_returns_chosen_dir(seeded, monkeypatch):
+    store, _ = seeded
+    import router_ui.server as server
+    monkeypatch.setattr(server, "pick_directory", lambda initial=None: "/picked/_memory")
+    h = _CaptureHandler("/api/pick-store", open_substrate(str(store), "fusion"))
+
+    h._pick_store({"initial": str(store)})
+    assert h.code == 200
+    assert h.payload == {"store": "/picked/_memory"}
+    # picking does NOT reopen — the client posts the path to /api/reopen itself.
+    assert h.state.substrate.store_dir == str(store)
+
+
+def test_pick_store_cancelled(seeded, monkeypatch):
+    store, _ = seeded
+    import router_ui.server as server
+    monkeypatch.setattr(server, "pick_directory", lambda initial=None: None)
+    h = _CaptureHandler("/api/pick-store", open_substrate(str(store), "fusion"))
+
+    h._pick_store({})
+    assert h.code == 200
+    assert h.payload == {"cancelled": True}
+
+
+def test_pick_store_unavailable(seeded, monkeypatch):
+    store, _ = seeded
+    import router_ui.server as server
+    from router_ui.picker import PickerUnavailable
+
+    def _boom(initial=None):
+        raise PickerUnavailable("no dialog here")
+
+    monkeypatch.setattr(server, "pick_directory", _boom)
+    h = _CaptureHandler("/api/pick-store", open_substrate(str(store), "fusion"))
+
+    h._pick_store({})
+    assert h.code == 501
+    assert "no dialog here" in h.payload["error"]
+
+
 def test_empty_substrate_creates_no_files(tmp_path):
     empty = tmp_path / "_memory"
     empty.mkdir()

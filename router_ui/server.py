@@ -15,6 +15,7 @@ Routes
 ``GET  /api/backend-artifact``     one Browse memory's stored artifact in one backend (+ copy path)
 ``POST /api/capture``             append a captured eval case to captured_cases.jsonl
 ``POST /api/reopen``              swap the active substrate to a new store dir (live, no restart)
+``POST /api/pick-store``          open a native OS folder-picker and return the chosen dir
 """
 
 from __future__ import annotations
@@ -27,8 +28,10 @@ from urllib.parse import parse_qs, urlparse
 
 try:  # dual import: package (``-m router_ui``) and standalone (run-dir self-test)
     from .substrate import open_substrate
+    from .picker import pick_directory, PickerUnavailable
 except ImportError:  # pragma: no cover - import shim
     from substrate import open_substrate  # type: ignore
+    from picker import pick_directory, PickerUnavailable  # type: ignore
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -90,7 +93,7 @@ class InspectorHandler(BaseHTTPRequestHandler):
     # -- POST --------------------------------------------------------------
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path not in ("/api/capture", "/api/reopen"):
+        if parsed.path not in ("/api/capture", "/api/reopen", "/api/pick-store"):
             return self._json({"error": "not found", "path": parsed.path}, code=404)
         try:
             length = int(self.headers.get("Content-Length") or 0)
@@ -100,6 +103,8 @@ class InspectorHandler(BaseHTTPRequestHandler):
             return self._json({"error": f"bad request body: {exc}"}, code=400)
         if parsed.path == "/api/reopen":
             return self._reopen(payload)
+        if parsed.path == "/api/pick-store":
+            return self._pick_store(payload)
         return self._capture(payload)
 
     def _capture(self, payload: dict) -> None:
@@ -126,6 +131,20 @@ class InspectorHandler(BaseHTTPRequestHandler):
             return self._json({"error": str(exc)}, code=400)
         self.state.substrate = new_sub
         return self._json(new_sub.summary())
+
+    def _pick_store(self, payload: dict) -> None:
+        """Open a native OS folder-picker (the inspector runs on the user's own machine) and
+        return the chosen absolute path as ``{"store": dir}``, or ``{"cancelled": true}`` if the
+        user dismissed the dialog. Does NOT reopen — the client posts the result to
+        ``/api/reopen`` so the existing not-found / bad-store handling applies uniformly."""
+        initial = (payload.get("initial") or "").strip() or None
+        try:
+            chosen = pick_directory(initial)
+        except PickerUnavailable as exc:
+            return self._json({"error": str(exc)}, code=501)
+        if not chosen:
+            return self._json({"cancelled": True})
+        return self._json({"store": chosen})
 
     # -- helpers -----------------------------------------------------------
     def _serve_static(self, route: str) -> None:

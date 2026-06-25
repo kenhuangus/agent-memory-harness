@@ -65,6 +65,9 @@ function renderSummary(s) {
     el("b", {}, "store "), storeInput,
     el("button", { class: "store-load", type: "button",
       on: { click: () => reopenStore(storeInput.value) } }, "Load"),
+    el("button", { class: "store-browse", type: "button",
+      title: "pick a memory store with the system folder dialog",
+      on: { click: (e) => pickStore(e.currentTarget) } }, "Browse…"),
   ]);
   const bits = [
     storePill,
@@ -82,6 +85,23 @@ function renderSummary(s) {
   const box = $("#summary");
   box.textContent = "";
   bits.forEach((b) => box.append(b));
+}
+
+// Open the system folder-picker (server-side native dialog, since the inspector runs on the
+// user's own machine) and load whatever directory they choose. The browser can't read real
+// filesystem paths, so the local server pops the dialog and hands back the chosen absolute path.
+async function pickStore(btn) {
+  const label = btn ? btn.textContent : null;
+  if (btn) { btn.disabled = true; btn.textContent = "Opening…"; }
+  try {
+    const res = await postJSON("/api/pick-store", { initial: (SUMMARY && SUMMARY.store_path) || "" });
+    if (res.cancelled) return;            // user dismissed the dialog — no-op, no toast
+    await reopenStore(res.store);
+  } catch (e) {
+    toast("folder picker unavailable: " + e.message, true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+  }
 }
 
 // Change the active substrate directory live (no inspector restart). POSTs the new dir,
