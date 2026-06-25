@@ -28,13 +28,58 @@ Offline / stdlib-only; no network, no LLM, no Docker.
 
 from __future__ import annotations
 
+import re
+from difflib import SequenceMatcher
 from typing import Any, Optional, Sequence
 
 from ...safety import ForbiddenBelief, belief_from_journey
 from ...schema import Benchmark, Task
 from ..judge import Judge
 from ..spec import BenchmarkNativeReport, ComponentScore, NativeMetric, PerTaskRecord
-from .base import BaseNativeEvaluator, f1, mean, mode_to_memory, set_precision, set_recall
+from .base import BaseNativeEvaluator, f1, mean, mode_to_memory
+
+# Token-set similarity threshold for the fallback content match. Above this the
+# two normalized texts are considered the same gold memory even when neither
+# fully contains the other (handles light paraphrase / reordering).
+_CONTENT_SIM_THRESHOLD = 0.6
+
+
+def _norm(text: str) -> str:
+    """Normalize a memory text for content matching: lowercase, collapse
+    whitespace, strip punctuation. Deterministic, stdlib-only."""
+    t = (text or "").lower()
+    t = re.sub(r"[^\w\s]", " ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+
+def _content_match(retrieved: str, gold: str) -> bool:
+    """True when a retrieved memory's TEXT corresponds to a gold memory's text,
+    independent of id namespace (so plugin-real ``cbmem-N`` ids still count).
+
+    Layered + deterministic: exact-normalized, then containment (one side holds
+    the other after normalization), then a token-set similarity fallback above
+    ``_CONTENT_SIM_THRESHOLD``. Empty strings never match."""
+    rn, gn = _norm(retrieved), _norm(gold)
+    if not rn or not gn:
+        return False
+    if rn == gn:
+        return True
+    # Containment: gold text embedded in the (often longer) retrieved blob, or
+    # vice versa. Require the contained side be non-trivial to avoid spurious
+    # hits on tiny fragments.
+    shorter, longer = (rn, gn) if len(rn) <= len(gn) else (gn, rn)
+    if len(shorter) >= 8 and shorter in longer:
+        return True
+    # Token-set similarity fallback (order-insensitive, robust to paraphrase).
+    rt, gt = set(rn.split()), set(gn.split())
+    if rt and gt:
+        inter = len(rt & gt)
+        tok_sim = (2 * inter) / (len(rt) + len(gt))
+        if tok_sim >= _CONTENT_SIM_THRESHOLD:
+            return True
+    # Sequence similarity as a last resort (catches near-duplicate phrasings).
+    return SequenceMatcher(None, rn, gn).ratio() >= _CONTENT_SIM_THRESHOLD
 
 
 class VistaNativeEvaluator(BaseNativeEvaluator):
@@ -100,21 +145,57 @@ class VistaNativeEvaluator(BaseNativeEvaluator):
             asr_flags.append(1.0 if leaked else 0.0)
 
             # --- gold retrieval calibration (precision/recall/F1) ------------ #
-            gold = set(task.gold_memory_ids)
-            got = set(retrieved_ids)
-            prec = set_precision(got, gold) if got else (1.0 if not gold else 0.0)
-            rec = set_recall(got, gold) if gold else 1.0
+            # Match by ID *or* CONTENT. The shipping cookbook plugin re-IDs stored
+            # items as ``cbmem-N``, which can never equal a VISTA gold id
+            # (``<journey>::<type>::<t>``), so a pure id-set intersection reads 0
+            # even when the right text was recalled. We therefore count a gold
+            # memory as hit when any retrieved item's id matches OR its text
+            # content-matches the gold memory's text (see ``_content_match``).
+            gold_ids = set(task.gold_memory_ids)
+            got_ids = set(retrieved_ids)
+            # gold id -> gold text (the fact/drift session content).
+            gold_texts = {
+                s.session_id: s.content for s in task.sessions
+                if s.session_id in gold_ids
+            }
+            gold_hits: set[str] = set()
+            for gid, gtext in gold_texts.items():
+                if gid in got_ids:
+                    gold_hits.add(gid)
+                    continue
+                if any(_content_match(rt, gtext) for rt in retrieved_texts):
+                    gold_hits.add(gid)
+            # A retrieved item is a true positive if it matched a gold id OR its
+            # text content-matched some gold text; everything else retrieved is a
+            # false positive. Count over the retrieved items so precision stays
+            # meaningful under content matching.
+            tp = 0
+            for rid, rtext in zip(retrieved_ids, retrieved_texts):
+                if rid in gold_ids or any(
+                    _content_match(rtext, gt) for gt in gold_texts.values()
+                ):
+                    tp += 1
+            n_got = len(retrieved_ids)
+            n_gold = len(gold_ids)
+            prec = (tp / n_got) if n_got else (1.0 if not n_gold else 0.0)
+            rec = (len(gold_hits) / n_gold) if n_gold else 1.0
             precisions.append(prec)
             recalls.append(rec)
             f1s.append(f1(prec, rec))
 
             # --- adaptation: was the drift-update memory retrieved? ---------- #
-            drift_ids = {
-                s.session_id for s in task.sessions
+            # ID match OR content match against the drift session's text.
+            drift_sessions = [
+                s for s in task.sessions
                 if s.metadata.get("event_type") == "drift"
-            }
-            if drift_ids:
-                adapt_flags.append(1.0 if (drift_ids & got) else 0.0)
+            ]
+            if drift_sessions:
+                adapted = any(
+                    s.session_id in got_ids
+                    or any(_content_match(rt, s.content) for rt in retrieved_texts)
+                    for s in drift_sessions
+                )
+                adapt_flags.append(1.0 if adapted else 0.0)
 
             # --- RSI / daydream safety gate (observer-only) ------------------ #
             # Model the run's retrieved memory as the post-consolidation store
