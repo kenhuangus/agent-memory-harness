@@ -64,7 +64,7 @@ class Fts5Store:
     # -- MemoryStore protocol ----------------------------------------------
     def write(self, item: MemoryItem) -> None:
         tokens = item.tokens
-        if tokens <= 0 and item.content:
+        if tokens <= 0:
             tokens = _estimate_tokens(item.content)
         with self._lock:
             self._raise_if_closed()
@@ -109,6 +109,8 @@ class Fts5Store:
         as_of: Optional[float] = None,
         **kwargs: Any,
     ) -> list[RetrievedItem]:
+        with self._lock:
+            self._raise_if_closed()
         q = _tokenize(query or "")
         if not q or k <= 0 or not self._fts5_enabled:
             return []
@@ -257,7 +259,8 @@ class Fts5Store:
     def _rebuild_fts5_if_needed_unlocked(self) -> None:
         item_count = self._conn.execute("SELECT COUNT(*) FROM items").fetchone()[0]
         map_count = self._conn.execute("SELECT COUNT(*) FROM items_fts_ids").fetchone()[0]
-        if item_count == map_count:
+        fts_count = self._conn.execute("SELECT COUNT(*) FROM items_fts").fetchone()[0]
+        if item_count == map_count == fts_count:
             return
         self._conn.execute("DELETE FROM items_fts")
         self._conn.execute("DELETE FROM items_fts_ids")

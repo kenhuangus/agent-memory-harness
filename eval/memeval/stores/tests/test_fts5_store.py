@@ -67,6 +67,17 @@ class Fts5StoreTests(unittest.TestCase):
         finally:
             s.close()
 
+    def test_empty_content_gets_estimated_token_count(self) -> None:
+        s = self.store()
+        try:
+            s.write(MemoryItem(item_id="e", content=""))
+            got = s.get("e")
+            self.assertIsNotNone(got)
+            assert got is not None
+            self.assertGreaterEqual(got.tokens, 1)
+        finally:
+            s.close()
+
     def test_all_returns_written_items(self) -> None:
         s = self.store()
         try:
@@ -115,6 +126,15 @@ class Fts5StoreTests(unittest.TestCase):
         finally:
             s.close()
 
+    def test_search_after_close_raises(self) -> None:
+        s = self.store()
+        s.write(_mk("a", "foo"))
+        s.close()
+        for query in ("foo", ""):
+            with self.subTest(query=query):
+                with self.assertRaises(RuntimeError):
+                    s.search(query)
+
     def test_special_character_queries_do_not_raise(self) -> None:
         s = self.store()
         try:
@@ -160,6 +180,32 @@ class Fts5StoreTests(unittest.TestCase):
                 self.assertEqual(mode.lower(), "wal")
             finally:
                 s.close()
+
+    def test_reopen_rebuilds_when_fts_table_is_truncated(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            path = str(Path(d) / "x.db")
+            s = self.store(path)
+            try:
+                s.write(_mk("a", "needle alpha"))
+                s.write(_mk("b", "needle beta"))
+            finally:
+                s.close()
+
+            conn = sqlite3.connect(path)
+            try:
+                conn.execute("DELETE FROM items_fts")
+                conn.commit()
+            finally:
+                conn.close()
+
+            reopened = self.store(path)
+            try:
+                self.assertEqual(
+                    sorted(hit.item_id for hit in reopened.search("needle", k=5)),
+                    ["a", "b"],
+                )
+            finally:
+                reopened.close()
 
     def test_close_is_idempotent(self) -> None:
         s = self.store()

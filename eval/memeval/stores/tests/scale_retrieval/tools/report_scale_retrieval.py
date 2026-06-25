@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tempfile
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -253,7 +254,7 @@ def write_markdown(report: dict[str, Any], path: Path) -> None:
             f"{_fmt(summary.get('nDCG@10'))} | {_fmt(write.get('latency_p50_ns'))} | "
             f"{_fmt(write.get('latency_p95_ns'))} | {_fmt(write.get('throughput_per_s'))} | "
             f"{_fmt(summary.get('latency_p50_ns'))} | {_fmt(summary.get('latency_p95_ns'))} | "
-            f"{_fmt(summary.get('throughput_per_s'))} | "
+            f"{_fmt(summary.get('throughput_per_s'))} | —"
         )
     lines.extend([
         "",
@@ -277,28 +278,34 @@ def main() -> None:
     parser.add_argument("--quality", type=Path, default=SCALE_RETRIEVAL_DIR / "quality_items.jsonl")
     parser.add_argument("--cases", type=Path, default=SCALE_RETRIEVAL_DIR / "cases.retained.jsonl")
     parser.add_argument("--filler", type=Path, default=SCALE_RETRIEVAL_DIR / "filler_items.jsonl")
-    parser.add_argument("--tmp-root", type=Path, default=Path("/tmp/memeval_scale_retrieval_matrix"))
-    parser.add_argument("--out-json", type=Path, default=SCALE_RETRIEVAL_DIR / "results" / "offline_matrix.json")
-    parser.add_argument("--out-md", type=Path, default=SCALE_RETRIEVAL_DIR / "results" / "offline_matrix.md")
-    parser.add_argument("--manifest", type=Path, default=SCALE_RETRIEVAL_DIR / "calibration_manifest.offline.json")
+    parser.add_argument("--tmp-root", type=Path, default=None)
+    parser.add_argument("--out-json", type=Path, default=None)
+    parser.add_argument("--out-md", type=Path, default=None)
+    parser.add_argument("--manifest", type=Path, default=None)
     parser.add_argument("--case-limit", type=int)
     parser.add_argument("--live", action="store_true")
     args = parser.parse_args()
+
+    suffix = "live" if args.live else "offline"
+    tmp_root = args.tmp_root or Path(tempfile.mkdtemp(prefix="memeval_scale_retrieval_matrix_"))
+    out_json = args.out_json or (SCALE_RETRIEVAL_DIR / "results" / f"{suffix}_matrix.json")
+    out_md = args.out_md or (SCALE_RETRIEVAL_DIR / "results" / f"{suffix}_matrix.md")
+    manifest = args.manifest or (SCALE_RETRIEVAL_DIR / f"calibration_manifest.{suffix}.json")
 
     report = run_matrix(
         quality_path=args.quality,
         cases_path=args.cases,
         filler_path=args.filler,
-        tmp_root=args.tmp_root,
-        manifest_path=args.manifest,
+        tmp_root=tmp_root,
+        manifest_path=manifest,
         case_limit=args.case_limit,
         live=args.live,
     )
-    args.out_json.parent.mkdir(parents=True, exist_ok=True)
-    args.out_json.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    write_markdown(report, args.out_md)
-    print(f"wrote {args.out_json}")
-    print(f"wrote {args.out_md}")
+    out_json.parent.mkdir(parents=True, exist_ok=True)
+    out_json.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_markdown(report, out_md)
+    print(f"wrote {out_json}")
+    print(f"wrote {out_md}")
 
 
 if __name__ == "__main__":
