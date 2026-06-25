@@ -23,7 +23,10 @@ MiniLM + sqlite-vec ANN path (needs the `eval[local-ann]` extra; degrades to `fu
 
 The **store** field in the header is editable: type another `.../_memory` (or a run dir with a
 nested `.cookbook-memory`) and press **Load** (or Enter) to switch substrates **live — no restart**
-(`POST /api/reopen` reopens the substrate server-side and refreshes every view).
+(`POST /api/reopen` reopens the substrate server-side and refreshes every view). Or click
+**Browse…** to pick a store with the **system folder dialog** — because the inspector runs on your
+own machine, `POST /api/pick-store` pops a native picker server-side (macOS Finder via `osascript`,
+elsewhere a Tk dialog) and feeds the chosen path straight into the same live reopen.
 
 ## Views
 
