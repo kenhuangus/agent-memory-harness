@@ -145,6 +145,10 @@ _PLUGIN_REAL_PREFIX_CODE = (
     "issue and run the tests to confirm. Do NOT output a diff or paste a patch — "
     "just make the edits.\n\n"
 )
+#: The shipping plugin's model-callable recall tool — used only for the allowlist
+#: fallback on the non-sandbox opt-out path. The canonical grant is the sandbox
+#: settings.json rule (``sandbox.RECALL_MCP_TOOL`` / ``ensure_plugin_tool_allowed``); keep
+#: this string in sync with it.
 _PLUGIN_REAL_RECALL_TOOL = "mcp__plugin_cookbook-memory_cookbook-memory__recall"
 _CODE_ALLOWED_TOOLS = [
     "Bash",
@@ -613,11 +617,13 @@ class ClaudeCodeAgent:
             # Drive the coding turn through the PRIMED runner with a retry-until-recall
             # backstop (mirrors the QA _solve_plugin_real loop) so the headless MCP
             # startup race no longer silently drops the shipping plugin's `recall`.
-            # --allowedTools is restrictive, so the code turn must explicitly allow
-            # both normal edit/test tools and the shipping plugin recall tool. Without
-            # this the CLI asks for permission to use recall and the headless run denies
-            # it. Recall reach is counted via the plugin's OWN events stream
+            # Tool environment: when the sandbox is active its settings.json grants the
+            # recall tool, so we pass NO --allowedTools — the SAME unrestricted CLI as the
+            # no-plugin control (so the only difference is memory). Only the non-sandbox
+            # opt-out falls back to the explicit allowlist (else headless recall is
+            # denied). Recall reach is counted via the plugin's OWN events stream
             # (_count_recall_events), not the harness recall log.
+            allowed = self._plugin_real_allowed_tools(_PLUGIN_REAL_CODE_ALLOWED_TOOLS)
             before_writes = _count_daydream_writes(store_dir)
             res: Optional[ClaudeResult] = None
             for _ in range(_PLUGIN_MAX_TRIES):
@@ -625,7 +631,7 @@ class ClaudeCodeAgent:
                 res = self._run_primed(
                     _PLUGIN_REAL_PREFIX_CODE + base_prompt, checkout,
                     _SYS_CODE_AGENT_PLUGIN_REAL, mcp_config=None,
-                    allowed_tools=_PLUGIN_REAL_CODE_ALLOWED_TOOLS,
+                    allowed_tools=allowed,
                     permission_mode="acceptEdits", extra_env=extra_env)
                 if _count_recall_events(events) > before:
                     break  # the agent reached the recall tool -> plugin MCP connected
@@ -722,13 +728,17 @@ class ClaudeCodeAgent:
         _add_dream_env(extra_env)  # OPENROUTER_API_KEY / DREAM_* so daydream is live on WSL too
         events = store_dir / "events.jsonl"
 
+        # Tool environment matches the no-plugin control: with the sandbox active its
+        # settings.json grants the recall tool, so pass NO --allowedTools; only the
+        # non-sandbox opt-out falls back to allow-listing just the recall tool.
+        allowed = self._plugin_real_allowed_tools([_PLUGIN_REAL_RECALL_TOOL])
         before_writes = _count_daydream_writes(store_dir)
         res: Optional[ClaudeResult] = None
         for _ in range(_PLUGIN_MAX_TRIES):
             before = _count_recall_events(events)
             res = self._run_primed(prompt, run_dir, _SYS_PLUGIN_REAL,
                                    mcp_config=None,
-                                   allowed_tools=[_PLUGIN_REAL_RECALL_TOOL],
+                                   allowed_tools=allowed,
                                    extra_env=extra_env)
             if _count_recall_events(events) > before:
                 break  # the agent reached the recall tool -> plugin MCP connected
@@ -993,6 +1003,20 @@ class ClaudeCodeAgent:
         tests have no claude installed) so the config is still produced."""
         return self._runtime or detect() or ClaudeRuntime(
             kind="native", exe="claude", python=sys.executable or "python")
+
+    def _plugin_real_allowed_tools(self, base_allowlist: list[str]) -> Optional[list[str]]:
+        """Resolve ``--allowedTools`` for a plugin-real turn so it faces the SAME Claude
+        tool environment as the no-plugin control.
+
+        When the sandbox is active, its ``settings.json`` already pre-approves the plugin's
+        recall MCP tool (``sandbox.ensure_plugin_tool_allowed``), so we pass ``None`` — no
+        ``--allowedTools`` allowlist, exactly like the control run, leaving the full native
+        toolset unrestricted and only the recall tool added via settings. Without a
+        sandbox (the ``MEMEVAL_SANDBOX=0`` opt-out, or a non-sandboxed run), there is no
+        settings grant, so we fall back to the explicit allowlist so headless recall isn't
+        silently denied — accepting the (documented) asymmetry only in that opt-out path."""
+        from . import sandbox
+        return None if sandbox.active_config_dir() is not None else base_allowlist
 
     def _root_dir(self) -> Path:
         """The run-tree root: the injected ``workdir`` or a stable temp dir, version-keyed

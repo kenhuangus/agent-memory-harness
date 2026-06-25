@@ -638,7 +638,7 @@ def test_agentic_code_plugin_records_retrieval() -> None:
     assert calls["n"] == 2
 
 
-def test_agentic_code_plugin_real_records_retrieval() -> None:
+def test_agentic_code_plugin_real_records_retrieval(monkeypatch) -> None:
     # plugin-real-mode agentic CODE = the SHIPPING plugin (cookbook-memory) as a
     # black box. The fake CLI stands in for the installed plugin: it edits the
     # checkout (so a diff is produced) AND writes a recall event (with meta.hits) to
@@ -653,6 +653,13 @@ def test_agentic_code_plugin_real_records_retrieval() -> None:
     # {} and seeding no-ops, and _run_primed falls back to a plain call (priming only
     # engages when self._runner is run_claude) — so this also verifies the fallback
     # still reaches the plugin's recall.
+    #
+    # Force the NO-sandbox branch so the --allowedTools fallback (the explicit
+    # allowlist) is exercised deterministically regardless of whether a sandbox dir
+    # happens to exist on this machine. The sandbox-active branch (allowed_tools=None)
+    # is covered by test_plugin_real_allowed_tools_none_when_sandbox_active.
+    import memeval.claudecode.sandbox as _sandbox
+    monkeypatch.setattr(_sandbox, "active_config_dir", lambda: None)
     import json as _json
 
     flag: dict = {}
@@ -767,6 +774,24 @@ def test_plugin_real_store_flat_when_not_group_scoped() -> None:
         pd, sd = a._plugin_real_store(Path(tmp) / "co", group_id="any_sequence")
         assert pd == sub.resolve()                       # group ignored
         assert sd == (sub / ".cookbook-memory").resolve()
+
+
+def test_plugin_real_allowed_tools_none_when_sandbox_active(monkeypatch) -> None:
+    """With a sandbox active, its settings.json grants the recall tool, so plugin-real
+    passes NO --allowedTools — the SAME CLI as the no-plugin control."""
+    import memeval.claudecode.sandbox as S
+    a = ClaudeCodeAgent(memory_mode="plugin-real")
+    monkeypatch.setattr(S, "active_config_dir", lambda: "/some/sandbox")
+    assert a._plugin_real_allowed_tools(["X", "Y"]) is None
+
+
+def test_plugin_real_allowed_tools_falls_back_without_sandbox(monkeypatch) -> None:
+    """Without a sandbox (the MEMEVAL_SANDBOX=0 opt-out) there is no settings grant, so
+    the explicit allowlist is used so headless recall isn't denied."""
+    import memeval.claudecode.sandbox as S
+    a = ClaudeCodeAgent(memory_mode="plugin-real")
+    monkeypatch.setattr(S, "active_config_dir", lambda: None)
+    assert a._plugin_real_allowed_tools(["X", "Y"]) == ["X", "Y"]
 
 
 # --------------------------------------------------------------------------- #

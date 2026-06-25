@@ -903,7 +903,12 @@ def _ensure_sandbox_ready() -> None:
 
     d = Path(sandbox.active_config_dir() or sandbox.default_config_dir())
     if not sandbox.exists(d):
-        sandbox.build(d)  # writes the minimal settings.json so active_config_dir() returns it
+        sandbox.build(d)  # writes settings.json so active_config_dir() returns it
+    # Ensure the cookbook-memory plugin's MCP tools are pre-approved in the sandbox
+    # settings (idempotent; upgrades a sandbox built before this rule existed). This is
+    # what lets the plugin-real stage run the SAME CLI as the no-plugin control — no
+    # restrictive --allowedTools — so the only difference between them is memory.
+    sandbox.ensure_plugin_tool_allowed(d)
 
     if os.environ.get("MEMEVAL_PIPELINE_SKIP_AUTH_PROBE"):
         return  # offline tests: skip the network probe
