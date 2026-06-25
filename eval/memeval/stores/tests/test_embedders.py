@@ -17,6 +17,7 @@ Run from ``eval/``:  python3 -m unittest memeval.stores.tests.test_embedders
 from __future__ import annotations
 
 import json
+import math
 import os
 import socket
 import tempfile
@@ -29,6 +30,7 @@ from pathlib import Path
 from memeval.schema import MemoryItem
 from memeval.stores.embedders import (
     MockEmbedder,
+    SentenceTransformersEmbedder,
     VoyageEmbedder,
     _hash_vector,
     rebuild_store,
@@ -137,6 +139,23 @@ class _PerturbingMockEmbedder:
         return vec
 
 
+class _FakeSentenceTransformerModel:
+    def __init__(self) -> None:
+        self.calls: list = []
+
+    def encode_query(self, texts, **kwargs):
+        self.calls.append(("query", list(texts), kwargs))
+        return [[1.0] + [0.0] * 383 for _ in texts]
+
+    def encode_document(self, texts, **kwargs):
+        self.calls.append(("document", list(texts), kwargs))
+        return [[0.0, 1.0] + [0.0] * 382 for _ in texts]
+
+    def encode(self, texts, **kwargs):
+        self.calls.append(("generic", list(texts), kwargs))
+        return [[0.0, 0.0, 1.0] + [0.0] * 381 for _ in texts]
+
+
 # --------------------------------------------------------------------------- #
 # MockEmbedder + the store seam (offline, deterministic)
 # --------------------------------------------------------------------------- #
@@ -191,6 +210,75 @@ class MockEmbedderStoreTests(unittest.TestCase):
         mock("y", input_type="query")
         mock("z")  # default omitted -> None recorded
         self.assertEqual(mock.calls, [("x", "document"), ("y", "query"), ("z", None)])
+
+
+class SentenceTransformersEmbedderTests(unittest.TestCase):
+    def test_constructor_is_lazy_and_offline_by_default(self) -> None:
+        saved = os.environ.pop("MEMEVAL_ALLOW_MODEL_DOWNLOAD", None)
+        try:
+            emb = SentenceTransformersEmbedder(cache_folder="/tmp/memeval-test-cache")
+            self.assertEqual(emb.model, "sentence-transformers/all-MiniLM-L6-v2")
+            self.assertEqual(emb.dim, 384)
+            self.assertTrue(emb.local_files_only)
+            self.assertIsNone(emb._model)
+        finally:
+            if saved is None:
+                os.environ.pop("MEMEVAL_ALLOW_MODEL_DOWNLOAD", None)
+            else:
+                os.environ["MEMEVAL_ALLOW_MODEL_DOWNLOAD"] = saved
+
+    def test_query_document_encode_split(self) -> None:
+        fake = _FakeSentenceTransformerModel()
+        emb = SentenceTransformersEmbedder(local_files_only=True)
+        emb._model = fake
+        doc = emb.embed("stored document", input_type="document")
+        query = emb.embed("search query", input_type="query")
+        generic = emb.embed("plain text")
+        self.assertEqual(len(doc), 384)
+        self.assertEqual(len(query), 384)
+        self.assertEqual(len(generic), 384)
+        self.assertEqual([call[0] for call in fake.calls], ["document", "query", "generic"])
+        for _, _, kwargs in fake.calls:
+            self.assertTrue(kwargs["normalize_embeddings"])
+            self.assertEqual(kwargs["precision"], "float32")
+            self.assertFalse(kwargs["show_progress_bar"])
+
+    def test_missing_package_or_cached_model_raises_runtimeerror(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            emb = SentenceTransformersEmbedder(
+                model="sentence-transformers/not-a-real-model-for-tests",
+                cache_folder=d,
+                local_files_only=True,
+            )
+            with self.assertRaises(RuntimeError):
+                emb.embed("hello", input_type="query")
+
+    def _real_minilm_or_skip(self) -> SentenceTransformersEmbedder:
+        emb = SentenceTransformersEmbedder()
+        try:
+            emb.embed("availability probe", input_type="query")
+        except RuntimeError as exc:
+            self.skipTest(str(exc))
+        return emb
+
+    def test_real_minilm_returns_384_dim_normalized_vectors_when_available(self) -> None:
+        emb = self._real_minilm_or_skip()
+        vec = emb.embed("configuration settings", input_type="document")
+        self.assertEqual(len(vec), 384)
+        self.assertTrue(all(isinstance(x, float) for x in vec))
+        norm = math.sqrt(sum(x * x for x in vec))
+        self.assertAlmostEqual(norm, 1.0, places=3)
+
+    def test_real_minilm_semantic_fixture_recovers_headroom_when_available(self) -> None:
+        emb = self._real_minilm_or_skip()
+        from memeval.stores.tests import test_semantic_retrieval_evals as semantic
+
+        baseline = semantic.score()
+        minilm = semantic.score(embed=emb)
+        self.assertGreater(
+            minilm["divergence_recall_at_k"],
+            baseline["divergence_recall_at_k"],
+        )
 
 
 # --------------------------------------------------------------------------- #

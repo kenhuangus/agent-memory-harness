@@ -2,9 +2,10 @@
 
 The offline default in :mod:`memeval.stores.sqlite_store` is the stdlib char-n-gram
 hashing embedder. The *paid* path injects a real dense embedder via
-``SqliteVectorStore(embed=...)``. This module ships that real adapter — :class:`VoyageEmbedder`
-(Voyage ``voyage-3-large``, output dimension 1024) — plus a deterministic offline
-:class:`MockEmbedder` for unit tests and local dev.
+``SqliteVectorStore(embed=...)``. This module ships real adapters —
+:class:`VoyageEmbedder` (Voyage ``voyage-3-large``, output dimension 1024) and
+:class:`SentenceTransformersEmbedder` (local MiniLM, output dimension 384) — plus a
+deterministic offline :class:`MockEmbedder` for unit tests and local dev.
 
 Two design points carried from the PR3 architecture:
 
@@ -36,12 +37,17 @@ import socket
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any, Optional
 
 # Voyage embeddings REST endpoint (OpenAI-compatible request/response shape).
 _VOYAGE_ENDPOINT = "https://api.voyageai.com/v1/embeddings"
 # HTTP statuses worth a retry: rate-limit + transient server errors.
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+_MINILM_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+_MINILM_DIM = 384
+_MINILM_CACHE_ENV = "MEMEVAL_EMBED_MODEL_CACHE"
+_MODEL_DOWNLOAD_ENV = "MEMEVAL_ALLOW_MODEL_DOWNLOAD"
 
 
 def _hash_vector(text: str, dim: int, n: int = 3) -> list:
@@ -233,6 +239,109 @@ class VoyageEmbedder:
         raise RuntimeError("Voyage API request failed") from last_exc
 
 
+class SentenceTransformersEmbedder:
+    """Local MiniLM embedder for opt-in semantic eval/profile runs.
+
+    Uses ``sentence-transformers/all-MiniLM-L6-v2`` (384 dimensions) with lazy
+    import/model load. By default it only reads cached weights
+    (``local_files_only=True``); set ``MEMEVAL_ALLOW_MODEL_DOWNLOAD=1`` to permit a
+    first-run download. Importing or constructing this class never imports torch.
+    """
+
+    def __init__(
+        self,
+        model: str = _MINILM_MODEL,
+        dim: int = _MINILM_DIM,
+        *,
+        cache_folder: Optional[str] = None,
+        local_files_only: Optional[bool] = None,
+        device: str = "cpu",
+        batch_size: int = 32,
+    ) -> None:
+        self.model = model
+        self.dim = dim
+        self.cache_folder = cache_folder or os.environ.get(_MINILM_CACHE_ENV) or str(
+            Path.home() / ".cache" / "cookbook-memory" / "sentence-transformers"
+        )
+        self.local_files_only = (
+            os.environ.get(_MODEL_DOWNLOAD_ENV) != "1"
+            if local_files_only is None
+            else local_files_only
+        )
+        self.device = device
+        self.batch_size = batch_size
+        self._model: Any = None
+
+    def __call__(self, text: str, *, input_type: Optional[str] = None) -> list:
+        return self.embed(text, input_type=input_type)
+
+    def embed(self, text: str, *, input_type: Optional[str] = None) -> list:
+        """Embed one string and return a plain ``list[float]``."""
+        return self.embed_batch([text], input_type=input_type)[0]
+
+    def embed_batch(self, texts: list, *, input_type: Optional[str] = None) -> list:
+        """Embed a batch with query/document encode methods when available."""
+        if not texts:
+            return []
+        model = self._load_model()
+        encode = self._encode_method(model, input_type)
+        encoded = encode(
+            list(texts),
+            batch_size=self.batch_size,
+            normalize_embeddings=True,
+            precision="float32",
+            convert_to_numpy=True,
+            show_progress_bar=False,
+        )
+        rows = encoded.tolist() if hasattr(encoded, "tolist") else list(encoded)
+        vectors = [self._coerce_vector(row) for row in rows]
+        for vector in vectors:
+            if len(vector) != self.dim:
+                raise RuntimeError(
+                    f"{self.model} returned {len(vector)} dimensions; expected {self.dim}"
+                )
+        return vectors
+
+    def _load_model(self) -> Any:
+        if self._model is not None:
+            return self._model
+        try:
+            from sentence_transformers import SentenceTransformer
+        except Exception as exc:
+            raise RuntimeError(
+                "sentence-transformers is not installed; install the local ANN optional "
+                "dependencies to use SentenceTransformersEmbedder."
+            ) from exc
+        try:
+            self._model = SentenceTransformer(
+                self.model,
+                cache_folder=self.cache_folder,
+                local_files_only=self.local_files_only,
+                device=self.device,
+            )
+        except Exception as exc:
+            hint = (
+                f"{self.model} could not be loaded from cache_folder={self.cache_folder!r} "
+                f"with local_files_only={self.local_files_only}. Set "
+                f"{_MODEL_DOWNLOAD_ENV}=1 for the one-time model download."
+            )
+            raise RuntimeError(hint) from exc
+        return self._model
+
+    @staticmethod
+    def _encode_method(model: Any, input_type: Optional[str]) -> Any:
+        if input_type == "query" and hasattr(model, "encode_query"):
+            return model.encode_query
+        if input_type == "document" and hasattr(model, "encode_document"):
+            return model.encode_document
+        return model.encode
+
+    @staticmethod
+    def _coerce_vector(row: Any) -> list:
+        values = row.tolist() if hasattr(row, "tolist") else list(row)
+        return [float(x) for x in values]
+
+
 def rebuild_store(items, dest_path: str, *, embed=None, embed_model: Optional[str] = None):
     """Re-embed ``items`` into a **fresh** ``SqliteVectorStore`` under ``embed``.
 
@@ -251,4 +360,9 @@ def rebuild_store(items, dest_path: str, *, embed=None, embed_model: Optional[st
     return store
 
 
-__all__ = ["VoyageEmbedder", "MockEmbedder", "rebuild_store"]
+__all__ = [
+    "VoyageEmbedder",
+    "SentenceTransformersEmbedder",
+    "MockEmbedder",
+    "rebuild_store",
+]

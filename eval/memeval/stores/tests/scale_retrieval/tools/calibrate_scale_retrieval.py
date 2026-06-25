@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Optional
 
@@ -39,6 +40,7 @@ from memeval.stores.tests.scale_retrieval.helpers import (  # noqa: E402
 DEPTH = 100
 EVAL_K = 10
 MRR_MARGIN = 1e-9
+LOCAL_SEMANTIC_TARGET = "future_vector_sqlite_vec"
 
 
 def _rank(ids: list[str], gold: tuple[str, ...]) -> Optional[int]:
@@ -162,6 +164,7 @@ def calibrate(
     out_cases: Path,
     manifest_path: Path,
     tmp_root: Path,
+    semantic_target: Optional[str] = None,
 ) -> dict[str, Any]:
     quality = load_items(quality_path)
     filler = load_items(filler_path) if filler_path is not None and filler_path.exists() else []
@@ -170,6 +173,9 @@ def calibrate(
     by_id = {item.item_id: item for item in quality}
     cells = iter_matrix_cells(all_items, tmp_root, include_skips=False, live=False)
     runnable = {cell.name: cell for cell in cells if isinstance(cell, MatrixCell)}
+    chosen_semantic_target = semantic_target
+    if chosen_semantic_target is None and LOCAL_SEMANTIC_TARGET in runnable:
+        chosen_semantic_target = LOCAL_SEMANTIC_TARGET
     retained: list[dict[str, Any]] = []
     manifest: dict[str, Any] = {
         "mode": "offline",
@@ -183,6 +189,8 @@ def calibrate(
         "totals": _empty_lens_counts(),
         "matrix": {
             "current_cells": list(CURRENT_CELL_NAMES),
+            "runnable_cells": sorted(runnable),
+            "semantic_target": chosen_semantic_target,
             "skipped_cells": [
                 {"name": skip.name, "reason": skip.reason, **skip.columns}
                 for skip in skip_cells()
@@ -194,9 +202,12 @@ def calibrate(
         for case in cases:
             if case.lens not in manifest["lenses"]:
                 raise ValueError(f"{case.case_id}: unknown lens {case.lens!r}")
+            calibrated_case = case
+            if case.lens == "semantic_divergence" and chosen_semantic_target:
+                calibrated_case = replace(case, target=chosen_semantic_target)
             manifest["lenses"][case.lens]["generated"] += 1
-            reason, calibration = _classify_case(case, by_id=by_id, cells=runnable)
-            record = case_to_record(case)
+            reason, calibration = _classify_case(calibrated_case, by_id=by_id, cells=runnable)
+            record = case_to_record(calibrated_case)
             record["calibration"] = {**case.calibration, **calibration}
             if reason is None:
                 record["calibration"]["status"] = "retained"
@@ -222,6 +233,15 @@ def main() -> None:
     parser.add_argument("--out-cases", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--tmp-root", type=Path, required=True)
+    parser.add_argument(
+        "--semantic-target",
+        default=None,
+        help=(
+            "Override target backend for semantic_divergence cases. When omitted, "
+            "the calibrator uses future_vector_sqlite_vec automatically if the "
+            "MEMEVAL_LOCAL_ANN opt-in cell is runnable."
+        ),
+    )
     args = parser.parse_args()
 
     manifest = calibrate(
@@ -231,6 +251,7 @@ def main() -> None:
         out_cases=args.out_cases,
         manifest_path=args.manifest,
         tmp_root=args.tmp_root,
+        semantic_target=args.semantic_target,
     )
     print(manifest_drop_table(manifest))
 

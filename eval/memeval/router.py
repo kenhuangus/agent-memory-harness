@@ -547,6 +547,27 @@ def accuracy_profile(*, classifier: RouterClassifier, embed: Any,
     )
 
 
+def accuracy_local_profile(*, classifier: RouterClassifier, embed: Any,
+                           embed_model: Optional[str] = None, k: int = 8,
+                           graph_max_depth: int = 3, reranker: Optional[Any] = None,
+                           rerank_top_n: int = 50) -> RouterConfig:
+    """Opt-in local accuracy profile for MiniLM + sqlite-vec experiments.
+
+    Same routing shape as ``accuracy_profile`` but with a distinct profile name so
+    callers can select local semantic retrieval without implying a paid Voyage run.
+    """
+    config = accuracy_profile(
+        classifier=classifier,
+        embed=embed,
+        embed_model=embed_model,
+        k=k,
+        graph_max_depth=graph_max_depth,
+        reranker=reranker,
+        rerank_top_n=rerank_top_n,
+    )
+    return replace(config, profile_name="accuracy-local")
+
+
 def fusion_profile(*, method: str = "rrf", per_backend_k: int = 10, rrf_k: int = 60,
                    k: int = 8, backends: tuple = (), reranker: Optional[Any] = None,
                    rerank_top_n: int = 50) -> RouterConfig:
@@ -1216,5 +1237,5 @@ class RouterStore:
 
 __all__ = [
     "Router", "RouterStore", "RouterConfig", "CascadeConfig", "Consult2Config", "WriteReceipt",
-    "speed_profile", "accuracy_profile", "fusion_profile",
+    "speed_profile", "accuracy_profile", "accuracy_local_profile", "fusion_profile",
 ]

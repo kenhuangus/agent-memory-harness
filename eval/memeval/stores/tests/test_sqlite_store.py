@@ -11,6 +11,9 @@ Run from `eval/`:  python3 -m unittest memeval.stores.tests.test_sqlite_store
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,6 +21,9 @@ from pathlib import Path
 from memeval.protocols import MemoryStore
 from memeval.schema import MemoryItem
 from memeval.stores.sqlite_store import (
+    SQLITE_VEC_ANN_OVERFETCH,
+    SQLITE_VEC_DIM,
+    SQLITE_VEC_RECALL_AT_10_THRESHOLD,
     SqliteVectorStore,
     _HashingEmbedder,
     _embedder_accepts_input_type,
@@ -28,6 +34,40 @@ def _mk(item_id: str, content: str, *, timestamp: float = 0.0,
         relevancy: float = 1.0, tags=None) -> MemoryItem:
     return MemoryItem(item_id=item_id, content=content, timestamp=timestamp,
                       relevancy=relevancy, tags=list(tags or []))
+
+
+def _v(x: float, y: float = 0.0) -> list[float]:
+    return [float(x), float(y)] + [0.0] * (SQLITE_VEC_DIM - 2)
+
+
+class _DictEmbedder:
+    def __init__(self, vectors: dict[str, list[float]]) -> None:
+        self.vectors = vectors
+
+    def __call__(self, text: str, *, input_type=None) -> list[float]:
+        return self.vectors[text]
+
+
+def _sqlite_vec_store_or_skip(
+    case: unittest.TestCase,
+    path: str = ":memory:",
+    *,
+    embed=None,
+    ann_overfetch: int = SQLITE_VEC_ANN_OVERFETCH,
+) -> SqliteVectorStore:
+    store = SqliteVectorStore(
+        path,
+        embed=embed or _DictEmbedder({"probe": _v(1.0)}),
+        dim=SQLITE_VEC_DIM,
+        vector_index="sqlite_vec",
+        ann_overfetch=ann_overfetch,
+        exact_rerank=True,
+    )
+    if store.vector_index != "sqlite_vec":
+        reason = store.vector_index_status
+        store.close()
+        case.skipTest(reason)
+    return store
 
 
 class SqliteVectorStoreTests(unittest.TestCase):
@@ -240,6 +280,159 @@ class EmbedSeamInputTypeTests(unittest.TestCase):
         def embed(text, input_type=None):
             return [0.0]
         self.assertTrue(_embedder_accepts_input_type(embed))
+
+
+class SqliteVecOptionalTests(unittest.TestCase):
+    def test_sqlite_vec_falls_back_to_brute_force_when_unavailable(self) -> None:
+        emb = _DictEmbedder({"alpha": _v(1.0), "query": _v(1.0)})
+        s = SqliteVectorStore(
+            ":memory:",
+            embed=emb,
+            dim=SQLITE_VEC_DIM,
+            vector_index="sqlite_vec",
+            ann_overfetch=1,
+        )
+        try:
+            self.assertIn(s.vector_index, {"sqlite_vec", "brute_force"})
+            s.write(_mk("a", "alpha"))
+            self.assertEqual(s.search("query", k=1)[0].item_id, "a")
+        finally:
+            s.close()
+
+    def test_sqlite_vec_known_vector_ranking(self) -> None:
+        emb = _DictEmbedder({
+            "near": _v(1.0, 0.0),
+            "mid": _v(0.8, 0.2),
+            "far": _v(0.0, 1.0),
+            "query": _v(1.0, 0.0),
+        })
+        s = _sqlite_vec_store_or_skip(self, embed=emb)
+        try:
+            s.write(_mk("far", "far"))
+            s.write(_mk("mid", "mid"))
+            s.write(_mk("near", "near"))
+            self.assertEqual(
+                [h.item_id for h in s.search("query", k=3)],
+                ["near", "mid", "far"],
+            )
+        finally:
+            s.close()
+
+    def test_sqlite_vec_rowid_order_opposite_distance_order(self) -> None:
+        emb = _DictEmbedder({
+            "far": _v(0.0, 1.0),
+            "near": _v(1.0, 0.0),
+            "query": _v(1.0, 0.0),
+        })
+        s = _sqlite_vec_store_or_skip(self, embed=emb, ann_overfetch=1)
+        try:
+            s.write(_mk("far", "far"))
+            s.write(_mk("near", "near"))
+            self.assertEqual(s.search("query", k=1)[0].item_id, "near")
+        finally:
+            s.close()
+
+    def test_sqlite_vec_overwrite_and_delete_refresh_index(self) -> None:
+        emb = _DictEmbedder({
+            "alpha": _v(1.0, 0.0),
+            "beta": _v(0.0, 1.0),
+            "other": _v(1.0, 0.0),
+            "query": _v(1.0, 0.0),
+        })
+        s = _sqlite_vec_store_or_skip(self, embed=emb)
+        try:
+            s.write(_mk("target", "alpha"))
+            self.assertEqual(s.search("query", k=1)[0].item_id, "target")
+            s.write(_mk("target", "beta"))
+            s.write(_mk("other", "other"))
+            self.assertEqual(s.search("query", k=1)[0].item_id, "other")
+            self.assertTrue(s.delete("other"))
+            self.assertNotIn("other", [h.item_id for h in s.search("query", k=5)])
+        finally:
+            s.close()
+
+    def test_sqlite_vec_as_of_filter_runs_inside_ann_query(self) -> None:
+        emb = _DictEmbedder({
+            "old": _v(0.9, 0.1),
+            "future": _v(1.0, 0.0),
+            "query": _v(1.0, 0.0),
+        })
+        s = _sqlite_vec_store_or_skip(self, embed=emb, ann_overfetch=1)
+        try:
+            s.write(_mk("old", "old", timestamp=10.0))
+            s.write(_mk("future", "future", timestamp=20.0))
+            ids = [h.item_id for h in s.search("query", k=1, as_of=15.0)]
+            self.assertEqual(ids, ["old"])
+        finally:
+            s.close()
+
+    def test_sqlite_vec_cross_process_peer_visibility(self) -> None:
+        emb = _DictEmbedder({"alpha": _v(1.0, 0.0), "query": _v(1.0, 0.0)})
+        with tempfile.TemporaryDirectory() as d:
+            path = str(Path(d) / "mem.db")
+            s = _sqlite_vec_store_or_skip(self, path, embed=emb)
+            try:
+                s.write(_mk("alpha-id", "alpha"))
+                eval_root = Path(__file__).resolve().parents[3]
+                env = os.environ.copy()
+                env["PYTHONPATH"] = str(eval_root)
+                code = f"""
+from memeval.schema import MemoryItem
+from memeval.stores.sqlite_store import SQLITE_VEC_DIM, SqliteVectorStore
+def v(x, y=0.0):
+    return [float(x), float(y)] + [0.0] * (SQLITE_VEC_DIM - 2)
+class E:
+    def __call__(self, text, *, input_type=None):
+        return {{"alpha": v(1.0), "query": v(1.0)}}[text]
+s = SqliteVectorStore({path!r}, embed=E(), dim=SQLITE_VEC_DIM, vector_index="sqlite_vec")
+assert s.vector_index == "sqlite_vec", s.vector_index_status
+print(s.search("query", k=1)[0].item_id)
+s.close()
+"""
+                proc = subprocess.run(
+                    [sys.executable, "-c", code],
+                    cwd=str(eval_root),
+                    env=env,
+                    text=True,
+                    capture_output=True,
+                    check=True,
+                )
+                self.assertEqual(proc.stdout.strip(), "alpha-id")
+            finally:
+                s.close()
+
+    def test_sqlite_vec_recall_matches_brute_force_on_minilm_vectors_when_available(self) -> None:
+        from memeval.stores.embedders import SentenceTransformersEmbedder
+
+        embed = SentenceTransformersEmbedder()
+        try:
+            embed.embed("availability probe", input_type="query")
+        except RuntimeError as exc:
+            self.skipTest(str(exc))
+        from memeval.stores.tests import test_semantic_retrieval_evals as semantic
+
+        exact = SqliteVectorStore(":memory:", embed=embed, dim=SQLITE_VEC_DIM)
+        ann = None
+        try:
+            ann = _sqlite_vec_store_or_skip(self, embed=embed)
+            for item in semantic.CORPUS:
+                exact.write(item)
+                ann.write(item)
+            recalls: list[float] = []
+            for case in semantic.SEMANTIC_CASES:
+                exact_ids = [h.item_id for h in exact.search(case.query, k=10)]
+                ann_ids = [h.item_id for h in ann.search(case.query, k=10)]
+                if exact_ids:
+                    recalls.append(len(set(exact_ids) & set(ann_ids)) / len(exact_ids))
+            self.assertTrue(recalls)
+            self.assertGreaterEqual(
+                sum(recalls) / len(recalls),
+                SQLITE_VEC_RECALL_AT_10_THRESHOLD,
+            )
+        finally:
+            exact.close()
+            if ann is not None:
+                ann.close()
 
 
 if __name__ == "__main__":

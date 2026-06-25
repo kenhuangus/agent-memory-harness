@@ -42,13 +42,16 @@ def build_store(store_path: str) -> MemoryStore:
 
     **Profile selection** is the engine's call, not the plugin's, and needs no plugin input:
 
-    * ``$MEMORY_PROFILE`` (``speed`` | ``fusion`` | ``accuracy``) forces a profile when set.
+    * ``$MEMORY_PROFILE`` (``speed`` | ``fusion`` | ``accuracy`` | ``accuracy-local``)
+      forces a profile when set.
     * Otherwise: if a real embedder key (``$VOYAGE_API_KEY``) is present, use the **accuracy**
       profile (semantic-exemplar classifier + Voyage embedder wired into the vector store at the
       matching dimension + graph->vector cascade). With no key, use the **fusion** profile
       (cross-backend RRF -- the best fully-offline recall; no key, no embedder-dimension mismatch).
       ``speed`` (the bare v1 router) is never auto-selected -- it is reachable only by explicit
       ``$MEMORY_PROFILE=speed``.
+    * ``$MEMEVAL_LOCAL_ANN=1`` opts into ``accuracy-local`` when ``$MEMORY_PROFILE`` is not set:
+      local MiniLM embeddings plus sqlite-vec when available, with exact brute-force fallback.
 
     Kept lazy so a missing engine surfaces as a handled construction failure (the caller falls
     back to a fail-open no-op) rather than an import-time crash.
@@ -57,12 +60,14 @@ def build_store(store_path: str) -> MemoryStore:
         Router,
         RouterStore,
         SemanticRouterClassifier,
+        accuracy_local_profile,
         accuracy_profile,
         fusion_profile,
         speed_profile,
     )
     from memeval.stores import GraphStore, MarkdownStore, SqliteVectorStore
-    from memeval.stores.embedders import VoyageEmbedder
+    from memeval.stores.embedders import SentenceTransformersEmbedder, VoyageEmbedder
+    from memeval.stores.sqlite_store import SQLITE_VEC_ANN_OVERFETCH, SQLITE_VEC_DIM
 
     root = Path(store_path)
     root.mkdir(parents=True, exist_ok=True)
@@ -70,7 +75,10 @@ def build_store(store_path: str) -> MemoryStore:
 
     profile = (os.environ.get("MEMORY_PROFILE") or "").strip().lower()
     if not profile:
-        profile = "accuracy" if os.environ.get("VOYAGE_API_KEY") else "fusion"
+        if os.environ.get("MEMEVAL_LOCAL_ANN") == "1":
+            profile = "accuracy-local"
+        else:
+            profile = "accuracy" if os.environ.get("VOYAGE_API_KEY") else "fusion"
 
     # The accuracy profile is the only one that swaps in a real embedder, which changes the
     # vector dimension -- so it (and ONLY it) builds the vector store AROUND that embedder. Every
@@ -87,6 +95,31 @@ def build_store(store_path: str) -> MemoryStore:
             embed=embed,
             embed_model=embed_model,
         )
+    elif profile == "accuracy-local":
+        try:
+            embed = SentenceTransformersEmbedder()
+            # Probe once so an explicit local profile falls back before any routed write
+            # can create mixed-dimension rows when the package/model is unavailable.
+            embed.embed("local profile availability probe", input_type="query")
+        except RuntimeError:
+            vectors = SqliteVectorStore(db_path)
+            config = fusion_profile()
+        else:
+            embed_model = getattr(embed, "model", None)
+            vectors = SqliteVectorStore(
+                db_path,
+                embed=embed,
+                embed_model=embed_model,
+                dim=SQLITE_VEC_DIM,
+                vector_index="sqlite_vec",
+                ann_overfetch=SQLITE_VEC_ANN_OVERFETCH,
+                exact_rerank=True,
+            )
+            config = accuracy_local_profile(
+                classifier=SemanticRouterClassifier(embed),
+                embed=embed,
+                embed_model=embed_model,
+            )
     else:
         vectors = SqliteVectorStore(db_path)
         config = fusion_profile() if profile == "fusion" else speed_profile()
