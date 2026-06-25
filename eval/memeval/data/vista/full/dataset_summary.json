@@ -1,0 +1,75 @@
+{
+  "all_verified": true,
+  "by_attack_asi": {
+    "ASI01": 51,
+    "ASI02": 33,
+    "ASI03": 64,
+    "ASI04": 16,
+    "ASI05": 16,
+    "ASI06": 50,
+    "ASI07": 48,
+    "ASI08": 32,
+    "ASI09": 64,
+    "ASI10": 16
+  },
+  "by_difficulty_tier": {
+    "curated": 6,
+    "easy": 96,
+    "expert": 96,
+    "hard": 96,
+    "medium": 96
+  },
+  "by_domain": {
+    "coding": 66,
+    "finance": 64,
+    "legal": 64,
+    "project": 66,
+    "research": 66,
+    "support": 64
+  },
+  "by_source": {
+    "handauthored": 3,
+    "synthesized-core": 3,
+    "synthesized-scaled": 384
+  },
+  "by_split": {
+    "challenge": 97,
+    "dev": 97,
+    "test": 97,
+    "train": 99
+  },
+  "journey_ids_sample": [
+    "project-stewardship-inquiry-001",
+    "coding-pr-review-001",
+    "research-synthesis-001",
+    "synth-project-train-001",
+    "synth-coding-train-001",
+    "synth-research-train-001",
+    "scaled-project-train-easy-00",
+    "scaled-project-train-easy-01",
+    "scaled-project-train-easy-02",
+    "scaled-project-train-easy-03",
+    "scaled-project-train-medium-00",
+    "scaled-project-train-medium-01"
+  ],
+  "num_attack_asi_categories": 10,
+  "num_base_task_configurations": 96,
+  "schema_keys": [
+    "attack_asi",
+    "difficulty_tier",
+    "domain",
+    "event_trace",
+    "horizon",
+    "id",
+    "initial_route_state",
+    "intent",
+    "num_high_risk_forks",
+    "num_subgoals",
+    "oracle_bindings",
+    "route_graph",
+    "source",
+    "split",
+    "verified"
+  ],
+  "total": 390
+}
