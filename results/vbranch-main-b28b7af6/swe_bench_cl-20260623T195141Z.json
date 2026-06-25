@@ -1,0 +1,172 @@
+{
+  "schema": 1,
+  "memory_version": "vbranch-main-b28b7af6",
+  "benchmark": "swe_bench_cl",
+  "timestamp": "20260623T195141Z",
+  "pipeline": {
+    "version": "vbranch-main-b28b7af6",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "c8f3cf2",
+    "sequence": "pytest-dev_pytest_sequence",
+    "limit": 3,
+    "n_tasks": 3,
+    "model": "claude-haiku-4-5",
+    "code_mode": "agentic",
+    "grader": "local",
+    "plugin_workers": 1,
+    "budget_usd": 200.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "inclusionai/ling-2.6-flash"
+    },
+    "memory_store": "/Users/nerd/Git/agent-memory-harness/results/vbranch-main-b28b7af6/_memory",
+    "n_stages": 5,
+    "n_eval_stages": 4,
+    "stages": [
+      "base",
+      "plugin-blank",
+      "plugin-accum",
+      "dream",
+      "plugin-dreamed"
+    ],
+    "timestamp": "20260623T195141Z",
+    "started_at": 1782244301.910985,
+    "ended_at": 1782246764.5646589,
+    "stages_run": [
+      "plugin-blank",
+      "plugin-accum",
+      "plugin-dreamed"
+    ]
+  },
+  "dream": {
+    "status": "not-implemented",
+    "note": "whole-store dream consolidation is not implemented yet (ADR-dreaming-020); this stage is a no-op placeholder",
+    "dream_consolidation": "not-implemented (no-op)"
+  },
+  "runs": [
+    {
+      "run_id": "pipeline-plugin-blank",
+      "timestamp": "2026-06-23T20:07:30+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "claude-code:claude-haiku-4-5:plugin-real",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:plugin-real+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.0,
+        "relevancy": 0.0,
+        "accuracy": 0.0,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 3,
+        "extra": {}
+      },
+      "n_tasks": 3,
+      "entries_used": 3,
+      "entries_available": 19,
+      "limit": 3,
+      "selection": "flat",
+      "cost_usd": 0.071278,
+      "tokens_in": 278,
+      "tokens_out": 14200,
+      "partial": true,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 0,
+        "memory_reached": 0,
+        "errors": []
+      },
+      "notes": "5-stage SWE-Bench-CL pipeline \u00b7 stage 2 (plugin-blank)",
+      "pipeline_stage": "plugin-blank",
+      "stage_index": 2,
+      "git_sha": "c8f3cf2",
+      "git_tag": "vbranch-main-b28b7af6"
+    },
+    {
+      "run_id": "pipeline-plugin-accum",
+      "timestamp": "2026-06-23T20:20:07+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "claude-code:claude-haiku-4-5:plugin-real",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:plugin-real+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.0,
+        "relevancy": 0.0,
+        "accuracy": 0.0,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 3,
+        "extra": {}
+      },
+      "n_tasks": 3,
+      "entries_used": 3,
+      "entries_available": 19,
+      "limit": 3,
+      "selection": "flat",
+      "cost_usd": 0.053475,
+      "tokens_in": 255,
+      "tokens_out": 10644,
+      "partial": true,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 0,
+        "memory_reached": 0,
+        "errors": []
+      },
+      "notes": "5-stage SWE-Bench-CL pipeline \u00b7 stage 3 (plugin-accum)",
+      "pipeline_stage": "plugin-accum",
+      "stage_index": 3,
+      "git_sha": "c8f3cf2",
+      "git_tag": "vbranch-main-b28b7af6"
+    },
+    {
+      "run_id": "pipeline-plugin-dreamed",
+      "timestamp": "2026-06-23T20:32:44+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "claude-code:claude-haiku-4-5:plugin-real",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:plugin-real+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.0,
+        "relevancy": 0.0,
+        "accuracy": 0.0,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 3,
+        "extra": {}
+      },
+      "n_tasks": 3,
+      "entries_used": 3,
+      "entries_available": 19,
+      "limit": 3,
+      "selection": "flat",
+      "cost_usd": 0.05811,
+      "tokens_in": 305,
+      "tokens_out": 11561,
+      "partial": true,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 0,
+        "memory_reached": 0,
+        "errors": []
+      },
+      "notes": "5-stage SWE-Bench-CL pipeline \u00b7 stage 5 (plugin-dreamed)",
+      "pipeline_stage": "plugin-dreamed",
+      "stage_index": 5,
+      "git_sha": "c8f3cf2",
+      "git_tag": "vbranch-main-b28b7af6"
+    }
+  ]
+}

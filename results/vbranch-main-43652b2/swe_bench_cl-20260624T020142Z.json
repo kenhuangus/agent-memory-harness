@@ -1,0 +1,418 @@
+{
+  "schema": 1,
+  "memory_version": "vbranch-main-43652b2",
+  "benchmark": "swe_bench_cl",
+  "timestamp": "20260624T020142Z",
+  "pipeline": {
+    "version": "vbranch-main-43652b2",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "43652b2",
+    "sequence": "pytest-dev_pytest_sequence",
+    "limit": 5,
+    "n_tasks": 5,
+    "model": "claude-haiku-4-5",
+    "code_mode": "agentic",
+    "grader": "auto",
+    "plugin_workers": 1,
+    "budget_usd": 10.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash"
+    },
+    "memory_store": "/Users/nerd/Git/agent-memory-harness/results/vbranch-main-43652b2/_memory",
+    "n_stages": 5,
+    "n_eval_stages": 4,
+    "stages": [
+      "base",
+      "plugin-blank",
+      "plugin-accum",
+      "dream",
+      "plugin-dreamed"
+    ],
+    "timestamp": "20260624T020142Z",
+    "started_at": 1782266502.458775,
+    "ended_at": 1782271866.573628,
+    "stages_run": [
+      "plugin-blank",
+      "plugin-accum",
+      "plugin-dreamed"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": {
+        "ok": true,
+        "code": "ok",
+        "remembered": true,
+        "hits": 1
+      }
+    }
+  },
+  "dream": {
+    "schema": "dream.summary",
+    "version": 1,
+    "mode": "detection_and_mutation_and_pruning_and_contradiction_and_governance",
+    "jobs_run": [
+      "dedup_detection",
+      "dedup_merge",
+      "ttl_pruning",
+      "contradiction_resolution",
+      "governance"
+    ],
+    "skipped_jobs": [],
+    "counts": {
+      "total_items": 0,
+      "duplicate_clusters": 0,
+      "items_in_duplicates": 0,
+      "items_retired": 0,
+      "items_pruned": 0,
+      "retention_seconds_effective": 2592000,
+      "items_contradicted": 0,
+      "contradiction_llm_calls": 0,
+      "contradiction_input_tokens": 0,
+      "contradiction_output_tokens": 0,
+      "contradiction_cost_usd_estimate": 0.0,
+      "contradiction_pairs_examined_estimate": 0,
+      "items_blacklisted": 0,
+      "items_must_known": 0,
+      "items_must_done": 0,
+      "governance_llm_calls": 0,
+      "governance_input_tokens": 0,
+      "governance_output_tokens": 0,
+      "governance_cost_usd_estimate": 0.0,
+      "governance_items_examined_estimate": 0
+    },
+    "clusters": [],
+    "pruned": {
+      "item_ids": [],
+      "retention_seconds_effective": 2592000
+    },
+    "contradicted": {
+      "pairs": [],
+      "model": "deepseek/deepseek-v4-flash"
+    },
+    "governance": {
+      "must_know": [],
+      "must_do": [],
+      "blacklisted": [],
+      "model": "deepseek/deepseek-v4-flash"
+    }
+  },
+  "runs": [
+    {
+      "run_id": "pipeline-plugin-blank",
+      "timestamp": "2026-06-24T02:42:03+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "claude-code:claude-haiku-4-5:plugin-real",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:plugin-real+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.0,
+        "relevancy": 0.0,
+        "accuracy": 0.6666666666666666,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 5,
+        "extra": {}
+      },
+      "n_tasks": 5,
+      "entries_used": 5,
+      "entries_available": 19,
+      "limit": 5,
+      "selection": "flat",
+      "cost_usd": 0.255425,
+      "tokens_in": 465,
+      "tokens_out": 50992,
+      "partial": true,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 0,
+        "memory_reached": 4,
+        "memory_hit": 0,
+        "recall_attempted": 4,
+        "recall_with_hits": 0,
+        "graded_n": 3,
+        "resolved": 2,
+        "ungraded": 2,
+        "grade_reasons": {
+          "gold_test_apply_failed": 2,
+          "graded": 3
+        },
+        "errors": []
+      },
+      "notes": "5-stage SWE-Bench-CL pipeline \u00b7 stage 2 (plugin-blank)",
+      "pipeline_stage": "plugin-blank",
+      "stage_index": 2,
+      "git_sha": "43652b2",
+      "git_tag": "vbranch-main-43652b2",
+      "memory_health": {
+        "before": {
+          "store_dir": "/Users/nerd/Git/agent-memory-harness/results/vbranch-main-43652b2/_memory/.cookbook-memory",
+          "events": 0,
+          "daydream_events": 0,
+          "recall_events": 0,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 0,
+          "daydream_memory_written": 0,
+          "memory_items": null,
+          "graph_nodes": null,
+          "markdown_items": 0,
+          "durable_items": 0
+        },
+        "after": {
+          "store_dir": "/Users/nerd/Git/agent-memory-harness/results/vbranch-main-43652b2/_memory/.cookbook-memory",
+          "events": 63,
+          "daydream_events": 0,
+          "recall_events": 3,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 3,
+          "recall_errors": 0,
+          "daydream_completed": 12,
+          "daydream_memory_written": 0,
+          "memory_items": 0,
+          "graph_nodes": 0,
+          "markdown_items": 0,
+          "durable_items": 0
+        },
+        "delta": {
+          "events": 63,
+          "daydream_events": 0,
+          "recall_events": 3,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 3,
+          "recall_errors": 0,
+          "daydream_completed": 12,
+          "daydream_memory_written": 0,
+          "markdown_items": 0,
+          "durable_items": 0
+        }
+      },
+      "warnings": [
+        {
+          "code": "daydream_completed_without_writes",
+          "message": "daydream completed but wrote no durable memories"
+        }
+      ]
+    },
+    {
+      "run_id": "pipeline-plugin-accum",
+      "timestamp": "2026-06-24T03:12:21+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "claude-code:claude-haiku-4-5:plugin-real",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:plugin-real+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.0,
+        "relevancy": 0.0,
+        "accuracy": 0.25,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 5,
+        "extra": {}
+      },
+      "n_tasks": 5,
+      "entries_used": 5,
+      "entries_available": 19,
+      "limit": 5,
+      "selection": "flat",
+      "cost_usd": 0.156182,
+      "tokens_in": 482,
+      "tokens_out": 31140,
+      "partial": true,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 0,
+        "memory_reached": 5,
+        "memory_hit": 0,
+        "recall_attempted": 5,
+        "recall_with_hits": 0,
+        "graded_n": 4,
+        "resolved": 1,
+        "ungraded": 1,
+        "grade_reasons": {
+          "gold_test_apply_failed": 1,
+          "graded": 4
+        },
+        "errors": []
+      },
+      "notes": "5-stage SWE-Bench-CL pipeline \u00b7 stage 3 (plugin-accum)",
+      "pipeline_stage": "plugin-accum",
+      "stage_index": 3,
+      "git_sha": "43652b2",
+      "git_tag": "vbranch-main-43652b2",
+      "memory_health": {
+        "before": {
+          "store_dir": "/Users/nerd/Git/agent-memory-harness/results/vbranch-main-43652b2/_memory/.cookbook-memory",
+          "events": 63,
+          "daydream_events": 0,
+          "recall_events": 3,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 3,
+          "recall_errors": 0,
+          "daydream_completed": 12,
+          "daydream_memory_written": 0,
+          "memory_items": 0,
+          "graph_nodes": 0,
+          "markdown_items": 0,
+          "durable_items": 0
+        },
+        "after": {
+          "store_dir": "/Users/nerd/Git/agent-memory-harness/results/vbranch-main-43652b2/_memory/.cookbook-memory",
+          "events": 132,
+          "daydream_events": 0,
+          "recall_events": 7,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 7,
+          "recall_errors": 0,
+          "daydream_completed": 25,
+          "daydream_memory_written": 0,
+          "memory_items": 0,
+          "graph_nodes": 0,
+          "markdown_items": 0,
+          "durable_items": 0
+        },
+        "delta": {
+          "events": 69,
+          "daydream_events": 0,
+          "recall_events": 4,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 4,
+          "recall_errors": 0,
+          "daydream_completed": 13,
+          "daydream_memory_written": 0,
+          "memory_items": 0,
+          "graph_nodes": 0,
+          "markdown_items": 0,
+          "durable_items": 0
+        }
+      },
+      "warnings": [
+        {
+          "code": "memory_store_empty",
+          "message": "shared store has no durable memories after accumulation stage"
+        },
+        {
+          "code": "daydream_completed_without_writes",
+          "message": "daydream completed but wrote no durable memories"
+        }
+      ]
+    },
+    {
+      "run_id": "pipeline-plugin-dreamed",
+      "timestamp": "2026-06-24T03:31:06+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "claude-code:claude-haiku-4-5:plugin-real",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:plugin-real+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.0,
+        "relevancy": 0.0,
+        "accuracy": 1.0,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 5,
+        "extra": {}
+      },
+      "n_tasks": 5,
+      "entries_used": 5,
+      "entries_available": 19,
+      "limit": 5,
+      "selection": "flat",
+      "cost_usd": 0.160225,
+      "tokens_in": 435,
+      "tokens_out": 31958,
+      "partial": true,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 0,
+        "memory_reached": 5,
+        "memory_hit": 0,
+        "recall_attempted": 5,
+        "recall_with_hits": 0,
+        "graded_n": 3,
+        "resolved": 3,
+        "ungraded": 2,
+        "grade_reasons": {
+          "gold_test_apply_failed": 2,
+          "graded": 3
+        },
+        "errors": []
+      },
+      "notes": "5-stage SWE-Bench-CL pipeline \u00b7 stage 5 (plugin-dreamed)",
+      "pipeline_stage": "plugin-dreamed",
+      "stage_index": 5,
+      "git_sha": "43652b2",
+      "git_tag": "vbranch-main-43652b2",
+      "memory_health": {
+        "before": {
+          "store_dir": "/Users/nerd/Git/agent-memory-harness/results/vbranch-main-43652b2/_memory/.cookbook-memory",
+          "events": 132,
+          "daydream_events": 0,
+          "recall_events": 7,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 7,
+          "recall_errors": 0,
+          "daydream_completed": 25,
+          "daydream_memory_written": 0,
+          "memory_items": 0,
+          "graph_nodes": 0,
+          "markdown_items": 0,
+          "durable_items": 0
+        },
+        "after": {
+          "store_dir": "/Users/nerd/Git/agent-memory-harness/results/vbranch-main-43652b2/_memory/.cookbook-memory",
+          "events": 191,
+          "daydream_events": 0,
+          "recall_events": 11,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 11,
+          "recall_errors": 0,
+          "daydream_completed": 36,
+          "daydream_memory_written": 0,
+          "memory_items": 0,
+          "graph_nodes": 0,
+          "markdown_items": 0,
+          "durable_items": 0
+        },
+        "delta": {
+          "events": 59,
+          "daydream_events": 0,
+          "recall_events": 4,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 4,
+          "recall_errors": 0,
+          "daydream_completed": 11,
+          "daydream_memory_written": 0,
+          "memory_items": 0,
+          "graph_nodes": 0,
+          "markdown_items": 0,
+          "durable_items": 0
+        }
+      },
+      "warnings": [
+        {
+          "code": "memory_store_empty",
+          "message": "shared store has no durable memories after accumulation stage"
+        },
+        {
+          "code": "daydream_completed_without_writes",
+          "message": "daydream completed but wrote no durable memories"
+        }
+      ]
+    }
+  ]
+}

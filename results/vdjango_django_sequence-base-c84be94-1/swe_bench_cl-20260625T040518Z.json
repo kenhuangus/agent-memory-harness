@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "memory_version": "vdjango_django_sequence-base-c84be94-1",
+  "benchmark": "swe_bench_cl",
+  "timestamp": "20260625T040518Z",
+  "pipeline": {
+    "version": "vdjango_django_sequence-base-c84be94-1",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "c84be94",
+    "benchmark": "swe_bench_cl",
+    "sequence": "django_django_sequence",
+    "stage": "base",
+    "limit": null,
+    "n_tasks": 50,
+    "model": "claude-haiku-4-5",
+    "code_mode": "agentic",
+    "grader": "swebench",
+    "plugin_workers": 1,
+    "budget_usd": 10.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash"
+    },
+    "memory_store": "/Users/nerd/Git/agent-memory-harness/results/vdjango_django_sequence-base-c84be94-1/_memory",
+    "n_stages": 1,
+    "n_eval_stages": 1,
+    "stages": [
+      "base"
+    ],
+    "timestamp": "20260625T040518Z",
+    "started_at": 1782360318.242796,
+    "ended_at": null,
+    "stages_run": [
+      "base"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": null
+    }
+  },
+  "dream": {
+    "status": "not-run"
+  },
+  "runs": [
+    {
+      "run_id": "pipeline-base",
+      "timestamp": "2026-06-25T04:41:40+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "claude-code:claude-haiku-4-5:off",
+      "memory": false,
+      "label": "claude-code:claude-haiku-4-5:off",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.0,
+        "relevancy": 0.0,
+        "accuracy": 0.0,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 13,
+        "extra": {}
+      },
+      "n_tasks": 13,
+      "entries_used": 13,
+      "entries_available": 50,
+      "limit": null,
+      "selection": "flat",
+      "cost_usd": 0.818647,
+      "tokens_in": 1187,
+      "tokens_out": 163492,
+      "partial": true,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 0,
+        "memory_reached": 0,
+        "memory_hit": 0,
+        "recall_attempted": 0,
+        "recall_with_hits": 0,
+        "graded_n": 0,
+        "resolved": 0,
+        "ungraded": 13,
+        "grade_reasons": {
+          "swebench not installed (No module named 'swebench'); install the 'swebench' extra": 13
+        },
+        "errors": []
+      },
+      "notes": "single-stage pipeline \u00b7 swe_bench_cl \u00b7 stage base",
+      "pipeline_stage": "base",
+      "stage_index": 1,
+      "git_sha": "c84be94",
+      "git_tag": "vdjango_django_sequence-base-c84be94-1"
+    }
+  ]
+}
