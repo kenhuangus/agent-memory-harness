@@ -1,0 +1,1 @@
+{"cursor": 19432, "last_summary": "The user wants to add a `_print_Indexed` method to `PythonCodePrinter` in SymPy so that `pycode(p[0])` prints `p[0]` instead of emitting a 'Not supported in Python' warning.", "recent_memory_ids": ["mem_016bdac2"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
