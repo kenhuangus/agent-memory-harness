@@ -302,3 +302,98 @@ def test_make_venv_offline_stub_no_fallback(tmp_path) -> None:
     dest.mkdir()
     assert g._make_venv(dest, python="3.6") is None
     assert not any(c[:3] == ["uv", "python", "list"] for c in calls)  # no fallback search
+
+
+# --------------------------------------------------------------------------- #
+# Host-vs-conda base env: a fresh uv venv lacks pip (so spec installs assuming
+# ``python -m pip`` fail -> no pytest -> empty log -> 'no statuses'), and ``--seed``
+# installs the LATEST setuptools/docutils which break OLD repo eras.
+# --------------------------------------------------------------------------- #
+def _seed_probe_runner(calls):
+    """A CmdRunner that records calls and materializes a stub venv interpreter."""
+
+    def r(args, cwd, env=None):
+        calls.append(list(args))
+        if args[:2] == ["uv", "venv"]:
+            venv = Path(args[-1])
+            (venv / "bin").mkdir(parents=True, exist_ok=True)
+            (venv / "bin" / "python").write_text("#!stub\n", encoding="utf-8")
+        return CmdResult(returncode=0)
+
+    return r
+
+
+def test_make_venv_seed_is_opt_in(tmp_path) -> None:
+    """``--seed`` (pip/setuptools/wheel) is added to the venv ONLY when ``seed=True``.
+    A repo that needs conda-base parity gets pip; every OTHER repo's venv is created
+    byte-identically to before (no cross-benchmark behavior change)."""
+    seeded: list = []
+    g = SwebenchHostGrader(runner=_seed_probe_runner(seeded))
+    d1 = tmp_path / "seeded"
+    d1.mkdir()
+    g._make_venv(d1, python="3.9", seed=True)
+    venv1 = [c for c in seeded if c[:2] == ["uv", "venv"]]
+    assert venv1 and all("--seed" in c for c in venv1)
+
+    plain: list = []
+    g2 = SwebenchHostGrader(runner=_seed_probe_runner(plain))
+    d2 = tmp_path / "plain"
+    d2.mkdir()
+    g2._make_venv(d2, python="3.9", seed=False)   # default
+    venv2 = [c for c in plain if c[:2] == ["uv", "venv"]]
+    assert venv2 and not any("--seed" in c for c in venv2)
+
+
+def test_needs_seed_scoped_to_conda_base_repos() -> None:
+    """Only repos in ``_CONDA_BASE_REPOS`` (currently sphinx) request ``--seed``; every
+    other repo returns False, so the fix has NO blast radius on teammates' benchmarks."""
+    g = SwebenchHostGrader()
+    assert g._needs_seed("sphinx-doc/sphinx") is True
+    assert g._needs_seed("SPHINX-DOC/SPHINX") is True   # case-insensitive
+    for repo in ("django/django", "sympy/sympy", "scikit-learn/scikit-learn", "", None):
+        assert g._needs_seed(repo) is False, repo
+
+
+def test_era_base_pins_clamps_old_sphinx_only() -> None:
+    """Old sphinx (3.x) needs era deps (setuptools<60 for pkg_resources, docutils<0.16
+    for the top-level ``roman`` module); sphinx 4.x+ REQUIRE the modern deps, and other
+    repos are unaffected — so the clamp must be scoped to the affected era ONLY."""
+    g = SwebenchHostGrader()
+    for v in ("3.0", "3.5", "3.99"):
+        assert g._era_base_pins("sphinx-doc/sphinx", v) == [
+            "setuptools<60", "docutils<0.16"], v
+    for v in ("4.0", "4.1", "5.0", "7.2"):
+        assert g._era_base_pins("sphinx-doc/sphinx", v) == [], v
+    assert g._era_base_pins("django/django", "3.0") == []   # other repo: untouched
+    assert g._era_base_pins("sphinx-doc/sphinx", "garbage") == []  # unparseable: no clamp
+
+
+def test_install_clamps_era_deps_last(tmp_path) -> None:
+    """``_install`` issues the era-pin clamp as the LAST ``uv pip install`` — after the
+    spec install and the editable install — so a too-new resolve from either cannot
+    survive into the test run."""
+    calls: list = []
+
+    def fake_runner(args, cwd, env=None):
+        calls.append(list(args))
+        return CmdResult(returncode=0)
+
+    g = SwebenchHostGrader(runner=fake_runner)
+    dest = tmp_path / "repo"
+    dest.mkdir()
+    spec = {"install": "python -m pip install -e .[test]"}
+    g._install(dest, "PY", spec, era_pins=["setuptools<60", "docutils<0.16"])
+    # The clamp must be the VERY LAST runner call overall (not merely the last
+    # ``uv pip install``), so a future reorder that moved the spec install (``PY -m
+    # pip ...``) or the editable install after it would fail this test.
+    assert calls[-1] == ["uv", "pip", "install", "--python", "PY",
+                         "setuptools<60", "docutils<0.16"]
+    # ...and the editable install really does precede the clamp (it is not last).
+    edit_idxs = [i for i, c in enumerate(calls)
+                 if c[:3] == ["uv", "pip", "install"] and c[-2:] == ["-e", "."]]
+    assert edit_idxs and max(edit_idxs) < len(calls) - 1
+    # No-op when there are no era pins (newer eras / other repos).
+    calls.clear()
+    g._install(dest, "PY", spec, era_pins=[])
+    assert all(c[-2:] != ["setuptools<60", "docutils<0.16"]
+               for c in calls if c[:3] == ["uv", "pip", "install"])
