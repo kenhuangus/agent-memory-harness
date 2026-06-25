@@ -188,7 +188,14 @@ def _handle_daydream(args: argparse.Namespace) -> int:
     try:
         try:
             basedir = _state.resolve_basedir()
-        except (KeyError, FileNotFoundError, ValueError) as exc:
+        except (KeyError, ValueError, OSError) as exc:
+            # OSError (superset of FileNotFoundError) covers an unwritable /
+            # uncreatable MEMORY_STORE path: PermissionError (read-only
+            # parent), NotADirectoryError, ENOSPC, etc. resolve_basedir does
+            # mkdir(parents=True), so any of these can surface here. Catching
+            # only FileNotFoundError/ValueError/KeyError let PermissionError
+            # escape and crash the async Stop-hook subprocess with a traceback
+            # + exit 1, breaking the fail-open contract (ADR-harness-006).
             log.warning(
                 "daydream-cli: MEMORY_STORE resolution failed (%s: %s); fail-open exit 0",
                 type(exc).__name__, exc,
@@ -268,7 +275,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         from ..dotenv_loader import load_root_dotenv
         load_root_dotenv()
-    except Exception:  # noqa: BLE001 - never let env loading break the hook (fail-open)
+    except Exception:  # noqa: BLE001  # REASON: never let env loading break the hook (fail-open)
         pass
     parser = _build_parser()
     try:
@@ -291,3 +298,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.subcommand == "dream":
         return _handle_dream(args)
     return 1
+
+
+if __name__ == "__main__":  # pragma: no cover  # REASON: module-run entry, exercised via subprocess `-m` test
+    # The Claude Code plugin's Stop/PreCompact hooks invoke this module as
+    # ``python -m memeval.dreaming.cli daydream`` (see hooks_handler.
+    # _daydream_command). Without this guard, ``-m`` would import the module
+    # and exit 0 WITHOUT calling main() — every hook-fired daydream became a
+    # silent no-op (no LLM call, no writes, no cursor advance). Keep this in
+    # sync with __main__.py, which provides the same entry for safety.
+    raise SystemExit(main())
