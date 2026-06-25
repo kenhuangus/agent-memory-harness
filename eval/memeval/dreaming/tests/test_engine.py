@@ -96,9 +96,23 @@ def basedir(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def log_path(tmp_path: Path) -> Path:
-    """Provide a tmp log file with sample content."""
+    """Provide a tmp log file with valid CC-shaped JSONL content.
+
+    Shape matters: ADR-dreaming-026's noise-filter pre-pass renders raw
+    JSONL into structured text before redaction + LLM. A single user-shaped
+    line with a text-block message body survives the filter as one
+    ``━━━ #1 [...] USER ━━━`` turn header plus the ``[text] hello...``
+    content — non-empty, so the engine proceeds past the post-filter
+    early-return guard.
+    """
     p = tmp_path / "session.jsonl"
-    p.write_text("hello world this is some session content\n", encoding="utf-8")
+    p.write_text(
+        '{"type":"user","message":{"role":"user","content":[{"type":"text",'
+        '"text":"hello world this is some session content"}]},'
+        '"sessionId":"s","uuid":"u1",'
+        '"timestamp":"2026-06-24T00:00:00Z"}\n',
+        encoding="utf-8",
+    )
     return p
 
 
@@ -1577,3 +1591,277 @@ def test_halliday_findings_have_coverage_criterion_172() -> None:
             assert re.search(rf"\b{crit}\b", text), (
                 f"rubric criterion {crit} (for {f_num}) not found in rubric"
             )
+
+
+# --------------------------------------------------------------------------- #
+# §NF — ADR-dreaming-026 noise filter integration
+#
+# These tests opt BACK INTO the filter (conftest.py disables it by default
+# for the legacy suite). They exercise the engine's filter wiring at
+# engine.py:141 — the format_chunk() call, the daydream.noise_filtered
+# event, and the empty-filtered-output early return.
+# --------------------------------------------------------------------------- #
+def _jsonl_user_line(text: str = "what's the bug?") -> str:
+    """One CC-shaped user-event JSONL line that the formatter renders."""
+    import json as _json
+    return _json.dumps({
+        "type": "user",
+        "message": {"role": "user",
+                    "content": [{"type": "text", "text": text}]},
+        "timestamp": "2026-06-24T00:00:00Z",
+    }) + "\n"
+
+
+def test_filter_on_emits_noise_filtered_event_with_ratio_fields(
+    monkeypatch: pytest.MonkeyPatch,
+    basedir: Path,
+    tmp_path: Path,
+    session_id: str,
+) -> None:
+    """ADR-026 §Decision — daydream.noise_filtered fires with
+    bytes_raw/bytes_formatted/ratio whenever the filter runs."""
+    monkeypatch.setenv("DREAM_NOISE_FILTER", "1")
+    # Build a chunk with two noise events + one signal event — should compress.
+    import json as _json
+    log = tmp_path / "session.jsonl"
+    log.write_text(
+        _json.dumps({"type": "queue-operation", "operation": "enqueue",
+                     "content": "x" * 400,
+                     "timestamp": "2026-06-24T00:00:00Z"}) + "\n"
+        + _json.dumps({"type": "attachment", "data": "y" * 1000,
+                       "timestamp": "2026-06-24T00:00:00Z"}) + "\n"
+        + _jsonl_user_line("real signal here"),
+        encoding="utf-8",
+    )
+    daydream(
+        session_id=session_id, log_path=log,
+        store=InMemoryStore(), client=StubClient(),
+        basedir=basedir, now=1000.0, id_gen=_Counter(),
+    )
+    records = _diary_records(basedir, session_id)
+    nf = [r for r in records if r["event_type"] == "daydream.noise_filtered"]
+    assert len(nf) == 1, f"expected one noise_filtered event, got {len(nf)}"
+    r = nf[0]
+    assert r["session_id"] == session_id
+    assert r["chunk_id"] == 0
+    assert r["bytes_raw"] > r["bytes_formatted"], "filter should compress"
+    assert 0 < r["ratio"] < 1.0
+
+
+def test_filter_off_skips_emit_and_passes_raw_chunk(
+    monkeypatch: pytest.MonkeyPatch,
+    basedir: Path,
+    tmp_path: Path,
+    session_id: str,
+) -> None:
+    """DREAM_NOISE_FILTER=0 → no noise_filtered event, raw chunk reaches
+    the LLM unchanged. The user-content the LLM sees should contain the
+    raw JSONL line text (not the [text] marker form)."""
+    monkeypatch.setenv("DREAM_NOISE_FILTER", "0")
+    log = tmp_path / "session.jsonl"
+    log.write_text(_jsonl_user_line("RAW_PASSTHROUGH_MARKER"), encoding="utf-8")
+    client = StubClient()
+    daydream(
+        session_id=session_id, log_path=log,
+        store=InMemoryStore(), client=client,
+        basedir=basedir, now=1000.0, id_gen=_Counter(),
+    )
+    records = _diary_records(basedir, session_id)
+    assert not any(r["event_type"] == "daydream.noise_filtered" for r in records)
+    # client.calls[0] is (prompt, system, max_tokens); the prompt is the
+    # envelope-wrapped chunk text. Confirm raw JSONL went through (no
+    # [text] marker from the formatter).
+    wrapped_prompt = str(client.calls[0][0])
+    assert "RAW_PASSTHROUGH_MARKER" in wrapped_prompt
+    assert "[text]" not in wrapped_prompt
+
+
+def test_filter_on_raw_payload_reaches_llm_in_formatter_shape(
+    monkeypatch: pytest.MonkeyPatch,
+    basedir: Path,
+    tmp_path: Path,
+    session_id: str,
+) -> None:
+    """Counterpart: with filter on, the [text] marker DOES appear in the
+    user content the LLM receives — proof the formatter is in the path."""
+    monkeypatch.setenv("DREAM_NOISE_FILTER", "1")
+    log = tmp_path / "session.jsonl"
+    log.write_text(_jsonl_user_line("FILTERED_MARKER"), encoding="utf-8")
+    client = StubClient()
+    daydream(
+        session_id=session_id, log_path=log,
+        store=InMemoryStore(), client=client,
+        basedir=basedir, now=1000.0, id_gen=_Counter(),
+    )
+    wrapped_prompt = str(client.calls[0][0])
+    assert "[text] FILTERED_MARKER" in wrapped_prompt
+
+
+def test_filter_on_all_malformed_chunk_early_returns_no_llm_call(
+    monkeypatch: pytest.MonkeyPatch,
+    basedir: Path,
+    tmp_path: Path,
+    session_id: str,
+) -> None:
+    """ADR-026 §Decision — when the filter strips ALL content (every line
+    malformed), don't waste an LLM call. Same semantics as the raw-empty
+    early-return: cursor doesn't advance, no chunk_extracted event, but
+    noise_filtered DOES fire with bytes_formatted=0 (for visibility)."""
+    monkeypatch.setenv("DREAM_NOISE_FILTER", "1")
+    log = tmp_path / "session.jsonl"
+    log.write_text("garbage one\ngarbage two\ngarbage three\n", encoding="utf-8")
+    client = StubClient()
+    daydream(
+        session_id=session_id, log_path=log,
+        store=InMemoryStore(), client=client,
+        basedir=basedir, now=1000.0, id_gen=_Counter(),
+    )
+    # LLM was NOT called.
+    assert client.calls == []
+    records = _diary_records(basedir, session_id)
+    # noise_filtered fired with ratio 0
+    nf = [r for r in records if r["event_type"] == "daydream.noise_filtered"]
+    assert len(nf) == 1
+    assert nf[0]["bytes_formatted"] == 0
+    assert nf[0]["ratio"] == 0.0
+    # No chunk_extracted (LLM never called).
+    assert not any(r["event_type"] == "daydream.chunk_extracted" for r in records)
+
+
+def test_filter_on_cursor_does_not_advance_when_chunk_filtered_to_empty(
+    monkeypatch: pytest.MonkeyPatch,
+    basedir: Path,
+    tmp_path: Path,
+    session_id: str,
+) -> None:
+    """Sticky-cursor preservation: if the filter empties the chunk, the
+    sidecar cursor must NOT advance — so the next invocation can pick up
+    the same bytes once they're joined by something the filter keeps."""
+    monkeypatch.setenv("DREAM_NOISE_FILTER", "1")
+    log = tmp_path / "session.jsonl"
+    log.write_text("garbage\n", encoding="utf-8")
+    daydream(
+        session_id=session_id, log_path=log,
+        store=InMemoryStore(), client=StubClient(),
+        basedir=basedir, now=1000.0, id_gen=_Counter(),
+    )
+    # Sidecar cursor is still 0 (no write occurred → file may not exist,
+    # which means cursor defaults to 0 on next load — that's correct).
+    import json as _json
+    from memeval.dreaming._state import sidecar_path
+    sc = sidecar_path(basedir, session_id)
+    if sc.exists():
+        cursor_after = _json.loads(sc.read_text())["cursor"]
+        assert cursor_after == 0
+
+
+def test_filter_on_parser_limit_env_var_truncates(
+    monkeypatch: pytest.MonkeyPatch,
+    basedir: Path,
+    tmp_path: Path,
+    session_id: str,
+) -> None:
+    """DREAM_PARSER_LIMIT=N caps per-block length to N chars in the
+    formatter, surfacing as a 'truncated' marker in the user content
+    the LLM sees."""
+    monkeypatch.setenv("DREAM_NOISE_FILTER", "1")
+    monkeypatch.setenv("DREAM_PARSER_LIMIT", "100")
+    log = tmp_path / "session.jsonl"
+    log.write_text(_jsonl_user_line("z" * 800), encoding="utf-8")
+    client = StubClient()
+    daydream(
+        session_id=session_id, log_path=log,
+        store=InMemoryStore(), client=client,
+        basedir=basedir, now=1000.0, id_gen=_Counter(),
+    )
+    wrapped_prompt = str(client.calls[0][0])
+    assert "truncated" in wrapped_prompt
+    assert "z" * 800 not in wrapped_prompt  # NOT in the LLM's view
+
+
+def test_filter_on_parser_limit_unset_defaults_to_no_truncation(
+    monkeypatch: pytest.MonkeyPatch,
+    basedir: Path,
+    tmp_path: Path,
+    session_id: str,
+) -> None:
+    """When DREAM_PARSER_LIMIT is unset, the engine defaults to limit=0
+    (no truncation) — matches the parser's ``"full"`` CLI mode. Regression
+    guard against accidentally changing the default to a truncating value."""
+    monkeypatch.setenv("DREAM_NOISE_FILTER", "1")
+    monkeypatch.delenv("DREAM_PARSER_LIMIT", raising=False)
+    long_text = "z" * 2000
+    log = tmp_path / "session.jsonl"
+    log.write_text(_jsonl_user_line(long_text), encoding="utf-8")
+    client = StubClient()
+    daydream(
+        session_id=session_id, log_path=log,
+        store=InMemoryStore(), client=client,
+        basedir=basedir, now=1000.0, id_gen=_Counter(),
+    )
+    wrapped_prompt = str(client.calls[0][0])
+    assert long_text in wrapped_prompt  # full text round-trips
+    assert "truncated" not in wrapped_prompt
+
+
+def test_filter_on_audit_pre_contains_formatted_not_raw(
+    monkeypatch: pytest.MonkeyPatch,
+    basedir: Path,
+    tmp_path: Path,
+    session_id: str,
+) -> None:
+    """ADR-026 §Tradeoffs explicitly notes the audit ``pre`` field becomes
+    the post-filter (formatted) text when the filter is on. Pin that
+    behavior so a future caller debugging a redaction FN/FP knows what
+    they're seeing — and so a future refactor that changes the audit
+    semantics goes red here first."""
+    import json as _json
+    monkeypatch.setenv("DREAM_NOISE_FILTER", "1")
+    log = tmp_path / "session.jsonl"
+    log.write_text(_jsonl_user_line("AUDIT_PRE_PROBE_TOKEN"), encoding="utf-8")
+    daydream(
+        session_id=session_id, log_path=log,
+        store=InMemoryStore(), client=StubClient(),
+        basedir=basedir, now=1000.0, id_gen=_Counter(),
+    )
+    # The audit file is at <basedir>/dream/<session>.redact-audit.jsonl —
+    # uses the same safe_session_stem the engine uses. Read the latest
+    # entry's pre field.
+    from memeval.dreaming._state import audit_path
+    audit_lines = audit_path(basedir, session_id).read_text(encoding="utf-8").splitlines()
+    assert audit_lines, "audit file empty — engine didn't write"
+    entry = _json.loads(audit_lines[-1])
+    pre = entry["pre"]
+    # Formatted shape markers present, raw JSONL keys absent.
+    assert "[text] AUDIT_PRE_PROBE_TOKEN" in pre
+    assert '"sessionId"' not in pre  # raw JSONL metadata stripped by formatter
+
+
+def test_filter_on_clean_content_emits_no_redaction_events(
+    monkeypatch: pytest.MonkeyPatch,
+    basedir: Path,
+    tmp_path: Path,
+    session_id: str,
+) -> None:
+    """Filter-ON counterpart to ``test_no_redaction_chunk_event_when_clean_*``
+    (which inherits the conftest's filter-OFF default). Pins that with the
+    filter active, a chunk with NO secrets still produces no redaction.chunk
+    events — i.e. the filter doesn't introduce false positives by inserting
+    text that LOOKS like a secret. Closes the conftest-hammer mask gap
+    flagged by the test-discipline lens of the ADR-026 adversarial review."""
+    monkeypatch.setenv("DREAM_NOISE_FILTER", "1")
+    log = tmp_path / "session.jsonl"
+    log.write_text(
+        _jsonl_user_line("clean prose with no secrets at all whatsoever"),
+        encoding="utf-8",
+    )
+    daydream(
+        session_id=session_id, log_path=log,
+        store=InMemoryStore(), client=StubClient(),
+        basedir=basedir, now=1000.0, id_gen=_Counter(),
+    )
+    records = _diary_records(basedir, session_id)
+    # The chunk should have made it through (noise_filtered fired) AND no
+    # redactions should have triggered.
+    assert any(r["event_type"] == "daydream.noise_filtered" for r in records)
+    assert not any(r["event_type"] == "redaction.chunk" for r in records)
