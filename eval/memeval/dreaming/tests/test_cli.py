@@ -547,6 +547,31 @@ def test_daydream_subcommand_failopens_on_valueerror(
     assert any("MEMORY_STORE" in rec.getMessage() for rec in caplog.records)
 
 
+def test_daydream_subcommand_failopens_on_oserror_basedir(
+    empty_stdin: None, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, tmp_path: Path,
+) -> None:
+    """daydream-workflow-hardening — resolve_basedir raising PermissionError
+    (unwritable / uncreatable MEMORY_STORE path) → exit 0 + WARNING, NOT a
+    crash. Before the fix the guard caught only KeyError/FileNotFoundError/
+    ValueError, so PermissionError escaped and the async Stop-hook subprocess
+    died with a traceback + exit 1, breaking the fail-open contract."""
+    from memeval.dreaming import _state
+
+    def _boom() -> Path:
+        raise PermissionError("[Errno 13] Permission denied: '/ro/sub'")
+
+    monkeypatch.setattr(_state, "resolve_basedir", _boom)
+    log_file = tmp_path / "log.jsonl"
+    log_file.touch()
+    caplog.set_level(logging.WARNING, logger="memeval.dreaming.cli")
+    assert cli.main(["daydream", "--session", "S", "--log", str(log_file)]) == 0
+    assert any(
+        "MEMORY_STORE resolution failed" in rec.getMessage()
+        and "PermissionError" in rec.getMessage()
+        for rec in caplog.records
+    )
+
+
 def test_daydream_subcommand_failopens_on_unexpected_exception(
     empty_stdin: None, memory_store_dir: Path, fake_make_store: MagicMock,
     fake_emit: list[Any], caplog: pytest.LogCaptureFixture, tmp_path: Path,
