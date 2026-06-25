@@ -163,21 +163,6 @@ def is_logged_in(config_dir: Optional[Path] = None) -> bool:
 #: The Claude Code marketplace + plugin name the cookbook-memory bundle declares.
 PLUGIN_MARKETPLACE = "cookbook-memory"
 PLUGIN_NAME = "cookbook-memory"
-PLUGIN_KEY = f"{PLUGIN_NAME}@{PLUGIN_MARKETPLACE}"
-
-
-def _installed_plugin_path(config_dir: Path) -> Optional[Path]:
-    manifest = config_dir / "plugins" / "installed_plugins.json"
-    try:
-        data = json.loads(manifest.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    entries = data.get("plugins", {}).get(PLUGIN_KEY) or []
-    for entry in entries:
-        path = entry.get("installPath")
-        if path and Path(path).exists():
-            return Path(path)
-    return None
 
 
 def install_plugin_bundle(
@@ -290,8 +275,7 @@ def setup_real_plugin(
     _require_plugin_mcp_runtime()
     d = (config_dir or default_config_dir()).resolve()
     bundle = build_bundle(out_dir or (d / "_plugin-bundle"))
-    if _installed_plugin_path(d) is None:
-        install_plugin_bundle(bundle, config_dir=d, claude_exe=claude_exe, model=model)
+    install_plugin_bundle(bundle, config_dir=d, claude_exe=claude_exe, model=model)
     # The sandbox needs its OWN auth (a fresh CLAUDE_CONFIG_DIR), or every turn dies on
     # "Not logged in". Seed from the host subscription FIRST (idempotent; refreshes the
     # token if the host has since rotated it) — do not gate this on is_logged_in, because
