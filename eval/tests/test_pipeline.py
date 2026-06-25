@@ -1,7 +1,7 @@
 """Offline end-to-end test for the single-stage memory pipeline.
 
 Drives ``run_pipeline`` with a fake ``claude`` runner (no network, no real plugin, no
-``daydream-cli``) on the vendored fixture, asserting the pipeline:
+dreaming runtime) on the vendored fixture, asserting the pipeline:
 
 * runs exactly ONE eval stage over ONE sequence and writes a self-describing results
   file with the ``pipeline`` metadata block (benchmark, sequence, stage, model, dreamer,
@@ -19,6 +19,7 @@ Stdlib + pytest only.
 from __future__ import annotations
 
 import json
+import os
 import types
 import tempfile
 from pathlib import Path
@@ -97,12 +98,36 @@ def _cfg(tmp: str, *, stage: str = "plugin-accum", benchmark: str = "swe_bench_c
     }
 
 
+def _source_memory(tmp: str, *, version: str = "vprior",
+                   benchmark: str = "swe_bench_cl",
+                   sequence: str = "pytest-dev_pytest_sequence",
+                   stage: str = "plugin-blank") -> Path:
+    vd = Path(tmp) / version
+    memory = vd / "_memory" / ".cookbook-memory"
+    memory.mkdir(parents=True)
+    (memory / "prior.md").write_text("prior memory\n", encoding="utf-8")
+    (vd / "swe_bench_cl-20260101T000000Z.json").write_text(json.dumps({
+        "benchmark": benchmark,
+        "timestamp": "20260101T000000Z",
+        "pipeline": {
+            "benchmark": benchmark,
+            "sequence": sequence,
+            "stage": stage,
+            "timestamp": "20260101T000000Z",
+        },
+        "runs": [],
+    }), encoding="utf-8")
+    return vd / "_memory"
+
+
 def test_pipeline_end_to_end_offline(monkeypatch) -> None:
     substrate_seen: list = []
     _install_fakes(monkeypatch, substrate_seen)
 
     with tempfile.TemporaryDirectory() as tmp:
+        source = _source_memory(tmp)
         cfg = _cfg(tmp)  # single stage: plugin-accum (the default)
+        cfg["source_memory"] = str(source)
         summary = P.run_pipeline(cfg)
 
         # The single plugin-real stage saw the shared substrate.
@@ -111,12 +136,16 @@ def test_pipeline_end_to_end_offline(monkeypatch) -> None:
         substrate = Path(substrate_seen[0])
         assert substrate.name == "_memory"
         assert (substrate / ".cookbook-memory").is_dir()
+        assert (substrate / ".cookbook-memory" / "prior.md").is_file()
         # Memory landed in the shared store (the dir persists across invocations).
         markers = list((substrate / ".cookbook-memory").glob("mem_*.md"))
         assert markers, "no memory written to the shared substrate"
 
         # Results file written, self-describing, with the pipeline block.
-        results = list((Path(tmp)).rglob("swe_bench_cl-*.json"))
+        results = [
+            p for p in Path(tmp).rglob("swe_bench_cl-*.json")
+            if p.parent != source.parent
+        ]
         assert len(results) == 1, f"expected one results file, got {results}"
         doc = json.loads(results[0].read_text())
         assert doc["benchmark"] == "swe_bench_cl"
@@ -124,6 +153,7 @@ def test_pipeline_end_to_end_offline(monkeypatch) -> None:
         assert pm["benchmark"] == "swe_bench_cl"
         assert pm["sequence"] == "pytest-dev_pytest_sequence"
         assert pm["stage"] == "plugin-accum"
+        assert pm["source_memory"] == str(source.resolve())
         assert pm["model"] == "claude-haiku-4-5"
         assert pm["n_stages"] == 1            # single stage, no dream pass
         assert pm["stages"] == ["plugin-accum"]
@@ -156,12 +186,16 @@ def test_pipeline_dreamed_stage_runs_dream_pass(monkeypatch) -> None:
     _install_fakes(monkeypatch, substrate_seen)
 
     with tempfile.TemporaryDirectory() as tmp:
-        summary = P.run_pipeline(_cfg(tmp, stage="plugin-dreamed"))
+        source = _source_memory(tmp)
+        cfg = _cfg(tmp, stage="plugin-dreamed")
+        cfg["source_memory"] = str(source)
+        summary = P.run_pipeline(cfg)
 
         results = list(Path(tmp).rglob("swe_bench_cl-*.json"))
-        doc = json.loads(results[0].read_text())
+        doc = json.loads([p for p in results if p.parent != source.parent][0].read_text())
         pm = doc["pipeline"]
         assert pm["stage"] == "plugin-dreamed"
+        assert pm["source_memory"] == str(source.resolve())
         assert pm["stages"] == ["dream", "plugin-dreamed"]
         assert pm["n_stages"] == 2
         # The dream block reflects a real (offline no-op) consolidation pass, not "not-run".
@@ -220,7 +254,10 @@ def test_pipeline_results_path_is_version_scoped(monkeypatch) -> None:
     substrate_seen: list = []
     _install_fakes(monkeypatch, substrate_seen)
     with tempfile.TemporaryDirectory() as tmp:
-        P.run_pipeline(_cfg(tmp))
+        source = _source_memory(tmp)
+        cfg = _cfg(tmp)
+        cfg["source_memory"] = str(source)
+        P.run_pipeline(cfg)
         version_dirs = [p for p in Path(tmp).iterdir() if p.is_dir() and p.name.startswith("v")]
         assert version_dirs, f"no v{{version}} dir under {tmp}"
         vd = version_dirs[0]
@@ -228,19 +265,20 @@ def test_pipeline_results_path_is_version_scoped(monkeypatch) -> None:
         assert list(vd.glob("swe_bench_cl-*.json"))
 
 
-def test_interactive_config_defaults_to_single_accum_stage(monkeypatch) -> None:
-    # Accept every default (8 prompts: benchmark, sequence, stage, tasks, model,
-    # grader, budget, version slug).
-    answers = iter([""] * 8)
+def test_interactive_config_defaults_to_single_accum_stage(monkeypatch, tmp_path) -> None:
+    # Accept every default, including the plugin-accum source-memory selection.
+    source = _source_memory(str(tmp_path))
+    answers = iter([""] * 9)
     monkeypatch.setattr(P, "_interactive", lambda: True)
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
-    args = P._build_parser().parse_args([])
+    args = P._build_parser().parse_args(["--results-dir", str(tmp_path)])
 
     cfg = P._resolve_config(args)
 
     assert cfg["benchmark"] == "swe_bench_cl"
     assert cfg["stage"] == "plugin-accum"
     assert cfg["sequence"] == "pytest-dev_pytest_sequence"
+    assert cfg["source_memory"] == str(source.resolve())
 
 
 def test_interactive_config_can_select_base_stage(monkeypatch) -> None:
@@ -274,10 +312,31 @@ def test_interactive_mode_menu_accepts_a_number(monkeypatch) -> None:
     assert any("mode [" in p for p in prompts)  # the mode menu was shown
 
 
+def test_interactive_model_menu_accepts_a_number(monkeypatch) -> None:
+    # benchmark, sequence, mode=base, tasks default, model = 2nd menu option.
+    answers = iter(["", "", "base", "", "2", "", "", ""])
+    monkeypatch.setattr(P, "_interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
+
+    cfg = P._resolve_config(P._build_parser().parse_args([]))
+
+    assert cfg["model"] == "claude-sonnet-4-6"
+
+
+def test_interactive_model_menu_accepts_custom_id(monkeypatch) -> None:
+    answers = iter(["", "", "base", "", "custom-model-id", "", "", ""])
+    monkeypatch.setattr(P, "_interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
+
+    cfg = P._resolve_config(P._build_parser().parse_args([]))
+
+    assert cfg["model"] == "custom-model-id"
+
+
 def test_interactive_config_can_select_vista(monkeypatch) -> None:
     # benchmark = "vista" resets the sequence default to the vista default journey; the
     # sequence prompt then accepts that default.
-    answers = iter(["vista", "", "", "", "", "", "", ""])
+    answers = iter(["vista", "", "base", "", "", "", "", ""])
     monkeypatch.setattr(P, "_interactive", lambda: True)
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
     args = P._build_parser().parse_args([])
@@ -313,7 +372,7 @@ def test_in_sequence_matches_group_id_or_task_id() -> None:
 
 
 def test_pipeline_grader_defaults_to_swebench() -> None:
-    args = P._build_parser().parse_args([])
+    args = P._build_parser().parse_args(["--stage", "base"])
     cfg = P._resolve_config(args)
     assert cfg["grader"] == "swebench"
 
@@ -321,7 +380,7 @@ def test_pipeline_grader_defaults_to_swebench() -> None:
 def test_interactive_config_respects_selected_grader(monkeypatch) -> None:
     # grader is the 6th prompt (benchmark, sequence, stage, tasks, model, grader, budget,
     # version slug).
-    answers = iter(["", "", "", "", "", "local", "", ""])
+    answers = iter(["", "", "base", "", "", "local", "", ""])
     monkeypatch.setattr(P, "_interactive", lambda: True)
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
     args = P._build_parser().parse_args([])
@@ -332,7 +391,7 @@ def test_interactive_config_respects_selected_grader(monkeypatch) -> None:
 
 
 def test_interactive_config_accepts_auto_grader(monkeypatch) -> None:
-    answers = iter(["", "", "", "", "", "auto", "", ""])
+    answers = iter(["", "", "base", "", "", "auto", "", ""])
     monkeypatch.setattr(P, "_interactive", lambda: True)
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
     args = P._build_parser().parse_args(["--grader", "none"])
@@ -348,10 +407,18 @@ def test_pipeline_stage_flag_selects_single_stage() -> None:
     assert cfg["stage"] == "plugin-blank"
 
 
-def test_version_slug_default_is_sequence_type_sha_int() -> None:
+def test_pipeline_limit_defaults_to_whole_sequence() -> None:
+    args = P._build_parser().parse_args(["--stage", "base"])
+    cfg = P._resolve_config(args)
+    assert cfg["limit"] is None
+
+
+def test_version_slug_default_is_sequence_type_sha_int(tmp_path) -> None:
     # --yes (non-interactive) falls through to the computed default slug.
+    source = _source_memory(str(tmp_path), sequence="django_django_sequence")
     args = P._build_parser().parse_args(
-        ["--yes", "--sequence", "django_django_sequence", "--stage", "plugin-dreamed"])
+        ["--yes", "--results-dir", str(tmp_path), "--sequence", "django_django_sequence",
+         "--stage", "plugin-dreamed", "--source-memory", str(source)])
     cfg = P._resolve_config(args)
     v = cfg["results_version"]
     assert v.startswith("django_django_sequence-plugin-dreamed-")
@@ -369,9 +436,118 @@ def test_version_slug_dedup_int_bumps_on_existing_dir(tmp_path, monkeypatch) -> 
     assert s2 == "coding-plugin-accum-abc1234-2"
 
 
+def test_plugin_accum_source_defaults_to_latest_matching_memory(tmp_path, monkeypatch) -> None:
+    old = _source_memory(str(tmp_path), version="vold")
+    new = _source_memory(str(tmp_path), version="vnew")
+    empty = tmp_path / "vempty-newest" / "_memory" / ".cookbook-memory"
+    empty.mkdir(parents=True)
+    (tmp_path / "vempty-newest" / "swe_bench_cl-20260101T000001Z.json").write_text(json.dumps({
+        "benchmark": "swe_bench_cl",
+        "timestamp": "20260101T000001Z",
+        "pipeline": {
+            "benchmark": "swe_bench_cl",
+            "sequence": "pytest-dev_pytest_sequence",
+            "stage": "plugin-blank",
+            "timestamp": "20260101T000001Z",
+        },
+        "runs": [],
+    }), encoding="utf-8")
+    os.utime(old / ".cookbook-memory" / "prior.md", (1, 1))
+    os.utime(new / ".cookbook-memory" / "prior.md", (2, 2))
+    os.utime(empty, (3, 3))
+    monkeypatch.setattr(P, "_interactive", lambda: False)
+
+    cfg = P._resolve_config(P._build_parser().parse_args([
+        "--yes",
+        "--results-dir", str(tmp_path),
+        "--stage", "plugin-accum",
+    ]))
+
+    assert cfg["source_memory"] in {str(old.resolve()), str(new.resolve())}
+    assert cfg["source_memory"] == str(new.resolve())
+
+
+def test_plugin_dreamed_source_defaults_to_latest_matching_memory(tmp_path, monkeypatch) -> None:
+    source = _source_memory(str(tmp_path), version="vdream-source")
+    monkeypatch.setattr(P, "_interactive", lambda: False)
+
+    cfg = P._resolve_config(P._build_parser().parse_args([
+        "--yes",
+        "--results-dir", str(tmp_path),
+        "--stage", "plugin-dreamed",
+    ]))
+
+    assert cfg["source_memory"] == str(source.resolve())
+
+
+def test_source_memory_stage_requires_existing_source(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(P, "_interactive", lambda: False)
+
+    with pytest.raises(SystemExit) as exc:
+        P._resolve_config(P._build_parser().parse_args([
+            "--yes",
+            "--results-dir", str(tmp_path),
+            "--stage", "plugin-dreamed",
+        ]))
+
+    assert "requires --source-memory" in str(exc.value)
+
+
+def test_plugin_accum_seed_copies_source_into_target_namespace(tmp_path) -> None:
+    source = _source_memory(str(tmp_path))
+    target = tmp_path / "vtarget" / "_memory"
+    cfg = _cfg(str(tmp_path))
+    cfg["source_memory"] = str(source)
+
+    info = P._seed_source_memory(cfg, target)
+
+    assert info and info["path"] == str(source.resolve())
+    assert (target / ".cookbook-memory" / "prior.md").read_text(encoding="utf-8") == "prior memory\n"
+    assert info["health"]["durable_items"] == 1
+
+
+def test_plugin_accum_seed_fails_on_empty_source(tmp_path) -> None:
+    source = tmp_path / "vempty" / "_memory" / ".cookbook-memory"
+    source.mkdir(parents=True)
+    target = tmp_path / "vtarget" / "_memory"
+    cfg = _cfg(str(tmp_path))
+    cfg["source_memory"] = str(source.parent)
+
+    with pytest.raises(SystemExit) as exc:
+        P._seed_source_memory(cfg, target)
+
+    assert "requires a source memory store with durable memories" in str(exc.value)
+
+
+def test_source_memory_config_fails_on_empty_candidate(tmp_path, monkeypatch) -> None:
+    source = tmp_path / "vempty" / "_memory" / ".cookbook-memory"
+    source.mkdir(parents=True)
+    (tmp_path / "vempty" / "swe_bench_cl-20260101T000000Z.json").write_text(json.dumps({
+        "benchmark": "swe_bench_cl",
+        "timestamp": "20260101T000000Z",
+        "pipeline": {
+            "benchmark": "swe_bench_cl",
+            "sequence": "pytest-dev_pytest_sequence",
+            "stage": "plugin-blank",
+            "timestamp": "20260101T000000Z",
+        },
+        "runs": [],
+    }), encoding="utf-8")
+    monkeypatch.setattr(P, "_interactive", lambda: False)
+
+    with pytest.raises(SystemExit) as exc:
+        P._resolve_config(P._build_parser().parse_args([
+            "--yes",
+            "--results-dir", str(tmp_path),
+            "--stage", "plugin-accum",
+        ]))
+
+    assert "none contained durable memories" in str(exc.value)
+
+
 def test_interactive_version_slug_is_prompted_and_accepted(monkeypatch) -> None:
     # 8th prompt is the version slug; a typed value is accepted verbatim (reuse path).
-    answers = iter(["", "", "", "", "", "", "", "reuse-this-bucket"])
+    answers = iter(["", "", "base", "", "", "", "", "reuse-this-bucket"])
     monkeypatch.setattr(P, "_interactive", lambda: True)
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
     args = P._build_parser().parse_args([])
@@ -382,13 +558,14 @@ def test_interactive_version_slug_is_prompted_and_accepted(monkeypatch) -> None:
 
 
 def test_explicit_results_version_skips_slug_default() -> None:
-    args = P._build_parser().parse_args(["--yes", "--results-version", "pinned-bucket"])
+    args = P._build_parser().parse_args(
+        ["--yes", "--stage", "base", "--results-version", "pinned-bucket"])
     cfg = P._resolve_config(args)
     assert cfg["results_version"] == "pinned-bucket"
 
 
 def test_pipeline_benchmark_flag_selects_vista() -> None:
-    args = P._build_parser().parse_args(["--benchmark", "vista"])
+    args = P._build_parser().parse_args(["--stage", "base", "--benchmark", "vista"])
     cfg = P._resolve_config(args)
     assert cfg["benchmark"] == "vista"
     assert cfg["sequence"] == "coding-pr-review-001"  # vista default journey
@@ -402,19 +579,20 @@ def test_pipeline_rejects_cross_benchmark_sequence() -> None:
 
 
 def test_pipeline_native_cl_defaults_off() -> None:
-    args = P._build_parser().parse_args([])
+    args = P._build_parser().parse_args(["--stage", "base"])
     cfg = P._resolve_config(args)
     assert cfg["native_cl"] is False
 
 
 def test_pipeline_native_cl_is_opt_in() -> None:
-    args = P._build_parser().parse_args(["--native-cl"])
+    args = P._build_parser().parse_args(["--stage", "base", "--native-cl"])
     cfg = P._resolve_config(args)
     assert cfg["native_cl"] is True
 
 
 def test_pipeline_results_version_override_is_configured() -> None:
-    args = P._build_parser().parse_args(["--results-version", "reuse-memory"])
+    args = P._build_parser().parse_args(
+        ["--stage", "base", "--results-version", "reuse-memory"])
     cfg = P._resolve_config(args)
     assert cfg["results_version"] == "reuse-memory"
 

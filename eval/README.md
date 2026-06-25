@@ -140,33 +140,39 @@ that is what CI runs on every PR.
 
 ## Running the SWE-Bench-CL pipeline
 
-The 5-stage pipeline (base → plugin/blank → plugin/accumulated → dream → plugin/dreamed,
-sharing one persistent per-version memory substrate, then a base→final summary). It drives
-the **live** `cookbook-memory` plugin, so it needs the `claude` CLI installed
-(`npm install -g @anthropic-ai/claude-code`) and a one-time sandbox `/login` on macOS; the
-base (no-plugin) stage runs without `claude`.
+The pipeline runs one selected stage per invocation over one sequence:
+`base`, `builtin`, `plugin-blank`, `plugin-accum`, `plugin-dreamed`, or
+`plugin-primed`. Plugin stages drive the **live** `cookbook-memory` plugin, so they
+need the `claude` CLI installed (`npm install -g @anthropic-ai/claude-code`) and a
+one-time sandbox `/login` on macOS; the base (no-plugin) stage runs without `claude`.
+
+`plugin-accum` and `plugin-dreamed` are seeded stages. They require a previous
+non-empty memory store for the same benchmark + sequence, selected interactively or
+with `--source-memory`. The runner copies that source `_memory/` folder into the new
+run's own `results/v.../_memory/` namespace before evaluating. `plugin-dreamed` then
+runs whole-store dreaming before the eval stage.
 
 **Via make** (interactive by default — prompts for each option, Enter accepts the default):
 
 ```bash
 make pipeline                           # interactive
-make pipeline ARGS="--yes --sequence pytest-dev_pytest_sequence --limit 3 --budget-usd 5"
+make pipeline ARGS="--yes --stage base --sequence pytest-dev_pytest_sequence --limit 3 --budget-usd 5"
 ```
 
 **Directly** (the console script — no `ARGS=`, flags passed normally):
 
 ```bash
-uv run memeval-pipeline --sequence pytest-dev_pytest_sequence --limit 3 --budget-usd 5
+uv run memeval-pipeline --stage base --sequence pytest-dev_pytest_sequence --limit 3 --budget-usd 5
 # or, with .venv activated:
-memeval-pipeline --sequence pytest-dev_pytest_sequence --limit 3 --budget-usd 5
+memeval-pipeline --stage base --sequence pytest-dev_pytest_sequence --limit 3 --budget-usd 5
 # non-interactive (CI/scripts): add --yes ; whole sequence: --limit 0 ; see all flags:
 memeval-pipeline --help
 ```
 
-Key flags: `--sequence` (one of the 8 SWE-Bench-CL sequences — the "domain"), `--limit`
-(tasks of that sequence, `0` = all), `--model`, `--grader` (`local` runs real tests),
-`--budget-usd`, `--yes`. Results + the `SUMMARY-*.md` land under `results/v{version}/`
-(version = git tag on the commit, else the branch name, else `MEMORY_VERSION`); the shared
+Key flags: `--benchmark`, `--sequence` (one of the 8 SWE-Bench-CL sequences, or a
+VISTA journey), `--stage`, `--source-memory`, `--limit` (tasks of that sequence,
+default `0` = all), `--model`, `--grader` (`swebench` by default), `--budget-usd`,
+and `--yes`. Results + the `SUMMARY-*.md` land under `results/v{version}/`; the run's
 memory substrate is `results/v{version}/_memory/`.
 
 ---
