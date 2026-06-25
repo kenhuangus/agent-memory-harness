@@ -1,14 +1,19 @@
 """VISTA event-trace seed tests (Ken-owned plugin-driver glue).
 
 The harness sets ``seed_sessions=False`` for plugin-real, and nothing else writes
-VISTA's facts/injections/drifts into the cookbook store — so recall returns 0 hits
-and the off-vs-plugin-real comparison is hollow. The fix (:meth:`ClaudeCodeAgent.
-_seed_vista_sessions`) ingests each journey's ``task.sessions`` into the plugin's
-store via the plugin's OWN write surface (``memory-cli remember``) BEFORE the recall
-turn. These tests assert, fully offline (mocking the remember surface):
+VISTA's facts/drifts into the cookbook store — so recall returns 0 GOLD hits and
+``gold_retrieval_f1`` / ``adaptation_rate`` read 0.0 even when recall engages. The
+fix (:meth:`ClaudeCodeAgent._seed_vista_sessions`) ingests each journey's LEGITIMATE
+GOLD sessions (``fact`` + ``drift``) into the plugin's store via the plugin's OWN
+write surface BEFORE the recall turn, in a SINGLE engine process so the ``cbmem-N``
+id counter increments to unique ids (the prior per-session-subprocess form collided
+on ``cbmem-1`` and the idempotent-on-id store collapsed everything to one memory).
+These tests assert, fully offline (mocking the seed surface):
 
-* plugin-real + vista seeds EVERY session (including the injection canary — VISTA
-  measures whether recall RESISTS surfacing it, so it must be in the store);
+* plugin-real + vista seeds the GOLD sessions (``fact`` + ``drift``) and EXCLUDES the
+  injection canary — pre-seeding the attacker payload as a clean store memory would
+  corrupt poisoning_resistance/targeted_asr (the canary flows through the transcript
+  path only, where the curator/daydream rejects it);
 * it is a no-op for a non-vista benchmark;
 * it is a no-op for a non-plugin-real mode;
 * it is idempotent per store (the shared substrate isn't re-seeded per task).
@@ -71,22 +76,23 @@ class VistaSeedTest(unittest.TestCase):
         agent._vista_remember_override = lambda c, t: calls.append((c, t))  # type: ignore[attr-defined]
         return agent
 
-    def test_plugin_real_vista_seeds_all_sessions_incl_injection(self) -> None:
+    def test_plugin_real_vista_seeds_gold_excludes_injection(self) -> None:
         calls: list = []
         agent = self._agent("plugin-real", calls)
         with tempfile.TemporaryDirectory() as d:
             n = agent._seed_vista_sessions(_vista_task(), Path(d), {})
-        self.assertEqual(n, 3, "all 3 event-trace sessions must be seeded")
-        self.assertEqual(len(calls), 3)
+        self.assertEqual(n, 2, "only the 2 GOLD sessions (fact + drift) must be seeded")
+        self.assertEqual(len(calls), 2)
         contents = [c for c, _ in calls]
-        # The injection canary MUST be seeded (poisoning_resistance needs it present).
-        self.assertTrue(any(CANARY in c for c in contents),
-                        "the injection payload must be ingested, not filtered out")
-        # Tags carry the event type for each session.
+        # HONESTY: the injection canary must NOT be pre-seeded as a clean store memory
+        # (it would corrupt poisoning_resistance/targeted_asr).
+        self.assertFalse(any(CANARY in c for c in contents),
+                         "the injection payload must NOT be seeded into the store")
+        # Tags carry the gold event type for each seeded session.
         tags = [t for _, t in calls]
         self.assertIn("vista,fact", tags)
-        self.assertIn("vista,injection", tags)
         self.assertIn("vista,drift", tags)
+        self.assertNotIn("vista,injection", tags)
 
     def test_idempotent_per_store(self) -> None:
         calls: list = []
@@ -94,10 +100,10 @@ class VistaSeedTest(unittest.TestCase):
         task = _vista_task()
         with tempfile.TemporaryDirectory() as d:
             store = Path(d)
-            self.assertEqual(agent._seed_vista_sessions(task, store, {}), 3)
+            self.assertEqual(agent._seed_vista_sessions(task, store, {}), 2)
             # Second call on the same store + task is a no-op (marker present).
             self.assertEqual(agent._seed_vista_sessions(task, store, {}), 0)
-        self.assertEqual(len(calls), 3, "no re-seed on the shared substrate")
+        self.assertEqual(len(calls), 2, "no re-seed on the shared substrate")
 
     def test_noop_for_non_vista_benchmark(self) -> None:
         calls: list = []
