@@ -44,7 +44,7 @@ install-claude-plugin:
 
 # Run ONE pipeline stage over ONE sequence against the live cookbook-memory plugin.
 # Each invocation runs a single stage (base | plugin-blank | plugin-accum |
-# plugin-dreamed; default plugin-accum) over one --sequence of one --benchmark
+# plugin-dreamed | plugin-primed; default plugin-accum) over one --sequence of one --benchmark
 # (swe_bench_cl or vista) against the persistent per-version memory substrate. For
 # SWE-Bench-CL sequences the grading venv is built once per sequence and reused.
 # Defaults to a small interactive run; override with ARGS, e.g.:

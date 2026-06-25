@@ -3,7 +3,7 @@
 Installed as ``memeval-pipeline`` (and ``python -m memeval.claudecode.pipeline``). Runs
 ONE eval stage over the X tasks of ONE named sequence — a SWE-Bench-CL sequence (a
 per-repo task chain), or a single VISTA journey (one of the six) — against the persistent
-per-version memory substrate. The four stages a run can pick from (one per invocation) are:
+per-version memory substrate. The stages a run can pick from (one per invocation) are:
 
   * base           -- mode=off, no plugin (the memoryless baseline)
   * plugin-blank   -- plugin-real against the shared memory substrate
@@ -11,6 +11,7 @@ per-version memory substrate. The four stages a run can pick from (one per invoc
                       has accumulated from prior runs is in play)
   * plugin-dreamed -- plugin-real after ONE whole-store consolidation (dream) pass over
                       the substrate runs first; reflects any dream mutations
+  * plugin-primed  -- plugin-real with natural recall and primed stream-json invocation
 
 The previous five-stage orchestration (base -> blank -> accum -> dream -> dreamed in one
 go, with base->final deltas) is gone: each run is a single stage so a sequence can be
@@ -130,8 +131,7 @@ def _default_version_slug(cfg: dict, results_dir: "str | Path") -> str:
     per-version substrate, but keyed to THIS run rather than the branch).
 
     * ``sequence`` -- the selected sequence / VISTA group id
-    * ``type``     -- the run type (the stage: base | plugin-blank | plugin-accum |
-                      plugin-dreamed)
+    * ``type``     -- the run type (the selected stage)
     * ``sha``      -- the current short git SHA (``nogit`` when unavailable)
     * ``int``      -- a dedup integer: the lowest ``>= 1`` whose results directory does
                       not already exist, so a brand-new run gets a fresh substrate while
@@ -154,22 +154,35 @@ def _default_version_slug(cfg: dict, results_dir: "str | Path") -> str:
 #: The eval stages a run can pick from (exactly one per invocation). Each stage IS a
 #: pipeline mode — the variation of the run. ``plugin-dreamed`` runs a dream
 #: consolidation pass over the substrate before it evaluates.
-_EVAL_STAGES = ("base", "plugin-blank", "plugin-accum", "plugin-dreamed")
+_EVAL_STAGES = (
+    "base",
+    "plugin-blank",
+    "plugin-accum",
+    "plugin-dreamed",
+    "plugin-primed",
+)
 _DEFAULT_STAGE = "plugin-accum"
 
 #: Human-facing one-line descriptions of each mode (stage) for the interactive menu.
 _MODE_LABELS = {
     "base": "no plugin — the memoryless baseline (mode=off)",
-    "plugin-blank": "plugin-real against the shared substrate (start from blank)",
-    "plugin-accum": "plugin-real against the shared substrate (accumulated memory)",
+    "plugin-blank": "plugin-real natural/unprimed against the shared substrate (start from blank)",
+    "plugin-accum": "plugin-real natural/unprimed against the shared substrate (accumulated memory)",
     "plugin-dreamed": "plugin-real after one dream consolidation pass over the substrate",
+    "plugin-primed": "plugin-real, natural recall prompt, primed stream-json invocation",
 }
-_STAGE_INDEX = {"base": 1, "plugin-blank": 2, "plugin-accum": 3, "plugin-dreamed": 4}
+_STAGE_INDEX = {name: i for i, name in enumerate(_EVAL_STAGES, 1)}
 _STAGE_MODE = {
     "base": "off",
     "plugin-blank": "plugin-real",
     "plugin-accum": "plugin-real",
     "plugin-dreamed": "plugin-real",
+    "plugin-primed": "plugin-real",
+}
+_STAGE_PLUGIN_REAL_OPTIONS = {
+    "plugin-primed": {
+        "plugin_real_invocation": "primed",
+    },
 }
 
 
@@ -182,8 +195,7 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Run ONE eval stage over ONE sequence against the live cookbook-memory "
                     "plugin and the persistent per-version memory substrate. Pick the "
                     "benchmark (swe_bench_cl or vista), the sequence (a SWE-Bench-CL "
-                    "sequence or one of the six VISTA journeys), and the stage (base | "
-                    "plugin-blank | plugin-accum | plugin-dreamed).",
+                    "sequence or one of the six VISTA journeys), and the stage.",
     )
     ap.add_argument("-y", "--yes", "--non-interactive", dest="yes", action="store_true",
                     help="Non-interactive: use flags where given, defaults otherwise; no prompts.")
@@ -441,10 +453,12 @@ def _make_agent(stage: str, cfg: dict, substrate: Path):
     from .agent import ClaudeCodeAgent
 
     mode = _STAGE_MODE[stage]
+    plugin_opts = _STAGE_PLUGIN_REAL_OPTIONS.get(stage, {})
     return ClaudeCodeAgent(
         model=cfg["model"], memory_mode=mode, code_mode=cfg["code_mode"],
         timeout=cfg["timeout"],
         project_dir=substrate if mode == "plugin-real" else None,
+        **plugin_opts,
     )
 
 
@@ -586,11 +600,6 @@ def _stage_warnings(stage: str, cfg: dict, rr: Any, before: dict[str, Any],
                     after: dict[str, Any], delta: dict[str, Any]) -> list[dict[str, str]]:
     warnings: list[dict[str, str]] = []
     if _STAGE_MODE[stage] == "plugin-real":
-        if delta.get("recall_events", 0) <= 0:
-            warnings.append({
-                "code": "memory_recall_not_observed",
-                "message": "plugin-real stage produced no recall events",
-            })
         if stage in {"plugin-accum", "plugin-dreamed"} and after.get("durable_items", 0) <= 0:
             warnings.append({
                 "code": "memory_store_empty",
@@ -850,7 +859,7 @@ def _run_dream_stage(substrate: Path) -> dict:
             os.environ["MEMORY_STORE"] = prev
 
 
-def _sandbox_auth_probe(config_dir: Path, *, timeout: int = 60) -> bool:
+def _sandbox_auth_probe(config_dir: Path, *, model: str, timeout: int = 60) -> bool:
     """Actually verify the sandbox is authenticated by driving ``claude -p "ok"`` against
     it. This is the only reliable check on keychain platforms (macOS), where the token is
     NOT an on-disk file — so a stale/absent token isn't caught by inspecting files. API-key
@@ -867,7 +876,7 @@ def _sandbox_auth_probe(config_dir: Path, *, timeout: int = 60) -> bool:
            if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")}
     env["CLAUDE_CONFIG_DIR"] = str(config_dir.resolve())
     try:
-        proc = subprocess.run([exe, "-p", "ok"], env=env, timeout=timeout,
+        proc = subprocess.run([exe, "-p", "ok", "--model", model], env=env, timeout=timeout,
                               capture_output=True, text=True, check=False)
     except (OSError, subprocess.SubprocessError):
         return False
@@ -877,7 +886,7 @@ def _sandbox_auth_probe(config_dir: Path, *, timeout: int = 60) -> bool:
     return "not logged in" not in out and "/login" not in out and "invalid api key" not in out
 
 
-def _ensure_sandbox_ready() -> None:
+def _ensure_sandbox_ready(model: str) -> None:
     """Make EVERY stage use the isolated sandbox CLAUDE_CONFIG_DIR — never the host — and
     FAIL CLOSED before running anything if it isn't authenticated.
 
@@ -914,7 +923,7 @@ def _ensure_sandbox_ready() -> None:
         return  # offline tests: skip the network probe
 
     print(f"sandbox: {d} — verifying login before any stage runs…", flush=True)
-    if not _sandbox_auth_probe(d):
+    if not _sandbox_auth_probe(d, model=model):
         cmds = "\n  ".join(sandbox.login_commands(d))
         raise SystemExit(
             "\nThe benchmark sandbox is NOT logged in — aborting before any stage runs.\n\n"
@@ -961,7 +970,7 @@ def run_pipeline(cfg: dict) -> dict:
 
     benchmark = cfg["benchmark"]
     stage = cfg["stage"]
-    _ensure_sandbox_ready()  # MUST be first — the stage uses the sandbox, never the host
+    _ensure_sandbox_ready(cfg["model"])  # MUST be first — the stage uses the sandbox, never the host
     _warn_if_memory_cannot_accumulate()  # OPENROUTER_API_KEY gates daydream memory extraction
     version_info = resolve_pipeline_version(override=cfg.get("results_version"))
     version = version_info["version"]

@@ -40,6 +40,8 @@ from .platform import ClaudeRuntime, detect, to_wsl_path
 from .service import MemoryService
 
 MemoryMode = str  # "off" | "builtin" | "plugin" | "plugin-real"
+PluginRealRecallPolicy = str  # "forced" | "natural"
+PluginRealInvocation = str  # "primed" | "unprimed"
 # "plugin"      — our memory wired DIRECTLY by the harness (the memeval-memory MCP
 #                 server + per-task .mcp.json). Fast, deterministic, in-process.
 # "plugin-real" — the SHIPPING cookbook-memory plugin installed and driven exactly as
@@ -47,6 +49,8 @@ MemoryMode = str  # "off" | "builtin" | "plugin" | "plugin-real"
 #                 a black-box end-to-end test of skill + MCP + hooks. See
 #                 :meth:`ClaudeCodeAgent._solve_plugin_real`.
 _MODES = ("off", "builtin", "plugin", "plugin-real")
+_PLUGIN_REAL_RECALL_POLICIES = ("forced", "natural")
+_PLUGIN_REAL_INVOCATIONS = ("primed", "unprimed")
 
 _SYS_PLUGIN = (
     "You have persistent memory via the memory_recall and memory_remember tools. "
@@ -146,6 +150,27 @@ _PLUGIN_REAL_PREFIX_CODE = (
     "repository, then edit the source files in this checkout directly to fix the "
     "issue and run the tests to confirm. Do NOT output a diff or paste a patch — "
     "just make the edits.\n\n"
+)
+_SYS_PLUGIN_REAL_NATURAL = (
+    "You have persistent memory via the recall tool. Use it when prior context would "
+    "help answer the question, then answer concisely with just the final answer."
+)
+_PLUGIN_REAL_PREFIX_NATURAL = (
+    "You may use the recall tool if prior context would help.\n\n"
+)
+_SYS_CODE_AGENT_PLUGIN_REAL_NATURAL = (
+    "You are a software engineer working in a real checkout of the repository, with "
+    "persistent memory available via the recall tool. Use recall if prior fixes for "
+    "this repository would help. Then read the code with your tools, make the "
+    "necessary edits to source files to resolve the issue, and run the project's "
+    "tests to validate your change. Edit files directly — do NOT print a diff and "
+    "do NOT paste patches into your reply. When the fix is complete and tests pass, "
+    "stop."
+)
+_PLUGIN_REAL_PREFIX_CODE_NATURAL = (
+    "Persistent memory is available through recall if prior fixes would help. Edit "
+    "the source files in this checkout directly to fix the issue, then run the tests "
+    "to confirm. Do NOT output a diff or paste a patch — just make the edits.\n\n"
 )
 #: The shipping plugin's model-callable recall tool — used only for the allowlist
 #: fallback on the non-sandbox opt-out path. Sourced from the single canonical constant
@@ -366,11 +391,21 @@ class ClaudeCodeAgent:
         git_runner: Optional[GitRunner] = None,
         project_dir: Optional[str | Path] = None,
         group_scoped_store: bool = False,
+        plugin_real_recall_policy: PluginRealRecallPolicy = "natural",
+        plugin_real_invocation: PluginRealInvocation = "unprimed",
     ) -> None:
         if memory_mode not in _MODES:
             raise ValueError(f"memory_mode must be one of {_MODES}, got {memory_mode!r}")
         if code_mode not in ("blind", "agentic"):
             raise ValueError(f"code_mode must be 'blind' or 'agentic', got {code_mode!r}")
+        if plugin_real_recall_policy not in _PLUGIN_REAL_RECALL_POLICIES:
+            raise ValueError(
+                "plugin_real_recall_policy must be one of "
+                f"{_PLUGIN_REAL_RECALL_POLICIES}, got {plugin_real_recall_policy!r}")
+        if plugin_real_invocation not in _PLUGIN_REAL_INVOCATIONS:
+            raise ValueError(
+                "plugin_real_invocation must be one of "
+                f"{_PLUGIN_REAL_INVOCATIONS}, got {plugin_real_invocation!r}")
         self.model = model
         self.memory_mode = memory_mode
         # CODE-task strategy: "blind" = one turn that asks for a diff (no checkout);
@@ -409,6 +444,8 @@ class ClaudeCodeAgent:
         self._group_scoped_store = bool(group_scoped_store)
         # plugin-real: built+installed once per agent; caches the MCP-server PATH env.
         self._real_plugin_env: Optional[dict[str, str]] = None
+        self.plugin_real_recall_policy = plugin_real_recall_policy
+        self.plugin_real_invocation = plugin_real_invocation
         # Serializes the one-time real-plugin build+install. With --plugin-workers N>1
         # the worker threads share this ONE ClaudeAgent, so all of them would otherwise
         # see _real_plugin_env=None at startup and concurrently call
@@ -468,7 +505,7 @@ class ClaudeCodeAgent:
         elif self.memory_mode == "plugin":
             res = self._solve_plugin(task, ctx, _PLUGIN_PREFIX + prompt, run_dir)
         elif self.memory_mode == "plugin-real":
-            res = self._solve_plugin_real(task, ctx, _PLUGIN_REAL_PREFIX + prompt, run_dir)
+            res = self._solve_plugin_real(task, ctx, prompt, run_dir)
         else:  # off (control)
             # strict_mcp=True (no --mcp-config) ignores all installed MCP servers, so the
             # control turn never picks up a plugin a concurrent run installed into the
@@ -652,9 +689,8 @@ class ClaudeCodeAgent:
             }
             _add_dream_env(extra_env)  # OPENROUTER_API_KEY / DREAM_* for the daydream write path
             events = store_dir / "events.jsonl"
-            # Drive the coding turn through the PRIMED runner with a retry-until-recall
-            # backstop (mirrors the QA _solve_plugin_real loop) so the headless MCP
-            # startup race no longer silently drops the shipping plugin's `recall`.
+            # Drive the coding turn through the configured plugin-real invocation path
+            # with a retry-until-recall backstop only for forced-recall runs.
             # Tool environment: when the sandbox is active its settings.json grants the
             # recall tool, so we pass NO --allowedTools — the SAME unrestricted CLI as the
             # no-plugin control (so the only difference is memory). Only the non-sandbox
@@ -663,15 +699,16 @@ class ClaudeCodeAgent:
             # (_count_recall_events), not the harness recall log.
             allowed = self._plugin_real_allowed_tools(_PLUGIN_REAL_CODE_ALLOWED_TOOLS)
             before_writes = _count_daydream_writes(store_dir)
+            prompt, system = self._plugin_real_prompts(base_prompt, code=True)
             res: Optional[ClaudeResult] = None
-            for _ in range(_PLUGIN_MAX_TRIES):
+            require_recall = self.plugin_real_recall_policy == "forced"
+            tries = _PLUGIN_MAX_TRIES if require_recall else 1
+            for _ in range(tries):
                 before = _count_recall_events(events)
-                res = self._run_primed(
-                    _PLUGIN_REAL_PREFIX_CODE + base_prompt, checkout,
-                    _SYS_CODE_AGENT_PLUGIN_REAL, mcp_config=None,
-                    allowed_tools=allowed, strict_mcp=False,  # use the INSTALLED plugin's MCP
+                res = self._run_plugin_real_invocation(
+                    prompt, checkout, system, allowed_tools=allowed,
                     permission_mode="acceptEdits", extra_env=extra_env)
-                if _count_recall_events(events) > before:
+                if not require_recall or _count_recall_events(events) > before:
                     break  # the agent reached the recall tool -> plugin MCP connected
             self._attribute_real_recall(events, ctx)
             # Wait for the plugin's async daydream WRITE to land before the next
@@ -748,8 +785,9 @@ class ClaudeCodeAgent:
            substrate when one is configured -- see :meth:`_plugin_real_store`) so the
            plugin's committed ``.mcp.json``/``hooks.json`` resolve
            ``${CLAUDE_PROJECT_DIR}/.cookbook-memory`` there;
-        3. drive a primed ``claude`` turn; the plugin reads/writes/daydreams the store
-           itself through its own router -- the harness never touches the store contents;
+        3. drive a ``claude`` turn using the configured plugin-real startup strategy;
+           the plugin reads/writes/daydreams the store itself through its own router --
+           the harness never touches the store contents;
         4. attribute what the agent recalled to the trajectory, read from the plugin's
            own events stream (``events.jsonl``, ``meta.hits``).
 
@@ -781,14 +819,16 @@ class ClaudeCodeAgent:
         # non-sandbox opt-out falls back to allow-listing just the recall tool.
         allowed = self._plugin_real_allowed_tools([_PLUGIN_REAL_RECALL_TOOL])
         before_writes = _count_daydream_writes(store_dir)
+        prompt, system = self._plugin_real_prompts(prompt, code=False)
         res: Optional[ClaudeResult] = None
-        for _ in range(_PLUGIN_MAX_TRIES):
+        require_recall = self.plugin_real_recall_policy == "forced"
+        tries = _PLUGIN_MAX_TRIES if require_recall else 1
+        for _ in range(tries):
             before = _count_recall_events(events)
-            res = self._run_primed(prompt, run_dir, _SYS_PLUGIN_REAL,
-                                   mcp_config=None,
-                                   allowed_tools=allowed, strict_mcp=False,  # INSTALLED plugin MCP
-                                   extra_env=extra_env)
-            if _count_recall_events(events) > before:
+            res = self._run_plugin_real_invocation(
+                prompt, run_dir, system, allowed_tools=allowed,
+                permission_mode="bypassPermissions", extra_env=extra_env)
+            if not require_recall or _count_recall_events(events) > before:
                 break  # the agent reached the recall tool -> plugin MCP connected
         self._attribute_real_recall(events, ctx)
         # Wait for the plugin's async Stop-hook daydream WRITE to land, so the next
@@ -1055,7 +1095,8 @@ class ClaudeCodeAgent:
                 self._real_plugin_env = {}  # offline/fake-runner: nothing to install
                 return self._real_plugin_env
             self._real_plugin_env = sandbox.setup_real_plugin(
-                claude_exe=(self._runtime.exe if self._runtime else None))
+                claude_exe=(self._runtime.exe if self._runtime else None),
+                model=self.model)
         return self._real_plugin_env
 
     def _drain_daydream(self, task: Task, res: ClaudeResult, store_dir: Path,
@@ -1337,6 +1378,36 @@ class ClaudeCodeAgent:
             permission_mode=permission_mode,
             timeout=self.timeout, runtime=self._runtime, extra_env=extra_env,
         )
+
+    def _run_plugin_real_invocation(self, prompt: str, cwd: Path, system: str, *,
+                                    allowed_tools: Optional[list[str]],
+                                    extra_env: dict[str, str],
+                                    permission_mode: str) -> ClaudeResult:
+        def unprimed() -> ClaudeResult:
+            return self._run(
+                prompt, cwd, system, mcp_config=None, allowed_tools=allowed_tools,
+                strict_mcp=False, permission_mode=permission_mode, extra_env=extra_env)
+
+        def primed() -> ClaudeResult:
+            return self._run_primed(
+                prompt, cwd, system, mcp_config=None, allowed_tools=allowed_tools,
+                strict_mcp=False, permission_mode=permission_mode, extra_env=extra_env)
+
+        if self.plugin_real_invocation == "unprimed":
+            return unprimed()
+        return primed()
+
+    def _plugin_real_prompts(self, base_prompt: str, *, code: bool) -> tuple[str, str]:
+        if self.plugin_real_recall_policy == "natural":
+            if code:
+                return (
+                    _PLUGIN_REAL_PREFIX_CODE_NATURAL + base_prompt,
+                    _SYS_CODE_AGENT_PLUGIN_REAL_NATURAL,
+                )
+            return _PLUGIN_REAL_PREFIX_NATURAL + base_prompt, _SYS_PLUGIN_REAL_NATURAL
+        if code:
+            return _PLUGIN_REAL_PREFIX_CODE + base_prompt, _SYS_CODE_AGENT_PLUGIN_REAL
+        return _PLUGIN_REAL_PREFIX + base_prompt, _SYS_PLUGIN_REAL
 
     def _effective_runtime(self) -> ClaudeRuntime:
         """Runtime for writing .mcp.json. Falls back to a native default (offline

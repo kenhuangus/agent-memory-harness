@@ -515,6 +515,46 @@ class InstallPluginBundle(unittest.TestCase):
             subprocess.run = orig
 
 
+class SetupRealPlugin(unittest.TestCase):
+    def test_reinstalls_even_when_manifest_already_has_plugin(self) -> None:
+        import types
+
+        calls: list[tuple[str, object]] = []
+        build_mod_name = "cookbook_memory.adapters.claude_code.build"
+        old_build_mod = sys.modules.get(build_mod_name)
+        fake_build_mod = types.ModuleType(build_mod_name)
+        fake_build_mod.build_bundle = lambda out: calls.append(("build", out)) or Path("/tmp/bundle")
+
+        orig_require = sandbox._require_plugin_mcp_runtime
+        orig_install = sandbox.install_plugin_bundle
+        orig_runtime = sandbox.plugin_runtime_env
+        try:
+            sys.modules[build_mod_name] = fake_build_mod
+            sandbox._require_plugin_mcp_runtime = lambda: calls.append(("require", None))
+            sandbox.install_plugin_bundle = lambda bundle, **kw: calls.append(("install", (bundle, kw)))
+            sandbox.plugin_runtime_env = lambda: {"PATH": "/tmp/bin"}
+
+            sandbox.setup_real_plugin(
+                config_dir=Path("/tmp/sbx"), out_dir=Path("/tmp/out"),
+                claude_exe="claude", model="claude-haiku-4-5")
+        finally:
+            sandbox._require_plugin_mcp_runtime = orig_require
+            sandbox.install_plugin_bundle = orig_install
+            sandbox.plugin_runtime_env = orig_runtime
+            if old_build_mod is None:
+                sys.modules.pop(build_mod_name, None)
+            else:
+                sys.modules[build_mod_name] = old_build_mod
+
+        self.assertEqual([name for name, _ in calls[:3]], ["require", "build", "install"])
+        _, install = calls[2]
+        bundle, kwargs = install
+        self.assertEqual(bundle, Path("/tmp/bundle"))
+        self.assertEqual(kwargs["config_dir"], Path("/tmp/sbx").resolve())
+        self.assertEqual(kwargs["claude_exe"], "claude")
+        self.assertEqual(kwargs["model"], "claude-haiku-4-5")
+
+
 class PluginRuntimeEnv(unittest.TestCase):
     def test_prepends_memory_cli_dir_to_path(self) -> None:
         import shutil

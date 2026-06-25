@@ -167,7 +167,8 @@ PLUGIN_NAME = "cookbook-memory"
 
 def install_plugin_bundle(
     bundle_dir: str | Path, *, config_dir: Optional[Path] = None,
-    claude_exe: Optional[str] = None, timeout: int = 120,
+    claude_exe: Optional[str] = None, model: Optional[str] = None,
+    timeout: int = 120,
 ) -> None:
     """Install a built Claude Code plugin bundle into the sandbox, the native way.
 
@@ -188,7 +189,8 @@ def install_plugin_bundle(
     env = {**os.environ, "CLAUDE_CONFIG_DIR": str(d)}
 
     def _run(args: list[str], *, check: bool) -> subprocess.CompletedProcess:
-        return subprocess.run([exe, "plugin", *args], env=env, timeout=timeout,
+        model_args = ["--model", model] if model else []
+        return subprocess.run([exe, *model_args, "plugin", *args], env=env, timeout=timeout,
                               capture_output=True, text=True, check=False)
 
     # Best-effort clean slate (ignore failures: nothing installed yet on first run).
@@ -254,7 +256,7 @@ def plugin_runtime_env() -> dict[str, str]:
 
 def setup_real_plugin(
     *, config_dir: Optional[Path] = None, out_dir: Optional[str | Path] = None,
-    claude_exe: Optional[str] = None,
+    claude_exe: Optional[str] = None, model: Optional[str] = None,
 ) -> dict[str, str]:
     """Build + install the real cookbook-memory plugin into the sandbox, as a user would.
 
@@ -273,7 +275,7 @@ def setup_real_plugin(
     _require_plugin_mcp_runtime()
     d = (config_dir or default_config_dir()).resolve()
     bundle = build_bundle(out_dir or (d / "_plugin-bundle"))
-    install_plugin_bundle(bundle, config_dir=d, claude_exe=claude_exe)
+    install_plugin_bundle(bundle, config_dir=d, claude_exe=claude_exe, model=model)
     # The sandbox needs its OWN auth (a fresh CLAUDE_CONFIG_DIR), or every turn dies on
     # "Not logged in". Seed from the host subscription FIRST (idempotent; refreshes the
     # token if the host has since rotated it) — do not gate this on is_logged_in, because
