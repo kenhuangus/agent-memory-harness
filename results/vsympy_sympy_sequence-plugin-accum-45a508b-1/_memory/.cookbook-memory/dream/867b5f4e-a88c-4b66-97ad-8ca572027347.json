@@ -1,0 +1,1 @@
+{"cursor": 124588, "last_summary": "The variable kern is used later in 'rep = {Symbol(kern): 1}' to substitute the kern token with 1, so it must have a valid value if hit is True.", "recent_memory_ids": ["mem_716039d8"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

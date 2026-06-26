@@ -1,0 +1,1 @@
+{"cursor": 277764, "last_summary": "Setting `_op_priority = 11.0` on Poly class ensures expressions like `x*Poly(x)` evaluate to a Poly rather than an unevaluated Mul.", "recent_memory_ids": ["mem_4910827d"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

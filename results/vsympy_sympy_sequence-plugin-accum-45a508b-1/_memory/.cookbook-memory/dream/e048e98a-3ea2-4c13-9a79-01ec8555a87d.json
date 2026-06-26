@@ -1,0 +1,1 @@
+{"cursor": 26411, "last_summary": "Zero-argument Min() should return oo (infinity) and zero-argument Max() should return -oo (negative infinity), instead of raising ValueError.", "recent_memory_ids": ["mem_f03742c2"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

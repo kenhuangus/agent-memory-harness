@@ -1,0 +1,177 @@
+{
+  "schema": 1,
+  "memory_version": "vsympy_sympy_sequence-plugin-accum-45a508b-1",
+  "benchmark": "swe_bench_cl",
+  "timestamp": "20260626T045944Z",
+  "pipeline": {
+    "version": "vsympy_sympy_sequence-plugin-accum-45a508b-1",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "45a508b",
+    "benchmark": "swe_bench_cl",
+    "sequence": "sympy_sympy_sequence",
+    "stage": "plugin-accum",
+    "limit": null,
+    "n_tasks": 50,
+    "model": "claude-haiku-4-5",
+    "code_mode": "agentic",
+    "grader": "swebench",
+    "plugin_workers": 1,
+    "budget_usd": 10.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash"
+    },
+    "memory_store": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsympy_sympy_sequence-plugin-accum-45a508b-1/_memory",
+    "source_memory": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory",
+    "source_memory_health": {
+      "store_dir": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory",
+      "events": 706,
+      "daydream_events": 2343,
+      "recall_events": 10,
+      "recall_with_hits": 9,
+      "recall_zero_hits": 1,
+      "recall_errors": 0,
+      "daydream_completed": 295,
+      "daydream_memory_written": 30,
+      "memory_items": 30,
+      "graph_nodes": 30,
+      "markdown_items": 30,
+      "durable_items": 30
+    },
+    "n_stages": 1,
+    "n_eval_stages": 1,
+    "stages": [
+      "plugin-accum"
+    ],
+    "timestamp": "20260626T045944Z",
+    "started_at": 1782449984.428853,
+    "ended_at": 1782467897.2885609,
+    "source_memory_copied_to": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsympy_sympy_sequence-plugin-accum-45a508b-1/_memory",
+    "stages_run": [
+      "plugin-accum"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": {
+        "ok": true,
+        "code": "ok",
+        "remembered": true,
+        "hits": 1
+      }
+    }
+  },
+  "dream": {
+    "status": "not-run"
+  },
+  "runs": [
+    {
+      "run_id": "pipeline-plugin-accum",
+      "timestamp": "2026-06-26T09:58:17+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "claude-code:claude-haiku-4-5:plugin-real",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:plugin-real+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.16912008879893314,
+        "relevancy": 0.0,
+        "accuracy": 0.66,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 50,
+        "extra": {}
+      },
+      "n_tasks": 50,
+      "entries_used": 50,
+      "entries_available": 50,
+      "limit": null,
+      "selection": "flat",
+      "cost_usd": 4.579115,
+      "tokens_in": 3760,
+      "tokens_out": 915071,
+      "partial": false,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 2,
+        "memory_reached": 48,
+        "memory_hit": 48,
+        "recall_attempted": 48,
+        "recall_with_hits": 48,
+        "graded_n": 50,
+        "resolved": 33,
+        "ungraded": 0,
+        "grade_reasons": {
+          "graded": 50
+        },
+        "errors": [
+          {
+            "task_id": "sympy__sympy-20916",
+            "stage": "solve",
+            "error": "TimeoutExpired: Command '['/Users/keith/.local/bin/claude', '-p', 'Persistent memory is available through recall if prior fixes would help. Edit the source files in this checkout directly to fix the issue, then run t"
+          },
+          {
+            "task_id": "sympy__sympy-13615",
+            "stage": "solve",
+            "error": "TimeoutExpired: Command '['/Users/keith/.local/bin/claude', '-p', \"Persistent memory is available through recall if prior fixes would help. Edit the source files in this checkout directly to fix the issue, then run t"
+          }
+        ]
+      },
+      "notes": "single-stage pipeline \u00b7 swe_bench_cl \u00b7 stage plugin-accum",
+      "pipeline_stage": "plugin-accum",
+      "stage_index": 4,
+      "git_sha": "45a508b",
+      "git_tag": "vsympy_sympy_sequence-plugin-accum-45a508b-1",
+      "memory_health": {
+        "before": {
+          "store_dir": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsympy_sympy_sequence-plugin-accum-45a508b-1/_memory/.cookbook-memory",
+          "events": 706,
+          "daydream_events": 2343,
+          "recall_events": 10,
+          "recall_with_hits": 9,
+          "recall_zero_hits": 1,
+          "recall_errors": 0,
+          "daydream_completed": 295,
+          "daydream_memory_written": 30,
+          "memory_items": 30,
+          "graph_nodes": 30,
+          "markdown_items": 30,
+          "durable_items": 30
+        },
+        "after": {
+          "store_dir": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsympy_sympy_sequence-plugin-accum-45a508b-1/_memory/.cookbook-memory",
+          "events": 812,
+          "daydream_events": 3103,
+          "recall_events": 16,
+          "recall_with_hits": 15,
+          "recall_zero_hits": 1,
+          "recall_errors": 0,
+          "daydream_completed": 321,
+          "daydream_memory_written": 95,
+          "memory_items": 95,
+          "graph_nodes": 95,
+          "markdown_items": 95,
+          "durable_items": 95
+        },
+        "delta": {
+          "events": 106,
+          "daydream_events": 760,
+          "recall_events": 6,
+          "recall_with_hits": 6,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 26,
+          "daydream_memory_written": 65,
+          "memory_items": 65,
+          "graph_nodes": 65,
+          "markdown_items": 65,
+          "durable_items": 65
+        }
+      },
+      "warnings": []
+    }
+  ]
+}
