@@ -26,15 +26,19 @@ From [`../opencode/05-integration-strategy.md`](../opencode/05-integration-strat
 
 ## Capability matrix
 
-| Capability | OpenCode | Claude Code | Codex CLI |
-|---|---|---|---|
-| **1. Pre-gen injection** | **Per-turn**, every model call: `experimental.chat.system.transform` mutates `system[]` | **Per user-prompt only**: `UserPromptSubmit` → `additionalContext`; `SessionStart` (incl. `compact`). No per-model-call hook. | **Per user-prompt only**: `UserPromptSubmit` hook. No per-tool/per-model-call injection (`PreToolUse.additionalContext` is a no-op, [#19385]). |
-| **2. Tool registration** | Plugin `tool` map **or** MCP | **MCP** (only path), bundled in plugin `.mcp.json` | **MCP** (`[mcp_servers]` in config.toml); Codex can also *be* an MCP server (`codex mcp`) |
-| **3. Post-tool / post-turn observation** | `tool.execute.after`, `experimental.text.complete`, `chat.message` | `PostToolUse` (input+output, can add context/modify output), `PostToolBatch`, `Stop`, `PreCompact` | `Stop` hook (per-turn), `notify` program (fires once, `AfterAgent`/turn-complete), `PostToolUse` hook |
-| **4. Lifecycle / dreaming trigger** | `event` hook (every EventV2: idle, compaction…) | `SessionStart`, `PreCompact`/`PostCompact`, `Stop`, `SessionEnd` (rich) | `Stop`, `PreCompact`/`PostCompact`. **No true session-end** ([#20603]); **no managed background jobs** — self-background from the `Stop` hook |
-| **5. Config enablement + isolation** | `plugin` / `mcp` in `opencode.json`; store path via env/config | plugin (`.claude-plugin/`) bundling hooks+MCP; `settings.json` `env`; `session_id` per hook; `--bare` for clean test isolation | `config.toml` (`[mcp_servers]`, `notify`, `[hooks]`); `~/.codex/`; profiles; `codex exec --json` headless |
-| Headless drive (for the harness) | `opencode run --format json` / `serve` + SSE | `claude -p --output-format stream-json` | `codex exec --json` |
-| Hook count (rough) | ~20 hooks | **29+** hooks | **~10** hooks ([#21753]) |
+> A fourth harness — **Cursor CLI** (`cursor-agent`) — was added later; its column
+> is **verified against the installed binary** (v2026.05.20). Full deep-dive:
+> [`06-cursor-cli.md`](06-cursor-cli.md).
+
+| Capability | OpenCode | Claude Code | Codex CLI | Cursor CLI |
+|---|---|---|---|---|
+| **1. Pre-gen injection** | **Per-turn**, every model call: `experimental.chat.system.transform` mutates `system[]` | **Per user-prompt only**: `UserPromptSubmit` → `additionalContext`; `SessionStart` (incl. `compact`). No per-model-call hook. | **Per user-prompt only**: `UserPromptSubmit` hook. No per-tool/per-model-call injection (`PreToolUse.additionalContext` is a no-op, [#19385]). | **Per user-prompt only**: `beforeSubmitPrompt` hook (matcher `UserPromptSubmit`). No per-model-call hook. |
+| **2. Tool registration** | Plugin `tool` map **or** MCP | **MCP** (only path), bundled in plugin `.mcp.json` | **MCP** (`[mcp_servers]` in config.toml); Codex can also *be* an MCP server (`codex mcp`) | **MCP** via `mcp.json` (**same schema as Claude Code**); or bundled in a `--plugin-dir` plugin. **Approval gate** (`mcp enable` / `--approve-mcps`) |
+| **3. Post-tool / post-turn observation** | `tool.execute.after`, `experimental.text.complete`, `chat.message` | `PostToolUse` (input+output, can add context/modify output), `PostToolBatch`, `Stop`, `PreCompact` | `Stop` hook (per-turn), `notify` program (fires once, `AfterAgent`/turn-complete), `PostToolUse` hook | `postToolUse` (→ `additional_context`, `updated_mcp_tool_output`), `stop`, `afterAgentResponse`/`afterAgentThought` |
+| **4. Lifecycle / dreaming trigger** | `event` hook (every EventV2: idle, compaction…) | `SessionStart`, `PreCompact`/`PostCompact`, `Stop`, `SessionEnd` (rich) | `Stop`, `PreCompact`/`PostCompact`. **No true session-end** ([#20603]); **no managed background jobs** — self-background from the `Stop` hook | `sessionStart`, `preCompact`, **`sessionEnd`** (real one; **fires headless**, carries `transcript_path` — verified). `stop` is interactive-only (verified) |
+| **5. Config enablement + isolation** | `plugin` / `mcp` in `opencode.json`; store path via env/config | plugin (`.claude-plugin/`) bundling hooks+MCP; `settings.json` `env`; `session_id` per hook; `--bare` for clean test isolation | `config.toml` (`[mcp_servers]`, `notify`, `[hooks]`); `~/.codex/`; profiles; `codex exec --json` headless | `.cursor/` (`mcp.json`, `hooks.json`, `cli.json`) or `~/.cursor/`; **`--plugin-dir`** bundle; **`HOME`** relocates config/MCP/auth (`CURSOR_DATA_DIR` only moves transcripts — verified); **`CURSOR_API_KEY`** keychain-free headless auth → per-stage parallel sandboxes |
+| Headless drive (for the harness) | `opencode run --format json` / `serve` + SSE | `claude -p --output-format stream-json` | `codex exec --json` | `cursor-agent -p --output-format stream-json --trust --approve-mcps` (**stream-json ≈ Claude Code's**) |
+| Hook count (rough) | ~20 hooks | **29+** hooks | **~10** hooks ([#21753]) | **≈18** hooks |
 
 ## What this means: MCP is the universal substrate
 
