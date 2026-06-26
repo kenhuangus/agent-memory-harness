@@ -661,14 +661,14 @@ class LocalExecGrader:
         import tempfile
         from pathlib import Path
 
-        from .claudecode.checkout import CheckoutError, prepare_checkout
+        from .claudecode.checkout import CheckoutError, checkout_with_cache
 
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "repo"
             git_kwargs = {} if self._git_runner is None else {"git_runner": self._git_runner}
             try:
-                prepare_checkout(task.repo or "", task.base_commit, dest,
-                                 timeout=self.timeout, **git_kwargs)
+                checkout_with_cache(task.repo or "", task.base_commit, dest,
+                                    timeout=self.timeout, **git_kwargs)
             except CheckoutError as exc:
                 return self._ungraded(f"checkout failed: {exc}", task)
 

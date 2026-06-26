@@ -37,6 +37,8 @@ from .. import MEMORY_VERSION
 from ..cost import price_for
 from ..schema import MemoryItem, RetrievedItem, Task, TaskKind
 from . import sandbox as _sandbox
+from ..claudecode import checkout as _checkout
+from ..claudecode.checkout import GitRunner
 from .cli import CursorResult, CursorToolCall, run_cursor
 from .platform import CursorRuntime
 
@@ -153,6 +155,7 @@ class CursorCodeAgent:
         code_mode: str = "blind",
         project_dir: Optional[str | Path] = None,
         plugin_real_recall_policy: str = "natural",
+        git_runner: Optional[GitRunner] = None,
     ) -> None:
         if memory_mode not in _MODES:
             raise ValueError(f"memory_mode must be one of {_MODES}, got {memory_mode!r}")
@@ -162,6 +165,10 @@ class CursorCodeAgent:
         self.memory_mode = memory_mode
         self.code_mode = code_mode
         self._runner = runner or run_cursor
+        # Injectable git seam for the agentic CODE checkout (mirrors the Claude
+        # adapter): defaults to the real subprocess git; offline tests inject a fake
+        # that materializes the checkout without network/git.
+        self._git_runner = git_runner or _checkout._subprocess_git
         self._runtime = runtime
         self._root = Path(workdir).resolve() if workdir else None
         self._project_dir = Path(project_dir).resolve() if project_dir else None
@@ -248,13 +255,13 @@ class CursorCodeAgent:
     def _solve_code_agentic(self, task: Task, ctx: Any, run_dir: Path) -> Any:
         from ..agent import AgentResult
         from ..claudecode.checkout import (
-            CheckoutError, capture_diff, prepare_checkout,
+            CheckoutError, capture_diff, checkout_with_cache,
         )
 
         checkout = run_dir / "repo"
         try:
-            prepare_checkout(task.repo or "", task.base_commit, checkout,
-                             timeout=self.timeout)
+            checkout_with_cache(task.repo or "", task.base_commit, checkout,
+                                git_runner=self._git_runner, timeout=self.timeout)
         except CheckoutError as exc:
             ctx.note(f"checkout failed: {str(exc)[:200]}")
             return AgentResult(prediction="", patch="", success=None)
@@ -275,7 +282,8 @@ class CursorCodeAgent:
             res, _ = self._run(_CODE_AGENT_PREFIX + base_prompt, checkout, memory=False,
                                force=True)
 
-        diff = capture_diff(checkout, base_commit=task.base_commit)
+        diff = capture_diff(checkout, base_commit=task.base_commit,
+                            git_runner=self._git_runner)
         ctx.record_generate(res.text, res.tokens_in, res.tokens_out, model_name=self.model)
         return AgentResult(prediction=diff, patch=diff, success=None)
 

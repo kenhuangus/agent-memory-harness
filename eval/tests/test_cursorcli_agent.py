@@ -272,5 +272,100 @@ class TestSandboxGuards(unittest.TestCase):
                 os.environ["CURSOR_AUTH_TOKEN"] = prev2
 
 
+class _Ctx:
+    """Minimal trajectory ctx for driving ``_solve_code_agentic`` directly."""
+
+    def __init__(self) -> None:
+        self.notes: list[str] = []
+        self.generates: list = []
+
+    def note(self, msg: str) -> None:
+        self.notes.append(msg)
+
+    def record_generate(self, *a, **kw) -> None:
+        self.generates.append((a, kw))
+
+
+def _recording_git(calls: list):
+    """A GitRunner that records every op and materializes a checkout for both the
+    network ``auto`` path and the local-mirror ``clone --shared`` path — no real git,
+    no network."""
+    from memeval.claudecode.checkout import GitResult
+
+    def git(args, cwd, *a, **kw) -> "GitResult":
+        calls.append(list(args))
+        cwd = Path(cwd)
+        if args[:2] == ["clone", "--shared"]:
+            cwd.mkdir(parents=True, exist_ok=True)
+            (cwd / "src.py").write_text("x\n", encoding="utf-8")
+            return GitResult(returncode=0)
+        if args and args[0] in ("init", "remote", "fetch", "checkout"):
+            cwd.mkdir(parents=True, exist_ok=True)
+            (cwd / "src.py").write_text("x\n", encoding="utf-8")
+            return GitResult(returncode=0)
+        return GitResult(returncode=0)
+
+    return git
+
+
+class TestCodeAgenticCheckoutCache(unittest.TestCase):
+    """The Cursor agent-side CODE checkout routes through the shared
+    ``checkout_with_cache`` helper, so it honors ``MEMEVAL_REPO_CACHE`` exactly like
+    every other per-task consumer: UNSET -> the historical network auto sequence; a warm
+    on-disk mirror -> a local ``clone --shared`` with ZERO github."""
+
+    def setUp(self) -> None:
+        self._prev_key = os.environ.get("CURSOR_API_KEY")
+        os.environ["CURSOR_API_KEY"] = "dummy-test-key"
+        self._prev_cache = os.environ.pop("MEMEVAL_REPO_CACHE", None)
+        self._tmp = tempfile.TemporaryDirectory()
+        self.workdir = Path(self._tmp.name)
+
+    def tearDown(self) -> None:
+        if self._prev_key is None:
+            os.environ.pop("CURSOR_API_KEY", None)
+        else:
+            os.environ["CURSOR_API_KEY"] = self._prev_key
+        if self._prev_cache is None:
+            os.environ.pop("MEMEVAL_REPO_CACHE", None)
+        else:
+            os.environ["MEMEVAL_REPO_CACHE"] = self._prev_cache
+        self._tmp.cleanup()
+
+    def _agent(self, git) -> CursorCodeAgent:
+        return CursorCodeAgent(model="composer-2.5", memory_mode="off", code_mode="agentic",
+                               runner=_CaptureRunner(), runtime=_RT, workdir=self.workdir,
+                               timeout=30, git_runner=git)
+
+    def _task(self):
+        from memeval.schema import Task, TaskKind
+        return Task(task_id="scb_1", benchmark=Benchmark.SWE_CONTEXTBENCH,
+                    kind=TaskKind.CODE, question="fix", repo="example/django-fork",
+                    base_commit="aaaa1111")
+
+    def test_unset_uses_historical_auto_sequence(self) -> None:
+        calls: list = []
+        run_dir = self.workdir / "run"
+        run_dir.mkdir()
+        self._agent(_recording_git(calls))._solve_code_agentic(self._task(), _Ctx(), run_dir)
+        self.assertEqual([c[0] for c in calls[:4]],
+                         ["init", "remote", "fetch", "checkout"])
+        self.assertFalse(any(c[:1] == ["clone"] for c in calls))
+
+    def test_warm_mirror_zero_github(self) -> None:
+        calls: list = []
+        cache = self.workdir / "cache"
+        mirror = cache / "example__django-fork.git"
+        mirror.mkdir(parents=True)
+        (mirror / "HEAD").write_text("ref\n", encoding="utf-8")
+        os.environ["MEMEVAL_REPO_CACHE"] = str(cache)
+        run_dir = self.workdir / "run"
+        run_dir.mkdir()
+        self._agent(_recording_git(calls))._solve_code_agentic(self._task(), _Ctx(), run_dir)
+        self.assertTrue(any(c[:2] == ["clone", "--shared"] for c in calls))
+        self.assertFalse(any(c[:2] == ["clone", "--mirror"] for c in calls))  # no github
+        self.assertFalse(any(c and c[0] == "fetch" for c in calls))           # no github
+
+
 if __name__ == "__main__":
     unittest.main()

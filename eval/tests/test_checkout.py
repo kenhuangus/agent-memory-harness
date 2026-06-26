@@ -10,10 +10,14 @@ the injected runner writes into a dest with no real `.git` — stays unchanged.
 
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 # Make the package importable when run directly (mirrors test_sandbox.py).
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -21,6 +25,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from memeval.claudecode.checkout import (  # noqa: E402
     CheckoutError,
     GitResult,
+    _retry,
+    _subprocess_git,
+    ensure_mirror,
+    mirror_path_for,
     prepare_checkout,
 )
 
@@ -151,6 +159,254 @@ class PrepareCheckoutErrorStillRaises(unittest.TestCase):
             dest = Path(tmp) / "repo"
             with self.assertRaises(CheckoutError):
                 prepare_checkout("example/repo", "aaaa1111", dest, git_runner=failing_git)
+
+
+# --------------------------------------------------------------------------- #
+# Retry-with-backoff helper (defense-in-depth for a transient github blip).
+# --------------------------------------------------------------------------- #
+class RetryHelper(unittest.TestCase):
+    """``_retry`` retries CheckoutError with exponential backoff; sleep is injected."""
+
+    def test_succeeds_after_transient_failures(self) -> None:
+        slept: list = []
+        state = {"n": 0}
+
+        def flaky() -> str:
+            state["n"] += 1
+            if state["n"] < 3:
+                raise CheckoutError("connection timed out")
+            return "ok"
+
+        out = _retry(flaky, attempts=3, sleep=slept.append)
+        self.assertEqual(out, "ok")
+        self.assertEqual(state["n"], 3)
+        self.assertEqual(slept, [1.0, 2.0])  # backoff BETWEEN the 2 failures only
+
+    def test_raises_after_exhausting_attempts(self) -> None:
+        slept: list = []
+
+        def always() -> str:
+            raise CheckoutError("down")
+
+        with self.assertRaises(CheckoutError):
+            _retry(always, attempts=3, sleep=slept.append)
+        self.assertEqual(len(slept), 2)  # slept between attempts, never after the last
+
+    def test_single_attempt_never_sleeps(self) -> None:
+        slept: list = []
+
+        def always() -> str:
+            raise CheckoutError("down")
+
+        with self.assertRaises(CheckoutError):
+            _retry(always, attempts=1, sleep=slept.append)
+        self.assertEqual(slept, [])  # one attempt -> no backoff at all
+
+
+# --------------------------------------------------------------------------- #
+# Repo -> mirror-path mapping: short form and URL forms share one mirror.
+# --------------------------------------------------------------------------- #
+class MirrorPathMapping(unittest.TestCase):
+    def test_short_and_url_forms_map_to_same_mirror(self) -> None:
+        cache = Path("/tmp/cache")
+        expected = cache / "pydata__xarray.git"
+        for repo in (
+            "pydata/xarray",
+            "https://github.com/pydata/xarray",
+            "https://github.com/pydata/xarray.git",
+            "http://github.com/pydata/xarray.git",
+            "git@github.com:pydata/xarray.git",
+            "ssh://git@github.com/pydata/xarray.git",
+        ):
+            self.assertEqual(mirror_path_for(repo, cache), expected, repo)
+
+    def test_unparseable_repo_raises(self) -> None:
+        with self.assertRaises(CheckoutError):
+            mirror_path_for("noslash", "/tmp/cache")
+
+
+# --------------------------------------------------------------------------- #
+# prepare_checkout: the network fetch is retried (defense-in-depth).
+# --------------------------------------------------------------------------- #
+class PrepareCheckoutFetchRetry(unittest.TestCase):
+    def test_fetch_retried_then_succeeds(self) -> None:
+        slept: list = []
+        state = {"fetch": 0}
+
+        def git(args, cwd, *a, **kw) -> GitResult:
+            cwd = Path(cwd)
+            op = args[0] if args else ""
+            if op == "fetch":
+                state["fetch"] += 1
+                if state["fetch"] < 2:
+                    return GitResult(returncode=1, stderr="connection timed out")
+                cwd.mkdir(parents=True, exist_ok=True)
+                (cwd / "f.py").write_text("x", encoding="utf-8")
+            return GitResult(returncode=0)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "repo"
+            prepare_checkout("o/n", "sha", dest, git_runner=git,
+                             retries=3, sleep=slept.append)
+            self.assertEqual(state["fetch"], 2)   # failed once, succeeded on retry
+            self.assertEqual(slept, [1.0])        # one backoff before the retry
+
+    def test_default_retries_one_raises_immediately(self) -> None:
+        # Default retries=1 = historical behavior: a fetch failure raises at once,
+        # no sleep, no retry (byte-identical to before this change).
+        slept: list = []
+
+        def git(args, cwd, *a, **kw) -> GitResult:
+            if args and args[0] == "fetch":
+                return GitResult(returncode=1, stderr="timeout")
+            return GitResult(returncode=0)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "repo"
+            with self.assertRaises(CheckoutError):
+                prepare_checkout("o/n", "sha", dest, git_runner=git, sleep=slept.append)
+            self.assertEqual(slept, [])
+
+
+# --------------------------------------------------------------------------- #
+# ensure_mirror: clone --mirror ONCE when absent, then reuse with zero network.
+# --------------------------------------------------------------------------- #
+class EnsureMirrorAutoCreate(unittest.TestCase):
+    def test_creates_once_then_reuses(self) -> None:
+        calls: list = []
+
+        def git(args, cwd, *a, **kw) -> GitResult:
+            calls.append(list(args))
+            if args[:2] == ["clone", "--mirror"]:
+                target = Path(args[-1])           # clones into a temp path
+                target.mkdir(parents=True, exist_ok=True)
+                (target / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+            return GitResult(returncode=0)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp) / "cache"
+            m1 = ensure_mirror("pydata/xarray", cache, git_runner=git)
+            self.assertEqual(m1, cache / "pydata__xarray.git")
+            self.assertTrue((m1 / "HEAD").exists())  # atomically moved into place
+            clones = [c for c in calls if c[:2] == ["clone", "--mirror"]]
+            self.assertEqual(len(clones), 1)
+
+            # Second call: warm mirror -> no new clone (zero network).
+            m2 = ensure_mirror("pydata/xarray", cache, git_runner=git)
+            self.assertEqual(m2, m1)
+            clones = [c for c in calls if c[:2] == ["clone", "--mirror"]]
+            self.assertEqual(len(clones), 1)
+
+
+# --------------------------------------------------------------------------- #
+# Local checkout from a REAL on-disk bare mirror — no network, no github.
+# --------------------------------------------------------------------------- #
+def _have_git() -> bool:
+    return shutil.which("git") is not None
+
+
+def _git_env() -> dict:
+    return {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
+        "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com",
+        "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_SYSTEM": os.devnull,
+    }
+
+
+@unittest.skipUnless(_have_git(), "git not available")
+class LocalCheckoutFromRealMirror(unittest.TestCase):
+    """A warm bare mirror + the ``local`` strategy check out a base_commit offline."""
+
+    def _git(self, *args: str, cwd: Path) -> subprocess.CompletedProcess:
+        return subprocess.run(["git", *args], cwd=str(cwd), check=True,
+                              capture_output=True, text=True, env=_git_env())
+
+    def test_warm_mirror_local_checkout_of_base_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            src = tmp / "src"
+            src.mkdir()
+            self._git("init", "-q", cwd=src)
+            (src / "f.txt").write_text("base-content\n", encoding="utf-8")
+            self._git("add", "f.txt", cwd=src)
+            self._git("commit", "-qm", "base", cwd=src)
+            base = self._git("rev-parse", "HEAD", cwd=src).stdout.strip()
+            (src / "f.txt").write_text("head-content\n", encoding="utf-8")
+            self._git("add", "f.txt", cwd=src)
+            self._git("commit", "-qm", "head", cwd=src)
+
+            # Pre-warm a bare mirror at the path ensure_mirror derives for this repo.
+            cache = tmp / "cache"
+            cache.mkdir()
+            mirror_target = cache / "pydata__xarray.git"
+            self._git("clone", "--mirror", str(src), str(mirror_target), cwd=tmp)
+
+            # ensure_mirror sees the warm mirror -> ZERO network: the runner (which
+            # would error) is never invoked.
+            net_calls: list = []
+
+            def tracking_runner(args, cwd, *a, **kw) -> GitResult:
+                net_calls.append(list(args))
+                return GitResult(returncode=1, stderr="should not be called")
+
+            mirror = ensure_mirror("pydata/xarray", cache, git_runner=tracking_runner)
+            self.assertEqual(mirror, mirror_target)
+            self.assertEqual(net_calls, [])   # no clone/fetch: nothing hit the network
+
+            # Local checkout of the BASE commit from the mirror (real git, no network).
+            dest = tmp / "co"
+            prepare_checkout(str(mirror), base, dest, strategy="local")
+            self.assertEqual((dest / "f.txt").read_text(encoding="utf-8"),
+                             "base-content\n")  # base, not head
+
+
+class SubprocessGitErrorNormalization(unittest.TestCase):
+    """The real ``_subprocess_git`` converts subprocess-level failures into a non-zero
+    ``GitResult`` (which ``_run`` turns into ``CheckoutError`` so ``_retry`` can RETRY),
+    instead of letting a raw exception escape the retry (which catches only
+    ``CheckoutError``) and drop a task on the first transient blip."""
+
+    def test_timeout_becomes_nonzero_result_not_raise(self) -> None:
+        def boom(*a, **kw):
+            raise subprocess.TimeoutExpired(cmd="git fetch", timeout=600)
+
+        with mock.patch.object(subprocess, "run", boom):
+            res = _subprocess_git(["fetch", "--depth", "1", "origin", "deadbeef"],
+                                  Path("."), timeout=600)
+        self.assertNotEqual(res.returncode, 0)   # retryable, not a raised exception
+        self.assertIn("timed out", res.stderr)
+
+    def test_oserror_becomes_nonzero_result_not_raise(self) -> None:
+        def boom(*a, **kw):
+            raise FileNotFoundError("git not found")
+
+        with mock.patch.object(subprocess, "run", boom):
+            res = _subprocess_git(["fetch"], Path("."))
+        self.assertNotEqual(res.returncode, 0)   # surfaced as a result, not a crash
+
+    def test_subprocess_timeout_is_retried_via_prepare_checkout(self) -> None:
+        """End-to-end: a fetch that raises TimeoutExpired twice (normalized to a
+        non-zero result) is retried and then succeeds — proving the gap CodeRabbit
+        flagged is closed (the raw timeout no longer escapes _retry)."""
+        attempts = {"fetch": 0}
+
+        def flaky(args, cwd, *a, **kw) -> GitResult:
+            if args[:1] == ["fetch"]:
+                attempts["fetch"] += 1
+                if attempts["fetch"] < 3:
+                    # Mimic _subprocess_git's normalized timeout result.
+                    return GitResult(returncode=124, stderr="git fetch timed out after 600s")
+                Path(cwd).mkdir(parents=True, exist_ok=True)
+                (Path(cwd) / "src.py").write_text("x\n", encoding="utf-8")
+            return GitResult(returncode=0)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "repo"
+            prepare_checkout("pydata/xarray", "0" * 40, dest, strategy="auto",
+                             git_runner=flaky, retries=3, sleep=lambda _s: None)
+            self.assertTrue((dest / "src.py").exists())
+        self.assertEqual(attempts["fetch"], 3)   # retried twice, succeeded on the third
 
 
 if __name__ == "__main__":

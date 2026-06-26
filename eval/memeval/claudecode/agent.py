@@ -34,7 +34,12 @@ from ..cost import price_for
 from ..schema import Benchmark, MemoryItem, RetrievedItem, Task, TaskKind
 from . import checkout as _checkout
 from . import sandbox
-from .checkout import CheckoutError, GitRunner, capture_diff, prepare_checkout
+from .checkout import (
+    CheckoutError,
+    GitRunner,
+    capture_diff,
+    checkout_with_cache,
+)
 from .cli import ClaudeResult, run_claude, run_claude_primed
 from .platform import ClaudeRuntime, detect, to_wsl_path
 from .service import MemoryService
@@ -611,8 +616,8 @@ class ClaudeCodeAgent:
 
         checkout = run_dir / "repo"
         try:
-            prepare_checkout(task.repo or "", task.base_commit, checkout,
-                             git_runner=self._git_runner, timeout=self.timeout)
+            checkout_with_cache(task.repo or "", task.base_commit, checkout,
+                                git_runner=self._git_runner, timeout=self.timeout)
         except CheckoutError as exc:
             ctx.note(f"checkout failed: {str(exc)[:200]}")
             return AgentResult(prediction="", patch="", success=None)

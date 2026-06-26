@@ -360,13 +360,11 @@ class SwebenchHostGrader:
     ) -> Optional[bool]:
         from pathlib import Path
 
-        from .claudecode.checkout import CheckoutError, prepare_checkout
+        from .claudecode.checkout import CheckoutError
 
         dest = Path(dest)
-        git_kwargs = {} if self._git_runner is None else {"git_runner": self._git_runner}
         try:
-            prepare_checkout(task.repo or "", task.base_commit, dest,
-                             timeout=self.timeout, **git_kwargs)
+            self._checkout_repo(dest, task)
         except CheckoutError as exc:
             return self._ungraded(f"checkout failed: {exc}", task)
 
@@ -459,6 +457,28 @@ class SwebenchHostGrader:
         report = get_eval_tests_report(status_map, gold_results)
         resolution = get_resolution_status(report)
         return resolution == ResolvedStatus.FULL.value
+
+    def _checkout_repo(self, dest, task: Task) -> None:
+        """Materialize the task's checkout into ``dest``; raise ``CheckoutError`` only
+        if every avenue fails (mirroring the old single ``prepare_checkout`` call).
+
+        Delegates to the shared :func:`~memeval.claudecode.checkout.checkout_with_cache`
+        — the ONE cache-aware checkout entrypoint every per-task checkout (both graders
+        and both agent-side checkouts) routes through. It reads ``MEMEVAL_REPO_CACHE``
+        itself: **unset** → the historical network ``auto`` path UNCHANGED (fetch
+        retried on a transient blip, byte-identical when nothing fails); **set** → a
+        persistent bare mirror so per-task checkouts are network-free, with a
+        WARNING-logged fallback to the network path so a cache problem NEVER turns a
+        gradeable task into an UNGRADED one. Under an injected stub ``git_runner``
+        (offline tests) the backoff sleep is a no-op, so the tests never block.
+        """
+        from pathlib import Path
+
+        from .claudecode.checkout import checkout_with_cache
+
+        git_kwargs = {} if self._git_runner is None else {"git_runner": self._git_runner}
+        checkout_with_cache(task.repo or "", task.base_commit, Path(dest),
+                            timeout=self.timeout, **git_kwargs)
 
     def _with_python(self, py: str, argv: list) -> list:
         """Compose an argv for a test command. A bare ``runtests.py`` script is run
