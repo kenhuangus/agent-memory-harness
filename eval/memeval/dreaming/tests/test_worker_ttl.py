@@ -302,10 +302,17 @@ def test_ttl_pruned_disjoint_from_winners(memory_store_dir: Path) -> None:
 
 
 def test_ttl_retention_seconds_effective_matches_env(memory_store_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """C-TTL-6 — counts.retention_seconds_effective == days * 86400."""
+    """C-TTL-6 — counts.retention_seconds_effective reports the Memory-type
+    retention (the pre-V5 / off-list fallback in `TYPE_RETENTION_DAYS`).
+
+    ADR-028 §1 amended this: `DREAM_ITEM_RETENTION_DAYS` is kill-switch-only
+    in v2 — non-zero values are IGNORED. The summary field reports the
+    Memory-type retention (matching today's flat 30-day default for untyped
+    content) regardless of what the env var is set to.
+    """
     monkeypatch.setenv("DREAM_ITEM_RETENTION_DAYS", "7")
     result = worker.DreamingWorker(_seed(_FIXED_NOW, ("a", "x", 1))).run()
-    assert result["counts"]["retention_seconds_effective"] == 7 * _DAY
+    assert result["counts"]["retention_seconds_effective"] == 30 * _DAY
 
 
 # --------------------------------------------------------------------------- #
@@ -531,23 +538,32 @@ def test_ttl_non_integer_env_falls_back_to_default(
     assert any("not an integer" in rec.getMessage().lower() for rec in caplog.records)
 
 
-def test_ttl_one_day_retention_prunes_two_day_old_item(
+def test_ttl_default_retention_prunes_31_day_item(
     memory_store_dir: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """H-TTL-5 — DREAM_ITEM_RETENTION_DAYS=1 → retention_seconds_effective=86400; 2-day item pruned."""
-    monkeypatch.setenv("DREAM_ITEM_RETENTION_DAYS", "1")
-    store = _seed(_FIXED_NOW, ("two-day-old", "x", 2), ("fresh", "y", 0))
+    """H-TTL-5 (v2) — untyped items past Memory's 30-day retention are pruned;
+    fresh ones are not. Replaces v1's env-var-tuned 1-day variant per
+    ADR-028 §1 (env is kill-switch only; per-type retention is code-level).
+    """
+    monkeypatch.delenv("DREAM_ITEM_RETENTION_DAYS", raising=False)
+    store = _seed(_FIXED_NOW, ("expired-old", "x", 31), ("fresh", "y", 0))
     result = worker.DreamingWorker(store).run()
-    assert result["counts"]["retention_seconds_effective"] == _DAY
-    assert "two-day-old" in result["pruned"]["item_ids"]
+    assert result["counts"]["retention_seconds_effective"] == 30 * _DAY
+    assert "expired-old" in result["pruned"]["item_ids"]
+    assert "fresh" not in result["pruned"]["item_ids"]
     assert "fresh" not in result["pruned"]["item_ids"]
 
 
-def test_ttl_huge_retention_prunes_nothing(memory_store_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """H-TTL-6 — very large retention value prunes nothing in practice."""
+def test_ttl_huge_retention_env_is_ignored(memory_store_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """H-TTL-6 (v2) — any non-zero `DREAM_ITEM_RETENTION_DAYS` value is
+    IGNORED. Old-age (>30d) untyped items still get pruned via Memory's
+    code-level retention; the env value plays no role in tuning. Replaces
+    v1's "huge retention prunes nothing" test per ADR-028 §1.
+    """
     monkeypatch.setenv("DREAM_ITEM_RETENTION_DAYS", "100000")
     result = worker.DreamingWorker(_seed(_FIXED_NOW, ("a", "x", 60), ("b", "y", 200))).run()
-    assert result["counts"]["items_pruned"] == 0
+    # Both items past Memory's 30-day retention — env was ignored.
+    assert result["counts"]["items_pruned"] == 2
 
 
 # --------------------------------------------------------------------------- #
@@ -634,7 +650,9 @@ def test_ttl_real_routerstore_end_to_end(
     monkeypatch.setenv("MEMORY_PROFILE", "fusion")
     monkeypatch.delenv("VOYAGE_API_KEY", raising=False)
     monkeypatch.setenv("MEMORY_STORE", str(tmp_path))
-    monkeypatch.setenv("DREAM_ITEM_RETENTION_DAYS", "7")
+    # ADR-028 §1 — env var is kill-switch-only in v2; non-zero values ignored.
+    # Untyped items use the Memory-type retention (30 days) for TTL.
+    monkeypatch.delenv("DREAM_ITEM_RETENTION_DAYS", raising=False)
 
     fixed_now = 2_000_000_000.0
     monkeypatch.setattr("memeval.dreaming.worker._now", lambda: fixed_now)
@@ -645,7 +663,9 @@ def test_ttl_real_routerstore_end_to_end(
 
     stale_id = "stale-doc"
     fresh_id = "fresh-doc"
-    store.write(MemoryItem(item_id=stale_id, content="stale content", timestamp=fixed_now - 30 * _DAY))
+    # 31 days > Memory's 30-day retention (was 30 in v1 when env tuned this
+    # to 7; the in-test stale age is bumped to clear the v2 default cleanly).
+    store.write(MemoryItem(item_id=stale_id, content="stale content", timestamp=fixed_now - 31 * _DAY))
     store.write(MemoryItem(item_id=fresh_id, content="fresh content", timestamp=fixed_now - 1 * _DAY))
 
     md_root = tmp_path / "markdown" / "memory"
@@ -707,16 +727,26 @@ def test_ttl_trajectories_path_truthy_raises_before_ttl_pass(
     assert now_calls == []
 
 
-def test_ttl_env_read_per_run(memory_store_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """H-TTL-6 — DREAM_ITEM_RETENTION_DAYS is read from os.environ on every run() (not cached)."""
+def test_ttl_env_kill_switch_read_per_run(memory_store_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """H-TTL-6 (v2) — DREAM_ITEM_RETENTION_DAYS is read from os.environ on
+    every run() (not cached). Per ADR-028 §1, the only operationally
+    meaningful value is `"0"` (kill-switch). The summary field reports
+    Memory-type retention regardless; the difference between runs is
+    whether prunes happen at all.
+    """
     monkeypatch.delenv("DREAM_ITEM_RETENTION_DAYS", raising=False)
-    store = _seed(_FIXED_NOW, ("a", "x", 1))
+    store = _seed(_FIXED_NOW, ("expired", "x", 31))
     first = worker.DreamingWorker(store).run()
-    monkeypatch.setenv("DREAM_ITEM_RETENTION_DAYS", "1")
+    monkeypatch.setenv("DREAM_ITEM_RETENTION_DAYS", "0")
     second = worker.DreamingWorker(store).run()
-    assert first["counts"]["retention_seconds_effective"] != second["counts"]["retention_seconds_effective"]
+    # Both report the Memory-type retention in the summary field (the field
+    # is descriptive of the default, not whether the pass ran).
     assert first["counts"]["retention_seconds_effective"] == 30 * _DAY
-    assert second["counts"]["retention_seconds_effective"] == 1 * _DAY
+    assert second["counts"]["retention_seconds_effective"] == 30 * _DAY
+    # But the kill-switch suppressed the second run's deletes — the items
+    # come back as an empty pruned list, NOT because the store re-grew but
+    # because the worker noticed `DREAM_ITEM_RETENTION_DAYS=0` and skipped.
+    assert second["counts"]["items_pruned"] == 0
 
 
 def test_ttl_now_callable_exists_and_monkeypatchable(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -926,3 +956,120 @@ def test_daydream_skips_while_dream_ttl_running(
             client=MagicMock(),
         )
     assert any(e[0] == "daydream.dream_in_progress_skipped" for e in spy_emit)
+
+
+# --------------------------------------------------------------------------- #
+# §K — ADR-dreaming-028 §1 per-type retention contract
+# --------------------------------------------------------------------------- #
+
+def test_ttl_durable_types_never_age_out_of_store(memory_store_dir: Path) -> None:
+    """ADR-028 §1 — items with a "durable" `okf_type` (Identity, Convention,
+    Invariant, Workaround, Bug, Contradiction) are NEVER pruned by the TTL
+    pass, no matter how old. Sets timestamps 10 years in the past and
+    asserts no pruning.
+    """
+    from memeval.dreaming.worker import TYPE_RETENTION_DAYS
+
+    durable = [t for t, days in TYPE_RETENTION_DAYS.items() if days is None]
+    assert durable, "TYPE_RETENTION_DAYS must include at least one durable type"
+
+    store = _DeleteAwareStore()
+    ancient_ts = _FIXED_NOW - 365 * 10 * _DAY  # 10 years old
+    for okf_type in durable:
+        store.write(MemoryItem(
+            item_id=f"durable-{okf_type.lower()}",
+            content=f"a {okf_type} card from a decade ago",
+            timestamp=ancient_ts,
+            metadata={"okf_type": okf_type},
+        ))
+
+    result = worker.DreamingWorker(store).run()
+    assert result["pruned"]["item_ids"] == [], (
+        f"durable types pruned: {result['pruned']['item_ids']}"
+    )
+
+
+def test_ttl_calendar_decay_types_age_at_their_per_type_window(memory_store_dir: Path) -> None:
+    """ADR-028 §1 — `Fix` (90d), `Preference` (180d), `Decision` (365d), and
+    `Memory` fallback (30d) each age at their type-specific retention.
+    Items just past their type's window are pruned; items just inside are not.
+    """
+    from memeval.dreaming.worker import TYPE_RETENTION_DAYS
+
+    store = _DeleteAwareStore()
+    for okf_type in ("Fix", "Preference", "Decision", "Memory"):
+        days = TYPE_RETENTION_DAYS[okf_type]
+        assert days is not None
+        # Just past the window — should prune.
+        store.write(MemoryItem(
+            item_id=f"old-{okf_type.lower()}",
+            content=f"old {okf_type}",
+            timestamp=_FIXED_NOW - (days + 1) * _DAY,
+            metadata={"okf_type": okf_type},
+        ))
+        # Just inside the window — should survive.
+        store.write(MemoryItem(
+            item_id=f"young-{okf_type.lower()}",
+            content=f"young {okf_type}",
+            timestamp=_FIXED_NOW - (days - 1) * _DAY,
+            metadata={"okf_type": okf_type},
+        ))
+
+    pruned = set(worker.DreamingWorker(store).run()["pruned"]["item_ids"])
+    assert pruned == {"old-fix", "old-preference", "old-decision", "old-memory"}
+
+
+def test_ttl_unknown_okf_type_falls_back_to_memory_retention(memory_store_dir: Path) -> None:
+    """ADR-028 §1 — an item with `metadata.okf_type` set to a value NOT in
+    `TYPE_RETENTION_DAYS` uses the default (Memory's 30-day retention).
+    Defensive against future taxonomy drift where a new value lands in
+    `OKF_CONTENT_TYPES` without a corresponding `TYPE_RETENTION_DAYS` entry.
+    """
+    store = _DeleteAwareStore()
+    store.write(MemoryItem(
+        item_id="unknown-31d", content="x",
+        timestamp=_FIXED_NOW - 31 * _DAY,
+        metadata={"okf_type": "SomeUnknownType"},
+    ))
+    store.write(MemoryItem(
+        item_id="unknown-29d", content="y",
+        timestamp=_FIXED_NOW - 29 * _DAY,
+        metadata={"okf_type": "SomeUnknownType"},
+    ))
+    pruned = set(worker.DreamingWorker(store).run()["pruned"]["item_ids"])
+    assert pruned == {"unknown-31d"}
+
+
+def test_ttl_missing_okf_type_metadata_defaults_to_memory(memory_store_dir: Path) -> None:
+    """ADR-028 §1 — pre-V5 items with no `metadata.okf_type` field at all
+    use the Memory-type retention. Back-compat: all existing stores have
+    untyped memories; nothing about their TTL behavior should change.
+    """
+    store = _DeleteAwareStore()
+    # No metadata at all — older parser pre-ADR-027 didn't set okf_type.
+    store.write(MemoryItem(
+        item_id="legacy-31d", content="x",
+        timestamp=_FIXED_NOW - 31 * _DAY,
+    ))
+    store.write(MemoryItem(
+        item_id="legacy-29d", content="y",
+        timestamp=_FIXED_NOW - 29 * _DAY,
+    ))
+    pruned = set(worker.DreamingWorker(store).run()["pruned"]["item_ids"])
+    assert pruned == {"legacy-31d"}
+
+
+def test_ttl_retention_table_covers_every_taxonomy_value() -> None:
+    """ADR-028 §1 contract — every value in `OKF_CONTENT_TYPES` MUST have a
+    `TYPE_RETENTION_DAYS` entry. Plus `Memory` (the parser fallback). Catches
+    silent drift: if a new value lands in the taxonomy without a retention
+    decision, this test fails loudly.
+    """
+    from memeval.dreaming.prompts import OKF_CONTENT_TYPES
+    from memeval.dreaming.worker import TYPE_RETENTION_DAYS
+
+    missing = (OKF_CONTENT_TYPES | {"Memory"}) - set(TYPE_RETENTION_DAYS)
+    assert not missing, (
+        f"TYPE_RETENTION_DAYS missing entries for: {sorted(missing)} — "
+        "adding a value to OKF_CONTENT_TYPES requires a retention decision."
+    )

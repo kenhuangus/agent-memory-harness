@@ -57,6 +57,35 @@ _WHITESPACE_RUN = re.compile(r"\s+")
 _SECONDS_PER_DAY: int = 86400
 _DEFAULT_ITEM_RETENTION_DAYS: int = 30
 
+#: ADR-dreaming-028 §1 — type-conditioned retention. The TTL pass looks up
+#: each item's retention in days by its ``metadata["okf_type"]`` (set by the
+#: parser per ADR-027). `None` means *no calendar TTL* — the item never
+#: ages out by this pass; supersession only happens via dedup, contradiction,
+#: or future code-change detection. Items whose `okf_type` is missing (pre-V5
+#: memories) or unknown (off-list, which the parser already fell back to
+#: ``"Memory"``) use the ``"Memory"`` row — preserving today's flat 30-day
+#: default for unset content.
+#:
+#: ``DREAM_ITEM_RETENTION_DAYS`` is kill-switch-only in v2: ``"0"`` disables
+#: ALL TTL regardless of type; any other value is IGNORED. Per-type values
+#: below are code-level constants, not env-tunable — adjusting one is a
+#: deliberate code change that goes through PR review.
+TYPE_RETENTION_DAYS: dict[str, int | None] = {
+    # Durable types — never age-bombed; supersession via non-age signals only.
+    "Identity":      None,
+    "Convention":    None,
+    "Invariant":     None,
+    "Workaround":    None,
+    "Bug":           None,
+    "Contradiction": None,  # ADR-028 §5 — worker-emitted disagreement records
+    # Calendar-decay types.
+    "Decision":      365,
+    "Preference":    180,
+    "Fix":           90,
+    # Fallback for pre-V5 / off-list. Matches today's flat default — back-compat.
+    "Memory":        _DEFAULT_ITEM_RETENTION_DAYS,
+}
+
 # Job 2 contradiction constants.
 _SECONDS_PER_HOUR: int = 3600
 _DEFAULT_CONTRADICTION_MAX_CALLS: int = 20
@@ -176,12 +205,50 @@ def _read_governance_max_calls() -> int:
     return max(0, value)
 
 
-def _pick_pruned(items: list[MemoryItem], now: float, retention_seconds: int) -> list[str]:
-    """Return the lex-sorted item_ids whose age strictly exceeds retention.
+def _retention_seconds_for(item: MemoryItem, table: dict[str, int | None]) -> int | None:
+    """ADR-028 §1 per-item retention lookup. Returns seconds, or ``None`` when
+    the item's type has no calendar TTL (durable types). Items whose
+    ``okf_type`` metadata is missing or off-list resolve to ``"Memory"``,
+    preserving today's 30-day default for untyped content."""
+    okf_type = (item.metadata or {}).get("okf_type") or "Memory"
+    days = table.get(okf_type, _DEFAULT_ITEM_RETENTION_DAYS)
+    if days is None:
+        return None
+    return int(days) * _SECONDS_PER_DAY
+
+
+def _pick_pruned(
+    items: list[MemoryItem],
+    now: float,
+    retention_seconds: int = -1,
+    *,
+    retention_table: dict[str, int | None] | None = None,
+) -> list[str]:
+    """Return the lex-sorted item_ids whose age strictly exceeds their
+    type-conditioned retention.
 
     JOB4 §F-TTL-3 (strictly greater) + §B13 (sorted ascending in the dict).
+
+    ADR-028 §1 changed the per-item retention from a single
+    ``retention_seconds`` value to a per-type lookup via
+    ``TYPE_RETENTION_DAYS``. The legacy ``retention_seconds`` positional arg
+    is retained for back-compat with rubric-pinned call sites and tests but
+    is IGNORED when ``retention_table`` is supplied (always, in production).
+    A caller that wants to override the per-type table (tests) passes
+    ``retention_table=`` as a kwarg.
+
+    Items with no calendar TTL for their type (durable types per ADR-028 §1
+    — ``Identity``, ``Convention``, ``Invariant``, ``Workaround``, ``Bug``,
+    ``Contradiction``) are NEVER returned by this pass.
     """
-    pruned = [item.item_id for item in items if (now - item.timestamp) > retention_seconds]
+    table = retention_table if retention_table is not None else TYPE_RETENTION_DAYS
+    pruned: list[str] = []
+    for item in items:
+        retention = _retention_seconds_for(item, table)
+        if retention is None:
+            continue  # durable type — no calendar TTL
+        if (now - item.timestamp) > retention:
+            pruned.append(item.item_id)
     return sorted(pruned)
 
 
@@ -985,7 +1052,11 @@ class DreamingWorker:
             total_items = len(items)
 
             retention_days = _read_item_retention_days()
-            retention_seconds = retention_days * _SECONDS_PER_DAY
+            # `retention_seconds` is now a back-compat-only summary field:
+            # the value that pre-V5 ("Memory"-typed) items use, which matches
+            # today's flat default. Per-item retention comes from
+            # ``TYPE_RETENTION_DAYS`` via ``_pick_pruned`` (ADR-028 §1).
+            retention_seconds = _DEFAULT_ITEM_RETENTION_DAYS * _SECONDS_PER_DAY
             max_calls = _read_contradiction_max_calls()
             max_governance_calls = _read_governance_max_calls()
 
@@ -995,11 +1066,16 @@ class DreamingWorker:
             if retention_days > 0 or max_calls > 0 or max_governance_calls > 0:
                 now_cached = _now()
 
-            # JOB4 pin #9: retention_days == 0 disables TTL pruning.
+            # JOB4 pin #9 / ADR-028 §1: retention_days == 0 (env kill-switch)
+            # disables TTL pruning entirely. Otherwise `_pick_pruned` reads
+            # the per-type retention from TYPE_RETENTION_DAYS — durable types
+            # (Identity/Convention/Invariant/Workaround/Bug/Contradiction)
+            # never age out; Decision/Preference/Fix have their own values;
+            # Memory falls back to the v1 default.
             if retention_days == 0:
                 pruned_ids: list[str] = []
             else:
-                pruned_ids = _pick_pruned(items, now_cached, retention_seconds)
+                pruned_ids = _pick_pruned(items, now_cached)
 
             # JOB4 §F-TTL-2: TTL deletes complete BEFORE dedup deletes.
             for pid in pruned_ids:
