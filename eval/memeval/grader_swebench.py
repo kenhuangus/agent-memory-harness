@@ -462,75 +462,23 @@ class SwebenchHostGrader:
         """Materialize the task's checkout into ``dest``; raise ``CheckoutError`` only
         if every avenue fails (mirroring the old single ``prepare_checkout`` call).
 
-        ``MEMEVAL_REPO_CACHE`` (read here at the grader edge — :data:`checkout`
-        stays pure/injectable) selects the source:
-
-        * **unset** → the historical network ``auto`` path, UNCHANGED, just with the
-          fetch retried on a transient blip (defense-in-depth; one attempt when it
-          succeeds, so behavior is byte-identical when nothing fails);
-        * **set** → a persistent bare mirror under it. The mirror is created once
-          per repo (``git clone --mirror``) and every per-task checkout then clones
-          ``--shared`` from it with ZERO github network. A cache miss / stale mirror
-          best-effort ``git remote update``s then retries locally; if that still
-          fails it falls back to the network ``auto`` path (WARNING-logged) so a
-          cache problem NEVER turns a gradeable task into an UNGRADED one.
-
-        Network git ops (mirror clone/update, auto fetch) are retried with backoff.
-        Under an injected stub ``git_runner`` (offline tests) the backoff sleep is a
-        no-op, so the tests never block.
+        Delegates to the shared :func:`~memeval.claudecode.checkout.checkout_with_cache`
+        — the ONE cache-aware checkout entrypoint every per-task checkout (both graders
+        and both agent-side checkouts) routes through. It reads ``MEMEVAL_REPO_CACHE``
+        itself: **unset** → the historical network ``auto`` path UNCHANGED (fetch
+        retried on a transient blip, byte-identical when nothing fails); **set** → a
+        persistent bare mirror so per-task checkouts are network-free, with a
+        WARNING-logged fallback to the network path so a cache problem NEVER turns a
+        gradeable task into an UNGRADED one. Under an injected stub ``git_runner``
+        (offline tests) the backoff sleep is a no-op, so the tests never block.
         """
-        import os
         from pathlib import Path
 
-        from .claudecode.checkout import (
-            CheckoutError,
-            ensure_mirror,
-            mirror_path_for,
-            prepare_checkout,
-            update_mirror,
-        )
+        from .claudecode.checkout import checkout_with_cache
 
-        dest = Path(dest)
-        repo = task.repo or ""
         git_kwargs = {} if self._git_runner is None else {"git_runner": self._git_runner}
-        # No real sleeps under an injected stub runner (offline tests); real backoff
-        # otherwise. The retry only engages on an ERROR, so a healthy run never sleeps.
-        net_kwargs = {**git_kwargs, "retries": 3}
-        if self._git_runner is not None:
-            net_kwargs["sleep"] = lambda _s: None
-
-        cache_dir = (os.environ.get("MEMEVAL_REPO_CACHE") or "").strip()
-        if not cache_dir:
-            # Default path: unchanged network auto checkout (fetch retried on failure).
-            prepare_checkout(repo, task.base_commit, dest, timeout=self.timeout,
-                             **net_kwargs)
-            return
-
-        # Mirror path: ensure the bare mirror exists, then check out locally from it.
-        try:
-            mirror = ensure_mirror(repo, cache_dir, **net_kwargs)
-            prepare_checkout(str(mirror), task.base_commit, dest, strategy="local",
-                             timeout=self.timeout, **git_kwargs)
-            return
-        except CheckoutError as exc:
-            log.warning("SwebenchHostGrader: local mirror checkout failed for %s (%s); "
-                        "refreshing mirror and retrying", repo, exc)
-
-        # Stale mirror? best-effort update, then retry the local checkout once.
-        try:
-            mirror = mirror_path_for(repo, cache_dir)
-            update_mirror(mirror, **net_kwargs)
-            prepare_checkout(str(mirror), task.base_commit, dest, strategy="local",
-                             timeout=self.timeout, **git_kwargs)
-            return
-        except CheckoutError as exc:
-            log.warning("SwebenchHostGrader: repo cache MISS for %s (%s); falling back "
-                        "to network checkout", repo, exc)
-
-        # Fallback: the network auto path. A failure HERE is a genuine checkout
-        # failure (raised to the caller -> UNGRADED), never masked by the cache.
-        prepare_checkout(repo, task.base_commit, dest, timeout=self.timeout,
-                         **net_kwargs)
+        checkout_with_cache(task.repo or "", task.base_commit, Path(dest),
+                            timeout=self.timeout, **git_kwargs)
 
     def _with_python(self, py: str, argv: list) -> list:
         """Compose an argv for a test command. A bare ``runtests.py`` script is run

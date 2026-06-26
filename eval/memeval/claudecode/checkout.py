@@ -22,11 +22,14 @@ real swe_contextbench run additionally needs network + a buildable repo.
 from __future__ import annotations
 
 import contextlib
+import logging
 import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Generator, Optional, TypeVar
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -346,6 +349,83 @@ def update_mirror(
     _retry(_update, attempts=retries, sleep=sleep)
 
 
+def checkout_with_cache(
+    repo: str,
+    base_commit: Optional[str],
+    dest: str | Path,
+    *,
+    git_runner: GitRunner = _subprocess_git,
+    sleep: Optional[Sleeper] = None,
+    timeout: int = 600,
+    retries: int = 3,
+) -> Path:
+    """The ONE cache-aware checkout entrypoint — every per-task checkout routes here.
+
+    Reads ``MEMEVAL_REPO_CACHE`` itself (so all consumers — both graders and both
+    agent-side checkouts — behave identically without duplicating the env read) and
+    selects the source:
+
+    * **unset** → the historical network ``auto`` :func:`prepare_checkout`
+      (``init`` → ``remote`` → ``fetch`` → ``checkout``), with the fetch retried on a
+      transient blip (defense-in-depth). The retry engages ONLY on an error, so the
+      happy-path git op sequence is byte-identical to before;
+    * **set** → a persistent bare mirror under it. The mirror is created once per repo
+      (``git clone --mirror``, :func:`ensure_mirror`) and every per-task checkout then
+      clones ``--shared`` from it with ZERO github network. A cache miss / stale mirror
+      best-effort ``git remote update``s then retries locally; if that STILL fails it
+      falls back to the network ``auto`` path (WARNING-logged) so a cache problem NEVER
+      turns a workable checkout into a failure.
+
+    The injectable ``git_runner`` + ``sleep`` seams are preserved (offline stub tests
+    pass a fake runner that materializes files on disk). ``sleep`` defaults to a real
+    :func:`time.sleep` ONLY on the real subprocess runner; under an injected stub runner
+    it defaults to a no-op, so offline tests never block on backoff — and a caller may
+    still override it explicitly. Returns the resolved ``dest`` path; raises
+    :class:`CheckoutError` only if every avenue fails (mirroring a bare
+    ``prepare_checkout`` call).
+    """
+    import os  # lazy: only this edge reads the environment
+
+    dest_path = Path(dest)
+    # Real backoff only on the real runner; an injected stub runner (offline tests)
+    # gets a no-op sleep so the retry never blocks. The retry only engages on an
+    # ERROR, so a healthy run never sleeps regardless.
+    if sleep is None:
+        sleep = time.sleep if git_runner is _subprocess_git else (lambda _s: None)
+    git_kwargs = {"git_runner": git_runner}
+    net_kwargs = {**git_kwargs, "retries": retries, "sleep": sleep}
+
+    cache_dir = (os.environ.get("MEMEVAL_REPO_CACHE") or "").strip()
+    if not cache_dir:
+        # Default path: unchanged network auto checkout (fetch retried on failure).
+        return prepare_checkout(repo, base_commit, dest_path, strategy="auto",
+                                timeout=timeout, **net_kwargs)
+
+    # Mirror path: ensure the bare mirror exists, then check out locally from it.
+    try:
+        mirror = ensure_mirror(repo, cache_dir, **net_kwargs)
+        return prepare_checkout(str(mirror), base_commit, dest_path, strategy="local",
+                                timeout=timeout, **git_kwargs)
+    except CheckoutError as exc:
+        log.warning("checkout_with_cache: local mirror checkout failed for %s (%s); "
+                    "refreshing mirror and retrying", repo, exc)
+
+    # Stale mirror? best-effort update, then retry the local checkout once.
+    try:
+        mirror = mirror_path_for(repo, cache_dir)
+        update_mirror(mirror, **net_kwargs)
+        return prepare_checkout(str(mirror), base_commit, dest_path, strategy="local",
+                                timeout=timeout, **git_kwargs)
+    except CheckoutError as exc:
+        log.warning("checkout_with_cache: repo cache MISS for %s (%s); falling back "
+                    "to network checkout", repo, exc)
+
+    # Fallback: the network auto path. A failure HERE is a genuine checkout failure
+    # (raised to the caller), never masked by the cache.
+    return prepare_checkout(repo, base_commit, dest_path, strategy="auto",
+                            timeout=timeout, **net_kwargs)
+
+
 #: Paths excluded from the captured PREDICTION diff. Agentic CODE runs memory
 #: substrates inside the checkout: plugin-real uses ``.cookbook-memory`` and builtin
 #: memory writes ``CLAUDE.md`` plus ``sessions/``. ``git add -A`` would otherwise
@@ -403,6 +483,7 @@ def capture_diff(
 
 __all__ = [
     "prepare_checkout",
+    "checkout_with_cache",
     "capture_diff",
     "ensure_mirror",
     "update_mirror",

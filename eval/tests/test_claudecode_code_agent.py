@@ -883,6 +883,147 @@ def test_plugin_real_allowed_tools_falls_back_without_sandbox(monkeypatch) -> No
 
 
 # --------------------------------------------------------------------------- #
+# Cache-aware checkout routing (MEMEVAL_REPO_CACHE) for the per-task consumers
+# that now share the ``checkout_with_cache`` helper: the agent-side checkout
+# (claudecode/agent.py) and grader.py. With the env UNSET the historical network
+# auto op sequence is preserved byte-for-byte; SET, a warm local mirror is used
+# with ZERO github network. The agent-side path is the worse failure mode — a
+# github timeout there fails the WHOLE task, not just grading.
+# --------------------------------------------------------------------------- #
+def _recording_cache_git(calls: list, *, local_ok: bool = True):
+    """A GitRunner that records every op and materializes a checkout on disk for both
+    the network ``auto`` path (init/remote/fetch/checkout) and the local-mirror path
+    (``clone --mirror`` seeds a bare mirror's ``HEAD``; ``clone --shared`` materializes
+    the working tree). ``local_ok=False`` makes the local ``clone --shared`` fail so the
+    fallback-to-network path is exercised."""
+
+    def git(args, cwd, *a, **kw) -> GitResult:
+        calls.append(list(args))
+        cwd = Path(cwd)
+        if args[:2] == ["clone", "--mirror"]:
+            target = Path(args[-1])
+            target.mkdir(parents=True, exist_ok=True)
+            (target / "HEAD").write_text("ref\n", encoding="utf-8")
+            return GitResult(returncode=0)
+        if args[:2] == ["clone", "--shared"]:
+            if not local_ok:
+                return GitResult(returncode=1, stderr="fatal: bad object <sha>")
+            cwd.mkdir(parents=True, exist_ok=True)
+            (cwd / "orm.py").write_text("def filter_empty():\n    return None\n",
+                                        encoding="utf-8")
+            return GitResult(returncode=0)
+        if args and args[0] in ("init", "remote", "fetch", "checkout"):
+            cwd.mkdir(parents=True, exist_ok=True)
+            (cwd / "orm.py").write_text("def filter_empty():\n    return None\n",
+                                        encoding="utf-8")
+            return GitResult(returncode=0)
+        return GitResult(returncode=0)
+
+    return git
+
+
+def _run_agentic_once(agent, **kw) -> None:
+    """Drive one agentic CODE task through the harness with a no-op (ungraded) grader —
+    enough to exercise the agent-side checkout without a real verdict."""
+    run_agent(Benchmark.SWE_CONTEXTBENCH, agent, memory=False,
+              path_or_id=_fixture("swe_contextbench.json"), limit=1,
+              seed_sessions=False, grader=lambda *a: None, **kw)
+
+
+def test_agent_checkout_unset_uses_historical_auto_sequence(monkeypatch) -> None:
+    """Agent-side checkout, MEMEVAL_REPO_CACHE UNSET -> the historical auto op sequence
+    (init,remote,fetch,checkout), NO mirror clone (byte-identical happy path)."""
+    monkeypatch.delenv("MEMEVAL_REPO_CACHE", raising=False)
+    calls: list = []
+    flag: dict = {}
+    with tempfile.TemporaryDirectory() as tmp:
+        agent = ClaudeCodeAgent(memory_mode="off", code_mode="agentic",
+                                runner=_make_fake_claude(edited_flag=flag),
+                                git_runner=_recording_cache_git(calls),
+                                runtime=_NATIVE, workdir=tmp)
+        _run_agentic_once(agent)
+    assert [c[0] for c in calls[:4]] == ["init", "remote", "fetch", "checkout"]
+    assert not any(c[:1] == ["clone"] for c in calls)
+
+
+def test_agent_checkout_warm_mirror_zero_github(monkeypatch) -> None:
+    """Agent-side checkout with a warm on-disk mirror -> a local ``clone --shared`` with
+    ZERO github (no ``clone --mirror``, no ``fetch``); the github-timeout failure mode is
+    eliminated on the warm path."""
+    calls: list = []
+    flag: dict = {}
+    with tempfile.TemporaryDirectory() as tmp:
+        cache = Path(tmp) / "cache"
+        mirror = cache / "example__django-fork.git"
+        mirror.mkdir(parents=True)
+        (mirror / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+        monkeypatch.setenv("MEMEVAL_REPO_CACHE", str(cache))
+        agent = ClaudeCodeAgent(memory_mode="off", code_mode="agentic",
+                                runner=_make_fake_claude(edited_flag=flag),
+                                git_runner=_recording_cache_git(calls),
+                                runtime=_NATIVE, workdir=tmp)
+        _run_agentic_once(agent)
+    assert any(c[:2] == ["clone", "--shared"] for c in calls)
+    assert not any(c[:2] == ["clone", "--mirror"] for c in calls)   # no github
+    assert not any(c and c[0] == "fetch" for c in calls)            # no github
+
+
+def test_agent_checkout_local_failure_falls_back_to_auto_and_warns(monkeypatch, caplog) -> None:
+    """Agent-side: a failing local mirror checkout updates the mirror, retries local,
+    then FALLS BACK to the network auto path (WARNING-logged). A cache problem never
+    fails the whole task."""
+    import logging
+    calls: list = []
+    flag: dict = {}
+    with tempfile.TemporaryDirectory() as tmp:
+        cache = Path(tmp) / "cache"
+        mirror = cache / "example__django-fork.git"
+        mirror.mkdir(parents=True)
+        (mirror / "HEAD").write_text("ref\n", encoding="utf-8")
+        monkeypatch.setenv("MEMEVAL_REPO_CACHE", str(cache))
+        agent = ClaudeCodeAgent(memory_mode="off", code_mode="agentic",
+                                runner=_make_fake_claude(edited_flag=flag),
+                                git_runner=_recording_cache_git(calls, local_ok=False),
+                                runtime=_NATIVE, workdir=tmp)
+        with caplog.at_level(logging.WARNING, logger="memeval.claudecode.checkout"):
+            _run_agentic_once(agent)
+    # local clone --shared tried twice (first + after the mirror update), then auto ran.
+    assert sum(1 for c in calls if c[:2] == ["clone", "--shared"]) == 2
+    assert any(c[:2] == ["remote", "update"] for c in calls)
+    assert any(c == ["init"] for c in calls)  # auto fallback engaged
+    assert any("falling back to network" in r.message for r in caplog.records)
+
+
+def test_localexec_grader_checkout_unset_uses_historical_auto_sequence(monkeypatch) -> None:
+    """grader.py (LocalExecGrader), MEMEVAL_REPO_CACHE UNSET -> historical auto sequence,
+    NO mirror clone — and the task still grades True end-to-end."""
+    monkeypatch.delenv("MEMEVAL_REPO_CACHE", raising=False)
+    calls: list = []
+    g = G.LocalExecGrader(runner=_make_fake_cmd(), git_runner=_recording_cache_git(calls))
+    assert g(_code_task(), _FIXED_DIFF) is True
+    assert [c[0] for c in calls[:4]] == ["init", "remote", "fetch", "checkout"]
+    assert not any(c[:1] == ["clone"] for c in calls)
+
+
+def test_localexec_grader_warm_mirror_zero_github(monkeypatch) -> None:
+    """grader.py (LocalExecGrader) with a warm on-disk mirror -> local ``clone --shared``,
+    ZERO github (no ``clone --mirror``, no ``fetch``)."""
+    calls: list = []
+    with tempfile.TemporaryDirectory() as tmp:
+        cache = Path(tmp) / "cache"
+        mirror = cache / "example__django-fork.git"
+        mirror.mkdir(parents=True)
+        (mirror / "HEAD").write_text("ref\n", encoding="utf-8")
+        monkeypatch.setenv("MEMEVAL_REPO_CACHE", str(cache))
+        g = G.LocalExecGrader(runner=_make_fake_cmd(),
+                              git_runner=_recording_cache_git(calls))
+        assert g(_code_task(), _FIXED_DIFF) is True
+    assert any(c[:2] == ["clone", "--shared"] for c in calls)
+    assert not any(c[:2] == ["clone", "--mirror"] for c in calls)   # no github
+    assert not any(c and c[0] == "fetch" for c in calls)            # no github
+
+
+# --------------------------------------------------------------------------- #
 # Built-in runner (no pytest required)
 # --------------------------------------------------------------------------- #
 def _all_tests() -> list:

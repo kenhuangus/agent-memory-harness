@@ -208,13 +208,14 @@ def test_agentic_code_keeps_checkout_cwd_but_shared_store() -> None:
         task = Task(task_id="code_1", benchmark=Benchmark.SWE_BENCH_CL, kind=TaskKind.CODE,
                     question="fix it", repo="o/r", base_commit="abc", group_id="seqA", order=0)
         # Stub checkout/diff so no real git runs; the store-location assertion is the point.
-        orig_prepare, orig_capture = agmod.prepare_checkout, agmod.capture_diff
-        agmod.prepare_checkout = lambda *a, **k: None
+        # The agent-side checkout now routes through the shared ``checkout_with_cache``.
+        orig_checkout, orig_capture = agmod.checkout_with_cache, agmod.capture_diff
+        agmod.checkout_with_cache = lambda *a, **k: None
         agmod.capture_diff = lambda *a, **k: ""
         try:
             agent.solve(task, _Ctx())
         finally:
-            agmod.prepare_checkout, agmod.capture_diff = orig_prepare, orig_capture
+            agmod.checkout_with_cache, agmod.capture_diff = orig_checkout, orig_capture
 
         # cwd was the per-task checkout; MEMORY_STORE was the shared store.
         resolved = str(substrate.resolve())

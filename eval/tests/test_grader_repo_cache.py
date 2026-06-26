@@ -32,7 +32,10 @@ from memeval.claudecode.checkout import GitResult  # noqa: E402
 from memeval.grader_swebench import SwebenchHostGrader  # noqa: E402
 from memeval.schema import Benchmark, Task, TaskKind  # noqa: E402
 
-_GRADER_LOGGER = "memeval.grader_swebench"
+# The cache-aware checkout logic now lives in the shared ``checkout_with_cache``
+# helper (the grader delegates to it), so the fallback WARNING is emitted from the
+# checkout module's logger, not the grader's.
+_GRADER_LOGGER = "memeval.claudecode.checkout"
 
 
 def _task(repo: str = "pydata/xarray", base: str = "0" * 40) -> Task:

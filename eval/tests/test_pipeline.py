@@ -72,7 +72,7 @@ def _install_fakes(monkeypatch, substrate_seen: list):
             substrate_seen.append(str(self._project_dir))
 
     monkeypatch.setattr(ClaudeCodeAgent, "__init__", patched_init)
-    monkeypatch.setattr(agmod, "prepare_checkout", lambda *a, **k: None)
+    monkeypatch.setattr(agmod, "checkout_with_cache", lambda *a, **k: None)
     monkeypatch.setattr(agmod, "capture_diff", lambda *a, **k: "")
     # The pipeline probes the sandbox login with a real `claude -p` turn before stage 1;
     # offline tests use a fake runner and must NOT make that network/subprocess call.
