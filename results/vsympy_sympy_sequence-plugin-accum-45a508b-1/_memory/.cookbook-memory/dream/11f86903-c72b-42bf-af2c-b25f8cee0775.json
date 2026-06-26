@@ -1,0 +1,1 @@
+{"cursor": 383584, "last_summary": "Rational('0.5', '100') returned 1/100100 instead of 1/200 because the __new__ method did `q *= p.q` which, when `q` is a string, performed Python string repetition ('100' * 2 = '100100').", "recent_memory_ids": ["mem_aafeb4c2"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

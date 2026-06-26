@@ -1,0 +1,1 @@
+{"cursor": 224489, "last_summary": "The existing Vector.__eq__ already converts other == 0 to Vector(0) before checking, providing an established pattern for handling scalar 0.", "recent_memory_ids": ["mem_af7a6b1d", "mem_7ed397e2", "mem_c9daea5a"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

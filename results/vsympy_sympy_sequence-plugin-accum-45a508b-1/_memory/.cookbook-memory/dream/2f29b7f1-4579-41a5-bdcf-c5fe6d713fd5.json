@@ -1,0 +1,1 @@
+{"cursor": 346112, "last_summary": "The added test is `test_issue_product_of_sum_with_inv_power` in sympy/concrete/tests/test_products.py, which asserts Product(n + 1/2**k, [k, 0, n-1]).subs(n, 2).doit() == Rational(15, 2).", "recent_memory_ids": ["mem_577ae175"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

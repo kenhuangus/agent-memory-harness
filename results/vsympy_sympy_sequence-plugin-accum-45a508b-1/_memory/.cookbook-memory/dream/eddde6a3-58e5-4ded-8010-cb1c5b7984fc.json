@@ -1,0 +1,1 @@
+{"cursor": 27892, "last_summary": "User is fixing an srepr bug in the sympy/sympy repository at base commit 94fb720696f5f5d12bad8bc813699fd696afd2fb, where dict and set containers don't apply srepr to their elements.", "recent_memory_ids": ["mem_0e4ac421"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

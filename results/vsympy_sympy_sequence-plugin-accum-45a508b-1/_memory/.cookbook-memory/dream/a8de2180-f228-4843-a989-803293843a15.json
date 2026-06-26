@@ -1,0 +1,1 @@
+{"cursor": 422353, "last_summary": "`sqrtdenest` should return an expression unchanged when it cannot be denested, rather than raising an error.", "recent_memory_ids": ["mem_fb5cf430", "mem_789c625b", "mem_c407834a", "mem_71feb3bd", "mem_4ba602cb", "mem_6c133e88"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
