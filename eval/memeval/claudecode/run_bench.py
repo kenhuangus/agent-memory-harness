@@ -214,6 +214,26 @@ def _attach_native_report(rr: Any, benchmark: str, mode: str,
               file=sys.stderr)
 
 
+def _make_agent(args: argparse.Namespace, *, mode: str, workdir, substrate):
+    """Construct the backend agent for ``--harness`` (ADR-harness-013).
+
+    Default ``claude`` → ``ClaudeCodeAgent`` (every existing invocation unchanged).
+    ``cursor`` → ``CursorCodeAgent`` (the Cursor CLI sibling adapter). Both satisfy
+    ``AgentAdapter`` and feed the SAME ``run_agent`` / grader / cost machinery."""
+    harness = getattr(args, "harness", "claude")
+    if harness == "cursor":
+        from ..cursorcli import CursorCodeAgent
+        return CursorCodeAgent(
+            model=args.model, memory_mode=mode, k=args.k, timeout=args.timeout,
+            workdir=workdir, code_mode=args.code_mode, project_dir=substrate,
+        )
+    return ClaudeCodeAgent(
+        model=args.model, memory_mode=mode, k=args.k, timeout=args.timeout,
+        workdir=workdir, code_mode=args.code_mode,
+        project_dir=substrate, group_scoped_store=substrate is not None,
+    )
+
+
 def _run_one(benchmark: str, mode: str, args: argparse.Namespace,
              *, stamp: str = "", completed_recs: Optional[list] = None) -> Optional[dict]:
     import json
@@ -244,16 +264,15 @@ def _run_one(benchmark: str, mode: str, args: argparse.Namespace,
     # home, so we leave it per-task (unchanged). off/builtin/plugin are unaffected.
     substrate = (os.path.join(args.out_dir, "_memory")
                  if (mode == "plugin-real" and args.out_dir) else None)
-    agent = ClaudeCodeAgent(model=args.model, memory_mode=mode, k=args.k,
-                            timeout=args.timeout, workdir=workdir,
-                            code_mode=args.code_mode,
-                            project_dir=substrate, group_scoped_store=substrate is not None)
+    agent = _make_agent(args, mode=mode, workdir=workdir, substrate=substrate)
     cost = CostTracker(budget_usd=args.budget_usd) if args.budget_usd and args.budget_usd > 0 else None
     limit = _resolve_limit(benchmark, args.limit)
     group_aware = _resolve_group_aware(benchmark, args.select)
     grader = _make_grader(benchmark, args)
-    run_id = f"claude-code-{mode}"
-    notes = f"Claude Code CLI · memory={mode}"
+    harness = getattr(args, "harness", "claude")
+    _cli_label = "Cursor CLI" if harness == "cursor" else "Claude Code CLI"
+    run_id = f"{harness}-{mode}" if harness == "cursor" else f"claude-code-{mode}"
+    notes = f"{_cli_label} · memory={mode}"
     # Plugin talks to an MCP server; headless claude's MCP connection degrades under
     # concurrency, so plugin runs at --plugin-workers (default 1) while builtin/off
     # (no MCP, just file reads) run at the full --workers.
@@ -364,6 +383,11 @@ def main(argv: Optional[list[str]] = None) -> int:
                          "cookbook_memory plugin, the real product) | plugin (OKF/MCP "
                          "harness simulation — explicit opt-in only) | off (baseline) | "
                          "all (= builtin+plugin-real).")
+    ap.add_argument("--harness", choices=["claude", "cursor"], default="claude",
+                    help="Which agent CLI to drive (ADR-harness-013): 'claude' "
+                         "(default, Claude Code) or 'cursor' (the Cursor CLI, "
+                         "cursor-agent — needs CURSOR_API_KEY; see .env.example). "
+                         "Both run the SAME benchmarks/graders.")
     ap.add_argument("--model", default="claude-haiku-4-5")
     ap.add_argument("--path", default=None, help="local fixture/dataset path, or 'fixtures' (blank = real source).")
     ap.add_argument("--limit", type=int, default=None,
@@ -415,6 +439,12 @@ def main(argv: Optional[list[str]] = None) -> int:
                     help="Write per-run raw artifacts here (trajectory JSONL, record JSON, "
                          "and the agent working dir with CLAUDE.md/.mcp.json/recall.jsonl/memory).")
     args = ap.parse_args(argv)
+
+    # When --harness cursor is selected without an explicit --model, swap the
+    # Claude default for a Cursor default (the Claude id is meaningless to
+    # cursor-agent). An explicit --model always wins.
+    if getattr(args, "harness", "claude") == "cursor" and args.model == "claude-haiku-4-5":
+        args.model = "composer-2.5"
 
     # --list-benchmarks is a pure-offline discovery aid: print and exit before we
     # probe for the claude CLI or touch any dataset.

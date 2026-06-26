@@ -13,7 +13,7 @@ help:
 	@echo "Targets:"
 	@echo "  setup          - create .venv (Python 3.13) + install eval + plugin (uv)"
 	@echo "  install-claude-plugin - install plugin into the user's real Claude Code config"
-	@echo "  pipeline       - run ONE stage over ONE sequence (ARGS='--yes ...' to override)"
+	@echo "  pipeline       - run ONE stage over ONE sequence (ARGS='--yes ...' to override; --harness claude|cursor)"
 	@echo "  ui             - launch the combined memory UI (monitor + inspector under one URL; ARGS='--open ...')"
 	@echo "  test           - run the full pytest suite"
 	@echo "  typecheck      - mypy --strict on memeval/dreaming/ (ADR-dreaming-010)"
@@ -53,9 +53,12 @@ install-claude-plugin:
 # plugin-dreamed | plugin-primed; default plugin-accum) over one --sequence of one --benchmark
 # (swe_bench_cl or vista) against the persistent per-version memory substrate. For
 # SWE-Bench-CL sequences the grading venv is built once per sequence and reused.
+# The agent CLI is just another run option: --harness claude (default) | cursor
+# (cursor needs CURSOR_API_KEY in .env — see .env.example).
 # Defaults to a small interactive run; override with ARGS, e.g.:
 #   make pipeline ARGS="--yes --sequence django_django_sequence --limit 20 --budget-usd 20"
 #   make pipeline ARGS="--yes --benchmark vista --sequence coding --stage plugin-accum"
+#   make pipeline ARGS="--yes --harness cursor --benchmark vista --sequence coding-pr-review-001"
 pipeline:
 	$(UVRUN) memeval-pipeline $(ARGS)
 
