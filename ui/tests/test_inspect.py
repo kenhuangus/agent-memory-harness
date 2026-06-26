@@ -408,3 +408,22 @@ def test_accuracy_local_degrades_when_embedder_unavailable(seeded, monkeypatch):
     assert any("accuracy-local profile unavailable" in w for w in sub.warnings)
     # browse still works on the degraded substrate
     assert sub.summary()["total_unique"] > 0
+
+
+def test_inspector_default_profile_is_offline():
+    """`make ui` (no --profile) must browse OFFLINE — never auto-pick a network/model
+    embedder that could hang the open on a $VOYAGE_API_KEY / $MEMEVAL_LOCAL_ANN load."""
+    from ui.__main__ import _build_parser
+
+    assert _build_parser().parse_args([]).profile == "fusion"
+
+
+def test_fusion_profile_ignores_voyage_key(seeded, monkeypatch):
+    """The 'fusion' default stays offline even when $VOYAGE_API_KEY is set: browsing reads
+    the stored vectors and must never make a Voyage network call on open (the bug that left
+    the inspector empty on a 3s timeout)."""
+    store, _ = seeded
+    monkeypatch.setenv("VOYAGE_API_KEY", "should-not-be-used-for-browsing")
+    sub = open_substrate(str(store), "fusion")
+    assert sub.profile == "fusion"          # explicit fusion ignores the key (no degrade-to-accuracy)
+    assert sub.summary()["total_unique"] > 0  # browse works with no embedder/network
