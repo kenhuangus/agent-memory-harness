@@ -785,8 +785,13 @@ def _source_memory_health_or_die(source: Path, stage: str) -> dict[str, Any]:
     return health
 
 
+def _copy_memory_dataset(source: Path, target: Path) -> None:
+    """Copy the complete plugin-owned memory dataset, not just Markdown notes."""
+    shutil.copytree(source, target, dirs_exist_ok=True)
+
+
 def _seed_source_memory(cfg: dict, substrate: Path) -> Optional[dict[str, Any]]:
-    """Copy a selected previous ``_memory`` folder into this run namespace."""
+    """Copy a selected previous ``_memory`` dataset into this run namespace."""
     stage = str(cfg.get("stage") or "")
     if stage not in _SOURCE_MEMORY_STAGES:
         return None
@@ -805,7 +810,7 @@ def _seed_source_memory(cfg: dict, substrate: Path) -> Optional[dict[str, Any]]:
         )
     health = _source_memory_health_or_die(source, stage)
     substrate.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, substrate, dirs_exist_ok=True)
+    _copy_memory_dataset(source, substrate)
     return {
         "path": str(source),
         "copied_to": str(substrate),

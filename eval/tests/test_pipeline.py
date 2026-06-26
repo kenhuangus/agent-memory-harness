@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import types
 import tempfile
 from pathlib import Path
@@ -105,7 +106,26 @@ def _source_memory(tmp: str, *, version: str = "vprior",
     vd = Path(tmp) / version
     memory = vd / "_memory" / ".cookbook-memory"
     memory.mkdir(parents=True)
-    (memory / "prior.md").write_text("prior memory\n", encoding="utf-8")
+    markdown = memory / "markdown" / "memory"
+    markdown.mkdir(parents=True)
+    (markdown / "prior.md").write_text("prior memory\n", encoding="utf-8")
+    (memory / "events.jsonl").write_text(
+        json.dumps({"op": "recall", "ids": ["prior"]}) + "\n",
+        encoding="utf-8",
+    )
+    (memory / "dream").mkdir()
+    (memory / "dream" / "prior.daydream-events.jsonl").write_text(
+        json.dumps({"event_type": "daydream.memory_written"}) + "\n",
+        encoding="utf-8",
+    )
+    (memory / "attachments").mkdir()
+    (memory / "attachments" / "payload.bin").write_bytes(b"full dataset sidecar")
+    with sqlite3.connect(memory / "memory.db") as conn:
+        conn.execute("CREATE TABLE items (item_id TEXT PRIMARY KEY, content TEXT)")
+        conn.execute("INSERT INTO items VALUES (?, ?)", ("prior-sqlite", "prior sqlite memory"))
+    with sqlite3.connect(memory / "graph.db") as conn:
+        conn.execute("CREATE TABLE nodes (item_id TEXT PRIMARY KEY, content TEXT)")
+        conn.execute("INSERT INTO nodes VALUES (?, ?)", ("prior-graph", "prior graph memory"))
     (vd / "swe_bench_cl-20260101T000000Z.json").write_text(json.dumps({
         "benchmark": benchmark,
         "timestamp": "20260101T000000Z",
@@ -136,7 +156,9 @@ def test_pipeline_end_to_end_offline(monkeypatch) -> None:
         substrate = Path(substrate_seen[0])
         assert substrate.name == "_memory"
         assert (substrate / ".cookbook-memory").is_dir()
-        assert (substrate / ".cookbook-memory" / "prior.md").is_file()
+        assert (substrate / ".cookbook-memory" / "markdown" / "memory" / "prior.md").is_file()
+        assert (substrate / ".cookbook-memory" / "memory.db").is_file()
+        assert (substrate / ".cookbook-memory" / "graph.db").is_file()
         # Memory landed in the shared store (the dir persists across invocations).
         markers = list((substrate / ".cookbook-memory").glob("mem_*.md"))
         assert markers, "no memory written to the shared substrate"
@@ -452,8 +474,8 @@ def test_plugin_accum_source_defaults_to_latest_matching_memory(tmp_path, monkey
         },
         "runs": [],
     }), encoding="utf-8")
-    os.utime(old / ".cookbook-memory" / "prior.md", (1, 1))
-    os.utime(new / ".cookbook-memory" / "prior.md", (2, 2))
+    os.utime(old / ".cookbook-memory" / "markdown" / "memory" / "prior.md", (1, 1))
+    os.utime(new / ".cookbook-memory" / "markdown" / "memory" / "prior.md", (2, 2))
     os.utime(empty, (3, 3))
     monkeypatch.setattr(P, "_interactive", lambda: False)
 
@@ -502,7 +524,20 @@ def test_plugin_accum_seed_copies_source_into_target_namespace(tmp_path) -> None
     info = P._seed_source_memory(cfg, target)
 
     assert info and info["path"] == str(source.resolve())
-    assert (target / ".cookbook-memory" / "prior.md").read_text(encoding="utf-8") == "prior memory\n"
+    store = target / ".cookbook-memory"
+    assert (store / "markdown" / "memory" / "prior.md").read_text(encoding="utf-8") == "prior memory\n"
+    assert (store / "events.jsonl").is_file()
+    assert (store / "dream" / "prior.daydream-events.jsonl").is_file()
+    assert (store / "attachments" / "payload.bin").read_bytes() == b"full dataset sidecar"
+    with sqlite3.connect(store / "memory.db") as conn:
+        assert conn.execute("SELECT content FROM items WHERE item_id = ?",
+                            ("prior-sqlite",)).fetchone()[0] == "prior sqlite memory"
+    with sqlite3.connect(store / "graph.db") as conn:
+        assert conn.execute("SELECT content FROM nodes WHERE item_id = ?",
+                            ("prior-graph",)).fetchone()[0] == "prior graph memory"
+    assert info["health"]["memory_items"] == 1
+    assert info["health"]["graph_nodes"] == 1
+    assert info["health"]["markdown_items"] == 1
     assert info["health"]["durable_items"] == 1
 
 
