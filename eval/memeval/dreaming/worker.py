@@ -38,7 +38,7 @@ import re
 import string
 import time
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, Iterator, NamedTuple
 
 from ..protocols import MemoryStore
 from ..schema import MemoryItem
@@ -56,6 +56,13 @@ _PUNCT_TRANSLATION = str.maketrans("", "", string.punctuation)
 _WHITESPACE_RUN = re.compile(r"\s+")
 _SECONDS_PER_DAY: int = 86400
 _DEFAULT_ITEM_RETENTION_DAYS: int = 30
+
+#: ADR-dreaming-028 §2 — page size used when iterating the store. Backends
+#: implementing `iter_pages(page_size)` natively get cursor-based streaming
+#: at this granularity; backends without an override fall back to a single
+#: `[list(store.all())]` page (today's behavior). Tunable per-call via the
+#: helper kwarg if a future pass wants finer control.
+_DEFAULT_PAGE_SIZE: int = 1000
 
 #: ADR-dreaming-028 §1 — type-conditioned retention. The TTL pass looks up
 #: each item's retention in days by its ``metadata["okf_type"]`` (set by the
@@ -203,6 +210,35 @@ def _read_governance_max_calls() -> int:
         )
         return _DEFAULT_GOVERNANCE_MAX_CALLS
     return max(0, value)
+
+
+def _iter_store_pages(
+    store: MemoryStore,
+    *,
+    page_size: int = _DEFAULT_PAGE_SIZE,
+) -> Iterator[list[MemoryItem]]:
+    """ADR-dreaming-028 §2 — iterate the store in pages of up to ``page_size``.
+
+    If ``store`` implements ``iter_pages(page_size: int) -> Iterator[list[MemoryItem]]``
+    (an opt-in extension to the :class:`~memeval.protocols.MemoryStore`
+    protocol), this helper delegates to it directly. Backends that do are
+    expected to yield real streaming pages from their underlying cursor
+    (FTS5's `SELECT … LIMIT N OFFSET …`, sqlite_vec's row-iter, etc.).
+
+    Backends that do NOT override ``iter_pages`` fall back to a single page
+    wrapping ``store.all()`` — byte-identical to today's read pattern. This
+    keeps the v1 contract intact and lets storage adopt streaming on its own
+    schedule.
+
+    Page-by-page consumption is intentionally caller-controlled: this helper
+    only YIELDS pages; whatever the caller does with them (materialize into
+    a single list per today's worker, or process page-by-page in future
+    redesigns) stays inside the dream worker's domain.
+    """
+    if hasattr(store, "iter_pages"):
+        yield from store.iter_pages(page_size=page_size)  # type: ignore[attr-defined]
+        return
+    yield list(store.all())
 
 
 def _retention_seconds_for(item: MemoryItem, table: dict[str, int | None]) -> int | None:
@@ -1048,7 +1084,15 @@ class DreamingWorker:
                 )
 
         with _basedir_dream_lock(basedir):
-            items: list[MemoryItem] = list(self.store.all())
+            # ADR-028 §2 — route the store read through `_iter_store_pages` so
+            # backends opting into `iter_pages()` get cursor-based streaming;
+            # backends without the override fall through to today's `.all()`.
+            # The worker still materializes the full list in this PR — the
+            # passes downstream haven't moved to page-by-page yet, that's
+            # follow-up work. The protocol surface change is what's new here.
+            items: list[MemoryItem] = []
+            for _page in _iter_store_pages(self.store):
+                items.extend(_page)
             total_items = len(items)
 
             retention_days = _read_item_retention_days()
