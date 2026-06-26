@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Architecture · AI Agent Memory Harness</title>
-<meta name="description" content="The four-module memory harness: persistence, intelligent router, retrieval orchestrator and the async dreaming component — plus per-backend indexing for fast retrieval.">
+<meta name="description" content="End-to-end architecture as built: run_bench drives Claude Code per journey (off / builtin / plugin-real), recall through the cookbook-memory MCP, scoring via the native VISTA / SWE-Bench-CL evaluators, and the Stop-hook daydream write path into a routed multi-backend store.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -41,8 +41,11 @@
   <div class="wrap">
     <div class="crumb"><a href="index.html">Overview</a> / Architecture</div>
     <h1>Architecture</h1>
-    <p class="lead">A coding agent writes memories as it works; a router sends each query to the one backend that
-      answers it best; an offline worker keeps the store clean. Three storage backends sit behind a single interface.</p>
+    <p class="lead">As built, end to end: <code>run_bench</code> drives the <strong>Claude Code CLI</strong> once per
+      journey in one of three memory modes; a recall step reads memory (native files or the cookbook-memory MCP);
+      the output is scored by a <strong>native evaluator</strong> (VISTA or SWE-Bench-CL). On session end a
+      <strong>Stop hook</strong> fires the daydream writer, which extracts memories with an OpenRouter model and
+      persists them through a <strong>router</strong> over three storage backends.</p>
   </div>
 </section>
 
@@ -50,7 +53,7 @@
 <section class="section">
   <div class="wrap">
     <div class="card" style="padding:18px;background:var(--bg-elev)">
-      <svg viewBox="0 0 1100 720" xmlns="http://www.w3.org/2000/svg" font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" role="img" aria-label="AI Agent Memory Harness architecture diagram">
+      <svg viewBox="0 0 1100 880" xmlns="http://www.w3.org/2000/svg" font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" role="img" aria-label="AI Agent Memory Harness end-to-end architecture: run_bench drives Claude Code per journey, recall reads memory, a native evaluator scores the run, and the Stop-hook daydream writer persists extracted memories through a router over three backends">
         <defs>
           <linearGradient id="g-agent" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6366f1"/><stop offset="1" stop-color="#22d3ee"/></linearGradient>
           <linearGradient id="g-bus" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#1b2433"/><stop offset="1" stop-color="#243044"/></linearGradient>
@@ -59,106 +62,140 @@
           <marker id="ah-t" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#2dd4bf"/></marker>
           <marker id="ah-a" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#fbbf24"/></marker>
           <marker id="ah-p" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#f472b6"/></marker>
-          <marker id="ah-t2" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto"><path d="M7,0 L0,3 L7,6 Z" fill="#2dd4bf"/></marker>
-          <marker id="ah-p2" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto"><path d="M7,0 L0,3 L7,6 Z" fill="#f472b6"/></marker>
-          <marker id="ah-m2" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto"><path d="M7,0 L0,3 L7,6 Z" fill="#6d7e95"/></marker>
         </defs>
-        <rect x="0" y="0" width="1100" height="720" rx="16" fill="#0b0e14"/>
+        <rect x="0" y="0" width="1100" height="880" rx="16" fill="#0b0e14"/>
+
+        <!-- ===== EVAL DRIVER ===== -->
+        <text x="44" y="40" fill="#6d7e95" font-size="12" font-weight="700" letter-spacing="2">EVAL DRIVER · memeval.claudecode</text>
         <g>
-          <rect x="400" y="36" width="300" height="78" rx="14" fill="#121826" stroke="url(#g-agent)" stroke-width="1.6"/>
-          <text x="550" y="68" text-anchor="middle" fill="#e7edf5" font-size="18" font-weight="700">Coding Agent</text>
-          <text x="550" y="92" text-anchor="middle" fill="#9fb0c5" font-size="12.5">Claude Code CLI · write · query · session lifecycle</text>
-        </g>
-        <rect x="44" y="158" width="1012" height="286" rx="16" fill="#0e1320" stroke="#243044" stroke-width="1.2"/>
-        <text x="66" y="184" fill="#6d7e95" font-size="12" font-weight="700" letter-spacing="2">AI MEMORY HARNESS</text>
-        <g>
-          <rect x="70" y="200" width="300" height="222" rx="12" fill="#121826" stroke="#243044"/>
-          <rect x="70" y="200" width="300" height="4" rx="2" fill="#8b9dff"/>
-          <circle cx="96" cy="232" r="13" fill="#1a2233" stroke="#8b9dff"/><text x="96" y="237" text-anchor="middle" fill="#8b9dff" font-size="13" font-weight="700">1</text>
-          <text x="120" y="237" fill="#e7edf5" font-size="16" font-weight="700">Persistence Layer</text>
-          <text x="90" y="268" fill="#9fb0c5" font-size="12.5">Write path — decides what, when</text>
-          <text x="90" y="287" fill="#9fb0c5" font-size="12.5">&amp; where to save. Tags each item:</text>
-          <text x="90" y="318" fill="#cbd5e8" font-size="12.5">• timestamp · relevancy score</text>
-          <text x="90" y="340" fill="#cbd5e8" font-size="12.5">• session tag · provenance</text>
-          <text x="90" y="362" fill="#cbd5e8" font-size="12.5">• versioning + dedup hints</text>
-          <text x="90" y="397" fill="#6d7e95" font-size="11.5" font-style="italic">save → MD · SQLite · Graph</text>
+          <rect x="44" y="52" width="300" height="96" rx="14" fill="#121826" stroke="url(#g-agent)" stroke-width="1.6"/>
+          <text x="194" y="84" text-anchor="middle" fill="#e7edf5" font-size="17" font-weight="700">run_bench</text>
+          <text x="194" y="107" text-anchor="middle" fill="#9fb0c5" font-size="12">Claude Code CLI · subscription auth</text>
+          <text x="194" y="128" text-anchor="middle" fill="#cbd5e8" font-size="12">mode: off · builtin · plugin-real</text>
         </g>
         <g>
-          <rect x="400" y="200" width="300" height="98" rx="12" fill="#121826" stroke="#243044"/>
-          <rect x="400" y="200" width="300" height="4" rx="2" fill="#2dd4bf"/>
-          <circle cx="426" cy="232" r="13" fill="#16241f" stroke="#2dd4bf"/><text x="426" y="237" text-anchor="middle" fill="#2dd4bf" font-size="13" font-weight="700">3</text>
-          <text x="450" y="237" fill="#e7edf5" font-size="16" font-weight="700">Retrieval Orchestrator</text>
-          <text x="420" y="266" fill="#9fb0c5" font-size="12.5">Unified query API → rank by</text>
-          <text x="420" y="285" fill="#9fb0c5" font-size="12.5">recency × relevancy → dedup → return</text>
+          <rect x="400" y="52" width="300" height="96" rx="14" fill="#121826" stroke="#8b9dff" stroke-width="1.4"/>
+          <text x="550" y="80" text-anchor="middle" fill="#e7edf5" font-size="16" font-weight="700">ClaudeCodeAgent</text>
+          <text x="550" y="101" text-anchor="middle" fill="#9fb0c5" font-size="12">one journey / task per run</text>
+          <text x="550" y="122" text-anchor="middle" fill="#cbd5e8" font-size="12">QA turn · agentic CODE checkout</text>
+          <text x="550" y="140" text-anchor="middle" fill="#6d7e95" font-size="11">--plugin-workers · serialized bundle build</text>
         </g>
         <g>
-          <rect x="400" y="322" width="300" height="100" rx="12" fill="#121826" stroke="#243044"/>
-          <rect x="400" y="322" width="300" height="4" rx="2" fill="#fbbf24"/>
-          <circle cx="426" cy="354" r="13" fill="#241f12" stroke="#fbbf24"/><text x="426" y="359" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700">2</text>
-          <text x="450" y="359" fill="#e7edf5" font-size="16" font-weight="700">Intelligent Router</text>
-          <text x="420" y="388" fill="#9fb0c5" font-size="12.5">Classifies the query and routes to</text>
-          <text x="420" y="407" fill="#9fb0c5" font-size="12.5">the single best backend (rules/learned)</text>
+          <rect x="756" y="52" width="300" height="96" rx="14" fill="#121826" stroke="#2dd4bf" stroke-width="1.4"/>
+          <text x="906" y="80" text-anchor="middle" fill="#e7edf5" font-size="16" font-weight="700">Native Evaluator</text>
+          <text x="906" y="101" text-anchor="middle" fill="#9fb0c5" font-size="12">scores recorded trajectories</text>
+          <text x="906" y="121" text-anchor="middle" fill="#cbd5e8" font-size="12">VISTA · SWE-Bench-CL</text>
+          <text x="906" y="139" text-anchor="middle" fill="#6d7e95" font-size="11">+ host grader for CODE tests</text>
+        </g>
+
+        <!-- ===== RECALL / READ ===== -->
+        <g>
+          <rect x="400" y="196" width="300" height="78" rx="12" fill="#0e1320" stroke="#2dd4bf" stroke-dasharray="4 3"/>
+          <text x="550" y="223" text-anchor="middle" fill="#2dd4bf" font-size="13.5" font-weight="700">Recall / retrieve step</text>
+          <text x="550" y="245" text-anchor="middle" fill="#9fb0c5" font-size="11.5">builtin → native Grep/Read over sessions/</text>
+          <text x="550" y="263" text-anchor="middle" fill="#9fb0c5" font-size="11.5">plugin-real → cookbook-memory MCP `recall`</text>
+        </g>
+
+        <!-- driver flow arrows -->
+        <line x1="344" y1="100" x2="398" y2="100" stroke="#8b9dff" stroke-width="1.8" marker-end="url(#ah-b)"/>
+        <rect x="346" y="78" width="50" height="18" rx="5" fill="#0b0e14"/><text x="371" y="91" text-anchor="middle" fill="#8b9dff" font-size="10.5" font-weight="600">drive</text>
+        <line x1="550" y1="148" x2="550" y2="194" stroke="#2dd4bf" stroke-width="1.8" marker-end="url(#ah-t)"/>
+        <line x1="582" y1="194" x2="582" y2="150" stroke="#2dd4bf" stroke-width="1.8" marker-end="url(#ah-t)"/>
+        <rect x="446" y="166" width="50" height="18" rx="5" fill="#0b0e14"/><text x="471" y="179" text-anchor="middle" fill="#2dd4bf" font-size="10.5" font-weight="600">recall</text>
+        <rect x="592" y="164" width="56" height="18" rx="5" fill="#0b0e14"/><text x="620" y="177" text-anchor="middle" fill="#2dd4bf" font-size="10.5" font-weight="600">notes</text>
+        <line x1="700" y1="100" x2="754" y2="100" stroke="#2dd4bf" stroke-width="1.8" marker-end="url(#ah-t)"/>
+        <rect x="700" y="78" width="56" height="18" rx="5" fill="#0b0e14"/><text x="728" y="91" text-anchor="middle" fill="#2dd4bf" font-size="10.5" font-weight="600">output</text>
+
+        <!-- ===== WRITE PATH: Stop hook -> daydream ===== -->
+        <text x="44" y="318" fill="#6d7e95" font-size="12" font-weight="700" letter-spacing="2">WRITE / CONSOLIDATION · Stop hook → daydream</text>
+        <g>
+          <rect x="44" y="334" width="232" height="92" rx="12" fill="#121826" stroke="#f472b6"/>
+          <text x="160" y="362" text-anchor="middle" fill="#e7edf5" font-size="14.5" font-weight="700">Stop hook</text>
+          <text x="160" y="384" text-anchor="middle" fill="#f472b6" font-size="11" font-weight="600">ASYNC · fail-open</text>
+          <text x="160" y="406" text-anchor="middle" fill="#9fb0c5" font-size="11.5">fires on session end</text>
         </g>
         <g>
-          <rect x="730" y="200" width="300" height="222" rx="12" fill="#121826" stroke="#243044"/>
-          <rect x="730" y="200" width="300" height="4" rx="2" fill="#f472b6"/>
-          <circle cx="756" cy="232" r="13" fill="#241622" stroke="#f472b6"/><text x="756" y="237" text-anchor="middle" fill="#f472b6" font-size="13" font-weight="700">4</text>
-          <text x="780" y="232" fill="#e7edf5" font-size="16" font-weight="700">Dreaming Component</text>
-          <text x="780" y="250" fill="#f472b6" font-size="11" font-weight="600">ASYNC · OFFLINE</text>
-          <text x="752" y="288" fill="#cbd5e8" font-size="12.5">• Deduplicate across backends</text>
-          <text x="752" y="312" fill="#cbd5e8" font-size="12.5">• Resolve contradictions</text>
-          <text x="752" y="336" fill="#cbd5e8" font-size="12.5">• Session governance:</text>
-          <text x="766" y="356" fill="#9fb0c5" font-size="12">must-know · must-do · blacklist</text>
-          <text x="752" y="384" fill="#cbd5e8" font-size="12.5">• Selective retention &amp; pruning</text>
-        </g>
-        <rect x="70" y="468" width="960" height="34" rx="10" fill="url(#g-bus)" stroke="#243044"/>
-        <text x="550" y="490" text-anchor="middle" fill="#9fb0c5" font-size="12.5" font-weight="600">Unified Storage Interface · per-backend index</text>
-        <g>
-          <rect x="70" y="540" width="300" height="150" rx="12" fill="#121826" stroke="#243044"/>
-          <text x="220" y="578" text-anchor="middle" fill="#e7edf5" font-size="15" font-weight="700">Markdown + YAML</text>
-          <text x="220" y="604" text-anchor="middle" fill="#9fb0c5" font-size="12.5">Human-readable notes</text>
-          <text x="220" y="640" text-anchor="middle" fill="#8b9dff" font-size="12.5" font-weight="600">Index: inverted keyword map</text>
-          <text x="220" y="662" text-anchor="middle" fill="#6d7e95" font-size="11.5">keyword → file path</text>
+          <rect x="312" y="334" width="232" height="92" rx="12" fill="#121826" stroke="#f472b6"/>
+          <text x="428" y="360" text-anchor="middle" fill="#e7edf5" font-size="14.5" font-weight="700">daydream-cli</text>
+          <text x="428" y="381" text-anchor="middle" fill="#9fb0c5" font-size="11.5">`daydream` per session</text>
+          <text x="428" y="399" text-anchor="middle" fill="#9fb0c5" font-size="11.5">`dream --all` consolidation</text>
+          <text x="428" y="417" text-anchor="middle" fill="#6d7e95" font-size="10.5">transcript_formatter noise filter</text>
         </g>
         <g>
-          <rect x="400" y="540" width="300" height="150" rx="12" fill="#121826" stroke="#243044"/>
-          <text x="550" y="578" text-anchor="middle" fill="#e7edf5" font-size="15" font-weight="700">SQLite + Vectors</text>
-          <text x="550" y="604" text-anchor="middle" fill="#9fb0c5" font-size="12.5">Semantic similarity search</text>
-          <text x="550" y="640" text-anchor="middle" fill="#2dd4bf" font-size="12.5" font-weight="600">Index: HNSW / FAISS ANN</text>
-          <text x="550" y="662" text-anchor="middle" fill="#6d7e95" font-size="11.5">embed → nearest neighbours</text>
+          <rect x="580" y="334" width="232" height="92" rx="12" fill="#121826" stroke="#f472b6"/>
+          <text x="696" y="360" text-anchor="middle" fill="#e7edf5" font-size="14.5" font-weight="700">OpenRouter LLM</text>
+          <text x="696" y="381" text-anchor="middle" fill="#9fb0c5" font-size="11.5">extract: what to remember</text>
+          <text x="696" y="399" text-anchor="middle" fill="#6d7e95" font-size="10.5">ling-2.6-flash (default)</text>
+          <text x="696" y="417" text-anchor="middle" fill="#6d7e95" font-size="10.5">→ _extract → MemoryItems</text>
         </g>
         <g>
-          <rect x="730" y="540" width="300" height="150" rx="12" fill="#121826" stroke="#243044"/>
-          <text x="880" y="578" text-anchor="middle" fill="#e7edf5" font-size="15" font-weight="700">Graph Store</text>
-          <text x="880" y="604" text-anchor="middle" fill="#9fb0c5" font-size="12.5">Memory relationships &amp; conflicts</text>
-          <text x="880" y="640" text-anchor="middle" fill="#f472b6" font-size="12.5" font-weight="600">Index: typed traversal</text>
-          <text x="880" y="662" text-anchor="middle" fill="#6d7e95" font-size="11.5">node / edge type lookup</text>
+          <rect x="848" y="334" width="208" height="92" rx="12" fill="#121826" stroke="#fbbf24"/>
+          <text x="952" y="362" text-anchor="middle" fill="#e7edf5" font-size="14.5" font-weight="700">RouterStore</text>
+          <text x="952" y="383" text-anchor="middle" fill="#9fb0c5" font-size="11.5">classify → route</text>
+          <text x="952" y="401" text-anchor="middle" fill="#9fb0c5" font-size="11.5">dedup + write-routing</text>
+          <text x="952" y="419" text-anchor="middle" fill="#6d7e95" font-size="10.5">default profile: fusion (RRF)</text>
         </g>
-        <path d="M470,114 C420,150 300,160 235,200" fill="none" stroke="#8b9dff" stroke-width="1.8" marker-end="url(#ah-b)"/>
-        <rect x="316" y="150" width="56" height="20" rx="5" fill="#0b0e14"/><text x="344" y="164" text-anchor="middle" fill="#8b9dff" font-size="11.5" font-weight="600">write</text>
-        <line x1="536" y1="116" x2="536" y2="198" stroke="#2dd4bf" stroke-width="1.8" marker-end="url(#ah-t)"/>
-        <line x1="566" y1="198" x2="566" y2="116" stroke="#2dd4bf" stroke-width="1.8" marker-end="url(#ah-t2)"/>
-        <rect x="486" y="146" width="44" height="20" rx="5" fill="#0b0e14"/><text x="508" y="160" text-anchor="middle" fill="#2dd4bf" font-size="11.5" font-weight="600">query</text>
-        <rect x="572" y="146" width="50" height="20" rx="5" fill="#0b0e14"/><text x="597" y="160" text-anchor="middle" fill="#2dd4bf" font-size="11.5" font-weight="600">results</text>
-        <line x1="550" y1="298" x2="550" y2="320" stroke="#9fb0c5" stroke-width="1.6" marker-end="url(#ah-m)"/>
-        <line x1="220" y1="422" x2="220" y2="466" stroke="#8b9dff" stroke-width="1.8" marker-end="url(#ah-b)"/>
-        <line x1="550" y1="422" x2="550" y2="466" stroke="#fbbf24" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#ah-a)"/>
-        <rect x="556" y="434" width="92" height="20" rx="5" fill="#0b0e14"/><text x="602" y="448" fill="#fbbf24" font-size="11" font-weight="600" text-anchor="middle">route to 1 backend</text>
-        <line x1="880" y1="422" x2="880" y2="466" stroke="#f472b6" stroke-width="1.8" stroke-dasharray="2 4" marker-end="url(#ah-p)" marker-start="url(#ah-p2)"/>
-        <rect x="886" y="434" width="104" height="20" rx="5" fill="#0b0e14"/><text x="938" y="448" fill="#f472b6" font-size="11" font-weight="600" text-anchor="middle">async reconcile</text>
-        <line x1="220" y1="502" x2="220" y2="538" stroke="#6d7e95" stroke-width="1.6" marker-end="url(#ah-m)" marker-start="url(#ah-m2)"/>
-        <line x1="550" y1="502" x2="550" y2="538" stroke="#6d7e95" stroke-width="1.6" marker-end="url(#ah-m)" marker-start="url(#ah-m2)"/>
-        <line x1="880" y1="502" x2="880" y2="538" stroke="#6d7e95" stroke-width="1.6" marker-end="url(#ah-m)" marker-start="url(#ah-m2)"/>
+        <line x1="276" y1="380" x2="310" y2="380" stroke="#f472b6" stroke-width="1.8" marker-end="url(#ah-p)"/>
+        <line x1="544" y1="380" x2="578" y2="380" stroke="#f472b6" stroke-width="1.8" marker-end="url(#ah-p)"/>
+        <line x1="812" y1="380" x2="846" y2="380" stroke="#f472b6" stroke-width="1.8" marker-end="url(#ah-p)"/>
+        <!-- recall step reads from RouterStore (plugin-real) -->
+        <path d="M952,334 C952,300 760,250 700,235" fill="none" stroke="#2dd4bf" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#ah-t)"/>
+
+        <!-- ===== STORAGE ===== -->
+        <rect x="848" y="452" width="208" height="30" rx="9" fill="url(#g-bus)" stroke="#243044"/>
+        <text x="952" y="472" text-anchor="middle" fill="#9fb0c5" font-size="11.5" font-weight="600">Router · one MemoryStore facade</text>
+        <line x1="952" y1="426" x2="952" y2="450" stroke="#fbbf24" stroke-width="1.8" marker-end="url(#ah-a)"/>
+
+        <text x="44" y="518" fill="#6d7e95" font-size="12" font-weight="700" letter-spacing="2">STORAGE BACKENDS · per-store index</text>
+        <g>
+          <rect x="44" y="534" width="318" height="150" rx="12" fill="#121826" stroke="#243044"/>
+          <rect x="44" y="534" width="318" height="4" rx="2" fill="#8b9dff"/>
+          <text x="203" y="572" text-anchor="middle" fill="#e7edf5" font-size="15" font-weight="700">MarkdownStore</text>
+          <text x="203" y="597" text-anchor="middle" fill="#9fb0c5" font-size="12">OKF notes · source-of-truth base</text>
+          <text x="203" y="630" text-anchor="middle" fill="#8b9dff" font-size="12" font-weight="600">Index: inverted keyword map</text>
+          <text x="203" y="652" text-anchor="middle" fill="#6d7e95" font-size="11">markdown/ · always written</text>
+        </g>
+        <g>
+          <rect x="391" y="534" width="318" height="150" rx="12" fill="#121826" stroke="#243044"/>
+          <rect x="391" y="534" width="318" height="4" rx="2" fill="#2dd4bf"/>
+          <text x="550" y="572" text-anchor="middle" fill="#e7edf5" font-size="15" font-weight="700">SqliteVectorStore</text>
+          <text x="550" y="597" text-anchor="middle" fill="#9fb0c5" font-size="12">embed → cosine similarity</text>
+          <text x="550" y="630" text-anchor="middle" fill="#2dd4bf" font-size="12" font-weight="600">memory.db · brute-force (default)</text>
+          <text x="550" y="652" text-anchor="middle" fill="#6d7e95" font-size="11">opt-in: MiniLM + sqlite-vec ANN</text>
+        </g>
+        <g>
+          <rect x="738" y="534" width="318" height="150" rx="12" fill="#121826" stroke="#243044"/>
+          <rect x="738" y="534" width="318" height="4" rx="2" fill="#fbbf24"/>
+          <text x="897" y="572" text-anchor="middle" fill="#e7edf5" font-size="15" font-weight="700">GraphStore</text>
+          <text x="897" y="597" text-anchor="middle" fill="#9fb0c5" font-size="12">OKF links · seed-then-traverse</text>
+          <text x="897" y="630" text-anchor="middle" fill="#fbbf24" font-size="12" font-weight="600">graph.db · typed traversal</text>
+          <text x="897" y="652" text-anchor="middle" fill="#6d7e95" font-size="11">paid seam: Neo4j (uri=)</text>
+        </g>
+        <!-- router -> backends -->
+        <path d="M880,482 C760,508 360,512 203,532" fill="none" stroke="#fbbf24" stroke-width="1.6" marker-end="url(#ah-a)"/>
+        <line x1="940" y1="482" x2="610" y2="532" stroke="#fbbf24" stroke-width="1.6" marker-end="url(#ah-a)"/>
+        <line x1="960" y1="482" x2="930" y2="532" stroke="#fbbf24" stroke-width="1.6" marker-end="url(#ah-a)"/>
+
+        <!-- opt-in / not-default note -->
+        <g>
+          <rect x="44" y="716" width="1012" height="116" rx="12" fill="#0e1320" stroke="#243044"/>
+          <text x="66" y="744" fill="#6d7e95" font-size="11.5" font-weight="700" letter-spacing="2">PROFILES &amp; OPT-IN BACKENDS</text>
+          <text x="66" y="770" fill="#cbd5e8" font-size="12.5">Profile auto-selected by build_store: <tspan fill="#e7edf5" font-weight="600">fusion (RRF)</tspan> offline default · <tspan fill="#e7edf5" font-weight="600">accuracy</tspan> when VOYAGE_API_KEY · <tspan fill="#e7edf5" font-weight="600">accuracy-local</tspan> via MEMEVAL_LOCAL_ANN=1 · <tspan fill="#e7edf5" font-weight="600">speed</tspan> only when forced.</text>
+          <text x="66" y="793" fill="#cbd5e8" font-size="12.5">Track C — local MiniLM + sqlite-vec ANN: opt-in inside the vector store (accuracy-local). Track D — Fts5Store lexical: implemented but not yet wired into build_store's backend set.</text>
+          <text x="66" y="816" fill="#9fb0c5" font-size="12">The router can also run a graph→vector cascade and a cross-backend reranker; the write path always persists the markdown base.</text>
+        </g>
       </svg>
     </div>
     <div class="legend">
-      <span><i style="background:#8b9dff"></i> Write path</span>
-      <span><i style="background:#2dd4bf"></i> Query / results</span>
-      <span><i style="background:#fbbf24"></i> Router dispatch (one backend)</span>
-      <span><i style="background:#f472b6"></i> Async reconciliation</span>
+      <span><i style="background:#8b9dff"></i> Eval drive (run_bench → agent)</span>
+      <span><i style="background:#2dd4bf"></i> Recall / read &amp; score</span>
+      <span><i style="background:#f472b6"></i> Async write (Stop hook → daydream)</span>
+      <span><i style="background:#fbbf24"></i> Router → backends</span>
     </div>
-    <p class="note" style="margin-top:14px">The diagram is also available as a standalone file:
-      <a href="assets/img/architecture.svg" target="_blank" rel="noopener"><code>assets/img/architecture.svg</code></a>.</p>
+    <p class="note" style="margin-top:14px">Top band: the eval loop — <code>run_bench</code> drives one Claude Code journey per task,
+      a recall step reads memory, and a native evaluator scores the recorded trajectory. Bottom bands: the asynchronous
+      write path — the Stop hook fires the daydream writer, which extracts memories via OpenRouter and persists them
+      through the router over the markdown / vector / graph backends.</p>
   </div>
 </section>
 
@@ -170,20 +207,23 @@
       <h2>How data moves</h2>
     </div>
     <div class="grid grid-3">
-      <div class="card bl1 fade-up">
-        <h3 class="a1">① Write</h3>
-        <p>Each step, the persistence layer tags a candidate memory (timestamp, relevancy, session) and writes it to
-          the right backend(s).</p>
-      </div>
       <div class="card bl2 fade-up">
-        <h3 class="a2">② Read</h3>
-        <p>The orchestrator calls the router, which picks one backend; results are ranked by
-          <code>recency × relevancy</code>, de-duplicated, returned tight.</p>
+        <h3 class="a2">① Recall (read)</h3>
+        <p>Before answering, the agent recalls. In <code>builtin</code> mode that is Claude Code's own
+          Grep/Read over the laid-down <code>sessions/</code> files; in <code>plugin-real</code> mode it is the
+          cookbook-memory MCP <code>recall</code> tool, which routes the query to its backend(s).</p>
       </div>
       <div class="card bl4 fade-up">
-        <h3 class="a4">③ Dream (while idle)</h3>
-        <p>While other agents sleep, it sweeps every backend: merge duplicates, resolve contradictions, refresh
-          governance, prune — a clean state for next session.</p>
+        <h3 class="a4">② Write (daydream)</h3>
+        <p>When the session ends, a <code>Stop</code> hook fires <code>daydream-cli</code>. It reads the new
+          transcript delta, filters noise, asks an OpenRouter model what to remember, and writes each extracted
+          <code>MemoryItem</code> through the router. <code>dream --all</code> runs the nightly consolidation.</p>
+      </div>
+      <div class="card bl1 fade-up">
+        <h3 class="a1">③ Score</h3>
+        <p>The run's recorded trajectories are scored by the benchmark's native evaluator: VISTA
+          (poisoning resistance, targeted ASR, gold-retrieval F1, adaptation, RSI safety) and SWE-Bench-CL
+          (forgetting / BWT / FWT / AULC). CODE tasks are graded by running the repo's tests.</p>
       </div>
     </div>
   </div>
@@ -194,30 +234,39 @@
   <div class="wrap">
     <div class="section-head">
       <div class="eyebrow">The dispatch layer</div>
-      <h2>Why a router, not a fan-out</h2>
-      <p class="lead">Querying all three in parallel is wasteful and noisy. The router reads the query and sends it to
-        the single backend most likely to answer fast and well.</p>
+      <h2>One router, selectable profiles</h2>
+      <p class="lead"><code>build_store</code> assembles the three backends behind a single <code>RouterStore</code>
+        and picks a routing <strong>profile</strong> — the plugin never sees a backend or an embedder. The profile
+        decides whether a query single-routes, fans out, or runs a cascade.</p>
     </div>
     <div class="grid grid-2">
       <div class="card fade-up">
-        <h3>Rule-based (start here)</h3>
+        <h3>Classify &amp; route</h3>
+        <p>A classifier scores each query and picks a backend:</p>
         <ul>
-          <li><strong>Relationship / "what relates to X"</strong> → Graph store traversal.</li>
-          <li><strong>Semantic / "have I seen something like this"</strong> → SQLite vector search.</li>
-          <li><strong>Literal keyword / exact recall</strong> → Markdown inverted index.</li>
+          <li><strong>Relationship / dependency / "what breaks"</strong> → Graph traversal.</li>
+          <li><strong>Conceptual / "why" / summarize</strong> → SQLite vector search.</li>
+          <li><strong>Literal keyword / signature / identifier</strong> → Markdown inverted index.</li>
         </ul>
-        <p class="note">Deterministic, debuggable, zero training data needed on day one.</p>
+        <p class="note">The default rule-based classifier is deterministic and stdlib-only; the accuracy profiles
+          swap in a semantic, exemplar-based classifier over a real embedder.</p>
       </div>
       <div class="card fade-up">
-        <h3>Learned (upgrade path)</h3>
-        <p>A lightweight classifier over the query embedding + metadata predicts the fastest, most accurate backend.
-          Log every decision (backend, latency, hit) and retrain so routing improves with real access patterns.</p>
+        <h3>Profiles</h3>
+        <ul>
+          <li><strong>fusion</strong> — offline default: fan out and merge with Reciprocal Rank Fusion (best
+            zero-dependency recall).</li>
+          <li><strong>accuracy</strong> — when <code>VOYAGE_API_KEY</code> is set: semantic classifier + Voyage
+            embeddings + graph→vector cascade.</li>
+          <li><strong>accuracy-local</strong> — <code>MEMEVAL_LOCAL_ANN=1</code>: MiniLM + sqlite-vec ANN.</li>
+          <li><strong>speed</strong> — the bare v1 single-route router; only when explicitly forced.</li>
+        </ul>
       </div>
     </div>
     <div class="callout fade-up" style="margin-top:20px">
       <span class="ic">🧭</span>
-      <div><p style="margin:0">One learnable dispatch point between orchestrator and backends — a tiny classification
-        cost for big savings in latency and context noise.</p></div>
+      <div><p style="margin:0">The router owns both read and write orchestration: dedup-on-write and write-routing
+        (the markdown base is always persisted), plus routed reads with optional cascade, fusion, and reranking.</p></div>
     </div>
   </div>
 </section>
@@ -233,22 +282,23 @@
     </div>
     <div class="grid grid-3">
       <div class="card bl2 fade-up">
-        <div class="kicker a2">SQLite + vectors</div>
-        <h3>Dense ANN index</h3>
-        <p>Embed on write into an HNSW / FAISS index beside the row. On query: embed, ANN search, IDs back in
-          <code>&lt;100ms</code>, hydrate from SQLite — even at thousands of memories.</p>
+        <div class="kicker a2">SqliteVectorStore</div>
+        <h3>Vector search</h3>
+        <p>Embeds on write into <code>memory.db</code>. The stdlib default uses a char-n-gram hashing embedder with
+          brute-force cosine; the opt-in <code>accuracy-local</code> path swaps in MiniLM embeddings and a
+          <code>sqlite-vec</code> ANN index with exact rerank, and <code>accuracy</code> uses Voyage embeddings.</p>
       </div>
       <div class="card bl1 fade-up">
-        <div class="kicker a1">Markdown</div>
+        <div class="kicker a1">MarkdownStore</div>
         <h3>Inverted keyword index</h3>
-        <p>A keyword → file-path hash map. Write updates it; query looks up matching files, then light re-rank. Ideal
-          for literal recall.</p>
+        <p>OKF-native markdown notes plus a keyword → file inverted index for literal recall. This is the
+          always-written source-of-truth base, so a memory survives even if the other indexes are rebuilt.</p>
       </div>
       <div class="card bl4 fade-up">
-        <div class="kicker a4">Graph store</div>
-        <h3>Typed traversal index</h3>
-        <p>Pre-computed indexes over node/edge types. Traverse from a query node along indexed edges, bounded by depth
-          or relevancy — native in Neo4j.</p>
+        <div class="kicker a4">GraphStore</div>
+        <h3>Typed traversal</h3>
+        <p>An OKF-link graph persisted to <code>graph.db</code>: seed from the query, then traverse typed edges bounded
+          by depth. The paid path swaps in a Neo4j-backed store behind the same interface via a <code>uri=</code> seam.</p>
       </div>
     </div>
     <div class="spacer"></div>
@@ -260,7 +310,7 @@
 <section class="section">
   <div class="wrap">
     <div class="section-head">
-      <div class="eyebrow">Latest decisions · 2026-06-20</div>
+      <div class="eyebrow">Latest decisions · 2026-06-25</div>
       <h2>How it runs &amp; consolidates</h2>
       <p class="lead">The whiteboard view: a <strong>Conscious</strong> band (the live, in-loop session)
         over a <strong>Subconscious</strong> band (async consolidation), with the <strong>plugin</strong>
@@ -274,8 +324,10 @@
       <div class="card bl2 fade-up">
         <h3>① Benchmarks run via the local CLI</h3>
         <p>Benchmarks run through the <strong>Claude Code CLI</strong> (subscription auth — API keys stripped,
-          no API billing), comparing Claude Code's <strong>built-in</strong> memory vs <strong>our plugin</strong> memory.
-          Entry point <code>python -m memeval.claudecode.run_bench</code>.</p>
+          no API billing), comparing Claude Code's <strong>builtin</strong> memory vs the shipping
+          <strong>plugin-real</strong> cookbook-memory plugin. Entry point
+          <code>python -m memeval.claudecode.run_bench</code>; the in-scope benchmarks are
+          <strong>VISTA</strong> and <strong>SWE-Bench-CL</strong>.</p>
         <p class="note">Each run saves a per-benchmark, versioned file:
           <code>results/{vX.Y}/{bench-name}-{timestamp}.json</code> — <code>vX.Y</code> is the memory-system
           version (<code>MEMORY_VERSION</code>, starts <code>v0.1</code>; bump 0.1 per memory change + run).</p>
@@ -292,9 +344,10 @@
         <h3>③ Daydream consolidation flow</h3>
         <ul>
           <li>Read the session <strong><code>.jsonl</code></strong> logs.</li>
-          <li>Track <strong>processed-vs-delta</strong> state; send only the unprocessed delta.</li>
-          <li>Call an <strong>OpenRouter</strong> model (cheap, non-frontier) to decide <em>what to remember</em>.</li>
-          <li>Call the <strong>Orchestrator</strong> to save it — route · rank · dedup · version.</li>
+          <li>Track <strong>processed-vs-delta</strong> state; filter noise, then send only the unprocessed delta.</li>
+          <li>Call an <strong>OpenRouter</strong> model (cheap, non-frontier; defaults to <code>ling-2.6-flash</code>)
+            to decide <em>what to remember</em>.</li>
+          <li>Write each extracted memory through the <strong>RouterStore</strong> — classify · route · dedup · version.</li>
         </ul>
       </div>
     </div>
