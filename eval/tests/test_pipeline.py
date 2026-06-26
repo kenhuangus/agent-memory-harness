@@ -287,10 +287,24 @@ def test_pipeline_results_path_is_version_scoped(monkeypatch) -> None:
         assert list(vd.glob("swe_bench_cl-*.json"))
 
 
+def test_pipeline_meta_records_harness() -> None:
+    # The persisted pipeline metadata must attribute the run to its harness, so a
+    # Cursor results file is distinguishable from a Claude one. Defaults to claude
+    # when unset (the cfg helper predates the harness option).
+    vinfo = {"version": "vtest", "git_sha": "abc"}
+    base = _cfg("/tmp", stage="base")
+
+    cursor_meta = P._pipeline_meta({**base, "harness": "cursor"}, vinfo, Path("/tmp/x"), "stamp")
+    assert cursor_meta["harness"] == "cursor"
+
+    claude_meta = P._pipeline_meta(base, vinfo, Path("/tmp/x"), "stamp")  # no harness key
+    assert claude_meta["harness"] == "claude"
+
+
 def test_interactive_config_defaults_to_single_accum_stage(monkeypatch, tmp_path) -> None:
     # Accept every default, including the plugin-accum source-memory selection.
     source = _source_memory(str(tmp_path))
-    answers = iter([""] * 9)
+    answers = iter([""] * 10)  # +1: leading harness prompt (accept claude)
     monkeypatch.setattr(P, "_interactive", lambda: True)
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
     args = P._build_parser().parse_args(["--results-dir", str(tmp_path)])
@@ -305,7 +319,7 @@ def test_interactive_config_defaults_to_single_accum_stage(monkeypatch, tmp_path
 
 def test_interactive_config_can_select_base_stage(monkeypatch) -> None:
     # benchmark, sequence default; mode = "base"; rest default.
-    answers = iter(["", "", "base", "", "", "", "", ""])
+    answers = iter(["", "", "", "base", "", "", "", "", ""])  # [0]=harness
     monkeypatch.setattr(P, "_interactive", lambda: True)
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
     args = P._build_parser().parse_args([])
@@ -318,7 +332,7 @@ def test_interactive_config_can_select_base_stage(monkeypatch) -> None:
 def test_interactive_mode_menu_accepts_a_number(monkeypatch) -> None:
     # The mode prompt is a numbered menu; "2" selects the 2nd mode (builtin).
     prompts: list[str] = []
-    answers = iter(["", "", "2", "", "", "", "", ""])
+    answers = iter(["", "", "", "2", "", "", "", "", ""])  # [0]=harness
     monkeypatch.setattr(P, "_interactive", lambda: True)
 
     def fake_input(prompt: str) -> str:
@@ -336,7 +350,7 @@ def test_interactive_mode_menu_accepts_a_number(monkeypatch) -> None:
 
 def test_interactive_model_menu_accepts_a_number(monkeypatch) -> None:
     # benchmark, sequence, mode=base, tasks default, model = 2nd menu option.
-    answers = iter(["", "", "base", "", "2", "", "", ""])
+    answers = iter(["", "", "", "base", "", "2", "", "", ""])  # [0]=harness
     monkeypatch.setattr(P, "_interactive", lambda: True)
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
 
@@ -346,7 +360,7 @@ def test_interactive_model_menu_accepts_a_number(monkeypatch) -> None:
 
 
 def test_interactive_model_menu_accepts_custom_id(monkeypatch) -> None:
-    answers = iter(["", "", "base", "", "custom-model-id", "", "", ""])
+    answers = iter(["", "", "", "base", "", "custom-model-id", "", "", ""])  # [0]=harness
     monkeypatch.setattr(P, "_interactive", lambda: True)
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
 
@@ -355,10 +369,64 @@ def test_interactive_model_menu_accepts_custom_id(monkeypatch) -> None:
     assert cfg["model"] == "custom-model-id"
 
 
+def test_interactive_harness_prompt_is_first_and_defaults_to_claude(monkeypatch) -> None:
+    # The harness prompt leads the interactive flow; accepting it keeps claude + its
+    # default model (the Claude path is byte-identical to before the harness option).
+    # Pick mode=base (answer #4) to avoid the plugin-accum source-memory requirement.
+    prompts: list[str] = []
+    answers = iter(["", "", "", "base", "", "", "", "", ""])
+    monkeypatch.setattr(P, "_interactive", lambda: True)
+
+    def fake_input(prompt: str) -> str:
+        prompts.append(prompt)
+        return next(answers)
+
+    monkeypatch.setattr("builtins.input", fake_input)
+    cfg = P._resolve_config(P._build_parser().parse_args([]))
+
+    assert prompts[0].startswith("  harness [")  # harness is asked FIRST
+    assert cfg["harness"] == "claude"
+    assert cfg["model"] == "claude-haiku-4-5"
+
+
+def test_interactive_selecting_cursor_offers_cursor_models_and_default(monkeypatch) -> None:
+    # Pick harness=cursor (menu #2); accept defaults → cursor default model, and the
+    # model menu must show cursor models (composer-2.5), not the claude list.
+    prompts: list[str] = []
+    # [0]=harness=2(cursor), benchmark, sequence, mode=base, tasks, model=Enter(default),
+    # grader, budget, version-slug
+    answers = iter(["2", "", "", "base", "", "", "", "", ""])
+    monkeypatch.setattr(P, "_interactive", lambda: True)
+
+    def fake_input(prompt: str) -> str:
+        prompts.append(prompt)
+        return next(answers)
+
+    monkeypatch.setattr("builtins.input", fake_input)
+    cfg = P._resolve_config(P._build_parser().parse_args([]))
+
+    assert cfg["harness"] == "cursor"
+    assert cfg["model"] == P._DEFAULT_CURSOR_MODEL == "composer-2.5"
+    # the model prompt defaulted to the cursor model (not the claude default)
+    assert any("model [composer-2.5]" in p for p in prompts)
+
+
+def test_interactive_cursor_model_menu_selects_cursor_option(monkeypatch) -> None:
+    # harness=cursor, then model menu #2 = gpt-5.5-high (the 2nd cursor choice).
+    answers = iter(["2", "", "", "base", "", "2", "", "", ""])
+    monkeypatch.setattr(P, "_interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
+
+    cfg = P._resolve_config(P._build_parser().parse_args([]))
+
+    assert cfg["harness"] == "cursor"
+    assert cfg["model"] == P._CURSOR_MODEL_CHOICES[1][0] == "gpt-5.5-high"
+
+
 def test_interactive_config_can_select_vista(monkeypatch) -> None:
     # benchmark = "vista" resets the sequence default to the vista default journey; the
     # sequence prompt then accepts that default.
-    answers = iter(["vista", "", "base", "", "", "", "", ""])
+    answers = iter(["", "vista", "", "base", "", "", "", "", ""])  # [0]=harness
     monkeypatch.setattr(P, "_interactive", lambda: True)
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
     args = P._build_parser().parse_args([])
@@ -402,7 +470,7 @@ def test_pipeline_grader_defaults_to_swebench() -> None:
 def test_interactive_config_respects_selected_grader(monkeypatch) -> None:
     # grader is the 6th prompt (benchmark, sequence, stage, tasks, model, grader, budget,
     # version slug).
-    answers = iter(["", "", "base", "", "", "local", "", ""])
+    answers = iter(["", "", "", "base", "", "", "local", "", ""])  # [0]=harness
     monkeypatch.setattr(P, "_interactive", lambda: True)
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
     args = P._build_parser().parse_args([])
@@ -413,7 +481,7 @@ def test_interactive_config_respects_selected_grader(monkeypatch) -> None:
 
 
 def test_interactive_config_accepts_auto_grader(monkeypatch) -> None:
-    answers = iter(["", "", "base", "", "", "auto", "", ""])
+    answers = iter(["", "", "", "base", "", "", "auto", "", ""])  # [0]=harness
     monkeypatch.setattr(P, "_interactive", lambda: True)
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
     args = P._build_parser().parse_args(["--grader", "none"])
@@ -582,7 +650,7 @@ def test_source_memory_config_fails_on_empty_candidate(tmp_path, monkeypatch) ->
 
 def test_interactive_version_slug_is_prompted_and_accepted(monkeypatch) -> None:
     # 8th prompt is the version slug; a typed value is accepted verbatim (reuse path).
-    answers = iter(["", "", "base", "", "", "", "", "reuse-this-bucket"])
+    answers = iter(["", "", "", "base", "", "", "", "", "reuse-this-bucket"])  # [0]=harness
     monkeypatch.setattr(P, "_interactive", lambda: True)
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
     args = P._build_parser().parse_args([])

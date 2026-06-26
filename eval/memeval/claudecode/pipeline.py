@@ -97,6 +97,14 @@ _MODEL_CHOICES = (
     ("claude-sonnet-4-6", "stronger coding model"),
     ("claude-opus-4-8", "highest-quality model"),
 )
+#: Cursor CLI (cursor-agent) model menu — shown when `--harness cursor` is selected.
+#: cursor-agent accepts these ids (verify the live list with `cursor-agent --list-models`).
+_DEFAULT_CURSOR_MODEL = "composer-2.5"
+_CURSOR_MODEL_CHOICES = (
+    ("composer-2.5", "Cursor's own model (fast default)"),
+    ("gpt-5.5-high", "OpenAI GPT-5.5 (1M, high)"),
+    ("claude-opus-4-8-thinking-high", "Anthropic Opus 4.8 (1M, thinking)"),
+)
 
 
 def _bench_spec(benchmark: str) -> dict[str, Any]:
@@ -443,13 +451,39 @@ def _ask_sequence(benchmark: str, default: str) -> str:
         print(f"    ! enter 1-{len(seqs)} or a valid {unit} id")
 
 
-def _ask_model(default: str) -> str:
-    """Numbered menu for common models. Typed custom model ids are accepted."""
+def _ask_harness(default: str) -> str:
+    """Numbered menu for the agent CLI to drive (claude | cursor)."""
     if not _interactive():
         return default
+    choices = (
+        ("claude", "Claude Code (claude-agent) — default"),
+        ("cursor", "Cursor CLI (cursor-agent) — needs CURSOR_API_KEY in .env"),
+    )
+    print("  harness (which agent CLI to drive — type a number or id):")
+    names = [name for name, _ in choices]
+    for i, (name, label) in enumerate(choices, 1):
+        marker = " (default)" if name == default else ""
+        print(f"    {i}. {name}  ·  {label}{marker}")
+    while True:
+        raw = input(f"  harness [{default}]: ").strip()
+        if not raw:
+            return default
+        if raw.isdigit() and 1 <= int(raw) <= len(names):
+            return names[int(raw) - 1]
+        if raw in names:
+            return raw
+        print(f"    choose one of {names} (or a number)")
+
+
+def _ask_model(default: str, *, harness: str = "claude") -> str:
+    """Numbered menu for common models. Typed custom model ids are accepted. The menu
+    is harness-aware: Cursor (cursor-agent) gets its own model list, not Claude's."""
+    if not _interactive():
+        return default
+    choices = _CURSOR_MODEL_CHOICES if harness == "cursor" else _MODEL_CHOICES
     print("  model (type a number or model id):")
-    names = [name for name, _label in _MODEL_CHOICES]
-    for i, (name, label) in enumerate(_MODEL_CHOICES, 1):
+    names = [name for name, _label in choices]
+    for i, (name, label) in enumerate(choices, 1):
         marker = " (default)" if name == default else ""
         print(f"    {i}. {name}  ·  {label}{marker}")
     while True:
@@ -497,11 +531,9 @@ def _resolve_config(args: argparse.Namespace) -> dict:
     seq = args.sequence or _default_sequence(benchmark)
     stage = args.stage or _DEFAULT_STAGE
     limit = _DEFAULT_LIMIT if args.limit is None else args.limit
+    harness = getattr(args, "harness", "claude")
     model = args.model
-    # --harness cursor with no explicit --model: the Claude default id is meaningless
-    # to cursor-agent, so swap in a Cursor default. An explicit --model always wins.
-    if getattr(args, "harness", "claude") == "cursor" and model == _DEFAULT_MODEL:
-        model = "composer-2.5"
+    model_is_default = model == _DEFAULT_MODEL  # no explicit --model given
     grader = args.grader
     budget = args.budget_usd
     # An explicit --results-version always wins; otherwise the version is the
@@ -512,16 +544,24 @@ def _resolve_config(args: argparse.Namespace) -> dict:
 
     if not args.yes and _interactive():
         print("\nConfigure the single-stage memory pipeline — press Enter to accept each default.\n")
+        harness = _ask_harness(harness)
         benchmark = _ask_benchmark(benchmark)
         if not args.sequence:  # a benchmark switch should reset the sequence default
             seq = _default_sequence(benchmark)
         seq = _ask_sequence(benchmark, seq)
         stage = _ask_mode(stage)
         limit = _ask("tasks to run (0 = whole sequence)", limit, cast=int)
-        model = _ask_model(model)
+        # Offer the right model default + menu for the chosen harness (the Claude id is
+        # meaningless to cursor-agent). An explicit --model always wins.
+        if harness == "cursor" and model_is_default:
+            model = _DEFAULT_CURSOR_MODEL
+        model = _ask_model(model, harness=harness)
         grader = _ask("grader", grader,
                       choices=["auto", "local", "swebench", "overlap", "none"])
         budget = _ask("budget (USD, 0 = no cap)", budget, cast=float)
+    elif harness == "cursor" and model_is_default:
+        # Non-interactive (--yes / no TTY): still swap the default model for cursor.
+        model = _DEFAULT_CURSOR_MODEL
 
     if benchmark not in _BENCHMARKS:
         raise SystemExit(f"unknown --benchmark {benchmark!r}; choose one of {list(_BENCHMARKS)}")
@@ -581,7 +621,7 @@ def _resolve_config(args: argparse.Namespace) -> dict:
         print()
 
     return {
-        "harness": getattr(args, "harness", "claude"),
+        "harness": harness,
         "benchmark": benchmark,
         "sequence": seq,
         "stage": stage,
@@ -620,6 +660,7 @@ def _pipeline_meta(cfg: dict, version_info: dict, substrate: Path, stamp: str) -
         "version_exact": version_info.get("version_exact"),
         "untagged": version_info.get("untagged"),
         "git_sha": version_info.get("git_sha", ""),
+        "harness": cfg.get("harness", "claude"),  # which agent CLI drove the run
         "benchmark": cfg["benchmark"],
         "sequence": cfg["sequence"],          # the Y domain -- NOT in memory anymore
         "stage": stage,                        # the single eval stage this run drove
@@ -1282,7 +1323,8 @@ def run_pipeline(cfg: dict) -> dict:
         meta["source_memory_copied_to"] = source_memory_info["copied_to"]
     meta["started_at"] = time.time()
     print(f"pipeline v{version.lstrip('v')} · {benchmark} · sequence {cfg['sequence']} · "
-          f"stage {stage} · limit {cfg['limit']} · model {cfg['model']}")
+          f"stage {stage} · limit {cfg['limit']} · harness {cfg.get('harness', 'claude')} · "
+          f"model {cfg['model']}")
     print(f"shared memory substrate: {substrate}")
     if source_memory_info:
         print(f"source memory copied from: {source_memory_info['path']}")
