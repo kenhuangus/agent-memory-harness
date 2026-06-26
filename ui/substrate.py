@@ -281,6 +281,7 @@ class Substrate:
                 "version": item.version,
                 "relevancy": item.relevancy,
                 "source": item.source,
+                "session_id": item.session_id,
                 "membership": {n: (item_id in id_sets.get(n, set())) for n in READ_ORDER},
                 "okf": {
                     "title": meta.get("okf_title"),
@@ -514,8 +515,6 @@ def open_substrate(store_dir: str, profile: Optional[str] = "auto", *,
     root = resolve_store_root(store_dir)
     effective, source = resolve_profile(profile)
     warnings: list = []
-    if str(root) != str(Path(store_dir)):
-        warnings.append(f"backends found under nested plugin store dir: {root}")
 
     status = {n: ("ok" if (root / _ARTIFACT[n]).exists() else "absent") for n in READ_ORDER}
 
