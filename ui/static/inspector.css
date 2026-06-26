@@ -82,6 +82,16 @@
   letter-spacing: 0.04em;
 }
 .summary .warn { color: var(--terra); }
+.summary .pill.loading {
+  color: var(--bg);
+  background: var(--amber);
+  border-color: var(--amber);
+  animation: pill-pulse 1.4s ease-in-out infinite;
+}
+@keyframes pill-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
 .summary .store-pill { display: inline-flex; align-items: center; gap: 6px; }
 .summary .store-input {
   background: var(--bg-2);
