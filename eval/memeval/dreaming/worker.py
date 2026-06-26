@@ -171,6 +171,22 @@ def _read_item_retention_days() -> int:
     return value
 
 
+def _read_use_neighborhood_contradiction() -> bool:
+    """ADR-dreaming-028 §2 PR #2d — opt-in flag selecting the
+    neighborhood-scoped contradiction path (PR #2c's
+    ``_detect_contradictions_neighborhood``) over today's v1 path
+    (``_detect_contradictions``).
+
+    Defaults to ``False`` — today's v1 batch-and-shuffle behavior is
+    preserved. Set ``DREAM_CONTRADICTION_NEIGHBORHOOD=1`` to opt in.
+    Any other value (including unset, empty, "0", "true", "yes",
+    misspellings) reads as v1. Strict equality with ``"1"`` keeps the
+    flag deliberate; an operator typing "true" wouldn't accidentally
+    flip the consolidation behavior without realizing it.
+    """
+    return os.environ.get("DREAM_CONTRADICTION_NEIGHBORHOOD") == "1"
+
+
 def _read_contradiction_max_calls() -> int:
     """Resolve ``$DREAM_CONTRADICTION_MAX_CALLS`` to an int.
 
@@ -1444,16 +1460,33 @@ class DreamingWorker:
             # (halliday B5) defers to the dedup pass's recency judgment.
             cluster_winners_set: set[str] = {c["winner_id"] for c in cluster_specs}
             llm_client = _make_llm_client()
-            contradiction_result = _detect_contradictions(
-                contradiction_survivors,
-                llm_client,
-                batch_size=_CONTRADICTION_BATCH_SIZE,
-                max_calls=max_calls,
-                model=getattr(llm_client, "model", "unknown"),
-                session_id=_session_id_for_dream(basedir),
-                now=now_cached,
-                protected_ids=cluster_winners_set,
-            )
+            # ADR-028 §2 PR #2d — opt-in switch between the v1 shuffle-batch
+            # contradiction path and the v2 per-pivot neighborhood path. Flag
+            # is `DREAM_CONTRADICTION_NEIGHBORHOOD=1`; default off preserves
+            # today's behavior. Promotion to default is gated on real-bench
+            # A/B measurement (separate future PR).
+            if _read_use_neighborhood_contradiction():
+                contradiction_result = _detect_contradictions_neighborhood(
+                    contradiction_survivors,
+                    self.store,
+                    llm_client,
+                    max_calls=max_calls,
+                    model=getattr(llm_client, "model", "unknown"),
+                    session_id=_session_id_for_dream(basedir),
+                    now=now_cached,
+                    protected_ids=cluster_winners_set,
+                )
+            else:
+                contradiction_result = _detect_contradictions(
+                    contradiction_survivors,
+                    llm_client,
+                    batch_size=_CONTRADICTION_BATCH_SIZE,
+                    max_calls=max_calls,
+                    model=getattr(llm_client, "model", "unknown"),
+                    session_id=_session_id_for_dream(basedir),
+                    now=now_cached,
+                    protected_ids=cluster_winners_set,
+                )
 
             # JOB2 §F-J2-3: contradiction deletes complete BEFORE governance pass.
             contradicted_loser_ids: set[str] = set()

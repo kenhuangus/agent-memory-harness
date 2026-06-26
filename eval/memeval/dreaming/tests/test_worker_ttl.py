@@ -1490,3 +1490,97 @@ def test_neighborhood_contradiction_fails_open_on_llm_exception(memory_store_dir
     # via fail-open). No exception propagates to the caller.
     assert result.pairs == []
     assert result.llm_calls == 2
+
+
+# --------------------------------------------------------------------------- #
+# §O — ADR-dreaming-028 §2 PR #2d feature-flag routing
+# --------------------------------------------------------------------------- #
+
+def test_use_neighborhood_contradiction_default_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ADR-028 §2 PR #2d — default unset → False (v1 batch path)."""
+    from memeval.dreaming.worker import _read_use_neighborhood_contradiction
+    monkeypatch.delenv("DREAM_CONTRADICTION_NEIGHBORHOOD", raising=False)
+    assert _read_use_neighborhood_contradiction() is False
+
+
+def test_use_neighborhood_contradiction_flag_one_enables(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ADR-028 §2 PR #2d — exactly `"1"` enables the v2 neighborhood path."""
+    from memeval.dreaming.worker import _read_use_neighborhood_contradiction
+    monkeypatch.setenv("DREAM_CONTRADICTION_NEIGHBORHOOD", "1")
+    assert _read_use_neighborhood_contradiction() is True
+
+
+def test_use_neighborhood_contradiction_other_values_read_as_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ADR-028 §2 PR #2d — strict equality with `"1"` only. "true", "yes",
+    misspellings, "0" etc. all read as False. Keeps the flag deliberate;
+    an operator typing the wrong word doesn't silently flip consolidation."""
+    from memeval.dreaming.worker import _read_use_neighborhood_contradiction
+    for val in ("0", "", "true", "True", "yes", "on", "TRUE", " 1 ", "1 "):
+        monkeypatch.setenv("DREAM_CONTRADICTION_NEIGHBORHOOD", val)
+        assert _read_use_neighborhood_contradiction() is False, (
+            f"DREAM_CONTRADICTION_NEIGHBORHOOD={val!r} must read as off"
+        )
+
+
+def test_dream_routes_to_v1_path_when_flag_off(
+    memory_store_dir: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR-028 §2 PR #2d — when flag is off (default), `dream()` calls
+    `_detect_contradictions` (v1) NOT `_detect_contradictions_neighborhood`."""
+    from memeval.dreaming import worker as worker_mod
+
+    monkeypatch.delenv("DREAM_CONTRADICTION_NEIGHBORHOOD", raising=False)
+
+    v1_called = [0]
+    v2_called = [0]
+    orig_v1 = worker_mod._detect_contradictions
+    orig_v2 = worker_mod._detect_contradictions_neighborhood
+
+    def spy_v1(*args, **kwargs):
+        v1_called[0] += 1
+        return orig_v1(*args, **kwargs)
+    def spy_v2(*args, **kwargs):
+        v2_called[0] += 1
+        return orig_v2(*args, **kwargs)
+
+    monkeypatch.setattr(worker_mod, "_detect_contradictions", spy_v1)
+    monkeypatch.setattr(worker_mod, "_detect_contradictions_neighborhood", spy_v2)
+    monkeypatch.setenv("DREAM_CONTRADICTION_MAX_CALLS", "1")  # ensure pass is exercised
+
+    store = _seed(_FIXED_NOW, ("a", "x", 1), ("b", "y", 1))
+    worker_mod.DreamingWorker(store).run()
+
+    assert v1_called[0] == 1, "v1 contradiction path should be called once"
+    assert v2_called[0] == 0, "v2 path must NOT be called when flag is off"
+
+
+def test_dream_routes_to_v2_path_when_flag_on(
+    memory_store_dir: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR-028 §2 PR #2d — when `DREAM_CONTRADICTION_NEIGHBORHOOD=1`, `dream()`
+    calls `_detect_contradictions_neighborhood` (v2) NOT the v1 path."""
+    from memeval.dreaming import worker as worker_mod
+
+    monkeypatch.setenv("DREAM_CONTRADICTION_NEIGHBORHOOD", "1")
+    monkeypatch.setenv("DREAM_CONTRADICTION_MAX_CALLS", "1")
+
+    v1_called = [0]
+    v2_called = [0]
+    orig_v1 = worker_mod._detect_contradictions
+    orig_v2 = worker_mod._detect_contradictions_neighborhood
+
+    def spy_v1(*args, **kwargs):
+        v1_called[0] += 1
+        return orig_v1(*args, **kwargs)
+    def spy_v2(*args, **kwargs):
+        v2_called[0] += 1
+        return orig_v2(*args, **kwargs)
+
+    monkeypatch.setattr(worker_mod, "_detect_contradictions", spy_v1)
+    monkeypatch.setattr(worker_mod, "_detect_contradictions_neighborhood", spy_v2)
+
+    store = _seed(_FIXED_NOW, ("a", "x", 1), ("b", "y", 1))
+    worker_mod.DreamingWorker(store).run()
+
+    assert v2_called[0] == 1, "v2 neighborhood path should be called once"
+    assert v1_called[0] == 0, "v1 path must NOT be called when flag is on"
