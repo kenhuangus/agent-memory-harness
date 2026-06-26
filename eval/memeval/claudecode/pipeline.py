@@ -312,6 +312,11 @@ def _build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--limit", type=int, default=None,
                     help=f"How many tasks of the sequence to run (by Task.order). "
                          f"Default {_DEFAULT_LIMIT}; 0 = the whole sequence.")
+    ap.add_argument("--harness", choices=["claude", "cursor"], default="claude",
+                    help="Which agent CLI to drive (ADR-harness-013): 'claude' "
+                         "(default, Claude Code) or 'cursor' (the Cursor CLI; needs "
+                         "CURSOR_API_KEY in .env — see .env.example). Same stages, "
+                         "benchmarks, graders, and shared substrate either way.")
     ap.add_argument("--model", default=_DEFAULT_MODEL)
     ap.add_argument("--code-mode", choices=["blind", "agentic"], default="agentic")
     ap.add_argument("--grader", default="swebench",
@@ -493,6 +498,10 @@ def _resolve_config(args: argparse.Namespace) -> dict:
     stage = args.stage or _DEFAULT_STAGE
     limit = _DEFAULT_LIMIT if args.limit is None else args.limit
     model = args.model
+    # --harness cursor with no explicit --model: the Claude default id is meaningless
+    # to cursor-agent, so swap in a Cursor default. An explicit --model always wins.
+    if getattr(args, "harness", "claude") == "cursor" and model == _DEFAULT_MODEL:
+        model = "composer-2.5"
     grader = args.grader
     budget = args.budget_usd
     # An explicit --results-version always wins; otherwise the version is the
@@ -572,6 +581,7 @@ def _resolve_config(args: argparse.Namespace) -> dict:
         print()
 
     return {
+        "harness": getattr(args, "harness", "claude"),
         "benchmark": benchmark,
         "sequence": seq,
         "stage": stage,
@@ -636,11 +646,23 @@ def _pipeline_meta(cfg: dict, version_info: dict, substrate: Path, stamp: str) -
 
 
 def _make_agent(stage: str, cfg: dict, substrate: Path):
-    """Build the ClaudeCodeAgent for a stage. Plugin stages share the ONE substrate
-    (project_dir); the base stage has no memory."""
-    from .agent import ClaudeCodeAgent
+    """Build the stage's agent for ``cfg['harness']`` (ADR-harness-013). Plugin stages
+    share the ONE substrate (project_dir); the base stage has no memory.
 
+    ``claude`` (default) → ClaudeCodeAgent. ``cursor`` → CursorCodeAgent (the Cursor
+    CLI sibling). Both satisfy AgentAdapter and feed the same run_agent/grader path.
+    The Cursor adapter supports off/builtin/plugin-real; the plugin-blank/accum/dreamed
+    stages map to plugin-real memory (their seeding/dreaming differences are driven by
+    the shared substrate the same way)."""
     mode = _STAGE_MODE[stage]
+    if cfg.get("harness", "claude") == "cursor":
+        from ..cursorcli import CursorCodeAgent
+        return CursorCodeAgent(
+            model=cfg["model"], memory_mode=mode, code_mode=cfg["code_mode"],
+            timeout=cfg["timeout"],
+            project_dir=substrate if mode == "plugin-real" else None,
+        )
+    from .agent import ClaudeCodeAgent
     plugin_opts = _STAGE_PLUGIN_REAL_OPTIONS.get(stage, {})
     return ClaudeCodeAgent(
         model=cfg["model"], memory_mode=mode, code_mode=cfg["code_mode"],
@@ -1117,6 +1139,45 @@ def _sandbox_auth_probe(config_dir: Path, *, model: str, timeout: int = 60) -> b
     return "not logged in" not in out and "/login" not in out and "invalid api key" not in out
 
 
+def _ensure_cursor_ready(model: str) -> None:
+    """Fail-closed readiness check for the Cursor harness (ADR-harness-013/014).
+
+    Unlike Claude (one shared CLAUDE_CONFIG_DIR sandbox), the Cursor adapter builds a
+    fresh ``HOME`` sandbox PER TURN and authenticates with ``CURSOR_API_KEY`` (no
+    keychain, no interactive login — so no up-front sandbox build is needed). This
+    check just verifies, before any stage runs, that (1) ``cursor-agent`` is installed
+    and (2) an API key is configured — failing with an actionable message otherwise,
+    mirroring the Claude path's fail-closed contract.
+
+    Skipped when ``MEMEVAL_PIPELINE_SKIP_AUTH_PROBE`` is set (offline tests)."""
+    import os
+
+    from ..cursorcli import platform as cursor_platform
+    from ..cursorcli import sandbox as cursor_sandbox
+
+    if os.environ.get("MEMEVAL_PIPELINE_SKIP_AUTH_PROBE"):
+        return  # offline tests: skip the binary/key probe
+
+    rt = cursor_platform.detect()
+    if rt is None:
+        raise SystemExit(
+            "\nThe Cursor CLI (cursor-agent) was not found — aborting before any stage "
+            "runs.\nInstall it with `curl https://cursor.com/install -fsS | bash` "
+            "(puts cursor-agent on PATH at ~/.local/bin), then re-run. Override the "
+            "path with $CURSOR_AGENT_CLI.\n"
+        )
+    if cursor_sandbox.api_key() is None:
+        raise SystemExit(
+            "\nThe Cursor harness needs CURSOR_API_KEY — aborting before any stage "
+            "runs.\nIt authenticates headlessly with a keychain-free API key so "
+            "per-stage sandboxes can run in parallel (ADR-harness-014). Generate one "
+            "at https://cursor.com/dashboard and set CURSOR_API_KEY in your .env "
+            "(see .env.example) or export it, then re-run.\n"
+        )
+    print(f"cursor-agent: {rt.exe} · CURSOR_API_KEY set · model {model} — per-stage "
+          f"HOME sandboxes, no host config touched.", flush=True)
+
+
 def _ensure_sandbox_ready(model: str) -> None:
     """Make EVERY stage use the isolated sandbox CLAUDE_CONFIG_DIR — never the host — and
     FAIL CLOSED before running anything if it isn't authenticated.
@@ -1201,7 +1262,10 @@ def run_pipeline(cfg: dict) -> dict:
 
     benchmark = cfg["benchmark"]
     stage = cfg["stage"]
-    _ensure_sandbox_ready(cfg["model"])  # MUST be first — the stage uses the sandbox, never the host
+    if cfg.get("harness", "claude") == "cursor":
+        _ensure_cursor_ready(cfg["model"])  # cursor-agent + CURSOR_API_KEY, per-stage HOME sandboxes
+    else:
+        _ensure_sandbox_ready(cfg["model"])  # MUST be first — the stage uses the sandbox, never the host
     _warn_if_memory_cannot_accumulate()  # OPENROUTER_API_KEY gates daydream memory extraction
     version_info = resolve_pipeline_version(override=cfg.get("results_version"))
     version = version_info["version"]

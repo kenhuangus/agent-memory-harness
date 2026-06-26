@@ -12,7 +12,12 @@ thin per-harness **adapters**, and what each harness exposes. Owner: **P1 Keith*
    no-per-model-call-injection gap, headless `claude -p`.
 3. **[03 — Codex CLI](03-codex.md)** — MCP + `Stop`/`notify`, no session-end / no
    background jobs (the design floor), headless `codex exec --json`.
-4. **[05 — Claude Code plugin MVP build plan](05-plugin-mvp-plan.md)** — the HOW &
+4. **[06 — Cursor CLI](06-cursor-cli.md)** — `cursor-agent`: same `mcp.json` as
+   Claude Code, ≈18 hooks (incl. real `sessionEnd`), first-class `--plugin-dir`,
+   `stream-json` ≈ Claude Code's, `CURSOR_DATA_DIR` isolation + `CURSOR_API_KEY`
+   headless auth. The richest surface — one gotcha: the MCP approval gate. Verified
+   against the installed binary.
+5. **[05 — Claude Code plugin MVP build plan](05-plugin-mvp-plan.md)** — the HOW &
    WHERE for the plugin + Daydreamer: ADR-style decisions + a vertical-slice
    roadmap. Owner: Keith. Note: it **revises** two things in 01 — the Orchestrator
    (not the eval harness) owns the store and all R/W route through it, and the eval
@@ -23,7 +28,7 @@ For the full OpenCode internals (the reference harness), see
 
 ## Takeaway
 
-**Yes — one memory core can serve all three.** The model-callable **MCP tool**
+**Yes — one memory core can serve all of them (now four, incl. Cursor CLI).** The model-callable **MCP tool**
 (`recall`/`remember`) is supported identically everywhere and carries the heavy
 logic (store, router, retrieval, dreaming), with the per-run store path
 (`MEMORY_STORE`) giving version isolation for free. Adapters differ only in

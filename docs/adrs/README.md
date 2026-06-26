@@ -92,6 +92,9 @@ the move).
 | [ADR-harness-010](ADR-harness-010-commit-release-bundle.md) | Commit the materialized release bundle + a root `marketplace.json` so the plugin installs from git (no clone) | Accepted | no |
 | [ADR-harness-011](ADR-harness-011-plugin-dumb-client-auto-profile.md) | Plugin is a dumb client of the router (one opaque `build_store()` → `RouterStore`); the engine auto-selects the routing profile (fusion offline, accuracy with a key) | Accepted | no |
 | [ADR-harness-012](ADR-harness-012-remove-harness-memory-management.md) | Remove harness-side memory management from the plugin-real path; accumulation is by persistent shared directory only (records + reverses the never-ADR'd "Fix A") | Proposed | no |
+| [ADR-harness-013](ADR-harness-013-cursor-cli-second-harness.md) | Add the Cursor CLI as a second eval harness backend — sibling adapter `eval/memeval/cursorcli/`, shared `AgentAdapter` core, `--harness {claude,cursor}` selection (default claude) | Proposed | no |
+| [ADR-harness-014](ADR-harness-014-cursor-home-isolation-api-key-auth.md) | Cursor sandbox isolation via `HOME` (not `CURSOR_DATA_DIR`) + keychain-free `CURSOR_API_KEY` auth → independent per-stage parallel runs | Proposed | no |
+| [ADR-harness-015](ADR-harness-015-cursor-mcp-wiring-approval-gate.md) | Cursor MCP wiring: same `mcp.json` server + pre-cleared approval/trust gates + stream-json parsing (tool match on `providerIdentifier`/`toolName`) | Proposed | no |
 
 > **Provenance.** These eleven ADRs were extracted from the consolidated ADR-P1…P11
 > series in
