@@ -1,0 +1,634 @@
+{
+  "generated_at": "2026-06-26T03:46:58.270113+00:00",
+  "schema_source": "eval/memeval/schema.py :: MemoryItem (table `items` in cookbook-memory/memory.db)",
+  "data_sources": [
+    "results/vbranch-main-b28b7af6/_memory/.cookbook-memory/memory.db",
+    "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db"
+  ],
+  "store_count": 2,
+  "item_count": 32,
+  "stores": [
+    {
+      "store_id": "results/vbranch-main-b28b7af6/_memory/.cookbook-memory/memory.db",
+      "path": "results/vbranch-main-b28b7af6/_memory/.cookbook-memory/memory.db",
+      "domain": "vbranch-main-b28b7af6",
+      "count": 2
+    },
+    {
+      "store_id": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "path": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1",
+      "count": 30
+    }
+  ],
+  "items": [
+    {
+      "item_id": "mem_b451ab73",
+      "content": "Issue: _pytest.capture.EncodedFile mode includes 'b' (binary), causing TypeError when youtube_dl writes bytes. Fix needed in _pytest/capture.py's EncodedFile class mode property.",
+      "timestamp": 1782245444.265749,
+      "relevancy": 1.0,
+      "session_id": "047502df-2ce2-4c5b-af56-283120eb36ab",
+      "source": "daydream",
+      "tags": [
+        "pytest-issue",
+        "youtube-dl-binary-mode",
+        "EncodedFile-mode-fix"
+      ],
+      "tokens": 44,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "047502df-2ce2-4c5b-af56-283120eb36ab"
+      },
+      "store": "results/vbranch-main-b28b7af6/_memory/.cookbook-memory/memory.db",
+      "domain": "vbranch-main-b28b7af6"
+    },
+    {
+      "item_id": "mem_7d8fc917",
+      "content": "Repository: pytest-dev/pytest at base commit 3a668ea6ff24b0c8f00498c3144c63bac561d925. User has a working checkout and needs to edit source files directly to fix the issue and run tests.",
+      "timestamp": 1782246478.996814,
+      "relevancy": 0.9,
+      "session_id": "a9ecb356-1c95-41bc-a192-ba5d75c445ee",
+      "source": "daydream",
+      "tags": [
+        "repository",
+        "working-copy"
+      ],
+      "tokens": 46,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "a9ecb356-1c95-41bc-a192-ba5d75c445ee"
+      },
+      "store": "results/vbranch-main-b28b7af6/_memory/.cookbook-memory/memory.db",
+      "domain": "vbranch-main-b28b7af6"
+    },
+    {
+      "item_id": "mem_1f3f2f71",
+      "content": "The fix for `Function._eval_evalf` not calling `_imp_` recursively is in `sympy/core/function.py`: when `_imp_` is defined and has args, evaluate `_imp_(*args)` and then call `.evalf()` on the result.",
+      "timestamp": 1782362768.008162,
+      "relevancy": 1.0,
+      "session_id": "7368e31c-03d7-4d66-bcfe-376ebff505d7",
+      "source": "daydream",
+      "tags": [
+        "fix-pattern",
+        "evalf",
+        "implemented_function"
+      ],
+      "tokens": 50,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "7368e31c-03d7-4d66-bcfe-376ebff505d7"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_d9800390",
+      "content": "The fix was applied in `sympy/core/function.py` lines around 1421-1431, changing the `_eval_evalf` method to evaluate `_imp_(*args)` and recurse with `.evalf()` on the result.",
+      "timestamp": 1782362768.008162,
+      "relevancy": 1.0,
+      "session_id": "7368e31c-03d7-4d66-bcfe-376ebff505d7",
+      "source": "daydream",
+      "tags": [
+        "file-location",
+        "fix-implementation"
+      ],
+      "tokens": 43,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "7368e31c-03d7-4d66-bcfe-376ebff505d7"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_85472504",
+      "content": "The fix for the UnboundLocalError in evalf.py is to add an `else: raise NotImplementedError` to the elif clauses that define `reprec` and `imprec` in the evalf function.",
+      "timestamp": 1782364273.4075809,
+      "relevancy": 0.85,
+      "session_id": "4ea63f1b-d877-438f-b216-ee0b44da42fa",
+      "source": "daydream",
+      "tags": [
+        "bug-fix",
+        "sympy",
+        "evalf"
+      ],
+      "tokens": 42,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "4ea63f1b-d877-438f-b216-ee0b44da42fa"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_52543296",
+      "content": "The bug was discovered after changing the order of Mul arguments in sympy PR #13059.",
+      "timestamp": 1782364273.4075809,
+      "relevancy": 0.7,
+      "session_id": "4ea63f1b-d877-438f-b216-ee0b44da42fa",
+      "source": "daydream",
+      "tags": [
+        "sympy",
+        "PR-13059"
+      ],
+      "tokens": 21,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "4ea63f1b-d877-438f-b216-ee0b44da42fa"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_cf75f924",
+      "content": "sympy has a bug in hyperbolic.py's coth.eval method: variable 'cotm' is used before assignment, causing NameError on subs(coth(log(tan(x)), N) for certain integers.",
+      "timestamp": 1782364593.331517,
+      "relevancy": 0.9,
+      "session_id": "deaaebfd-929b-44a0-ace0-203ec8fba247",
+      "source": "daydream",
+      "tags": [
+        "sympy",
+        "bug",
+        "hyperbolic.py"
+      ],
+      "tokens": 41,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "deaaebfd-929b-44a0-ace0-203ec8fba247"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_f03742c2",
+      "content": "Zero-argument Min() should return oo (infinity) and zero-argument Max() should return -oo (negative infinity), instead of raising ValueError.",
+      "timestamp": 1782366298.1005912,
+      "relevancy": 0.95,
+      "session_id": "e048e98a-3ea2-4c13-9a79-01ec8555a87d",
+      "source": "daydream",
+      "tags": [
+        "sympy",
+        "issue-fix"
+      ],
+      "tokens": 35,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "e048e98a-3ea2-4c13-9a79-01ec8555a87d"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_cf59dbbe",
+      "content": "The user wants to fix the `posify` function in sympy/sympy so that it preserves the `finite` assumption (and possibly other assumptions like integer, rational, prime, even, odd) on symbols.",
+      "timestamp": 1782367842.906608,
+      "relevancy": 1.0,
+      "session_id": "421e2f54-f00b-47ed-b02a-79879d59723f",
+      "source": "daydream",
+      "tags": [],
+      "tokens": 47,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "421e2f54-f00b-47ed-b02a-79879d59723f"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_958d4368",
+      "content": "The user wants `posify` in SymPy to preserve assumptions like `finite`, `integer`, `rational`, `prime`, `even`, `odd` on the posified symbol.",
+      "timestamp": 1782368004.832514,
+      "relevancy": 0.9,
+      "session_id": "0fb1e73c-3cac-4ec3-91ba-8b435dba5bc6",
+      "source": "daydream",
+      "tags": [
+        "sympy",
+        "posify",
+        "assumptions"
+      ],
+      "tokens": 35,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "0fb1e73c-3cac-4ec3-91ba-8b435dba5bc6"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_0744652c",
+      "content": "The PythonCodePrinter class in SymPy needs a `_print_Indexed` method to properly handle Indexed expressions.",
+      "timestamp": 1782368589.218312,
+      "relevancy": 0.9,
+      "session_id": "2e3598c7-2565-4915-9cc8-b3696f8c9485",
+      "source": "daydream",
+      "tags": [],
+      "tokens": 27,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "2e3598c7-2565-4915-9cc8-b3696f8c9485"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_016bdac2",
+      "content": "The user wants to add a `_print_Indexed` method to `PythonCodePrinter` in SymPy so that `pycode(p[0])` prints `p[0]` instead of emitting a 'Not supported in Python' warning.",
+      "timestamp": 1782368744.416011,
+      "relevancy": 0.95,
+      "session_id": "53a01915-d8b3-405f-9327-d430757d0da4",
+      "source": "daydream",
+      "tags": [
+        "sympy",
+        "code-generation"
+      ],
+      "tokens": 43,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "53a01915-d8b3-405f-9327-d430757d0da4"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_e293cf06",
+      "content": "In sympy/sympy, the Morse encoding for '1' in sympy.crypto.crypto was incorrectly mapped to '----' instead of the correct '.----'.",
+      "timestamp": 1782369036.8366468,
+      "relevancy": 1.0,
+      "session_id": "8ddeae02-1c7d-466f-b0a3-742a333b0df7",
+      "source": "daydream",
+      "tags": [
+        "bug-fix",
+        "Morse-encoding"
+      ],
+      "tokens": 32,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "8ddeae02-1c7d-466f-b0a3-742a333b0df7"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_0d5a81b4",
+      "content": "For this repository fix, the user prefers direct source file edits followed by running tests, without outputting diffs or patches.",
+      "timestamp": 1782369036.8366468,
+      "relevancy": 1.0,
+      "session_id": "8ddeae02-1c7d-466f-b0a3-742a333b0df7",
+      "source": "daydream",
+      "tags": [
+        "workflow",
+        "testing"
+      ],
+      "tokens": 32,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "8ddeae02-1c7d-466f-b0a3-742a333b0df7"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_541b6e7e",
+      "content": "Repository: sympy/sympy, base commit 1923822ddf8265199dbd9ef9ce09641d3fd042b9. The fix approach should: call recall tool with issue text, edit source files directly, and run tests to confirm.",
+      "timestamp": 1782371005.294038,
+      "relevancy": 1.0,
+      "session_id": "326d2be3-e583-4cec-a34e-8333e9234d1e",
+      "source": "daydream",
+      "tags": [],
+      "tokens": 47,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "326d2be3-e583-4cec-a34e-8333e9234d1e"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_99ff77be",
+      "content": "Created a memory file at memory/itermonomials_fix.md documenting the fix for itermonomials returning incomplete results with min_degrees argument.",
+      "timestamp": 1782376445.421876,
+      "relevancy": 0.45,
+      "session_id": "f9ccf24a-27a5-4f25-819d-b3b1e776c056",
+      "source": "daydream",
+      "tags": [
+        "memory",
+        "documentation"
+      ],
+      "tokens": 36,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "f9ccf24a-27a5-4f25-819d-b3b1e776c056"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_aafeb4c2",
+      "content": "Rational('0.5', '100') returned 1/100100 instead of 1/200 because the __new__ method did `q *= p.q` which, when `q` is a string, performed Python string repetition ('100' * 2 = '100100').",
+      "timestamp": 1782380249.28671,
+      "relevancy": 0.95,
+      "session_id": "11f86903-c72b-42bf-af2c-b25f8cee0775",
+      "source": "daydream",
+      "tags": [
+        "sympy",
+        "bug",
+        "Rational",
+        "numbers.py"
+      ],
+      "tokens": 46,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "11f86903-c72b-42bf-af2c-b25f8cee0775"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_ba164bdd",
+      "content": "The distance, taxicab_distance, and midpoint methods in Point class were fixed to handle dimension mismatch by padding shorter coordinate sequences with zeros.",
+      "timestamp": 1782381148.933629,
+      "relevancy": 0.9,
+      "session_id": "ab4cf9d3-2877-4362-86b8-4d410ff8c583",
+      "source": "daydream",
+      "tags": [
+        "sympy",
+        "geometry",
+        "bug-fix"
+      ],
+      "tokens": 39,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "ab4cf9d3-2877-4362-86b8-4d410ff8c583"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_a8a289a0",
+      "content": "The test file test_all_cases.py validates mixed-dimension scenarios: 2D-to-3D distance, reversed order, taxicab_distance, and midpoint.",
+      "timestamp": 1782381148.933629,
+      "relevancy": 0.75,
+      "session_id": "ab4cf9d3-2877-4362-86b8-4d410ff8c583",
+      "source": "daydream",
+      "tags": [
+        "sympy",
+        "tests",
+        "regression"
+      ],
+      "tokens": 33,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "ab4cf9d3-2877-4362-86b8-4d410ff8c583"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_577ae175",
+      "content": "The added test is `test_issue_product_of_sum_with_inv_power` in sympy/concrete/tests/test_products.py, which asserts Product(n + 1/2**k, [k, 0, n-1]).subs(n, 2).doit() == Rational(15, 2).",
+      "timestamp": 1782385540.330666,
+      "relevancy": 1.0,
+      "session_id": "2f29b7f1-4579-41a5-bdcf-c5fe6d713fd5",
+      "source": "daydream",
+      "tags": [],
+      "tokens": 46,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "2f29b7f1-4579-41a5-bdcf-c5fe6d713fd5"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_4910827d",
+      "content": "Setting `_op_priority = 11.0` on Poly class ensures expressions like `x*Poly(x)` evaluate to a Poly rather than an unevaluated Mul.",
+      "timestamp": 1782387454.66715,
+      "relevancy": 0.9,
+      "session_id": "cf246bbb-e65c-4067-8e85-ec768731e219",
+      "source": "daydream",
+      "tags": [
+        "sympy"
+      ],
+      "tokens": 32,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "cf246bbb-e65c-4067-8e85-ec768731e219"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_0b00d9a5",
+      "content": "The user suggested that Bareiss algorithm should only be used for integer matrices in SymPy, and not for symbolic matrices with non-integer entries.",
+      "timestamp": 1782387975.73425,
+      "relevancy": 0.85,
+      "session_id": "2712e852-eb0e-4bb1-bdd3-8f7f3ff3de5c",
+      "source": "daydream",
+      "tags": [
+        "sympy",
+        "determinant",
+        "design-decision"
+      ],
+      "tokens": 37,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "2712e852-eb0e-4bb1-bdd3-8f7f3ff3de5c"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_ac7430f1",
+      "content": "The Bareiss algorithm may only be valid for integer matrices, not symbolic matrices, which is why it fails with symbolic entries.",
+      "timestamp": 1782388306.489721,
+      "relevancy": 0.9,
+      "session_id": "1fbd3e5c-f1c8-4360-9106-d6beaa102146",
+      "source": "daydream",
+      "tags": [
+        "sympy",
+        "matrix",
+        "determinant"
+      ],
+      "tokens": 32,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "1fbd3e5c-f1c8-4360-9106-d6beaa102146"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_7c562436",
+      "content": "A specific reproducing example: `det(Matrix([[i + a*j for i in range(n)] for j in range(n)]))` with n=6 triggers the NaN comparison bug; n=5 returns `nan`.",
+      "timestamp": 1782388306.489721,
+      "relevancy": 0.85,
+      "session_id": "1fbd3e5c-f1c8-4360-9106-d6beaa102146",
+      "source": "daydream",
+      "tags": [
+        "sympy",
+        "reproducer",
+        "testing"
+      ],
+      "tokens": 38,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "1fbd3e5c-f1c8-4360-9106-d6beaa102146"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_d2fab173",
+      "content": "Fix for sympy issue #15493: Mod(3*i, 2) should reduce to Mod(i, 2) by modifying mod.py doit() to check if non_mod_l changed after wrapping terms with Mod",
+      "timestamp": 1782391717.250574,
+      "relevancy": 0.9,
+      "session_id": "d10215fb-dd27-4666-9a02-75a8dc807e5c",
+      "source": "daydream",
+      "tags": [
+        "sympy-fix"
+      ],
+      "tokens": 38,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "d10215fb-dd27-4666-9a02-75a8dc807e5c"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_6dde6180",
+      "content": "Test addition: in sympy/core/tests/test_arit.py, add `assert Mod(3*i, 2) == Mod(i, 2)` inside test_Mod() after `assert Mod(4*i, 4) == 0`",
+      "timestamp": 1782391717.250574,
+      "relevancy": 0.85,
+      "session_id": "d10215fb-dd27-4666-9a02-75a8dc807e5c",
+      "source": "daydream",
+      "tags": [
+        "sympy-fix",
+        "test"
+      ],
+      "tokens": 34,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "d10215fb-dd27-4666-9a02-75a8dc807e5c"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_8e9d15a5",
+      "content": "The dimension tuples differ by language: CodeGen (C) uses `(S.Zero, dim - 1)`, JuliaCodeGen/OctaveCodeGen/RustCodeGen use `(S.One, dim)` when creating InputArgument with dimensions for a MatrixSymbol.",
+      "timestamp": 1782393886.362941,
+      "relevancy": 1.0,
+      "session_id": "46e6b30a-e3ee-49ab-8265-81a8277ce752",
+      "source": "daydream",
+      "tags": [
+        "sympy",
+        "codegen",
+        "convention"
+      ],
+      "tokens": 50,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "46e6b30a-e3ee-49ab-8265-81a8277ce752"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_9ec0e9d8",
+      "content": "Test `test_ccode_unused_matrixsymbol` was added in `sympy/utilities/tests/test_codegen.py` to verify that unused MatrixSymbol arguments get pointer type in generated C code.",
+      "timestamp": 1782393886.362941,
+      "relevancy": 1.0,
+      "session_id": "46e6b30a-e3ee-49ab-8265-81a8277ce752",
+      "source": "daydream",
+      "tags": [
+        "sympy",
+        "codegen",
+        "testing"
+      ],
+      "tokens": 43,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "46e6b30a-e3ee-49ab-8265-81a8277ce752"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_7ebf60ba",
+      "content": "The regression test for SymPy issue #18895 is: assert factor(x*y - x - y + 1, extension=[I]) == (x - 1)*(y - 1), added to sympy/polys/tests/test_polytools.py in test_factor.",
+      "timestamp": 1782396823.4133818,
+      "relevancy": 0.85,
+      "session_id": "f6a4ed6f-b4a7-4541-a6d8-27f455ecf043",
+      "source": "daydream",
+      "tags": [
+        "regression-test",
+        "sympy",
+        "test-coverage"
+      ],
+      "tokens": 43,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "f6a4ed6f-b4a7-4541-a6d8-27f455ecf043"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_0e4ac421",
+      "content": "User is fixing an srepr bug in the sympy/sympy repository at base commit 94fb720696f5f5d12bad8bc813699fd696afd2fb, where dict and set containers don't apply srepr to their elements.",
+      "timestamp": 1782396859.933362,
+      "relevancy": 1.0,
+      "session_id": "eddde6a3-58e5-4ded-8010-cb1c5b7984fc",
+      "source": "daydream",
+      "tags": [
+        "sympy",
+        "work-in-progress"
+      ],
+      "tokens": 45,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "eddde6a3-58e5-4ded-8010-cb1c5b7984fc"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_44fd2736",
+      "content": "The issue is that Dagger(A) * IdentityOperator() does not simplify to Dagger(A), while A * IdentityOperator() correctly simplifies to A.",
+      "timestamp": 1782397302.858736,
+      "relevancy": 0.9,
+      "session_id": "3b152532-6865-4205-bb5a-fa28cc38870e",
+      "source": "daydream",
+      "tags": [
+        "bug",
+        "fix"
+      ],
+      "tokens": 34,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "3b152532-6865-4205-bb5a-fa28cc38870e"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    },
+    {
+      "item_id": "mem_5e12aaae",
+      "content": "The user's name is Keith (inferred from home directory path /Users/keith/).",
+      "timestamp": 1782397522.557823,
+      "relevancy": 1.0,
+      "session_id": "f6b81061-c02d-4709-af56-b50bc3dd13b4",
+      "source": "daydream",
+      "tags": [
+        "identity"
+      ],
+      "tokens": 18,
+      "version": 1,
+      "metadata": {
+        "extracted_from": "f6b81061-c02d-4709-af56-b50bc3dd13b4"
+      },
+      "store": "results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db",
+      "domain": "vsympy_sympy_sequence-plugin-blank-54d168e-1"
+    }
+  ]
+}

@@ -106,7 +106,7 @@ def _guard_results(target: Path, force: bool) -> None:
         )
 
 
-def _build_parser() -> argparse.ArgumentParser:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m ui",
         description="Cookbook memory UI — live operator dashboard + memory-store inspector.",
@@ -123,22 +123,15 @@ def _build_parser() -> argparse.ArgumentParser:
                         help="substrate dir (a .../_memory) for the inspector. "
                              "Default: newest results/v*/_memory. Empty if no candidate.")
     parser.add_argument("--profile", choices=["speed", "fusion", "accuracy", "accuracy-local", "auto"],
-                        default="fusion",
-                        help="inspector routing profile (default 'fusion' = offline: browsing reads the "
-                             "STORED vectors and never builds a live embedder, so it can't hang on a "
-                             "network/model load). Pass 'accuracy' (Voyage), 'accuracy-local' (MiniLM), "
-                             "or 'auto' (build_store's pick) to build the real embedder for query-probing "
-                             "— slower, and 'auto' will pick accuracy whenever $VOYAGE_API_KEY is set.")
+                        default="auto",
+                        help="routing profile (default auto = build_store's pick). accuracy-local "
+                             "= local MiniLM + sqlite-vec ANN (needs the eval[local-ann] extra).")
     parser.add_argument("--margin-threshold", type=float, default=None,
                         help="ambiguity threshold in classifier-score units (default 1.0).")
     parser.add_argument("--seed", action="store_true",
                         help="build the synthetic demo corpus, then serve it as the inspector substrate.")
     parser.add_argument("--force", action="store_true", help="allow --seed to write inside a results/ dir.")
-    return parser
-
-
-def main(argv: list[str] | None = None) -> int:
-    args = _build_parser().parse_args(argv)
+    args = parser.parse_args(argv)
 
     # Load the repo-root .env (VOYAGE_API_KEY, MEMEVAL_LOCAL_ANN, etc.) so profile
     # auto-selection sees the same keys without the user having to ``export``.
