@@ -719,6 +719,225 @@ def _detect_contradictions(
     )
 
 
+def _detect_contradictions_neighborhood(
+    items: list[MemoryItem],
+    store: MemoryStore,
+    client: Any,
+    *,
+    max_calls: int,
+    model: str,
+    session_id: str,
+    now: float,
+    k: int = _DEFAULT_NEIGHBORHOOD_K,
+    protected_ids: set[str] | None = None,
+) -> ContradictionResult:
+    """ADR-dreaming-028 §2 — neighborhood-scoped contradiction judgment.
+
+    For each pivot item (up to ``max_calls`` pivots), fetches the K nearest
+    neighbors via :func:`_neighborhood_for` and asks the LLM to find
+    contradicting pairs WITHIN that neighborhood stack. Pairs are
+    deduplicated across pivots: if both A and B are pivots and both
+    neighborhoods surface the (A, B) pair, the first occurrence wins.
+
+    Difference vs. :func:`_detect_contradictions` (the v1 path):
+      - Per-pivot LLM call instead of non-overlapping shuffle windows.
+      - ``max_calls`` bounds PIVOT count, not arbitrary batch count.
+      - LLM judges semantically-related items only (the neighborhood is
+        the K most similar by the store's search ranking), not arbitrary
+        co-batched items. Narrows coverage but raises the per-call signal.
+
+    This function is NOT yet wired into :meth:`DreamingWorker.run`. PR #2c
+    of the ADR-028 implementation sequence adds the helper; a follow-up PR
+    will wire it behind a feature flag for A/B measurement against the
+    existing path before any promotion to default.
+
+    Same fail-open contract as :func:`_detect_contradictions`: every LLM
+    failure mode (exception, empty completion, parse error, bad pairs key,
+    invalid types) becomes an event + continue, never raises. Conservative
+    posture per [ADR-harness-006](../../docs/adrs/ADR-harness-006-fail-open-stop-hook.md).
+    """
+    if not items or max_calls <= 0:
+        return ContradictionResult(
+            pairs=[], llm_calls=0, tokens_in=0, tokens_out=0,
+            cost_usd=0.0, pairs_examined_estimate=0,
+        )
+
+    from ..cost import cost_of
+    from .redaction import redact
+
+    item_by_id: dict[str, MemoryItem] = {it.item_id: it for it in items}
+
+    seen_pairs: set[frozenset[str]] = set()
+    candidate_pairs: list[ContradictionPair] = []
+    llm_calls = 0
+    total_tokens_in = 0
+    total_tokens_out = 0
+    pairs_examined = 0
+    pivots_processed = 0
+
+    for pivot in items:
+        if llm_calls >= max_calls:
+            break
+        # Per ADR-028 §2 PR #2b: fail-open returns `[pivot]` alone when
+        # the search backend has no neighbors OR errors. A thin
+        # neighborhood has no pairs to judge — skip and don't burn a call.
+        neighborhood = _neighborhood_for(store, pivot, k=k)
+        if len(neighborhood) < 2:
+            continue
+        pivots_processed += 1
+
+        batch_id_set = {it.item_id for it in neighborhood}
+        batch_payload = json.dumps([
+            {
+                "id": str(redact(it.item_id)),
+                "content": str(redact(it.content)) if it.content is not None else "",
+                "timestamp": it.timestamp,
+                "tags": [str(redact(t)) for t in it.tags],
+            }
+            for it in neighborhood
+        ])
+        wrapped = _wrap_batch_in_envelope(
+            batch_payload, session_id=session_id, now=now, batch_idx=pivots_processed - 1,
+        )
+        system_prompt = _get_contradiction_system_prompt()
+
+        try:
+            completion = client.complete(
+                wrapped, system=system_prompt, max_tokens=_CONTRADICTION_MAX_TOKENS,
+            )
+        except Exception as exc:  # noqa: BLE001 — Pushback H: fail-open on any exception
+            emit(
+                "dream.contradiction_skipped_unavailable_llm",
+                batch_index=pivots_processed - 1,
+                reason=f"{type(exc).__name__}: {exc}",
+            )
+            llm_calls += 1
+            continue
+        llm_calls += 1
+        if not completion.text:
+            emit(
+                "dream.contradiction_skipped_unavailable_llm",
+                batch_index=pivots_processed - 1,
+                reason="empty completion text",
+            )
+            continue
+
+        try:
+            data = json.loads(completion.text)
+        except json.JSONDecodeError as exc:
+            emit(
+                "dream.contradiction_batch_parse_failed",
+                batch_index=pivots_processed - 1,
+                reason=str(exc),
+            )
+            continue
+        if not isinstance(data, dict) or "pairs" not in data:
+            emit(
+                "dream.contradiction_batch_parse_failed",
+                batch_index=pivots_processed - 1,
+                reason="missing or bad 'pairs' key",
+            )
+            continue
+        raw_pairs = data["pairs"]
+        if not isinstance(raw_pairs, list):
+            emit(
+                "dream.contradiction_batch_parse_failed",
+                batch_index=pivots_processed - 1,
+                reason=f"'pairs' not list: {type(raw_pairs).__name__}",
+            )
+            continue
+
+        kept_in_batch: list[ContradictionPair] = []
+        n_dropped = 0
+        for raw in raw_pairs:
+            if not isinstance(raw, dict):
+                n_dropped += 1
+                continue
+            a_id = raw.get("a_id")
+            b_id = raw.get("b_id")
+            rationale = raw.get("rationale", "")
+            if not isinstance(a_id, str) or not isinstance(b_id, str):
+                n_dropped += 1
+                continue
+            if not isinstance(rationale, str):
+                rationale = ""
+            if a_id == b_id:
+                n_dropped += 1
+                continue
+            if a_id not in batch_id_set or b_id not in batch_id_set:
+                emit(
+                    "dream.contradiction_invalid_id_dropped",
+                    batch_index=pivots_processed - 1,
+                    a_id=a_id, b_id=b_id,
+                )
+                continue
+            # Cross-pivot dedupe: the same pair can surface from both A's
+            # neighborhood and B's neighborhood. Keep the first occurrence.
+            pair_key = frozenset({a_id, b_id})
+            if pair_key in seen_pairs:
+                continue
+            seen_pairs.add(pair_key)
+            # Pivot might not be in `items` dict (it could be a neighbor
+            # from elsewhere in the store). Fall back to the neighborhood's
+            # own copies for `_pick_winner`.
+            nbhd_by_id = {it.item_id: it for it in neighborhood}
+            a_item = item_by_id.get(a_id) or nbhd_by_id[a_id]
+            b_item = item_by_id.get(b_id) or nbhd_by_id[b_id]
+            winner_id = _pick_winner([a_item, b_item])
+            loser_id = b_id if winner_id == a_id else a_id
+            kept_in_batch.append(ContradictionPair(
+                loser_id=loser_id,
+                winner_id=winner_id,
+                rationale=rationale[:_RATIONALE_MAX_LEN],
+            ))
+        if n_dropped:
+            emit(
+                "dream.contradiction_partial_parse",
+                batch_index=pivots_processed - 1,
+                n_kept=len(kept_in_batch),
+                n_dropped=n_dropped,
+            )
+
+        batch_cost = cost_of(model, completion.tokens_in, completion.tokens_out)
+        emit(
+            "dream.contradiction_batch_complete",
+            batch_index=pivots_processed - 1,
+            tokens_in=completion.tokens_in,
+            tokens_out=completion.tokens_out,
+            cost_usd=batch_cost,
+            n_pairs=len(kept_in_batch),
+        )
+
+        candidate_pairs.extend(kept_in_batch)
+        total_tokens_in += completion.tokens_in
+        total_tokens_out += completion.tokens_out
+        # Estimate: pivot × (neighborhood - 1) pairs examined per call.
+        pairs_examined += len(neighborhood) - 1
+
+    # Same winner-collision protection as v1 — never delete a probable winner.
+    protected = set(protected_ids or ()) | {p.winner_id for p in candidate_pairs}
+    final_pairs: list[ContradictionPair] = []
+    for p in candidate_pairs:
+        if p.loser_id in protected:
+            emit(
+                "dream.contradiction_pair_dropped_winner_collision",
+                loser_id=p.loser_id, winner_id=p.winner_id,
+            )
+            continue
+        final_pairs.append(p)
+    final_pairs.sort(key=lambda p: (p.loser_id, p.winner_id))
+
+    total_cost = cost_of(model, total_tokens_in, total_tokens_out)
+    return ContradictionResult(
+        pairs=final_pairs,
+        llm_calls=llm_calls,
+        tokens_in=total_tokens_in,
+        tokens_out=total_tokens_out,
+        cost_usd=total_cost,
+        pairs_examined_estimate=pairs_examined,
+    )
+
+
 def _get_contradiction_system_prompt() -> Any:
     """Lazy-load and ``RedactedText``-wrap the ``CONTRADICTION_SYSTEM_PROMPT``.
 
