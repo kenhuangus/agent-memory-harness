@@ -28,6 +28,7 @@ from memeval.dreaming.events import emit
 from memeval.dreaming.llm import Completion, LLMClient
 from memeval.dreaming.prompts import (
     EXTRACTION_SYSTEM_PROMPT,
+    OKF_CONTENT_TYPES,
     _ENVELOPE_TEMPLATE,
     get_extraction_prompt,
     resolve_extraction_prompt,
@@ -363,6 +364,13 @@ def extract_memories(
     return items
 
 
+#: ``okf_type`` value used when the LLM did not supply one (pre-V5 variants)
+#: OR when the LLM supplied a value outside ``OKF_CONTENT_TYPES`` (off-list
+#: drift). The OKF serializer (``eval/memeval/okf.py``) treats ``Memory``
+#: as its generic fallback per ADR-dreaming-027.
+_OKF_TYPE_FALLBACK: str = "Memory"
+
+
 def _build_memory_item(
     raw: dict[str, Any],
     *,
@@ -375,9 +383,14 @@ def _build_memory_item(
     Required: `raw` must be a dict with key `content` whose value is a
     non-empty string of length ≤ `_MAX_CONTENT_LEN`. Optional: `tags`
     (list of strings, kept up to `_MAX_TAGS`; defaults to `[]` if absent
-    or wrong shape) and `relevancy` (float in [0, 1]; values outside
-    are clamped; non-numeric falls back to the schema default of 1.0).
-    Raises `_ParseError` on any required-field failure; caller drops the row.
+    or wrong shape), `relevancy` (float in [0, 1]; values outside are
+    clamped; non-numeric falls back to the schema default of 1.0), and
+    `type` (one of `OKF_CONTENT_TYPES` per ADR-dreaming-027; off-list
+    or missing → `_OKF_TYPE_FALLBACK`; an off-list value additionally
+    emits ``daydream.unknown_okf_type`` for observability — a missing
+    value does NOT emit, since pre-V5 prompts legitimately omit the
+    field). Raises `_ParseError` on any required-field failure; caller
+    drops the row.
     """
     if not isinstance(raw, dict):
         raise _ParseError(f"row is not a dict: {type(raw).__name__}")
@@ -406,6 +419,28 @@ def _build_memory_item(
     else:
         relevancy = 1.0
 
+    # OKF content type per ADR-dreaming-027. V5+ prompts emit `type` from
+    # the closed `OKF_CONTENT_TYPES` set; older variants omit the field. We
+    # distinguish three cases to keep the observability surface honest:
+    #   - in-set string  → use as-is.
+    #   - off-list value → fall back + emit `daydream.unknown_okf_type` so
+    #                      operators can measure how often the LLM drifts.
+    #   - missing/empty  → fall back silently (pre-V5 variants legitimately
+    #                      do not emit a `type`; counting them as drift
+    #                      would flood the event surface during V0-V4 runs).
+    raw_type = raw.get("type")
+    if isinstance(raw_type, str) and raw_type in OKF_CONTENT_TYPES:
+        okf_type = raw_type
+    elif isinstance(raw_type, str) and raw_type:
+        emit(
+            "daydream.unknown_okf_type",
+            session_id=session_id,
+            offending_value=raw_type[:_REJECTION_SNIPPET_MAX_LEN],
+        )
+        okf_type = _OKF_TYPE_FALLBACK
+    else:
+        okf_type = _OKF_TYPE_FALLBACK
+
     return MemoryItem(
         item_id=id_gen(),
         content=content,
@@ -417,5 +452,5 @@ def _build_memory_item(
         embedding=None,
         tokens=0,
         version=1,
-        metadata={"extracted_from": session_id},
+        metadata={"extracted_from": session_id, "okf_type": okf_type},
     )

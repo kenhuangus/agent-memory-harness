@@ -514,6 +514,59 @@ def test_memory_item_timestamp_equals_injected_now() -> None:
     assert item.timestamp == 12345.678
 
 
+# --- ADR-dreaming-027 — okf_type metadata population --------------------- #
+
+def test_memory_item_okf_type_in_set_is_kept(spy_extract_emit: list) -> None:
+    """A `type` value in `OKF_CONTENT_TYPES` lands in metadata['okf_type']
+    and emits no observability event."""
+    item = _build_memory_item(
+        {"content": "x", "type": "Fix"},
+        session_id="s1", now=0.0, id_gen=_default_id_gen,
+    )
+    assert item.metadata.get("okf_type") == "Fix"
+    assert all(e[0] != "daydream.unknown_okf_type" for e in spy_extract_emit)
+
+
+def test_memory_item_okf_type_missing_falls_back_silently(spy_extract_emit: list) -> None:
+    """No `type` field (pre-V5 prompts) → metadata['okf_type'] = 'Memory'
+    and NO `daydream.unknown_okf_type` event fires (the field is legitimately
+    absent on V0–V4; counting that as drift would flood the event surface)."""
+    item = _build_memory_item(
+        {"content": "x"},
+        session_id="s1", now=0.0, id_gen=_default_id_gen,
+    )
+    assert item.metadata.get("okf_type") == "Memory"
+    assert all(e[0] != "daydream.unknown_okf_type" for e in spy_extract_emit)
+
+
+def test_memory_item_okf_type_offlist_emits_unknown_event(spy_extract_emit: list) -> None:
+    """An off-list string value falls back to 'Memory' AND emits
+    `daydream.unknown_okf_type` with the offending value so operators can
+    measure LLM drift in real bench runs."""
+    item = _build_memory_item(
+        {"content": "x", "type": "Patch"},
+        session_id="s1", now=0.0, id_gen=_default_id_gen,
+    )
+    assert item.metadata.get("okf_type") == "Memory"
+    drift = [e for e in spy_extract_emit if e[0] == "daydream.unknown_okf_type"]
+    assert len(drift) == 1
+    assert drift[0][1]["offending_value"] == "Patch"
+    assert drift[0][1]["session_id"] == "s1"
+
+
+def test_memory_item_okf_type_non_string_falls_back_silently(spy_extract_emit: list) -> None:
+    """A non-string `type` (int, None, list) falls back to 'Memory' with NO
+    event — same handling as the missing-field case; a wrong-typed value is
+    a malformed-prompt-output bug, not LLM taxonomy drift."""
+    for bad in (42, None, ["Fix"], {"name": "Fix"}, ""):
+        item = _build_memory_item(
+            {"content": "x", "type": bad},
+            session_id="s1", now=0.0, id_gen=_default_id_gen,
+        )
+        assert item.metadata.get("okf_type") == "Memory"
+    assert all(e[0] != "daydream.unknown_okf_type" for e in spy_extract_emit)
+
+
 def test_memory_item_metadata_extracted_from() -> None:
     """metadata['extracted_from'] == session_id arg (rubric 81)."""
     item = _build_memory_item(
@@ -1388,9 +1441,13 @@ def test_no_partial_parse_means_all_rejection_rows_emitted(
 # §E — Events: allow-set + new event shape
 # --------------------------------------------------------------------------- #
 def test_extract_event_allow_set_ast() -> None:
-    """§E1 — AST walk gives exactly the 8 expected event names.
+    """§E1 — AST walk gives exactly the 9 expected event names.
 
-    Now 8 (was 7) — ``daydream.llm_call`` joined per ADR-dreaming-025:
+    Now 9 (was 8) — ``daydream.unknown_okf_type`` joined per ADR-dreaming-027:
+    fires when the LLM emits a ``type`` value outside ``OKF_CONTENT_TYPES``,
+    so operators can measure off-list drift in real bench runs.
+
+    Was 8 (was 7) — ``daydream.llm_call`` joined per ADR-dreaming-025:
     full-fidelity per-call debug event carrying system prompt + user content
     + raw model response. Sibling to ``daydream.prompt_resolved`` (identity
     only); both retained so consumers can filter on either surface.
@@ -1417,6 +1474,7 @@ def test_extract_event_allow_set_ast() -> None:
         "daydream.rejected_field_missing",
         "daydream.prompt_resolved",
         "daydream.llm_call",
+        "daydream.unknown_okf_type",
     }
     assert names == expected, (
         f"event allow-set drift: missing={expected - names}, "
@@ -2465,6 +2523,9 @@ def test_extract_module_top_imports_unchanged() -> None:
         "memeval.dreaming.llm.Completion",
         "memeval.dreaming.llm.LLMClient",
         "memeval.dreaming.prompts.EXTRACTION_SYSTEM_PROMPT",
+        # ADR-dreaming-027: closed OKF content-type taxonomy for `okf_type`
+        # validation in `_build_memory_item`.
+        "memeval.dreaming.prompts.OKF_CONTENT_TYPES",
         "memeval.dreaming.prompts._ENVELOPE_TEMPLATE",
         # ADR-dreaming-023: per-call selector resolves V0/V1/V2/V3 from env.
         "memeval.dreaming.prompts.get_extraction_prompt",
