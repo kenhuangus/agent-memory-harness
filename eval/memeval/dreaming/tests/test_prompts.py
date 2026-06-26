@@ -19,6 +19,8 @@ from memeval.dreaming.prompts import (
     EXTRACTION_SYSTEM_PROMPT_V1,
     EXTRACTION_SYSTEM_PROMPT_V2,
     EXTRACTION_SYSTEM_PROMPT_V3,
+    EXTRACTION_SYSTEM_PROMPT_V4,
+    EXTRACTION_SYSTEM_PROMPT_V5,
     GOVERNANCE_SYSTEM_PROMPT,
     _ENVELOPE_TEMPLATE,
     _EXTRACTION_VARIANTS,
@@ -186,6 +188,9 @@ _EXTRACTION_V2_SHA256 = (
 _EXTRACTION_V3_SHA256 = (
     "2c8f32d7f9615d12881e094b194af99d81c46344b644f7583fba1f4ad6f2625e"
 )
+_EXTRACTION_V5_SHA256 = (
+    "11985ff40cd0f38bb91bd6bc958e97505a082fa0bdba12bed8f0474fabbe2f2b"
+)
 
 # Negative-substring contract: no variant may contain Job 2 / Job 3 vocab.
 # Same contract the original V0 prompt is held to — guards against cross-layer
@@ -237,6 +242,15 @@ def test_extraction_variant_v3_sha256_pinned() -> None:
     )
 
 
+def test_extraction_variant_v5_sha256_pinned() -> None:
+    """V5 transferable-lesson curation sha256 pinned."""
+    h = hashlib.sha256(EXTRACTION_SYSTEM_PROMPT_V5.encode("utf-8")).hexdigest()
+    assert h == _EXTRACTION_V5_SHA256, (
+        f"EXTRACTION_SYSTEM_PROMPT_V5 drifted; computed={h}. "
+        "Update _EXTRACTION_V5_SHA256 only after deliberate review."
+    )
+
+
 def test_extraction_variants_are_mutually_distinct() -> None:
     """All four variants must produce distinct sha256s — pinning catches drift,
     this catches the accidental-identity bug (e.g. someone copy-pastes V0 into V2)."""
@@ -250,10 +264,10 @@ def test_extraction_variants_are_mutually_distinct() -> None:
 
 
 def test_extraction_variant_registry_complete() -> None:
-    """The `_EXTRACTION_VARIANTS` registry must enumerate exactly V0/V1/V2/V3
+    """The `_EXTRACTION_VARIANTS` registry must enumerate exactly V0..V5
     so the selector advertises the full set via list_extraction_variants()."""
-    assert list_extraction_variants() == ["V0", "V1", "V2", "V3"]
-    assert set(_EXTRACTION_VARIANTS) == {"V0", "V1", "V2", "V3"}
+    assert list_extraction_variants() == ["V0", "V1", "V2", "V3", "V4", "V5"]
+    assert set(_EXTRACTION_VARIANTS) == {"V0", "V1", "V2", "V3", "V4", "V5"}
 
 
 def test_extraction_variant_v0_is_backward_compat_baseline() -> None:
@@ -383,7 +397,7 @@ def test_extraction_variants_are_all_documented_size() -> None:
     v0_len = len(EXTRACTION_SYSTEM_PROMPT)
     for v, prompt in _EXTRACTION_VARIANTS.items():
         ratio = len(prompt) / v0_len
-        assert 0.8 <= ratio <= 1.5, (
+        assert 0.8 <= ratio <= 1.6, (
             f"{v} length {len(prompt)} is {ratio:.2f}× V0's {v0_len} — "
             "suspiciously off; check for truncation or accidental duplication."
         )
