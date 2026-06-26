@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>results · monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="scanlines" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="brand">
+        <span class="brand-mark">▌▌</span>
+        <span class="brand-name">RESULTS</span>
+        <span class="brand-sub">monitor</span>
+      </div>
+      <span class="topbar-sep"></span>
+      <div class="run-picker">
+        <label class="run-picker-label">run</label>
+        <select id="run-select" class="run-select"></select>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="status-cluster">
+        <span class="status-led" id="status-led" data-state="idle"></span>
+        <span class="status-label" id="status-label">—</span>
+        <span class="status-age" id="status-age">—</span>
+      </div>
+      <div class="refresh-cluster">
+        <button id="refresh-toggle" class="refresh-toggle" data-state="on">refresh on</button>
+        <span class="refresh-countdown" id="refresh-countdown">3s</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="dash">
+    <!-- KPI row ----------------------------------------------------------- -->
+    <section class="kpi-row" id="kpi-row">
+      <article class="kpi" data-kind="memory">
+        <header class="kpi-head">
+          <span class="kpi-name">memory</span>
+          <span class="kpi-leader"></span>
+          <span class="kpi-tag" id="kpi-memory-tag">—</span>
+        </header>
+        <div class="kpi-primary" id="kpi-memory-primary">—</div>
+        <div class="kpi-sub" id="kpi-memory-sub">— kept of — candidates</div>
+        <div class="kpi-meter">
+          <span class="kpi-meter-label">keep rate</span>
+          <span class="kpi-meter-value" id="kpi-memory-rate">—</span>
+          <span class="kpi-meter-bar" aria-hidden="true">
+            <span class="kpi-meter-fill" id="kpi-memory-rate-fill"></span>
+          </span>
+        </div>
+      </article>
+
+      <article class="kpi" data-kind="sessions">
+        <header class="kpi-head">
+          <span class="kpi-name">sessions</span>
+          <span class="kpi-leader"></span>
+          <span class="kpi-tag" id="kpi-sessions-tag">—</span>
+        </header>
+        <div class="kpi-primary"><span id="kpi-sessions-primary">—</span><span class="kpi-sep">/</span><span id="kpi-sessions-total" class="kpi-primary-dim">—</span></div>
+        <div class="kpi-sub" id="kpi-sessions-sub">— resolved · — graded</div>
+        <div class="kpi-meter">
+          <span class="kpi-meter-label">complete</span>
+          <span class="kpi-meter-value" id="kpi-sessions-rate">—</span>
+          <span class="kpi-meter-bar" aria-hidden="true">
+            <span class="kpi-meter-fill" id="kpi-sessions-rate-fill"></span>
+          </span>
+        </div>
+      </article>
+
+      <article class="kpi" data-kind="cost">
+        <header class="kpi-head">
+          <span class="kpi-name">cost</span>
+          <span class="kpi-leader"></span>
+          <span class="kpi-tag" id="kpi-cost-tag">—</span>
+        </header>
+        <div class="kpi-primary" id="kpi-cost-primary">—</div>
+        <div class="kpi-sub" id="kpi-cost-sub">in: — · out: —</div>
+        <div class="kpi-meter">
+          <span class="kpi-meter-label">budget</span>
+          <span class="kpi-meter-value" id="kpi-cost-rate">—</span>
+          <span class="kpi-meter-bar" aria-hidden="true">
+            <span class="kpi-meter-fill" id="kpi-cost-rate-fill"></span>
+          </span>
+        </div>
+      </article>
+
+      <article class="kpi" data-kind="failures">
+        <header class="kpi-head">
+          <span class="kpi-name">failures</span>
+          <span class="kpi-leader"></span>
+          <span class="kpi-tag" id="kpi-failures-tag">—</span>
+        </header>
+        <div class="kpi-fail-grid">
+          <div><span class="kpi-fail-num" id="fail-voyage">—</span><span class="kpi-fail-lab">voyage 429</span></div>
+          <div><span class="kpi-fail-num" id="fail-chunk">—</span><span class="kpi-fail-lab">chunk err</span></div>
+          <div><span class="kpi-fail-num" id="fail-hook">—</span><span class="kpi-fail-lab">hook fail</span></div>
+          <div><span class="kpi-fail-num" id="fail-timeout">—</span><span class="kpi-fail-lab">timeouts</span></div>
+        </div>
+        <div class="kpi-sub" id="kpi-failures-sub">no preflight warnings</div>
+      </article>
+    </section>
+
+    <!-- Chart grid -------------------------------------------------------- -->
+    <section class="chart-grid">
+      <article class="chart-cell">
+        <header class="chart-head">
+          <span class="chart-name">cumulative memories</span>
+          <span class="chart-leader"></span>
+          <span class="chart-tag" id="chart-cum-tag">—</span>
+        </header>
+        <div class="chart-canvas-wrap"><canvas id="chart-cumulative"></canvas></div>
+      </article>
+
+      <article class="chart-cell">
+        <header class="chart-head">
+          <span class="chart-name">per-session yield</span>
+          <span class="chart-leader"></span>
+          <span class="chart-tag" id="chart-yield-tag">— sessions</span>
+        </header>
+        <div class="chart-canvas-wrap"><canvas id="chart-yield"></canvas></div>
+      </article>
+
+      <article class="chart-cell">
+        <header class="chart-head">
+          <span class="chart-name">hook-fired vs successful emit</span>
+          <span class="chart-leader"></span>
+          <span class="chart-tag" id="chart-funnel-tag">—</span>
+        </header>
+        <div class="chart-canvas-wrap"><canvas id="chart-funnel"></canvas></div>
+      </article>
+
+      <article class="chart-cell">
+        <header class="chart-head">
+          <span class="chart-name">event-type breakdown</span>
+          <span class="chart-leader"></span>
+          <span class="chart-tag" id="chart-events-tag">— events</span>
+        </header>
+        <div class="chart-canvas-wrap"><canvas id="chart-events"></canvas></div>
+      </article>
+    </section>
+
+    <!-- Recent kept + top rejected --------------------------------------- -->
+    <section class="bottom-row">
+      <article class="recent">
+        <header class="recent-head">
+          <span class="chart-name">recent memories</span>
+          <span class="chart-leader"></span>
+          <span class="chart-tag" id="recent-tag">—</span>
+        </header>
+        <ul class="recent-list" id="recent-list">
+          <li class="recent-empty">no memories yet this run</li>
+        </ul>
+      </article>
+      <article class="rejects">
+        <header class="recent-head">
+          <span class="chart-name">top reject reasons</span>
+          <span class="chart-leader"></span>
+          <span class="chart-tag" id="rejects-tag">—</span>
+        </header>
+        <ul class="rejects-list" id="rejects-list">
+          <li class="recent-empty">no rejected candidates yet</li>
+        </ul>
+      </article>
+    </section>
+  </main>
+
+  <footer class="footbar">
+    <span class="foot-meta" id="foot-meta">—</span>
+    <span class="foot-leader"></span>
+    <span class="foot-meta" id="foot-pipeline">—</span>
+    <span class="foot-leader"></span>
+    <span class="foot-meta">cookbook · memory monitor v1</span>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>
