@@ -13,7 +13,8 @@ Variants of the extraction prompt are available (ADR-dreaming-023):
   - V3 = `EXTRACTION_SYSTEM_PROMPT_V3` — SWE-tuned in-domain code examples
   - V4 = `EXTRACTION_SYSTEM_PROMPT_V4` — source-agnostic durability + unwrap
   - V5 = `EXTRACTION_SYSTEM_PROMPT_V5` — transferable-lesson curation (HIGH
-    selectivity, generalize-don't-transcribe, self-gating content)
+    selectivity, generalize-don't-transcribe, self-gating content; emits
+    OKF content-type per ADR-dreaming-027)
 
 Runtime selection via `get_extraction_prompt(variant)`; default reads
 `DREAM_EXTRACTION_VARIANT` env var, falling back to V0 when unset.
@@ -596,6 +597,27 @@ in both `memories` and `rejected` -- pick one.
 
 
 # ---------------------------------------------------------------------------
+# OKF content-type taxonomy (ADR-dreaming-027) — the CLOSED set the V5 prompt
+# tells the LLM to pick from for every kept memory's `type` field. The parser
+# (`_extract._build_memory_item`) validates the LLM's emitted value against
+# this constant and falls back to `"Memory"` on off-list output, emitting a
+# `daydream.unknown_okf_type` event with the offending string for
+# observability. `"Memory"` is RESERVED as the parser fallback and is NOT
+# one of the LLM-selectable values.
+# ---------------------------------------------------------------------------
+OKF_CONTENT_TYPES: frozenset[str] = frozenset({
+    "Fix",
+    "Bug",
+    "Convention",
+    "Invariant",
+    "Workaround",
+    "Decision",
+    "Preference",
+    "Identity",
+})
+
+
+# ---------------------------------------------------------------------------
 # EXTRACTION_SYSTEM_PROMPT_V5 — transferable-lesson curation (HIGH selectivity)
 #
 # Opt-in via `DREAM_EXTRACTION_VARIANT=V5`. Diff vs V4:
@@ -611,13 +633,20 @@ in both `memories` and `rejected` -- pick one.
 #     the lesson applies, shape "When <trigger>, <durable rule>." (<=200 chars).
 #   - REJECT extended to post-fix verification narration, the exact edit, and
 #     same-root-cause duplicates (collapse into ONE).
-#   - Schema, envelope, threat model, nonce protection, escape valve, 50-cap,
-#     and keywords+context fields UNCHANGED from V4 (parser-compatible).
+#   - OKF content-type per ADR-dreaming-027: every kept memory carries a
+#     REQUIRED `type` field picked from `OKF_CONTENT_TYPES` (above).
+#     `_build_memory_item` validates against the closed set and falls back
+#     to `"Memory"` on off-list output (with a `daydream.unknown_okf_type`
+#     event). Schema is otherwise UNCHANGED from V4.
+#   - Envelope, threat model, nonce protection, escape valve, 50-cap, and
+#     keywords+context fields UNCHANGED from V4 (parser-compatible).
 #
 # Parser-limitation note: like V2/V4, V5 emits `keywords` and `context`
 # fields that `_build_memory_item` does not currently consume — they land in
 # the LLM response but are dropped at parse time. V5 is drop-in compatible
-# once the recall wiring lands (ADR-dreaming-023 §Open items).
+# once the recall wiring lands (ADR-dreaming-023 §Open items). The `type`
+# field is the first additive metadata V5 emits that the parser is
+# explicitly intended to consume (ADR-dreaming-027 §Downstream PR #1).
 # ---------------------------------------------------------------------------
 EXTRACTION_SYSTEM_PROMPT_V5: str = """\
 You are a selective memory curator for an autonomous coding agent's
@@ -692,6 +721,24 @@ REJECT -- does not transfer:
 Emit up to 50 entries in `rejected` per response; if you considered
 more candidates than that, choose the most informative 50.
 
+CONTENT TYPE (the `type` field): every kept memory MUST carry a `type`
+chosen from this CLOSED taxonomy describing what kind of content the
+memory holds:
+  - Fix         — a fix recipe (the symptom and the rule that resolves it).
+  - Bug         — a bug behavior — symptom + the conditions that trigger it.
+  - Convention  — a codebase convention or architectural fact (class roles,
+                  override boundaries, manager behavior, config contracts).
+  - Invariant   — a language / framework / library / protocol invariant
+                  that holds across tasks and repos.
+  - Workaround  — an established workaround, pitfall, anti-pattern, or
+                  correctness / security gotcha.
+  - Decision    — a decision with rationale.
+  - Preference  — a recurring engineering preference or ongoing commitment.
+  - Identity    — durable identity / role information.
+Pick the SINGLE closest fit. The taxonomy is CLOSED — do not invent new
+values. If the candidate fits none cleanly, REJECT it rather than force
+a wrong type.
+
 Output JSON only. No prose before or after. No markdown fences (no
 ```json, no ```). The response must parse with json.loads on the
 first byte.
@@ -701,6 +748,7 @@ be empty but neither key may be absent):
 
   {"memories": [
     {"content": "When <trigger>, <durable rule>.  (<= 200 chars)",
+     "type": "<one of: Fix | Bug | Convention | Invariant | Workaround | Decision | Preference | Identity>",
      "keywords": ["<term>", "<term>", "<term>"],
      "context": "<one-sentence future-relevance>",
      "tags": ["<tag>", "<tag>"],
@@ -712,8 +760,9 @@ be empty but neither key may be absent):
   ]}
 
 For each kept memory: `content` is the self-gating lesson ("When ...,
-...") and is REQUIRED. keywords -- 3-7 specific distinct terms (no
-speaker names/timestamps), ordered by importance. context -- one
+...") and is REQUIRED. `type` is REQUIRED and MUST be one of the eight
+taxonomy values listed above. keywords -- 3-7 specific distinct terms
+(no speaker names/timestamps), ordered by importance. context -- one
 sentence naming the future situation where this lesson unblocks
 progress. Prefer emitting FEWER, higher-value lessons.
 
@@ -721,8 +770,8 @@ You must always emit both keys. Empty arrays are allowed; absent keys
 are not. If nothing transferable was found, return
 {"memories": [], "rejected": []}.
 
-Each memory's "content" is required. "tags" and "relevancy" are
-optional; omit them if unsure rather than guessing. Do not invent
+Each memory's "content" and "type" are required. "tags" and "relevancy"
+are optional; omit them if unsure rather than guessing. Do not invent
 memories not grounded in the transcript. Do not emit the same content
 in both `memories` and `rejected` -- pick one.
 """
