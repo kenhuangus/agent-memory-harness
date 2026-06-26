@@ -1,4 +1,5 @@
-.PHONY: help setup install-claude-plugin pipeline viewer typecheck test test-daydream test-redaction
+.PHONY: help setup install-claude-plugin pipeline viewer typecheck test test-daydream test-redaction \
+        vista-off vista-builtin vista-plugin-real vista-smoke
 
 # Everything runs through `uv` against a project-local .venv on Python 3.13 — no
 # bare pip/python, no manual activation. `uv run` auto-uses ./.venv.
@@ -18,6 +19,10 @@ help:
 	@echo "  typecheck      - mypy --strict on memeval/dreaming/ (ADR-dreaming-010)"
 	@echo "  test-daydream  - run only the dreaming-domain tests"
 	@echo "  test-redaction - run only the redaction tests"
+	@echo "  vista-off          - VISTA no-memory baseline (SPLIT/LIMIT vars)"
+	@echo "  vista-builtin      - VISTA Claude Code native memory arm"
+	@echo "  vista-plugin-real  - VISTA cookbook_memory plugin arm (WORKERS var)"
+	@echo "  vista-smoke        - quick plugin-real dev/limit-8 smoke run"
 
 # One-command setup: idempotent. Creates ./.venv on Python 3.13 if missing, then
 # installs the harness (with dreaming + dev extras + the swebench grader, the pipeline's
@@ -87,3 +92,28 @@ test-daydream:
 
 test-redaction:
 	cd eval && $(UVRUN) python -m pytest memeval/dreaming/tests/test_redaction*.py -v
+
+# --- VISTA benchmark runners ------------------------------------------------
+# Faithful reproduction of the VISTA 97-test-split run via tools/run_vista.sh.
+# Override the defaults per invocation, e.g.:
+#   make vista-plugin-real SPLIT=test LIMIT=0 WORKERS=4
+#   make vista-builtin SPLIT=test LIMIT=0
+#   make vista-off SPLIT=test LIMIT=0
+# plugin-real requires OPENROUTER_API_KEY (WSL claude-managed block) for the
+# daydream write path and a logged-in MEMEVAL_SANDBOX_CONFIG_DIR for auth.
+SPLIT   ?= test
+LIMIT   ?= 0
+WORKERS ?= 4
+
+vista-off:
+	bash tools/run_vista.sh off $(SPLIT) $(LIMIT)
+
+vista-builtin:
+	bash tools/run_vista.sh builtin $(SPLIT) $(LIMIT)
+
+vista-plugin-real:
+	bash tools/run_vista.sh plugin-real $(SPLIT) $(LIMIT) $(WORKERS)
+
+# Quick end-to-end sanity check: plugin-real over the dev split, 8 tasks, 4 workers.
+vista-smoke:
+	bash tools/run_vista.sh plugin-real dev 8 4
