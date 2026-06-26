@@ -294,3 +294,50 @@ true per-edit granularity (reject-if-new-forbidden-path, exactly like VISTA's
 additional observation surface; it would NOT change consolidation behavior.
 Until/unless the team adds it, the harness stays on the black-box store-diff
 fallback (no team-owned code touched).
+
+---
+
+## 2026-06-26 — Memory Inspector "daydream vs remember" filter is inaccurate; add a provenance tag
+
+**Inaccuracy (website, now corrected in the website lane).** The Memory
+Inspector page (`memory-inspector.html`) advertised a source filter as
+"daydream vs remember", implying users can distinguish a memory they explicitly
+asked to keep ("Claude, remember this…") from one the daydreamer wrote on its
+own. In practice that distinction does not exist today: **every** memory write
+carries `source="daydream"`.
+
+**Evidence.**
+- The only daydream writer hardcodes the literal: `eval/memeval/dreaming/_extract.py:415`
+  sets `source="daydream"`, and rubric item 74 + `test_memory_item_source_is_daydream`
+  (`eval/memeval/dreaming/tests/test_extract.py:458`) enforce that every emitted
+  `MemoryItem.source == "daydream"`.
+- The plugin's own client write hardcodes a different constant unrelated to
+  user intent: `plugin/cookbook_memory/core/client.py:105` sets
+  `source="cookbook-memory"`. There is no code path that sets `source` to
+  "remember"/"user" to mark a user-requested memory.
+- Actual data: both committed stores feeding the inspector are 100% daydream
+  (`results/vbranch-main-b28b7af6/_memory/.cookbook-memory/memory.db` → 2 items,
+  `results/vsympy_sympy_sequence-plugin-blank-54d168e-1/_memory/.cookbook-memory/memory.db`
+  → 30 items), and `data/memory-inspector.json` is 32/32 `source="daydream"`.
+
+**Website fix applied.** Corrected the inspector copy to state that all current
+memories are daydreamer-written; the source filter is already data-driven
+(`populateSelects` builds options from the distinct `source` values in the JSON),
+so no fabricated "remember" option is shown.
+
+**Proposed enhancement (team-owned — do NOT let the harness implement it).**
+Add a provenance flag distinguishing user-requested "remember this" memories
+from autonomous daydream memories, set at write time:
+- Set it in the plugin's write surface where `source` is assigned today —
+  `plugin/cookbook_memory/core/client.py:105` (the in-loop `remember`/explicit
+  save path) — e.g. a distinct `source` value like `"user"`/`"remember"`, or a
+  dedicated `provenance` field, rather than the current constant `"cookbook-memory"`.
+- Surface it through the schema `MemoryItem` (`eval/memeval/schema.py:207`, the
+  `source` field) so the value round-trips, and the daydream path keeps
+  `source="daydream"` (`eval/memeval/dreaming/_extract.py:415`).
+- Once real distinct values exist, the inspector filter (already data-driven)
+  will display them automatically; the badge classes
+  (`memory-inspector.html` `.src-*`) can map the new value to a color.
+
+Until the team adds this, the inspector honestly reports a single `daydream`
+source.
