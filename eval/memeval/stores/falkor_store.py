@@ -2,8 +2,8 @@
 
 PR1 is the Redis/openCypher sibling of :class:`memeval.stores.neo4j_store.Neo4jGraphStore`: an offline,
 CI-landable parity FLOOR for the paid-path graph seam. It persists ``:Memory`` NODES plus their full
-``metadata.okf_links`` edge source of truth, and emits ZERO relationship writes. Native ``[:REL]``
-materialization/traversal is PR2 and deliberately absent here.
+``metadata.okf_links`` edge source of truth. PR2 keeps that floor as the default and adds opt-in
+``native=True`` materialization/traversal over typed ``[:REL]`` relationships.
 
 Parity is achieved by construction. ``search`` fetches the as_of-visible nodes from FalkorDB, reconstructs
 ``MemoryItem`` rows, builds a transient in-memory :class:`GraphStore`, and delegates scoring/BFS/tie-break to
@@ -20,8 +20,23 @@ import json
 from dataclasses import replace
 from typing import Any, Optional
 
-from ..schema import MemoryItem
-from .graph_store import GraphStore, _MAX_DEPTH, _estimate_tokens
+from ..schema import MemoryItem, RetrievedItem
+from .graph_store import GraphStore, _MAX_DEPTH, _estimate_tokens, _tokenize
+from .relations import (
+    BOTH,
+    CALLS,
+    CONFLICTS_WITH,
+    CONTRADICTS,
+    DEPENDS_ON,
+    IMPACTS,
+    IMPORTS,
+    IN,
+    OUT,
+    RELATES_TO,
+    RENAMES,
+    USES,
+    query_intent,
+)
 
 _NODE_LABEL = "Memory"
 _NODE_MERGE = (
@@ -37,6 +52,53 @@ _SEARCH_MATCH = (
 _GET_MATCH = f"MATCH (n:{_NODE_LABEL} {{item_id: $id}}) RETURN n"
 _ALL_MATCH = f"MATCH (n:{_NODE_LABEL}) RETURN n ORDER BY n.seq"
 _DELETE = f"MATCH (n:{_NODE_LABEL} {{item_id: $id}}) DETACH DELETE n"
+_REL_RESET = f"MATCH (:{_NODE_LABEL})-[r:REL]->(:{_NODE_LABEL}) DELETE r"
+_REL_MERGE = (
+    "UNWIND $edges AS e "
+    f"MATCH (a:{_NODE_LABEL} {{item_id: e.src}}) "
+    f"MATCH (b:{_NODE_LABEL} {{item_id: e.tgt}}) "
+    "MERGE (a)-[r:REL {rel_type: e.rel}]->(b)"
+)
+_DEFAULT_REL_WEIGHTS = {
+    DEPENDS_ON: 0.7,
+    CALLS: 0.7,
+    IMPORTS: 0.6,
+    USES: 0.6,
+    IMPACTS: 0.7,
+    RENAMES: 0.6,
+    CONFLICTS_WITH: 0.5,
+    CONTRADICTS: 0.5,
+    RELATES_TO: 0.5,
+}
+_TRAVERSE = {
+    OUT: f"MATCH p=(s:{_NODE_LABEL})-[:REL*1..{{d}}]->(m:{_NODE_LABEL}) ",
+    IN: f"MATCH p=(s:{_NODE_LABEL})<-[:REL*1..{{d}}]-(m:{_NODE_LABEL}) ",
+    BOTH: f"MATCH p=(s:{_NODE_LABEL})-[:REL*1..{{d}}]-(m:{_NODE_LABEL}) ",
+}
+_REL_FILTER = (
+    "WHERE s.item_id IN $seed_ids "
+    "AND ($rel = 'relates_to' OR all(e IN relationships(p) "
+    "WHERE e.rel_type = $rel OR e.rel_type = 'relates_to')) "
+    "AND ($as_of IS NULL OR all(n IN nodes(p) WHERE coalesce(n.timestamp, 0.0) <= $as_of)) "
+)
+_WEIGHT_CASE = (
+    "CASE e.rel_type "
+    "WHEN 'depends_on' THEN $w_depends_on "
+    "WHEN 'calls' THEN $w_calls "
+    "WHEN 'imports' THEN $w_imports "
+    "WHEN 'uses' THEN $w_uses "
+    "WHEN 'impacts' THEN $w_impacts "
+    "WHEN 'renames' THEN $w_renames "
+    "WHEN 'conflicts_with' THEN $w_conflicts_with "
+    "WHEN 'contradicts' THEN $w_contradicts "
+    "WHEN 'relates_to' THEN $w_relates_to "
+    "ELSE $w_default END"
+)
+_TRAVERSE_RETURN = (
+    "WITH m, s.item_id AS seed_id, "
+    f"reduce(prod = 1.0, e IN relationships(p) | prod * {_WEIGHT_CASE}) AS path_weight "
+    "RETURN m.item_id AS item_id, seed_id, sum(path_weight) AS path_weight"
+)
 
 
 class FalkorGraphStore:
@@ -49,7 +111,8 @@ class FalkorGraphStore:
 
     def __init__(self, host: Optional[str] = None, *, port: int = 6379, password: Optional[str] = None,
                  url: Optional[str] = None, client: Any = None, graph_name: str = "memory",
-                 max_depth: int = _MAX_DEPTH, embed: Optional[Any] = None, **kwargs: Any) -> None:
+                 max_depth: int = _MAX_DEPTH, embed: Optional[Any] = None, native: bool = False,
+                 rel_weights: Optional[dict] = None, **kwargs: Any) -> None:
         self.host = host
         self.port = port
         self._password = password
@@ -58,6 +121,11 @@ class FalkorGraphStore:
         self._graph_name = graph_name
         self._max_depth = max(0, int(max_depth))
         self._embed = embed
+        self._native = bool(native)
+        self._dirty = True
+        self._rel_weights = dict(_DEFAULT_REL_WEIGHTS)
+        if rel_weights is not None:
+            self._rel_weights.update(rel_weights)
         self._closed = False
         self._seq = 0
 
@@ -147,6 +215,8 @@ class FalkorGraphStore:
         seq = self._seq
         self._write(_NODE_MERGE, {"item_id": node.item_id, "props": props, "seq": seq})
         self._seq += 1
+        if self._native:
+            self._dirty = True
 
     def _props(self, item: MemoryItem) -> dict:
         props = {
@@ -196,6 +266,11 @@ class FalkorGraphStore:
         return [self._row_to_item(row[0].properties) for row in rows]
 
     def search(self, query: str, *, k: int = 5, as_of: Optional[float] = None, **kwargs: Any) -> list:
+        if not self._native:
+            return self._search_floor(query, k=k, as_of=as_of, **kwargs)
+        return self._search_native(query, k=k, as_of=as_of, **kwargs)
+
+    def _search_floor(self, query: str, *, k: int = 5, as_of: Optional[float] = None, **kwargs: Any) -> list:
         rows = self._read(_SEARCH_MATCH, {"as_of": as_of}).result_set
         items = [self._row_to_item(row[0].properties) for row in rows]
         transient = GraphStore(max_depth=self._max_depth, embed=self._embed)
@@ -203,11 +278,80 @@ class FalkorGraphStore:
             transient.write(item)
         return transient.search(query, k=k, as_of=as_of, **kwargs)
 
+    def materialize(self) -> None:
+        if self._closed:
+            raise RuntimeError("materialize() on a closed FalkorGraphStore")
+        self._write(_REL_RESET)
+        edges = []
+        for item in self.all():
+            for tgt, rel in _parse_edges(item):
+                edges.append({"src": item.item_id, "tgt": tgt, "rel": rel})
+        if edges:
+            self._write(_REL_MERGE, {"edges": edges})
+        self._dirty = False
+
+    def _search_native(self, query: str, *, k: int = 5, as_of: Optional[float] = None,
+                       **kwargs: Any) -> list:
+        q = set(_tokenize(query))
+        if not q:
+            return []
+        items = [item for item in self.all()
+                 if not (as_of is not None and item.timestamp > as_of)]
+        seed_scores = self._seed_scores(q, items)
+        if not seed_scores:
+            return []
+
+        depth_arg = kwargs.get("max_depth")
+        depth = self._max_depth if depth_arg is None else max(0, int(depth_arg))
+        if depth <= 0:
+            return self._rank(seed_scores, {item.item_id: item for item in items}, k=k)
+
+        if self._dirty:
+            self.materialize()
+
+        rel, direction = query_intent(query)
+        cypher = _TRAVERSE[direction].format(d=int(depth)) + _REL_FILTER + _TRAVERSE_RETURN
+        params = {
+            "seed_ids": list(seed_scores),
+            "rel": rel,
+            "as_of": as_of,
+            **_weight_params(self._rel_weights),
+        }
+        rows = self._read(cypher, params).result_set
+        scores: dict[str, float] = {}
+        for row in rows:
+            item_id, seed_id, path_weight = row[0], row[1], row[2]
+            seed_score = seed_scores.get(seed_id)
+            if seed_score is None:
+                continue
+            scores[item_id] = scores.get(item_id, 0.0) + seed_score * float(path_weight or 0.0)
+        return self._rank(scores, {item.item_id: item for item in items}, k=k)
+
+    def _seed_scores(self, q: set, items: list[MemoryItem]) -> dict[str, float]:
+        scores: dict[str, float] = {}
+        for item in items:
+            d = set(_tokenize(item.content))
+            union = len(q | d)
+            score = len(q & d) / union if union else 0.0
+            if score > 0:
+                scores[item.item_id] = score
+        return scores
+
+    def _rank(self, scores: dict[str, float], item_by_id: dict[str, MemoryItem], *, k: int) -> list:
+        scored = [(score, item_by_id[item_id]) for item_id, score in scores.items()
+                  if score > 0 and item_id in item_by_id]
+        scored.sort(key=lambda si: (-si[0], -si[1].relevancy, -si[1].timestamp, si[1].item_id))
+        return [RetrievedItem(item=it, score=sc, rank=r)
+                for r, (sc, it) in enumerate(scored[: max(0, k)])]
+
     def delete(self, item_id: str) -> bool:
         if self._closed:
             raise RuntimeError("delete() on a closed FalkorGraphStore")
         res = self._write(_DELETE, {"id": item_id})
-        return bool(getattr(res, "nodes_deleted", 0))
+        deleted = bool(getattr(res, "nodes_deleted", 0))
+        if deleted and self._native:
+            self._dirty = True
+        return deleted
 
 
 def _parse_edges(item: MemoryItem) -> list:
@@ -217,7 +361,14 @@ def _parse_edges(item: MemoryItem) -> list:
 
 def _is_already_exists(exc: Exception) -> bool:
     text = str(exc).lower()
-    return "already" in text and "index" in text
+    return "already" in text and ("index" in text or "indexed" in text)
+
+
+def _weight_params(weights: dict) -> dict:
+    params = {f"w_{rel}": float(weights.get(rel, _DEFAULT_REL_WEIGHTS[rel]))
+              for rel in _DEFAULT_REL_WEIGHTS}
+    params["w_default"] = float(weights.get(RELATES_TO, _DEFAULT_REL_WEIGHTS[RELATES_TO]))
+    return params
 
 
 __all__ = ["FalkorGraphStore"]

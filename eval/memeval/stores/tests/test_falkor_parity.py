@@ -32,10 +32,12 @@ Run from ``eval/``:  python3 -m unittest memeval.stores.tests.test_falkor_parity
 from __future__ import annotations
 
 import json
+import re
 import unittest
 
 from memeval.schema import MemoryItem
 from memeval.stores.graph_store import GraphStore
+from memeval.stores.relations import BOTH, IN, OUT, RELATES_TO
 
 
 # --------------------------------------------------------------------------- #
@@ -140,9 +142,11 @@ class FakeGraph:
         params = dict(params or {})
         self._client.calls.append((cypher, params))
         nodes = self._client.nodes
+        rels = self._client.rels
 
         if "DETACH DELETE" in cypher:
             removed = nodes.pop(params["id"], None)
+            rels.difference_update({edge for edge in rels if params["id"] in edge[:2]})
             return _FakeQueryResult([], nodes_deleted=1 if removed is not None else 0)
 
         if "CREATE INDEX" in cypher:
@@ -167,11 +171,30 @@ class FakeGraph:
                 nodes[iid] = created
             return _FakeQueryResult([])
 
+        if "DELETE r" in cypher and "[r:REL" in cypher:
+            rels.clear()
+            return _FakeQueryResult([])
+
+        if "UNWIND $edges AS e" in cypher and "MATCH (a:Memory" in cypher and "MATCH (b:Memory" in cypher:
+            for edge in params.get("edges", ()):
+                src, tgt, rel = edge["src"], edge["tgt"], edge["rel"]
+                if src in nodes and tgt in nodes:
+                    rels.add((src, tgt, rel))
+            return _FakeQueryResult([])
+
+        if "MATCH p=(s:Memory)" in cypher and "[:REL*1.." in cypher:
+            return _FakeQueryResult(self._traverse(cypher, params))
+
         # Relationship / endpoint write branch. PR1 must never emit this, but if it does the fake models
         # endpoint placeholder creation so the forward-ref parity tests fail loudly.
         if "[r:REL" in cypher or ("MERGE" in cypher and cypher.count(":Memory {item_id") > 1):
-            for key in ("src", "tgt"):
-                endpoint = params.get(key)
+            if "edges" in params:
+                endpoints = []
+                for edge in params.get("edges", ()):
+                    endpoints.extend((edge.get("src"), edge.get("tgt")))
+            else:
+                endpoints = [params.get("src"), params.get("tgt")]
+            for endpoint in endpoints:
                 if endpoint is not None and endpoint not in nodes:
                     nodes[endpoint] = {"item_id": endpoint}
             return _FakeQueryResult([])
@@ -192,12 +215,66 @@ class FakeGraph:
 
         return _FakeQueryResult([])
 
+    def _traverse(self, cypher: str, params: dict) -> list:
+        depth = int(re.search(r"\*1\.\.(\d+)", cypher).group(1))
+        if "<-[:REL" in cypher:
+            direction = IN
+        elif "]->(m:Memory)" in cypher:
+            direction = OUT
+        else:
+            direction = BOTH
+
+        seed_ids = list(params.get("seed_ids", ()))
+        rel = params.get("rel")
+        as_of = params.get("as_of")
+        totals: dict[tuple[str, str], float] = {}
+
+        def visible(nid: str) -> bool:
+            props = self._client.nodes.get(nid)
+            if props is None:
+                return False
+            return not (as_of is not None and props.get("timestamp") is not None and props["timestamp"] > as_of)
+
+        def allowed(edge_rel: str) -> bool:
+            return rel == RELATES_TO or edge_rel == rel or edge_rel == RELATES_TO
+
+        def edge_weight(edge_rel: str) -> float:
+            return float(params.get(f"w_{edge_rel}", params.get("w_default", 0.5)))
+
+        def neighbors(nid: str) -> list:
+            out = []
+            for src, tgt, edge_rel in sorted(self._client.rels):
+                if not allowed(edge_rel):
+                    continue
+                edge = (src, tgt, edge_rel)
+                if direction in (OUT, BOTH) and src == nid:
+                    out.append((tgt, edge, edge_rel))
+                if direction in (IN, BOTH) and tgt == nid:
+                    out.append((src, edge, edge_rel))
+            return out
+
+        def walk(seed: str, nid: str, used: set, weight: float, dist: int) -> None:
+            if dist >= depth:
+                return
+            for nxt, edge, edge_rel in neighbors(nid):
+                if edge in used or not visible(nxt):
+                    continue
+                path_weight = weight * edge_weight(edge_rel)
+                totals[(nxt, seed)] = totals.get((nxt, seed), 0.0) + path_weight
+                walk(seed, nxt, used | {edge}, path_weight, dist + 1)
+
+        for seed in seed_ids:
+            if visible(seed):
+                walk(seed, seed, set(), 1.0, 0)
+        return [[item_id, seed_id, weight] for (item_id, seed_id), weight in sorted(totals.items())]
+
 
 class FakeFalkorClient:
     """A tiny in-RAM stand-in for ``falkordb.FalkorDB(...)``. NO real falkordb, NO network."""
 
     def __init__(self) -> None:
         self.nodes: dict = {}     # item_id -> props dict (content/timestamp/.../metadata json/seq)
+        self.rels: set = set()    # (src, tgt, rel_type) materialized native [:REL] relationships
         self.calls: list = []     # [(cypher, merged_params)] — every emitted statement, for shape asserts
         self.closed = False
 
