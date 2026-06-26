@@ -1276,3 +1276,217 @@ def test_neighborhood_search_failure_fails_open_to_pivot_alone() -> None:
 
     pivot = MemoryItem(item_id="p", content="x", timestamp=_FIXED_NOW)
     assert _neighborhood_for(_FailingStore(), pivot) == [pivot]
+
+
+# --------------------------------------------------------------------------- #
+# §N — ADR-dreaming-028 §2 `_detect_contradictions_neighborhood` helper
+# --------------------------------------------------------------------------- #
+
+class _StubCompletion:
+    """Mimic `llm.Completion` shape used by the contradiction caller."""
+    def __init__(self, text: str, tokens_in: int = 100, tokens_out: int = 50) -> None:
+        self.text = text
+        self.tokens_in = tokens_in
+        self.tokens_out = tokens_out
+
+
+class _StubLLM:
+    """LLM client stub for contradiction tests. `responses` queues responses
+    that `.complete()` returns in order; `calls` records each invocation."""
+    def __init__(self, responses: list) -> None:
+        self.responses = list(responses)
+        self.calls: list[dict] = []
+        self.model = "stub-model"
+
+    def complete(self, user_message, *, system=None, max_tokens=None):
+        self.calls.append({"user": user_message, "system": system, "max_tokens": max_tokens})
+        if not self.responses:
+            return _StubCompletion("", tokens_in=0, tokens_out=0)
+        return self.responses.pop(0)
+
+
+class _StubSearchStore(_DeleteAwareStore):
+    """Store stub returning a fixed neighborhood when `search(query)` is called.
+
+    `lookup`: maps a content string (the query the helper will send) to the
+    list of neighbor items returned. Items from every list are also written
+    to the underlying store so item_id lookups work."""
+    def __init__(self, lookup: dict[str, list[MemoryItem]]) -> None:
+        super().__init__()
+        seen: set[str] = set()
+        for neighbors in lookup.values():
+            for it in neighbors:
+                if it.item_id not in seen:
+                    self.write(it)
+                    seen.add(it.item_id)
+        self._lookup = lookup
+
+    def search(self, query, *, k=5, as_of=None, **kwargs):  # type: ignore[override]
+        from memeval.schema import RetrievedItem
+        neighbors = self._lookup.get(query, [])
+        return [
+            RetrievedItem(item=n, score=1.0 - i * 0.1, rank=i)
+            for i, n in enumerate(neighbors[:k])
+        ]
+
+
+def test_neighborhood_contradiction_returns_empty_for_empty_items(memory_store_dir: Path) -> None:
+    """ADR-028 §2 — empty items list short-circuits with empty result, no LLM call."""
+    from memeval.dreaming.worker import _detect_contradictions_neighborhood
+
+    llm = _StubLLM(responses=[])
+    result = _detect_contradictions_neighborhood(
+        items=[], store=_DeleteAwareStore(), client=llm,
+        max_calls=10, model="stub", session_id="s1", now=_FIXED_NOW,
+    )
+    assert result.pairs == []
+    assert result.llm_calls == 0
+    assert llm.calls == []
+
+
+def test_neighborhood_contradiction_respects_max_calls_zero(memory_store_dir: Path) -> None:
+    """ADR-028 §2 — max_calls=0 (disabled-pass) returns empty result, no LLM."""
+    from memeval.dreaming.worker import _detect_contradictions_neighborhood
+
+    pivot = MemoryItem(item_id="p", content="x", timestamp=_FIXED_NOW)
+    llm = _StubLLM(responses=[])
+    result = _detect_contradictions_neighborhood(
+        items=[pivot], store=_DeleteAwareStore(), client=llm,
+        max_calls=0, model="stub", session_id="s1", now=_FIXED_NOW,
+    )
+    assert result.pairs == []
+    assert llm.calls == []
+
+
+def test_neighborhood_contradiction_skips_pivots_with_empty_neighborhoods(memory_store_dir: Path) -> None:
+    """ADR-028 §2 — pivots whose neighborhood is `[pivot]` alone (no neighbors)
+    are skipped without burning an LLM call. Saves budget for productive pivots."""
+    from memeval.dreaming.worker import _detect_contradictions_neighborhood
+
+    p1 = MemoryItem(item_id="p1", content="a", timestamp=_FIXED_NOW)
+    p2 = MemoryItem(item_id="p2", content="b", timestamp=_FIXED_NOW)
+    n1 = MemoryItem(item_id="n1", content="c", timestamp=_FIXED_NOW)
+    store = _StubSearchStore(lookup={"b": [n1]})  # p1 has no neighbors
+
+    llm = _StubLLM(responses=[_StubCompletion('{"pairs": []}')])
+    result = _detect_contradictions_neighborhood(
+        items=[p1, p2], store=store, client=llm,
+        max_calls=10, model="stub", session_id="s1", now=_FIXED_NOW,
+    )
+    assert result.llm_calls == 1, "only p2's neighborhood should have triggered a call"
+
+
+def test_neighborhood_contradiction_finds_pair_within_neighborhood(memory_store_dir: Path) -> None:
+    """ADR-028 §2 — LLM identifies a contradicting pair within the pivot's
+    neighborhood; helper returns it after deterministic loser selection."""
+    from memeval.dreaming.worker import _detect_contradictions_neighborhood
+
+    pivot = MemoryItem(item_id="p", content="prefers tabs", timestamp=_FIXED_NOW)
+    nbr = MemoryItem(item_id="n", content="prefers spaces", timestamp=_FIXED_NOW - _DAY)
+    store = _StubSearchStore(lookup={"prefers tabs": [nbr]})
+
+    llm_response = _StubCompletion('{"pairs": [{"a_id": "p", "b_id": "n", "rationale": "disagree on tabs/spaces"}]}')
+    llm = _StubLLM(responses=[llm_response])
+    result = _detect_contradictions_neighborhood(
+        items=[pivot], store=store, client=llm,
+        max_calls=10, model="stub", session_id="s1", now=_FIXED_NOW,
+    )
+    assert len(result.pairs) == 1
+    pair = result.pairs[0]
+    # `p` is newer (timestamp=_FIXED_NOW) → wins; `n` (older) → loser.
+    assert pair.winner_id == "p"
+    assert pair.loser_id == "n"
+    assert "tabs/spaces" in pair.rationale
+
+
+def test_neighborhood_contradiction_dedupes_pair_surfaced_from_two_pivots(memory_store_dir: Path) -> None:
+    """ADR-028 §2 — if pivot A's neighborhood and pivot B's neighborhood both
+    surface the (A, B) pair, the dedup keeps the first occurrence and skips
+    the second. Critical for not double-counting cost or producing duplicate
+    delete plans."""
+    from memeval.dreaming.worker import _detect_contradictions_neighborhood
+
+    a = MemoryItem(item_id="A", content="a-content", timestamp=_FIXED_NOW)
+    b = MemoryItem(item_id="B", content="b-content", timestamp=_FIXED_NOW - _DAY)
+    store = _StubSearchStore(lookup={"a-content": [b], "b-content": [a]})
+
+    # Both LLM calls return the same (A, B) pair.
+    resp_a = _StubCompletion('{"pairs": [{"a_id": "A", "b_id": "B", "rationale": "same disagreement"}]}')
+    resp_b = _StubCompletion('{"pairs": [{"a_id": "B", "b_id": "A", "rationale": "still the same disagreement"}]}')
+    llm = _StubLLM(responses=[resp_a, resp_b])
+    result = _detect_contradictions_neighborhood(
+        items=[a, b], store=store, client=llm,
+        max_calls=10, model="stub", session_id="s1", now=_FIXED_NOW,
+    )
+    assert len(result.pairs) == 1, "the same pair must not be returned twice"
+    assert result.llm_calls == 2, "both pivots judged, but dedup happens AFTER the LLM call"
+
+
+def test_neighborhood_contradiction_bounds_pivots_by_max_calls(memory_store_dir: Path) -> None:
+    """ADR-028 §2 — max_calls caps PIVOT count, not arbitrary batch count.
+    After max_calls successful LLM calls, no more pivots are processed."""
+    from memeval.dreaming.worker import _detect_contradictions_neighborhood
+
+    items = [
+        MemoryItem(item_id=f"p{i}", content=f"c{i}", timestamp=_FIXED_NOW)
+        for i in range(5)
+    ]
+    nbr = MemoryItem(item_id="nbr", content="ny", timestamp=_FIXED_NOW)
+    store = _StubSearchStore(lookup={p.content: [nbr] for p in items})
+
+    # Always return empty pairs; just count calls.
+    llm = _StubLLM(responses=[_StubCompletion('{"pairs": []}') for _ in range(10)])
+    result = _detect_contradictions_neighborhood(
+        items=items, store=store, client=llm,
+        max_calls=3, model="stub", session_id="s1", now=_FIXED_NOW,
+    )
+    assert llm.calls.__len__() == 3, f"max_calls=3 must cap pivots judged; got {len(llm.calls)} calls"
+    assert result.llm_calls == 3
+
+
+def test_neighborhood_contradiction_drops_pair_with_protected_loser(memory_store_dir: Path) -> None:
+    """ADR-028 §2 — pair whose `loser_id` is in `protected_ids` (e.g. a prior
+    dedup-cluster winner) is dropped with the same `contradiction_pair_dropped_winner_collision`
+    event the v1 path emits. Conservative posture per halliday B5 + CodeRabbit #105."""
+    from memeval.dreaming.worker import _detect_contradictions_neighborhood
+
+    p = MemoryItem(item_id="p", content="x", timestamp=_FIXED_NOW)
+    n = MemoryItem(item_id="n", content="y", timestamp=_FIXED_NOW - _DAY)
+    store = _StubSearchStore(lookup={"x": [n]})
+
+    llm = _StubLLM(responses=[_StubCompletion('{"pairs": [{"a_id": "p", "b_id": "n", "rationale": "r"}]}')])
+    # Protect the loser (older `n`); the pair should be dropped.
+    result = _detect_contradictions_neighborhood(
+        items=[p], store=store, client=llm,
+        max_calls=10, model="stub", session_id="s1", now=_FIXED_NOW,
+        protected_ids={"n"},
+    )
+    assert result.pairs == [], "pair with protected loser must be dropped"
+
+
+def test_neighborhood_contradiction_fails_open_on_llm_exception(memory_store_dir: Path) -> None:
+    """ADR-028 §2 + ADR-harness-006 — an LLM client that raises (Voyage 429,
+    network timeout, etc.) MUST NOT crash the consolidation pass. The
+    affected pivot is skipped via the `dream.contradiction_skipped_unavailable_llm`
+    event; the helper continues with the next pivot."""
+    from memeval.dreaming.worker import _detect_contradictions_neighborhood
+
+    p1 = MemoryItem(item_id="p1", content="x", timestamp=_FIXED_NOW)
+    p2 = MemoryItem(item_id="p2", content="y", timestamp=_FIXED_NOW)
+    n = MemoryItem(item_id="nbr", content="z", timestamp=_FIXED_NOW)
+    store = _StubSearchStore(lookup={"x": [n], "y": [n]})
+
+    class _RaisingLLM(_StubLLM):
+        def complete(self, *args, **kwargs):
+            self.calls.append({})
+            raise RuntimeError("Voyage API error (HTTP 429)")
+
+    llm = _RaisingLLM(responses=[])
+    result = _detect_contradictions_neighborhood(
+        items=[p1, p2], store=store, client=llm,
+        max_calls=10, model="stub", session_id="s1", now=_FIXED_NOW,
+    )
+    # No pairs returned, but both pivots attempted (and both burned a call
+    # via fail-open). No exception propagates to the caller.
+    assert result.pairs == []
+    assert result.llm_calls == 2
