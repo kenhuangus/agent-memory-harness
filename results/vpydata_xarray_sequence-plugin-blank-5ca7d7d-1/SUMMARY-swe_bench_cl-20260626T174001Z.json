@@ -1,0 +1,83 @@
+{
+  "benchmark": "swe_bench_cl",
+  "pipeline": {
+    "version": "vpydata_xarray_sequence-plugin-blank-5ca7d7d-1",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "5ca7d7d",
+    "benchmark": "swe_bench_cl",
+    "sequence": "pydata_xarray_sequence",
+    "stage": "plugin-blank",
+    "limit": null,
+    "n_tasks": 22,
+    "model": "claude-haiku-4-5",
+    "code_mode": "agentic",
+    "grader": "swebench",
+    "plugin_workers": 1,
+    "budget_usd": 10.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "inclusionai/ling-2.6-flash"
+    },
+    "memory_store": "results/vpydata_xarray_sequence-plugin-blank-5ca7d7d-1/_memory",
+    "source_memory": null,
+    "source_memory_health": null,
+    "n_stages": 1,
+    "n_eval_stages": 1,
+    "stages": [
+      "plugin-blank"
+    ],
+    "timestamp": "20260626T174001Z",
+    "started_at": 1782495601.3163261,
+    "ended_at": 1782502123.9457889,
+    "stages_run": [
+      "plugin-blank"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": {
+        "ok": true,
+        "code": "ok",
+        "remembered": true,
+        "hits": 1
+      }
+    }
+  },
+  "dream": {
+    "status": "not-run"
+  },
+  "stages": [
+    {
+      "stage": "plugin-blank",
+      "stage_index": 3,
+      "metrics": {
+        "accuracy": 0.2727272727272727,
+        "relevancy": 0.0,
+        "recency": 0.0,
+        "efficiency": 0.0038051318772840586
+      },
+      "n_tasks": 22,
+      "cost_usd": 2.137898,
+      "graded_n": 22,
+      "resolved": 6,
+      "ungraded": 0,
+      "grade_reasons": {
+        "graded": 22
+      },
+      "memory_reached": 6,
+      "memory_hit": 6,
+      "recall_attempted": 6,
+      "recall_with_hits": 6,
+      "memory_health": {
+        "recall_events": 1,
+        "recall_with_hits": 1,
+        "recall_zero_hits": 0,
+        "daydream_completed": 22,
+        "daydream_memory_written": 9,
+        "durable_items_after": 9
+      },
+      "warnings": []
+    }
+  ],
+  "deltas": {}
+}

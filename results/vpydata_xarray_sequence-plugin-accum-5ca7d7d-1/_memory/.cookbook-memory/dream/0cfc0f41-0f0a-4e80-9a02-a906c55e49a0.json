@@ -1,0 +1,1 @@
+{"cursor": 522009, "last_summary": "Added test test_where_keep_attrs() in xarray/tests/test_computation.py covering attribute preservation for xr.where()", "recent_memory_ids": ["mem_38325eed", "mem_23de6f94"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

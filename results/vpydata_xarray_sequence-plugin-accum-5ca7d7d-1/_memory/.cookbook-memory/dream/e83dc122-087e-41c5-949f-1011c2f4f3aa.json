@@ -1,0 +1,1 @@
+{"cursor": 377264, "last_summary": "Added test test_reset_index_drop() in xarray/tests/test_dataset.py covering the issue where set_index().reset_index(drop=True) caused ValueError when accessing repr or len(data_vars)", "recent_memory_ids": ["mem_54592676"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

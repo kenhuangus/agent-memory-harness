@@ -1,0 +1,1 @@
+{"cursor": 419068, "last_summary": "Fix location: `xarray/core/rolling.py`, `DataArrayRolling.__iter__()` method on line 270. The method needs to respect `self.center[0]` when computing window start/stop indices.", "recent_memory_ids": ["mem_59db16bc"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
