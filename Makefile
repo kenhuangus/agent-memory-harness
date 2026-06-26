@@ -1,4 +1,4 @@
-.PHONY: help setup install-claude-plugin pipeline viewer typecheck test test-daydream test-redaction \
+.PHONY: help setup install-claude-plugin pipeline viewer monitor typecheck test test-daydream test-redaction \
         vista-off vista-builtin vista-plugin-real vista-smoke
 
 # Everything runs through `uv` against a project-local .venv on Python 3.13 — no
@@ -15,6 +15,7 @@ help:
 	@echo "  install-claude-plugin - install plugin into the user's real Claude Code config"
 	@echo "  pipeline       - run ONE stage over ONE sequence (ARGS='--yes ...' to override)"
 	@echo "  viewer         - launch the router memory-inspector web UI (ARGS='--seed --open ...')"
+	@echo "  monitor        - launch the live results monitor for in-flight benchmark runs (ARGS='--open ...')"
 	@echo "  test           - run the full pytest suite"
 	@echo "  typecheck      - mypy --strict on memeval/dreaming/ (ADR-dreaming-010)"
 	@echo "  test-daydream  - run only the dreaming-domain tests"
@@ -67,6 +68,16 @@ pipeline:
 # Delegates to router_ui/run.sh, which uses the repo .venv and sets PYTHONPATH.
 viewer:
 	./router_ui/run.sh $(ARGS)
+
+# Launch the live operator dashboard for in-flight benchmark runs. Auto-discovers
+# every results/<run>/_memory/.cookbook-memory basedir, lets you switch between
+# them via dropdown, and polls every 3s for live KPIs + charts + recent memories.
+# Defaults bind to 127.0.0.1:8770; override/extend with ARGS, e.g.:
+#   make monitor ARGS="--open"                       # open browser on start
+#   make monitor ARGS="--port 9001 --results-root /alt/results"
+# Delegates to results_monitor/run.sh, which uses the repo .venv.
+monitor:
+	./results_monitor/run.sh $(ARGS)
 
 typecheck:
 	# strict-typecheck scope: production dreaming code only — the redaction
