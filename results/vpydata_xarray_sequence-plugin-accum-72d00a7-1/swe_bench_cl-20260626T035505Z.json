@@ -1,0 +1,166 @@
+{
+  "schema": 1,
+  "memory_version": "vpydata_xarray_sequence-plugin-accum-72d00a7-1",
+  "benchmark": "swe_bench_cl",
+  "timestamp": "20260626T035505Z",
+  "pipeline": {
+    "version": "vpydata_xarray_sequence-plugin-accum-72d00a7-1",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "72d00a7",
+    "benchmark": "swe_bench_cl",
+    "sequence": "pydata_xarray_sequence",
+    "stage": "plugin-accum",
+    "limit": null,
+    "n_tasks": 22,
+    "model": "claude-haiku-4-5",
+    "code_mode": "agentic",
+    "grader": "swebench",
+    "plugin_workers": 1,
+    "budget_usd": 10.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "inclusionai/ling-2.6-flash"
+    },
+    "memory_store": "results/vpydata_xarray_sequence-plugin-accum-72d00a7-1/_memory",
+    "source_memory": "results/vpydata_xarray_sequence-plugin-blank-6a0b0b4-3/_memory",
+    "source_memory_health": {
+      "store_dir": "results/vpydata_xarray_sequence-plugin-blank-6a0b0b4-3/_memory/.cookbook-memory",
+      "events": 281,
+      "daydream_events": 0,
+      "recall_events": 11,
+      "recall_with_hits": 7,
+      "recall_zero_hits": 4,
+      "recall_errors": 0,
+      "daydream_completed": 54,
+      "daydream_memory_written": 0,
+      "memory_items": 10,
+      "graph_nodes": 10,
+      "markdown_items": 10,
+      "durable_items": 10
+    },
+    "n_stages": 1,
+    "n_eval_stages": 1,
+    "stages": [
+      "plugin-accum"
+    ],
+    "timestamp": "20260626T035505Z",
+    "started_at": 1782446105.0098362,
+    "ended_at": 1782452117.885304,
+    "source_memory_copied_to": "results/vpydata_xarray_sequence-plugin-accum-72d00a7-1/_memory",
+    "stages_run": [
+      "plugin-accum"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": {
+        "ok": true,
+        "code": "ok",
+        "remembered": true,
+        "hits": 1
+      }
+    }
+  },
+  "dream": {
+    "status": "not-run"
+  },
+  "runs": [
+    {
+      "run_id": "pipeline-plugin-accum",
+      "timestamp": "2026-06-26T05:35:17+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "claude-code:claude-haiku-4-5:plugin-real",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:plugin-real+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.08054951241062241,
+        "relevancy": 0.0,
+        "accuracy": 0.2727272727272727,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 22,
+        "extra": {}
+      },
+      "n_tasks": 22,
+      "entries_used": 22,
+      "entries_available": 22,
+      "limit": null,
+      "selection": "flat",
+      "cost_usd": 1.889397,
+      "tokens_in": 2042,
+      "tokens_out": 377471,
+      "partial": false,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 0,
+        "memory_reached": 22,
+        "memory_hit": 22,
+        "recall_attempted": 22,
+        "recall_with_hits": 22,
+        "graded_n": 22,
+        "resolved": 6,
+        "ungraded": 0,
+        "grade_reasons": {
+          "graded": 22
+        },
+        "errors": []
+      },
+      "notes": "single-stage pipeline \u00b7 swe_bench_cl \u00b7 stage plugin-accum",
+      "pipeline_stage": "plugin-accum",
+      "stage_index": 4,
+      "git_sha": "72d00a7",
+      "git_tag": "vpydata_xarray_sequence-plugin-accum-72d00a7-1",
+      "memory_health": {
+        "before": {
+          "store_dir": "results/vpydata_xarray_sequence-plugin-accum-72d00a7-1/_memory/.cookbook-memory",
+          "events": 281,
+          "daydream_events": 0,
+          "recall_events": 11,
+          "recall_with_hits": 7,
+          "recall_zero_hits": 4,
+          "recall_errors": 0,
+          "daydream_completed": 54,
+          "daydream_memory_written": 0,
+          "memory_items": 10,
+          "graph_nodes": 10,
+          "markdown_items": 10,
+          "durable_items": 10
+        },
+        "after": {
+          "store_dir": "results/vpydata_xarray_sequence-plugin-accum-72d00a7-1/_memory/.cookbook-memory",
+          "events": 325,
+          "daydream_events": 214,
+          "recall_events": 11,
+          "recall_with_hits": 7,
+          "recall_zero_hits": 4,
+          "recall_errors": 0,
+          "daydream_completed": 74,
+          "daydream_memory_written": 1,
+          "memory_items": 11,
+          "graph_nodes": 11,
+          "markdown_items": 11,
+          "durable_items": 11
+        },
+        "delta": {
+          "events": 44,
+          "daydream_events": 214,
+          "recall_events": 0,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 20,
+          "daydream_memory_written": 1,
+          "memory_items": 1,
+          "graph_nodes": 1,
+          "markdown_items": 1,
+          "durable_items": 1
+        }
+      },
+      "warnings": []
+    }
+  ]
+}
