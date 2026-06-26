@@ -189,7 +189,7 @@ _EXTRACTION_V3_SHA256 = (
     "2c8f32d7f9615d12881e094b194af99d81c46344b644f7583fba1f4ad6f2625e"
 )
 _EXTRACTION_V5_SHA256 = (
-    "11985ff40cd0f38bb91bd6bc958e97505a082fa0bdba12bed8f0474fabbe2f2b"
+    "44d664a993227521f1caca9bfb8672706916cbe43cc00c7c56a54868d31eae37"
 )
 
 # Negative-substring contract: no variant may contain Job 2 / Job 3 vocab.
@@ -392,12 +392,19 @@ def test_extraction_variant_v3_pins_swe_framing() -> None:
 
 
 def test_extraction_variants_are_all_documented_size() -> None:
-    """Variants should be in the same order-of-magnitude as V0 (3-5K chars).
-    A wildly-different length suggests an accidental truncation or paste error."""
+    """Variants should be in the same order-of-magnitude as V0 (3-7K chars).
+    A wildly-different length suggests an accidental truncation or paste error.
+
+    Upper bound was 1.6× through V4 (5755 chars, 1.56×). V5 added the ADR-027
+    OKF closed-taxonomy section (8 enumerated values with one-line guidance
+    each) on top of V5's existing transferable-lesson framing, pushing it to
+    1.82× — real content expansion, not a paste error. Bound widened to 2.0×
+    to accommodate; tighten again if a future variant adds size without
+    structural justification."""
     v0_len = len(EXTRACTION_SYSTEM_PROMPT)
     for v, prompt in _EXTRACTION_VARIANTS.items():
         ratio = len(prompt) / v0_len
-        assert 0.8 <= ratio <= 1.6, (
+        assert 0.8 <= ratio <= 2.0, (
             f"{v} length {len(prompt)} is {ratio:.2f}× V0's {v0_len} — "
             "suspiciously off; check for truncation or accidental duplication."
         )
