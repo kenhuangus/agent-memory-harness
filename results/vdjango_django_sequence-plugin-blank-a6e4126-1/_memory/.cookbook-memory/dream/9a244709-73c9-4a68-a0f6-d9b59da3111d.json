@@ -1,0 +1,1 @@
+{"cursor": 30144, "last_summary": "Set default FILE_UPLOAD_PERMISSIONS to 0o644 in Django to ensure consistent file permissions regardless of whether MemoryUploadedFile or TemporaryUploadedFile is used for temporary storage", "recent_memory_ids": ["mem_e407799d"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

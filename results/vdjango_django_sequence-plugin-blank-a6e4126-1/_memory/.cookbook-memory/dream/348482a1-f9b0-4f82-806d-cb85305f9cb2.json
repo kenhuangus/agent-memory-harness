@@ -1,0 +1,1 @@
+{"cursor": 178987, "last_summary": "The user is working on fixing a Django issue where HttpResponse does not handle memoryview objects correctly (issue #11133 in django/django repository).", "recent_memory_ids": ["mem_70e991d2"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

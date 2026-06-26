@@ -1,0 +1,1 @@
+{"cursor": 146183, "last_summary": "The DateFormat.Y() method in django/utils/dateformat.py was fixed to use '%04d' formatting instead of returning self.data.year directly, ensuring years < 1000 are zero-padded to four digits.", "recent_memory_ids": ["mem_7435cae1"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

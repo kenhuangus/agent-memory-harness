@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "memory_version": "vsympy_sympy_sequence-plugin-blank-8681435-1",
+  "benchmark": "swe_bench_cl",
+  "timestamp": "20260625T224545Z",
+  "pipeline": {
+    "version": "vsympy_sympy_sequence-plugin-blank-8681435-1",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "8681435",
+    "benchmark": "swe_bench_cl",
+    "sequence": "sympy_sympy_sequence",
+    "stage": "plugin-blank",
+    "limit": null,
+    "n_tasks": 50,
+    "model": "claude-sonnet-4-6",
+    "code_mode": "agentic",
+    "grader": "swebench",
+    "plugin_workers": 1,
+    "budget_usd": 10.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash"
+    },
+    "memory_store": "/Users/nerd/Git/agent-memory-harness/results/vsympy_sympy_sequence-plugin-blank-8681435-1/_memory",
+    "n_stages": 1,
+    "n_eval_stages": 1,
+    "stages": [
+      "plugin-blank"
+    ],
+    "timestamp": "20260625T224545Z",
+    "started_at": 1782427545.292041,
+    "ended_at": null,
+    "stages_run": [
+      "plugin-blank"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": {
+        "ok": true,
+        "code": "ok",
+        "remembered": true,
+        "hits": 1
+      }
+    }
+  },
+  "dream": {
+    "status": "not-run"
+  },
+  "runs": [
+    {
+      "run_id": "pipeline-plugin-blank",
+      "timestamp": "2026-06-26T01:37:19+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "claude-code:claude-sonnet-4-6:plugin-real",
+      "memory": true,
+      "label": "claude-code:claude-sonnet-4-6:plugin-real+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.0005270289946832154,
+        "relevancy": 0.0,
+        "accuracy": 0.7096774193548387,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 31,
+        "extra": {}
+      },
+      "n_tasks": 31,
+      "entries_used": 31,
+      "entries_available": 50,
+      "limit": null,
+      "selection": "flat",
+      "cost_usd": 3.341625,
+      "tokens_in": 780,
+      "tokens_out": 222619,
+      "partial": true,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 5,
+        "memory_reached": 26,
+        "memory_hit": 2,
+        "recall_attempted": 26,
+        "recall_with_hits": 2,
+        "graded_n": 31,
+        "resolved": 22,
+        "ungraded": 0,
+        "grade_reasons": {
+          "graded": 31
+        },
+        "errors": [
+          {
+            "task_id": "sympy__sympy-15875",
+            "stage": "solve",
+            "error": "TimeoutExpired: Command '['/Users/nerd/.local/bin/claude', '-p', 'Persistent memory is available through recall if prior fixes would help. Edit the source files in this checkout directly to fix the issue, then run th"
+          },
+          {
+            "task_id": "sympy__sympy-20916",
+            "stage": "solve",
+            "error": "TimeoutExpired: Command '['/Users/nerd/.local/bin/claude', '-p', 'Persistent memory is available through recall if prior fixes would help. Edit the source files in this checkout directly to fix the issue, then run th"
+          },
+          {
+            "task_id": "sympy__sympy-13031",
+            "stage": "solve",
+            "error": "TimeoutExpired: Command '['/Users/nerd/.local/bin/claude', '-p', 'Persistent memory is available through recall if prior fixes would help. Edit the source files in this checkout directly to fix the issue, then run th"
+          },
+          {
+            "task_id": "sympy__sympy-13551",
+            "stage": "solve",
+            "error": "TimeoutExpired: Command '['/Users/nerd/.local/bin/claude', '-p', 'Persistent memory is available through recall if prior fixes would help. Edit the source files in this checkout directly to fix the issue, then run th"
+          },
+          {
+            "task_id": "sympy__sympy-13615",
+            "stage": "solve",
+            "error": "TimeoutExpired: Command '['/Users/nerd/.local/bin/claude', '-p', \"Persistent memory is available through recall if prior fixes would help. Edit the source files in this checkout directly to fix the issue, then run th"
+          }
+        ]
+      },
+      "notes": "single-stage pipeline \u00b7 swe_bench_cl \u00b7 stage plugin-blank",
+      "pipeline_stage": "plugin-blank",
+      "stage_index": 2,
+      "git_sha": "8681435",
+      "git_tag": "vsympy_sympy_sequence-plugin-blank-8681435-1"
+    }
+  ]
+}

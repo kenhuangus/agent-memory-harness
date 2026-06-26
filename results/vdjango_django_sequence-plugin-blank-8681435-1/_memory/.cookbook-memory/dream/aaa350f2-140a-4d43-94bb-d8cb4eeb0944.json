@@ -1,0 +1,1 @@
+{"cursor": 369209, "last_summary": "The base Aggregate class already has the template with %(distinct)s placeholder and as_sql() method that renders DISTINCT - only allow_distinct = False was blocking it.", "recent_memory_ids": ["mem_0c6e0bec", "mem_1740a415", "mem_0a42d4bd"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

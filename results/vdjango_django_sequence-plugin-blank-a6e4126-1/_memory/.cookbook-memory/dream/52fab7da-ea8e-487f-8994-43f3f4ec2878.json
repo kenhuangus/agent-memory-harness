@@ -1,0 +1,1 @@
+{"cursor": 33541, "last_summary": "The URLValidator fix should also update test cases in tests/validators/invalid_urls.txt to ensure invalid URLs with unencoded username/password characters are rejected", "recent_memory_ids": ["mem_f1ba854e", "mem_4e19ce6d"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

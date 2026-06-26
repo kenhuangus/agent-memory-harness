@@ -1,0 +1,1 @@
+{"cursor": 342864, "last_summary": "A test for memoryview content exists at tests/httpwrappers/tests.py::HttpResponseTests::test_memoryview_content, verifying constructor and property setter with memoryview objects.", "recent_memory_ids": ["mem_97f1660c", "mem_0d5750ef"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

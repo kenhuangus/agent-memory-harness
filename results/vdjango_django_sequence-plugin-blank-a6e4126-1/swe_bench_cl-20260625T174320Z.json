@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "memory_version": "vdjango_django_sequence-plugin-blank-a6e4126-1",
+  "benchmark": "swe_bench_cl",
+  "timestamp": "20260625T174320Z",
+  "pipeline": {
+    "version": "vdjango_django_sequence-plugin-blank-a6e4126-1",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "a6e4126",
+    "benchmark": "swe_bench_cl",
+    "sequence": "django_django_sequence",
+    "stage": "plugin-blank",
+    "limit": null,
+    "n_tasks": 50,
+    "model": "claude-haiku-4-5",
+    "code_mode": "agentic",
+    "grader": "swebench",
+    "plugin_workers": 1,
+    "budget_usd": 10.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash"
+    },
+    "memory_store": "/Users/nerd/Git/agent-memory-harness/results/vdjango_django_sequence-plugin-blank-a6e4126-1/_memory",
+    "n_stages": 1,
+    "n_eval_stages": 1,
+    "stages": [
+      "plugin-blank"
+    ],
+    "timestamp": "20260625T174320Z",
+    "started_at": 1782409400.956567,
+    "ended_at": null,
+    "stages_run": [
+      "plugin-blank"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": {
+        "ok": true,
+        "code": "ok",
+        "remembered": true,
+        "hits": 1
+      }
+    }
+  },
+  "dream": {
+    "status": "not-run"
+  },
+  "runs": [
+    {
+      "run_id": "pipeline-plugin-blank",
+      "timestamp": "2026-06-25T19:33:21+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "claude-code:claude-haiku-4-5:plugin-real",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:plugin-real+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.027127253121353233,
+        "relevancy": 0.0,
+        "accuracy": 0.2,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 16,
+        "extra": {}
+      },
+      "n_tasks": 16,
+      "entries_used": 16,
+      "entries_available": 50,
+      "limit": null,
+      "selection": "flat",
+      "cost_usd": 0.51062,
+      "tokens_in": 1515,
+      "tokens_out": 101821,
+      "partial": true,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 0,
+        "memory_reached": 16,
+        "memory_hit": 9,
+        "recall_attempted": 16,
+        "recall_with_hits": 9,
+        "graded_n": 15,
+        "resolved": 3,
+        "ungraded": 1,
+        "grade_reasons": {
+          "get_test_directives yielded no test files from test_patch": 1,
+          "graded": 15
+        },
+        "errors": []
+      },
+      "notes": "single-stage pipeline \u00b7 swe_bench_cl \u00b7 stage plugin-blank",
+      "pipeline_stage": "plugin-blank",
+      "stage_index": 2,
+      "git_sha": "a6e4126",
+      "git_tag": "vdjango_django_sequence-plugin-blank-a6e4126-1"
+    }
+  ]
+}

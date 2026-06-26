@@ -1,0 +1,1 @@
+{"cursor": 381362, "last_summary": "Tests for TruncDate and TruncTime tzinfo support were added to tests/db_functions/datetime/test_extract_trunc.py as test_trunc_date_with_timezone and test_trunc_time_with_timezone.", "recent_memory_ids": ["mem_9eb3ce0f", "mem_bcb72be6", "mem_5a233d2f"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
