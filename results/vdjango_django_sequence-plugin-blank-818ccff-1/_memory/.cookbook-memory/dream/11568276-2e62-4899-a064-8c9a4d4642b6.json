@@ -1,0 +1,1 @@
+{"cursor": 196285, "last_summary": "Django 2.2, 3.1, and 3.2 require mysqlclient versions newer than 1.3.8, so the `'database'` and `'password'` kwargs are safe for all currently supported Django releases.", "recent_memory_ids": ["mem_2c61e221", "mem_d413dac2"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

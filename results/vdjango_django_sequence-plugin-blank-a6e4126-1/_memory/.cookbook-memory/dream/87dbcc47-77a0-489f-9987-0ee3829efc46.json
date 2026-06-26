@@ -1,0 +1,1 @@
+{"cursor": 55280, "last_summary": "The user is fixing Django issue django/django #11451: ModelBackend.authenticate() should return None early when username or password is None to avoid an unnecessary database query.", "recent_memory_ids": ["mem_07e3d922"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

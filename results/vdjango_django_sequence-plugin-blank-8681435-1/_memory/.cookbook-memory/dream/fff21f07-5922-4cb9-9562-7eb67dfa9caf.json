@@ -1,0 +1,1 @@
+{"cursor": 428418, "last_summary": "Added test_count_distinct_with_case test in tests/aggregation_regress/tests.py to verify Count(Case(...), distinct=True) works correctly.", "recent_memory_ids": ["mem_fdcfacf9"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

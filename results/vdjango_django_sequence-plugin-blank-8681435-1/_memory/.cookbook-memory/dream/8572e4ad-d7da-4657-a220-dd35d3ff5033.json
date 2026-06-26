@@ -1,0 +1,1 @@
+{"cursor": 688387, "last_summary": "In Django's migration serializer, the `TypeSerializer._serialize()` method now uses `__qualname__` instead of `__name__` to preserve the full qualified name of nested/ inner classes.", "recent_memory_ids": ["mem_61b14656"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

@@ -1,0 +1,86 @@
+{"ts": 0.0, "op": "note", "session_id": "436579f3-869b-4268-a58a-ea51ce777893", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "436579f3-869b-4268-a58a-ea51ce777893", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "recall", "ids": [], "query": "evalf _imp_ implemented_function sympy recursive", "meta": {"k": 5, "n": 0, "hits": []}}
+{"ts": 0.0, "op": "note", "session_id": "426bed1c-39bd-4b32-aab8-1573873f0760", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "426bed1c-39bd-4b32-aab8-1573873f0760", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "recall", "ids": [], "query": "Permutation constructor non-disjoint cycles sympy fix", "meta": {"k": 5, "n": 0, "hits": []}}
+{"ts": 0.0, "op": "note", "session_id": "2c036038-4959-463f-8a97-6eec42235a54", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "2c036038-4959-463f-8a97-6eec42235a54", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "recall", "ids": [], "query": "sympy evalf UnboundLocalError reprec imprec", "meta": {"k": 5, "n": 0, "hits": []}}
+{"ts": 0.0, "op": "note", "session_id": "7c832eac-b08f-42b6-a869-447c9b563f7e", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "7c832eac-b08f-42b6-a869-447c9b563f7e", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "note", "session_id": "3c42e79d-984e-4537-b0df-1565799eb93e", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "3c42e79d-984e-4537-b0df-1565799eb93e", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "note", "session_id": "b2244769-cd79-4a2c-8e7e-6b04b3561e1b", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "b2244769-cd79-4a2c-8e7e-6b04b3561e1b", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "recall", "ids": [], "query": "sympy NDimArray len rank-0 array fix", "meta": {"k": 5, "n": 0, "hits": []}}
+{"ts": 0.0, "op": "note", "session_id": "a35ade15-18e9-4240-ae60-b60d65e4ef29", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "a35ade15-18e9-4240-ae60-b60d65e4ef29", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "note", "session_id": "2fe28418-cc45-47bd-bcc9-723d4589c172", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "2fe28418-cc45-47bd-bcc9-723d4589c172", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "recall", "ids": [], "query": "Min Max sympy empty arguments zero-argument", "meta": {"k": 5, "n": 0, "hits": []}}
+{"ts": 0.0, "op": "note", "session_id": "43c75b2d-bad6-43c1-8023-cd3d0c9c92b2", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "43c75b2d-bad6-43c1-8023-cd3d0c9c92b2", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "recall", "ids": [], "query": "sympy is_zero Add complex", "meta": {"k": 5, "n": 0, "hits": []}}
+{"ts": 0.0, "op": "note", "session_id": "0fef4868-5810-4d68-b730-aec3604faba9", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "0fef4868-5810-4d68-b730-aec3604faba9", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "note", "session_id": "87e8ac0a-5c08-456d-9c97-559752af46d5", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "87e8ac0a-5c08-456d-9c97-559752af46d5", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "recall", "ids": [], "query": "PythonCodePrinter sympy Indexed printing fix", "meta": {"k": 5, "n": 0, "hits": []}}
+{"ts": 0.0, "op": "note", "session_id": "8749d758-7645-4d49-a826-71522961ef7d", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "8749d758-7645-4d49-a826-71522961ef7d", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "recall", "ids": [], "query": "sympy crypto morse encoding", "meta": {"k": 5, "n": 0, "hits": []}}
+{"ts": 0.0, "op": "note", "session_id": "9da9a17d-cb39-40a5-b28f-e7a9030ae2a5", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "9da9a17d-cb39-40a5-b28f-e7a9030ae2a5", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "recall", "ids": [], "query": "sympy fu.py complex exponent comparison TypeError", "meta": {"k": 5, "n": 0, "hits": []}}
+{"ts": 0.0, "op": "note", "session_id": "0019714c-a9ea-404a-8aa9-6447decced43", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "0019714c-a9ea-404a-8aa9-6447decced43", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "recall", "ids": [], "query": "sympy geometry Point multiplication fix", "meta": {"k": 5, "n": 0, "hits": []}}
+{"ts": 0.0, "op": "note", "session_id": "3ba5ae75-a575-43ff-bccb-0f64dc86978e", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "3ba5ae75-a575-43ff-bccb-0f64dc86978e", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "recall", "ids": [], "query": "sympy diophantine permute syms order", "meta": {"k": 5, "n": 0, "hits": []}}
+{"ts": 0.0, "op": "note", "session_id": "860a8065-7055-4edf-a5ce-52d6161cb5f8", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "860a8065-7055-4edf-a5ce-52d6161cb5f8", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "recall", "ids": [], "query": "sympy LaTeX printing Subs parenthesizing", "meta": {"k": 5, "n": 0, "hits": []}}
+{"ts": 0.0, "op": "note", "session_id": "ff570fd8-cd40-48ad-b643-54ae4732268e", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "ff570fd8-cd40-48ad-b643-54ae4732268e", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "note", "session_id": "daac2e75-c8a4-4501-bfcc-79b262fe720e", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "daac2e75-c8a4-4501-bfcc-79b262fe720e", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "recall", "ids": [], "query": "kernS sympify sympy bug fix", "meta": {"k": 5, "n": 0, "hits": []}}
+{"ts": 0.0, "op": "note", "session_id": "49edd774-8b83-4a13-a994-f3f80c293657", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "49edd774-8b83-4a13-a994-f3f80c293657", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "recall", "ids": [], "query": "sylow_subgroup minimal_blocks IndexError sympy", "meta": {"k": 5, "n": 0, "hits": []}}
+{"ts": 0.0, "op": "note", "session_id": "ed791233-da2e-471d-82e0-61350ac09b1e", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "ed791233-da2e-471d-82e0-61350ac09b1e", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "note", "session_id": "21b874fe-b346-4312-bcc7-8ecb13b67c9c", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "21b874fe-b346-4312-bcc7-8ecb13b67c9c", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "recall", "ids": [], "query": "sympy itermonomials min_degrees fix", "meta": {"k": 5, "n": 0, "hits": []}}
+{"ts": 0.0, "op": "note", "session_id": "aedb6f6d-d43a-4899-b815-f3b67c2b87ed", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "aedb6f6d-d43a-4899-b815-f3b67c2b87ed", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "recall", "ids": [], "query": "sympy geometry point evaluate imaginary coordinates", "meta": {"k": 5, "n": 0, "hits": []}}
+{"ts": 0.0, "op": "note", "session_id": "4893a6dc-aa28-4383-9a03-361f7cae1bc0", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "4893a6dc-aa28-4383-9a03-361f7cae1bc0", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "note", "session_id": "a4fcf46d-d7d0-4213-9dc8-5661459fc1f3", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "a4fcf46d-d7d0-4213-9dc8-5661459fc1f3", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "note", "session_id": "187e7609-0494-4422-8bd6-5bd20dd1818f", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "187e7609-0494-4422-8bd6-5bd20dd1818f", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "note", "session_id": "3ed9672e-d388-4bf6-b5c6-3426b15ac92b", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "3ed9672e-d388-4bf6-b5c6-3426b15ac92b", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "recall", "ids": [], "query": "sympy Point distance calculation fix", "meta": {"k": 5, "n": 0, "hits": []}}
+{"ts": 0.0, "op": "note", "session_id": "4bac3c98-6bbe-4a86-9850-45287c8a0c05", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "4bac3c98-6bbe-4a86-9850-45287c8a0c05", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "recall", "ids": ["mem_127f62b3"], "query": "sympy identity matrix sum refine orthogonal KroneckerDelta", "meta": {"k": 5, "n": 1, "hits": [{"id": "mem_127f62b3", "content": "In sympy's Point.distance(), use zip_longest with fillvalue=S.Zero instead of zip to prevent truncation when computing Euclidean distance between points of different dimensions (e.g., 2D vs 3D).", "score": 0.35428, "tokens": 48, "rank": 0, "timestamp": 1782435139.774763}]}}
+{"ts": 0.0, "op": "note", "session_id": "b1354d80-9558-48a5-95db-9bdeca515b42", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "b1354d80-9558-48a5-95db-9bdeca515b42", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "recall", "ids": ["mem_127f62b3"], "query": "sympy matrix hstack vstack zero rows fix", "meta": {"k": 5, "n": 1, "hits": [{"id": "mem_127f62b3", "content": "In sympy's Point.distance(), use zip_longest with fillvalue=S.Zero instead of zip to prevent truncation when computing Euclidean distance between points of different dimensions (e.g., 2D vs 3D).", "score": 0.499233, "tokens": 48, "rank": 0, "timestamp": 1782435139.774763}]}}
+{"ts": 0.0, "op": "note", "session_id": "3d53c7b9-52f1-45d9-8e75-5769a0f1ee49", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "3d53c7b9-52f1-45d9-8e75-5769a0f1ee49", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "recall", "ids": ["mem_127f62b3"], "query": "sympy rich comparison NotImplemented Basic.__eq__ return False", "meta": {"k": 5, "n": 1, "hits": [{"id": "mem_127f62b3", "content": "In sympy's Point.distance(), use zip_longest with fillvalue=S.Zero instead of zip to prevent truncation when computing Euclidean distance between points of different dimensions (e.g., 2D vs 3D).", "score": 0.487204, "tokens": 48, "rank": 0, "timestamp": 1782435139.774763}]}}
+{"ts": 0.0, "op": "note", "session_id": "45bfc07a-b3ce-41a7-80cb-fdc9c5fc64e4", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "45bfc07a-b3ce-41a7-80cb-fdc9c5fc64e4", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "note", "session_id": "4bbff1b0-2aa0-4251-80ca-368f93cef18b", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "4bbff1b0-2aa0-4251-80ca-368f93cef18b", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "recall", "ids": ["mem_127f62b3"], "query": "sympy FiniteSet Complement interval mixed symbols numbers", "meta": {"k": 5, "n": 1, "hits": [{"id": "mem_127f62b3", "content": "In sympy's Point.distance(), use zip_longest with fillvalue=S.Zero instead of zip to prevent truncation when computing Euclidean distance between points of different dimensions (e.g., 2D vs 3D).", "score": 0.388974, "tokens": 48, "rank": 0, "timestamp": 1782435139.774763}]}}
+{"ts": 0.0, "op": "note", "session_id": "69e18f30-6c55-499d-9549-f839659f0d9d", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "69e18f30-6c55-499d-9549-f839659f0d9d", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "recall", "ids": ["mem_127f62b3"], "query": "Matrix col_insert row_insert sympy fix", "meta": {"k": 5, "n": 1, "hits": [{"id": "mem_127f62b3", "content": "In sympy's Point.distance(), use zip_longest with fillvalue=S.Zero instead of zip to prevent truncation when computing Euclidean distance between points of different dimensions (e.g., 2D vs 3D).", "score": 0.477567, "tokens": 48, "rank": 0, "timestamp": 1782435139.774763}]}}

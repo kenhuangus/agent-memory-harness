@@ -1,0 +1,1 @@
+{"cursor": 509338, "last_summary": "The fix addresses issue #20003 / PR #10097, preventing invalid URLs like http://foo/bar@example.com from passing validation.", "recent_memory_ids": ["mem_0c122625", "mem_a92c7007", "mem_c45c6efa"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
