@@ -1,0 +1,100 @@
+{
+  "benchmark": "swe_bench_cl",
+  "pipeline": {
+    "version": "vdjango_django_sequence-plugin-accum-a4538fc-1",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "a4538fc",
+    "benchmark": "swe_bench_cl",
+    "sequence": "django_django_sequence",
+    "stage": "plugin-accum",
+    "limit": null,
+    "n_tasks": 50,
+    "model": "claude-haiku-4-5",
+    "code_mode": "agentic",
+    "grader": "swebench",
+    "plugin_workers": 1,
+    "budget_usd": 10.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash"
+    },
+    "memory_store": "/Users/nerd/Git/agent-memory-harness/results/vdjango_django_sequence-plugin-accum-a4538fc-1/_memory",
+    "source_memory": "/Users/nerd/Git/agent-memory-harness/results/vdjango_django_sequence-plugin-blank-818ccff-1/_memory",
+    "source_memory_health": {
+      "store_dir": "/Users/nerd/Git/agent-memory-harness/results/vdjango_django_sequence-plugin-blank-818ccff-1/_memory/.cookbook-memory",
+      "events": 100,
+      "daydream_events": 1009,
+      "recall_events": 0,
+      "recall_with_hits": 0,
+      "recall_zero_hits": 0,
+      "recall_errors": 0,
+      "daydream_completed": 35,
+      "daydream_memory_written": 87,
+      "memory_items": 87,
+      "graph_nodes": 87,
+      "markdown_items": 87,
+      "durable_items": 87
+    },
+    "n_stages": 1,
+    "n_eval_stages": 1,
+    "stages": [
+      "plugin-accum"
+    ],
+    "timestamp": "20260626T145647Z",
+    "started_at": 1782485807.736157,
+    "ended_at": 1782499137.011104,
+    "source_memory_copied_to": "/Users/nerd/Git/agent-memory-harness/results/vdjango_django_sequence-plugin-accum-a4538fc-1/_memory",
+    "stages_run": [
+      "plugin-accum"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": {
+        "ok": true,
+        "code": "ok",
+        "remembered": true,
+        "hits": 1
+      }
+    }
+  },
+  "dream": {
+    "status": "not-run"
+  },
+  "stages": [
+    {
+      "stage": "plugin-accum",
+      "stage_index": 4,
+      "metrics": {
+        "accuracy": 0.14583333333333334,
+        "relevancy": 0.0,
+        "recency": 0.0,
+        "efficiency": 0.06635779413758637
+      },
+      "n_tasks": 50,
+      "cost_usd": 3.370364,
+      "graded_n": 48,
+      "resolved": 7,
+      "ungraded": 2,
+      "grade_reasons": {
+        "get_test_directives yielded no test files from test_patch": 1,
+        "graded": 48,
+        "official parser produced no statuses": 1
+      },
+      "memory_reached": 48,
+      "memory_hit": 48,
+      "recall_attempted": 48,
+      "recall_with_hits": 48,
+      "memory_health": {
+        "recall_events": 2,
+        "recall_with_hits": 2,
+        "recall_zero_hits": 0,
+        "daydream_completed": 29,
+        "daydream_memory_written": 59,
+        "durable_items_after": 146
+      },
+      "warnings": []
+    }
+  ],
+  "deltas": {}
+}
