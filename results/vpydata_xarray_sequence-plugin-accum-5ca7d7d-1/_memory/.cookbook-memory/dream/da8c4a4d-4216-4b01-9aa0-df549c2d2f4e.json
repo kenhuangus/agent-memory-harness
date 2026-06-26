@@ -1,0 +1,1 @@
+{"cursor": 384539, "last_summary": "Fix for polyval with timedelta64 coordinates (Issue #6599): Modified _ensure_numeric in xarray/core/computation.py to use offset=None for timedelta64 dtypes instead of np.datetime64('1970-01-01')", "recent_memory_ids": ["mem_ade6c2a3"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

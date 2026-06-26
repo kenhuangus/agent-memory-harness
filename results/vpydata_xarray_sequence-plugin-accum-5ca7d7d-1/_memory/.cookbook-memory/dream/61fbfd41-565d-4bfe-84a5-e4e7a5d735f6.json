@@ -1,0 +1,1 @@
+{"cursor": 503261, "last_summary": "Added test case test_where_attrs_with_scalar in xarray/tests/test_computation.py to verify fix for scalar x argument with keep_attrs=True", "recent_memory_ids": ["mem_397300a1", "mem_ad9a2162", "mem_1d16c4c3"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
