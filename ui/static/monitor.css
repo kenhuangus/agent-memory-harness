@@ -254,19 +254,32 @@ body {
 
 .dash {
   flex: 1 1 auto;
-  display: grid;
-  grid-template-rows: auto 1fr auto;
+  display: flex;
+  flex-direction: column;
   gap: var(--gutter);
   padding: var(--gutter) 18px;
   min-height: 0;
+  /* Scroll vertically when the dashboard is taller than the viewport, instead
+     of forcing the chart-grid to compress its cells into one another. */
+  overflow-y: auto;
+  overflow-x: hidden;
 }
+/* Custom scrollbar matching the operator-dashboard palette. */
+.dash::-webkit-scrollbar       { width: 8px; }
+.dash::-webkit-scrollbar-track { background: var(--bg-1); }
+.dash::-webkit-scrollbar-thumb { background: var(--line-3); border: 2px solid var(--bg-1); }
+.dash::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
 
 /* KPI row ----------------------------------------------------------------- */
 
 .kpi-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* auto-fit so cards reflow continuously as the window resizes — no
+     stepped media-query jumps. Each card stays at least 220px wide for
+     legibility; on a narrow viewport the row wraps to 2 then 1 column. */
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: var(--gutter);
+  flex: 0 0 auto;
 }
 
 .kpi {
@@ -385,10 +398,14 @@ body {
 
 .chart-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: repeat(2, minmax(180px, 1fr));
+  /* `auto-fit` lets the grid reflow on resize without firing a media query.
+     Each cell is at least 320px wide; below that they wrap to fewer columns. */
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  /* Fixed row height so cells don't squish into each other when the viewport
+     is short — the parent .dash scrolls instead of collapsing children. */
+  grid-auto-rows: 280px;
   gap: var(--gutter);
-  min-height: 0;
+  flex: 0 0 auto;
 }
 
 .chart-cell {
@@ -400,6 +417,7 @@ body {
   gap: 8px;
   min-height: 0;
   position: relative;
+  overflow: hidden;
 }
 .chart-cell::before {
   /* tick mark in the corner — a subtle indicator that this is a data cell */
@@ -439,8 +457,10 @@ body {
   display: grid;
   grid-template-columns: 1.4fr 1fr;
   gap: var(--gutter);
-  min-height: 160px;
-  max-height: 240px;
+  /* Fixed natural height — the parent .dash scrolls if the page is taller
+     than the viewport, so this no longer needs to compete for fr space. */
+  min-height: 200px;
+  flex: 0 0 auto;
 }
 
 .recent, .rejects {
@@ -605,14 +625,19 @@ body {
 
 /* ---- responsive --------------------------------------------------------- */
 
-@media (max-width: 1100px) {
-  .kpi-row    { grid-template-columns: repeat(2, 1fr); }
-  .chart-grid { grid-template-columns: 1fr; grid-template-rows: repeat(4, minmax(160px, 1fr)); }
+/* The kpi-row and chart-grid use grid-template-columns: repeat(auto-fit, ...)
+   so they reflow continuously with the viewport — no stepped media queries
+   needed for those. Only the bottom row and the topbar need explicit
+   adjustments for narrow viewports. */
+@media (max-width: 900px) {
+  .bottom-row {
+    grid-template-columns: 1fr;
+    max-height: none;
+  }
 }
 @media (max-width: 640px) {
-  .kpi-row    { grid-template-columns: 1fr; }
-  .run-select { min-width: 220px; }
-  .topbar     { flex-direction: column; align-items: stretch; gap: 8px; }
+  .run-select   { min-width: 220px; }
+  .topbar       { flex-direction: column; align-items: stretch; gap: 8px; }
   .topbar-right { justify-content: space-between; }
 }
 

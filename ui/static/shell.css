@@ -68,17 +68,11 @@
 body.ui-mode-monitor   #view-monitor   { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 body.ui-mode-inspector #view-inspector { display: block; }
 
-body.ui-mode-monitor {
-  background: #0a0d10;
-}
+/* Both views share monitor.css's dark operator palette + scanlines + radial
+   gradients. No per-view background override needed — only display toggles. */
+body.ui-mode-monitor,
 body.ui-mode-inspector {
-  /* Restore the inspector's own background (it sets its own body styles via
-     inspector.css; we just need to neutralize the operator-dashboard
-     scanlines + radial gradients added by monitor.css's body rule). */
-  background: #ffffff;
-}
-body.ui-mode-inspector .scanlines {
-  display: none;
+  background: #0a0d10;
 }
 
 /* Shell ensures the page lays out top-bar + view content in a column,

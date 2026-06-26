@@ -612,6 +612,21 @@
     state.countdownMs = REFRESH_MS;
   });
 
+  // Window resize: Chart.js's built-in ResizeObserver catches most cases, but
+  // when the CSS grid reflows via auto-fit (kpi-row + chart-grid) the parent
+  // dimensions can change without the observer firing reliably. Debounce a
+  // full chart.resize() pass on the window-level resize so the canvases
+  // re-measure their grid cell after the reflow settles. Also called by
+  // shell.js after a view-switch (since the inspector being hidden during
+  // monitor render can leave canvases at stale dimensions).
+  let resizeTimer = null;
+  window.addEventListener("resize", () => {
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      Object.values(state.charts).forEach((c) => { try { c.resize(); } catch (_) { /* chart destroyed */ } });
+    }, 120);
+  });
+
   // first paint
   pollOnce();
   setInterval(tickCountdown, 200);
