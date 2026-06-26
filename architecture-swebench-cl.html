@@ -75,13 +75,24 @@
           .box-s{fill:#aab8c9;font-size:11px;}
           .white{fill:#ffffff;font-weight:700;font-size:15px;}
           .whitesub{fill:#e8eefc;font-size:11px;}
-          .flow{stroke:#6d7e95;stroke-width:1.6;fill:none;}
-          .flow-m{stroke:#c084fc;stroke-width:1.6;fill:none;stroke-dasharray:5 4;}
-          .flow-t{stroke:#2dd4bf;stroke-width:1.6;fill:none;}
+          .flow{stroke:#6d7e95;stroke-width:1.6;fill:none;stroke-dasharray:7 6;animation:cl-march 1.1s linear infinite;}
+          .flow-m{stroke:#c084fc;stroke-width:1.6;fill:none;stroke-dasharray:5 4;animation:cl-march 1s linear infinite;}
+          .flow-t{stroke:#2dd4bf;stroke-width:1.6;fill:none;stroke-dasharray:7 6;animation:cl-march 1.1s linear infinite;}
+          @keyframes cl-march{to{stroke-dashoffset:-26;}}
+          .cl-pkt{opacity:.95;}
+          .cl-seqbox{animation:cl-glow 4s ease-in-out infinite;}
+          .cl-membox{animation:cl-glowm 3.4s ease-in-out infinite;}
+          @keyframes cl-glow{0%,100%{filter:none;}30%{filter:drop-shadow(0 0 6px #22d3ee);}}
+          @keyframes cl-glowm{0%,100%{filter:none;}40%{filter:drop-shadow(0 0 9px #ec4899);}}
+          @media (prefers-reduced-motion: reduce){
+            .flow,.flow-m,.flow-t{animation:none;}
+            .cl-seqbox,.cl-membox{animation:none;}
+            .cl-pkt{display:none;}
+          }
         </style>
 
         <!-- ============ 1. SEQUENCE (ordered tasks) ============ -->
-        <rect x="30" y="30" width="1060" height="120" rx="14" fill="url(#cl-seq)" stroke="#33415a"/>
+        <rect x="30" y="30" width="1060" height="120" rx="14" fill="url(#cl-seq)" stroke="#33415a" class="cl-seqbox"/>
         <text x="50" y="58" class="box-t">① SWE-Bench-CL sequence — ordered per-repo task chain (group_id, strict Task.order)</text>
         <text x="50" y="76" class="box-s">8 sequences · 273 tasks · e.g. django · sympy · sphinx · matplotlib · scikit-learn · astropy · xarray · pytest</text>
 
@@ -96,12 +107,17 @@
           <path class="flow" d="M278,114 L310,114" marker-end="url(#cl-arr)"/>
           <path class="flow" d="M404,114 L432,114" marker-end="url(#cl-arr)"/>
           <path class="flow" d="M480,114 L508,114" marker-end="url(#cl-arr)"/>
+          <circle class="cl-pkt" r="3.4" fill="#cbd5e8"><animateMotion path="M152,114 L182,114" dur="1.1s" begin="0s" repeatCount="indefinite"/></circle>
+          <circle class="cl-pkt" r="3.4" fill="#cbd5e8"><animateMotion path="M278,114 L308,114" dur="1.1s" begin="0.35s" repeatCount="indefinite"/></circle>
+          <circle class="cl-pkt" r="3.4" fill="#cbd5e8"><animateMotion path="M404,114 L430,114" dur="1.1s" begin="0.7s" repeatCount="indefinite"/></circle>
+          <circle class="cl-pkt" r="3.4" fill="#cbd5e8"><animateMotion path="M480,114 L506,114" dur="1.1s" begin="1.05s" repeatCount="indefinite"/></circle>
         </g>
         <text x="690" y="108" class="lbl-sm">each task = one SWE-bench Verified instance</text>
         <text x="690" y="124" class="lbl-sm">(repo · base commit · issue · gold patch · gold test_patch)</text>
 
         <!-- arrow down into per-task loop -->
         <path class="flow" d="M556,150 L556,182" marker-end="url(#cl-arr)"/>
+        <circle class="cl-pkt" r="3.4" fill="#cbd5e8"><animateMotion path="M556,150 L556,180" dur="1.2s" begin="1.3s" repeatCount="indefinite"/></circle>
         <text x="566" y="172" class="lbl-sm">for each task, in order →</text>
 
         <!-- ============ 2. PER-TASK LOOP ============ -->
@@ -125,12 +141,14 @@
         <text x="570" y="330" text-anchor="middle" class="lbl-sm">retrieves prior fixes for this repo</text>
         <text x="570" y="346" text-anchor="middle" class="lbl-xs">base stage has no memory (mode = off)</text>
         <path class="flow-m" d="M420,297 L392,297" marker-end="url(#cl-arr-m)"/>
+        <circle class="cl-pkt" r="3.2" fill="#e9d5ff"><animateMotion path="M420,297 L394,297" dur="1s" begin="0.2s" repeatCount="indefinite"/></circle>
 
         <!-- patch -->
         <rect x="90" y="384" width="180" height="64" rx="10" fill="#202b3d" stroke="#3a4a66"/>
         <text x="180" y="410" text-anchor="middle" class="box-t" style="font-size:13px">patch</text>
         <text x="180" y="430" text-anchor="middle" class="lbl-sm">model_patch (unified diff)</text>
         <path class="flow" d="M240,356 L180,382" marker-end="url(#cl-arr)"/>
+        <circle class="cl-pkt" r="3.4" fill="#cbd5e8"><animateMotion path="M240,356 L180,380" dur="1.2s" begin="0.5s" repeatCount="indefinite"/></circle>
 
         <!-- grader -->
         <rect x="300" y="372" width="420" height="120" rx="12" fill="#11261f" stroke="#1f7a52"/>
@@ -141,16 +159,19 @@
         <text x="320" y="468" class="lbl-sm">2 · apply model_patch  3 · apply gold test_patch  4 · run tests</text>
         <text x="320" y="485" class="lbl-xs">shared venv prewarmed once per sequence (one repo@version)</text>
         <path class="flow" d="M270,416 L298,420" marker-end="url(#cl-arr)"/>
+        <circle class="cl-pkt" r="3.4" fill="#cbd5e8"><animateMotion path="M270,416 L296,420" dur="1s" begin="0.9s" repeatCount="indefinite"/></circle>
 
         <!-- resolved? -->
         <path d="M405,520 L470,556 L405,592 L340,556 Z" fill="#1a2433" stroke="#3a4a66"/>
         <text x="405" y="552" text-anchor="middle" class="lbl">resolved?</text>
         <text x="405" y="568" text-anchor="middle" class="lbl-xs">pass / fail</text>
         <path class="flow" d="M510,492 L430,520" marker-end="url(#cl-arr)"/>
+        <circle class="cl-pkt" r="3.4" fill="#cbd5e8"><animateMotion path="M510,492 L431,519" dur="1.1s" begin="1.3s" repeatCount="indefinite"/></circle>
 
         <!-- next task / write-back -->
         <text x="500" y="548" class="lbl-sm">→ next task in sequence</text>
         <path class="flow" d="M470,556 L640,556 L640,200 L582,200" marker-end="url(#cl-arr)"/>
+        <circle class="cl-pkt" r="3.6" fill="#7fd9ff"><animateMotion path="M470,556 L640,556 L640,200 L584,200" dur="2.6s" begin="0s" repeatCount="indefinite"/></circle>
         <text x="650" y="380" class="lbl-xs" transform="rotate(90 650 380)">advance Task.order</text>
 
         <!-- write/carry to memory (daydream between tasks) -->
@@ -160,9 +181,10 @@
         <text x="210" y="578" text-anchor="middle" class="lbl-sm">Daydream pass between tasks;</text>
         <text x="210" y="593" text-anchor="middle" class="lbl-sm">extracts what to remember</text>
         <path class="flow-m" d="M340,556 L332,560" marker-end="url(#cl-arr-m)"/>
+        <circle class="cl-pkt" r="3.2" fill="#e9d5ff"><animateMotion path="M340,556 L333,559" dur="0.9s" begin="1.6s" repeatCount="indefinite"/></circle>
 
         <!-- ============ 4. MEMORY SUBSTRATE ============ -->
-        <rect x="790" y="190" width="300" height="240" rx="14" fill="url(#cl-mem)"/>
+        <rect x="790" y="190" width="300" height="240" rx="14" fill="url(#cl-mem)" class="cl-membox"/>
         <text x="940" y="220" text-anchor="middle" class="white">④ Persistent memory substrate</text>
         <text x="940" y="240" text-anchor="middle" class="whitesub">results/v{version}/_memory/.cookbook-memory</text>
         <text x="810" y="266" class="whitesub">· Markdown store</text>
@@ -176,8 +198,10 @@
 
         <!-- recall reads / daydream writes arrows -->
         <path class="flow-m" d="M720,290 L788,260" marker-end="url(#cl-arr-m)"/>
+        <circle class="cl-pkt" r="3.2" fill="#e9d5ff"><animateMotion path="M788,260 L722,289" dur="1.3s" begin="0.4s" repeatCount="indefinite"/></circle>
         <text x="724" y="246" class="lbl-xs" style="fill:#c084fc">recall ←</text>
         <path class="flow-m" d="M330,548 L788,400" marker-end="url(#cl-arr-m)"/>
+        <circle class="cl-pkt" r="3.4" fill="#f0abfc"><animateMotion path="M330,548 L786,401" dur="1.9s" begin="1.8s" repeatCount="indefinite"/></circle>
         <text x="600" y="470" class="lbl-xs" style="fill:#c084fc">daydream writes →</text>
 
         <!-- ============ 5. NATIVE CL METRICS ============ -->
@@ -200,6 +224,7 @@
 
         <!-- arrow loop -> metrics -->
         <path class="flow-t" d="M405,592 L405,652" marker-end="url(#cl-arr-t)"/>
+        <circle class="cl-pkt" r="3.4" fill="#9af0e3"><animateMotion path="M405,592 L405,650" dur="1.3s" begin="1.5s" repeatCount="indefinite"/></circle>
         <text x="415" y="630" class="lbl-sm" style="fill:#2dd4bf">per-task resolved? → CL vectors</text>
       </svg>
     </div>
