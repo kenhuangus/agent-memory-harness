@@ -597,13 +597,25 @@ in both `memories` and `rejected` -- pick one.
 
 
 # ---------------------------------------------------------------------------
-# OKF content-type taxonomy (ADR-dreaming-027) — the CLOSED set the V5 prompt
-# tells the LLM to pick from for every kept memory's `type` field. The parser
+# OKF content-type taxonomy (ADR-dreaming-027, amended by ADR-dreaming-028 §5)
+# — the CLOSED set the V5 prompt tells the LLM to pick from for every kept
+# memory's `type` field, PLUS one worker-emitted reservation. The parser
 # (`_extract._build_memory_item`) validates the LLM's emitted value against
 # this constant and falls back to `"Memory"` on off-list output, emitting a
 # `daydream.unknown_okf_type` event with the offending string for
-# observability. `"Memory"` is RESERVED as the parser fallback and is NOT
-# one of the LLM-selectable values.
+# observability.
+#
+# Two reservations are NOT enumerated in the V5 prompt body and the LLM
+# never sees them as selectable values:
+#   `"Memory"`        — the parser fallback for off-list / pre-V5 memories.
+#   `"Contradiction"` — produced by the Dream worker's deduction pass
+#                       (ADR-dreaming-028 §4) when two memories flatly
+#                       disagree; both originals are preserved and a new
+#                       `Contradiction`-typed observation card is emitted
+#                       carrying `metadata.contradiction_of: [id_a, id_b]`.
+#                       The LLM has no business emitting this — it operates
+#                       on a single session transcript and cannot observe
+#                       cross-memory disagreement at extract time.
 # ---------------------------------------------------------------------------
 OKF_CONTENT_TYPES: frozenset[str] = frozenset({
     "Fix",
@@ -614,6 +626,8 @@ OKF_CONTENT_TYPES: frozenset[str] = frozenset({
     "Decision",
     "Preference",
     "Identity",
+    # Worker-reserved (ADR-dreaming-028 §5). Not in the V5 prompt body.
+    "Contradiction",
 })
 
 

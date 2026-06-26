@@ -22,6 +22,7 @@ from memeval.dreaming.prompts import (
     EXTRACTION_SYSTEM_PROMPT_V4,
     EXTRACTION_SYSTEM_PROMPT_V5,
     GOVERNANCE_SYSTEM_PROMPT,
+    OKF_CONTENT_TYPES,
     _ENVELOPE_TEMPLATE,
     _EXTRACTION_VARIANTS,
     get_extraction_prompt,
@@ -470,3 +471,49 @@ def test_get_extraction_prompt_is_resolve_text_for_all_variants(monkeypatch) -> 
 
     for v in list_extraction_variants():
         assert get_extraction_prompt(v) == resolve_extraction_prompt(v).text
+
+
+# --------------------------------------------------------------------------- #
+# OKF_CONTENT_TYPES — closed taxonomy contract (ADR-dreaming-027 amended by
+# ADR-dreaming-028 §5: `Contradiction` added as a worker-reserved ninth value)
+# --------------------------------------------------------------------------- #
+def test_okf_content_types_closed_set_membership() -> None:
+    """The closed taxonomy contains the eight LLM-selectable values + the
+    worker-reserved `Contradiction`. `Memory` (the parser fallback) is NOT in
+    the set — it's a string the parser falls back to when the LLM emits
+    something off-list, not a member of the taxonomy itself."""
+    expected = {
+        # LLM-selectable (V5 prompt body enumerates these eight)
+        "Fix",
+        "Bug",
+        "Convention",
+        "Invariant",
+        "Workaround",
+        "Decision",
+        "Preference",
+        "Identity",
+        # Worker-reserved (ADR-dreaming-028 §5 — dream worker's deduction pass
+        # emits these; LLM never sees the value as selectable).
+        "Contradiction",
+    }
+    assert set(OKF_CONTENT_TYPES) == expected, (
+        f"OKF taxonomy drift: missing={expected - set(OKF_CONTENT_TYPES)}, "
+        f"extra={set(OKF_CONTENT_TYPES) - expected}"
+    )
+    assert "Memory" not in OKF_CONTENT_TYPES, (
+        "`Memory` is the parser fallback string; it MUST NOT be a member of "
+        "OKF_CONTENT_TYPES or the `daydream.unknown_okf_type` drift event "
+        "becomes meaningless (every fallback would silently look like a valid "
+        "LLM emission)."
+    )
+
+
+def test_v5_prompt_body_does_not_advertise_contradiction() -> None:
+    """`Contradiction` is worker-reserved per ADR-dreaming-028 §5. The V5 prompt
+    body MUST NOT enumerate it as an LLM-selectable value — the daydream
+    extractor operates on a single session transcript and cannot observe
+    cross-memory disagreement at extract time. If this fails, either the V5
+    prompt was edited without rolling back the reservation, or the
+    reservation was lifted intentionally (in which case the test should be
+    deleted alongside the prompt change)."""
+    assert "Contradiction" not in EXTRACTION_SYSTEM_PROMPT_V5
