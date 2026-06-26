@@ -99,6 +99,23 @@ def _caption(*, report: dict[str, Any], manifest: dict[str, Any] | None) -> str:
     )
 
 
+def _assert_fusion_with_fts5_not_regressed(report: dict[str, Any]) -> None:
+    cells = report["cells"]
+    baseline = cells.get("fusion_rrf")
+    with_fts5 = cells.get("fusion_rrf_with_fts5")
+    if not baseline or not with_fts5:
+        return
+    if baseline["status"] != "ok" or with_fts5["status"] != "ok":
+        return
+    baseline_recall = float(baseline["summary"]["recall@10"])
+    with_fts5_recall = float(with_fts5["summary"]["recall@10"])
+    if with_fts5_recall < baseline_recall:
+        raise AssertionError(
+            "fusion_rrf_with_fts5 recall@10 regressed below fusion_rrf: "
+            f"{with_fts5_recall:.6f} < {baseline_recall:.6f}"
+        )
+
+
 def run_matrix(
     *,
     quality_path: Path,
@@ -196,6 +213,7 @@ def run_matrix(
                 "reason": skip.reason,
                 "columns": skip.columns,
             }
+        _assert_fusion_with_fts5_not_regressed(report)
         return report
 
     cells = iter_matrix_cells(quality + filler, tmp_root, include_skips=True, live=live)
@@ -212,6 +230,7 @@ def run_matrix(
             record_cell(cell)
     finally:
         close_cells(cells)
+    _assert_fusion_with_fts5_not_regressed(report)
     return report
 
 

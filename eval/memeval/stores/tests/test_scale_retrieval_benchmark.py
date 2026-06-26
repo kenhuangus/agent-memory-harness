@@ -163,6 +163,20 @@ class FixtureContractTests(unittest.TestCase):
         self.assertIn("trivial_floor", table)
         self.assertIn("TOTAL", table)
 
+    def test_committed_offline_matrix_fusion_with_fts5_does_not_regress_rrf(self) -> None:
+        report = json.loads((FIXTURES / "results" / "offline_matrix.json").read_text())
+        baseline = report["cells"]["fusion_rrf"]
+        with_fts5 = report["cells"]["fusion_rrf_with_fts5"]
+        self.assertEqual(baseline["status"], "ok")
+        self.assertEqual(with_fts5["status"], "ok")
+        self.assertGreaterEqual(
+            with_fts5["summary"]["recall@10"],
+            baseline["summary"]["recall@10"],
+            "fusion_rrf_with_fts5 must not regress recall@10 versus fusion_rrf",
+        )
+        self.assertIn("MRR@10", baseline["summary"])
+        self.assertIn("MRR@10", with_fts5["summary"])
+
 
 class OfflineMatrixSmokeTests(unittest.TestCase):
     def test_small_retained_set_runs_over_offline_cells(self) -> None:

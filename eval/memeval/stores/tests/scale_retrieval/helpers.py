@@ -94,6 +94,7 @@ LOCAL_ANN_CELL_NAMES = (
 
 FTS5_CELL_NAMES = (
     "backend_fts5",
+    "fusion_rrf_with_fts5",
     "fusion_fts5_rrf",
 )
 
@@ -399,7 +400,17 @@ def _fts5_fusion_columns() -> dict[str, str]:
     )
 
 
+def _fusion_with_fts5_columns() -> dict[str, str]:
+    return _columns(
+        vector_index="brute_force",
+        graph_engine="in_memory_bfs",
+        lexical_engine="shared_bm25+fts5",
+    )
+
+
 def _fts5_columns_for(name: str) -> dict[str, str]:
+    if name == "fusion_rrf_with_fts5":
+        return _fusion_with_fts5_columns()
     if name == "fusion_fts5_rrf":
         return _fts5_fusion_columns()
     return _fts5_columns()
@@ -594,6 +605,28 @@ def _fts5_fusion_cell(items: list[MemoryItem], root: Path) -> MatrixCell:
     )
 
 
+def _fusion_with_fts5_cell(items: list[MemoryItem], root: Path) -> MatrixCell:
+    name = "fusion_rrf_with_fts5"
+    cell_root = root / name
+    if cell_root.exists():
+        shutil.rmtree(cell_root)
+    cell_root.mkdir(parents=True, exist_ok=True)
+    markdown = MarkdownStore(cell_root / "markdown")
+    fts5 = Fts5Store(str(cell_root / "fts5.db"))
+    vector = SqliteVectorStore(str(cell_root / "vector.db"))
+    graph = GraphStore(path=str(cell_root / "graph.db"), max_depth=2)
+    backends = {VECTORS: vector, MARKDOWN: markdown, GRAPH: graph, "fts5": fts5}
+    writes = _write_items(backends, items)
+    config = fusion_profile(method="rrf", per_backend_k=50, rrf_k=60)
+    return MatrixCell(
+        name,
+        RouterStore(Router.with_config(backends, config)),
+        _fusion_with_fts5_columns(),
+        writes["combined"],
+        tuple(backends.values()),
+    )
+
+
 def fts5_cells(
     items: list[MemoryItem],
     root: str | Path,
@@ -611,6 +644,8 @@ def fts5_cells(
     for name in names:
         if name == "backend_fts5":
             cell = _fts5_backend_cell(items, root)
+        elif name == "fusion_rrf_with_fts5":
+            cell = _fusion_with_fts5_cell(items, root)
         elif name == "fusion_fts5_rrf":
             cell = _fts5_fusion_cell(items, root)
         else:

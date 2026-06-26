@@ -65,7 +65,7 @@ def build_store(store_path: str) -> MemoryStore:
         fusion_profile,
         speed_profile,
     )
-    from memeval.stores import GraphStore, MarkdownStore, SqliteVectorStore
+    from memeval.stores import Fts5Store, GraphStore, MarkdownStore, SqliteVectorStore
     from memeval.stores.embedders import SentenceTransformersEmbedder, VoyageEmbedder
     from memeval.stores.sqlite_store import SQLITE_VEC_ANN_OVERFETCH, SQLITE_VEC_DIM
 
@@ -124,13 +124,15 @@ def build_store(store_path: str) -> MemoryStore:
         vectors = SqliteVectorStore(db_path)
         config = fusion_profile() if profile == "fusion" else speed_profile()
 
-    # All three backends persist under the store root so the graph (typed OKF links) survives a
+    # All backends persist under the store root so the graph (typed OKF links) survives a
     # process exit like the vector and markdown layers do -- without a path, GraphStore is RAM-only
     # and evaporates each turn, contributing nothing to a memory that accumulates across runs.
     backends: dict[str, MemoryStore] = {
         "vectors": vectors,
         "markdown": MarkdownStore(root / "markdown"),
         "graph": GraphStore(path=str(root / "graph.db")),
+        # FTS5 is the lexical backend fusion fans out to; Track 0 recall@10 beat markdown 0.842 vs 0.825.
+        "fts5": Fts5Store(str(root / "fts5.db")),
     }
     return RouterStore(Router.with_config(backends, config))
 

@@ -438,7 +438,11 @@ class BakeoffHarnessTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
+        import sys
+
+        cls.modules_before_bakeoff = set(sys.modules)
         cls.result = run_bakeoff()
+        cls.modules_after_bakeoff = set(sys.modules)
 
     def test_harness_runs_end_to_end(self) -> None:
         # rules + fake scored; spacy + semantic-router skipped — all four accounted for.
@@ -489,11 +493,13 @@ class BakeoffHarnessTests(unittest.TestCase):
     def test_pure_stdlib_no_optional_strategy_imports(self) -> None:
         # The bake-off must never pull its optional strategies into the process — the
         # factories PROBE, never import. (Guards the zero-dep smoke gate.)
-        import sys
+        imported_by_bakeoff = self.modules_after_bakeoff - self.modules_before_bakeoff
 
         for mod in ("spacy", "semantic_router", "numpy"):
             self.assertNotIn(
-                mod, sys.modules, f"{mod} was imported — bake-off must stay pure stdlib / CI-safe"
+                mod,
+                imported_by_bakeoff,
+                f"{mod} was imported — bake-off must stay pure stdlib / CI-safe",
             )
 
 
