@@ -20,6 +20,7 @@ are needed at import time and are imported eagerly.
 
 from __future__ import annotations
 
+from dataclasses import replace
 import os
 from pathlib import Path
 from typing import Any, Optional
@@ -42,8 +43,8 @@ def build_store(store_path: str) -> MemoryStore:
 
     **Profile selection** is the engine's call, not the plugin's, and needs no plugin input:
 
-    * ``$MEMORY_PROFILE`` (``speed`` | ``fusion`` | ``accuracy`` | ``accuracy-local``)
-      forces a profile when set.
+    * ``$MEMORY_PROFILE`` (``speed`` | ``fusion`` | ``fusion-local`` | ``accuracy`` |
+      ``accuracy-local``) forces a profile when set.
     * Otherwise: if a real embedder key (``$VOYAGE_API_KEY``) is present, use the **accuracy**
       profile (semantic-exemplar classifier + Voyage embedder wired into the vector store at the
       matching dimension + graph->vector cascade). With no key, use the **fusion** profile
@@ -117,6 +118,33 @@ def build_store(store_path: str) -> MemoryStore:
             )
             config = accuracy_local_profile(
                 classifier=SemanticRouterClassifier(embed),
+                embed=embed,
+                embed_model=embed_model,
+            )
+    elif profile == "fusion-local":
+        try:
+            embed = SentenceTransformersEmbedder()
+            # Probe once so an explicit local profile falls back before any routed write
+            # can create mixed-dimension rows when the package/model is unavailable.
+            embed.embed("local profile availability probe", input_type="query")
+        except RuntimeError:
+            vectors = SqliteVectorStore(db_path)
+            config = replace(fusion_profile(), profile_name="fusion-local")
+        else:
+            embed_model = getattr(embed, "model", None)
+            vectors = SqliteVectorStore(
+                db_path,
+                embed=embed,
+                embed_model=embed_model,
+                dim=SQLITE_VEC_DIM,
+                vector_index="sqlite_vec",
+                ann_overfetch=SQLITE_VEC_ANN_OVERFETCH,
+                exact_rerank=True,
+            )
+            # fusion+MiniLM is the D046 winner; avoids D021's classifier regression.
+            config = replace(
+                fusion_profile(),
+                profile_name="fusion-local",
                 embed=embed,
                 embed_model=embed_model,
             )
