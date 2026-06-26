@@ -241,8 +241,8 @@ def render_summary_md(summary: dict) -> str:
     lines.append("")
     lines.append(
         f"**Version:** {pm.get('version')} · **Sequence:** {pm.get('sequence')} · "
-        f"**Model:** {pm.get('model')} · **Tasks:** {pm.get('n_tasks')} · "
-        f"**Stages:** {pm.get('n_stages')}"
+        f"**Harness:** {pm.get('harness', 'claude')} · **Model:** {pm.get('model')} · "
+        f"**Tasks:** {pm.get('n_tasks')} · **Stages:** {pm.get('n_stages')}"
     )
     dreamer = pm.get("dream") or {}
     lines.append(

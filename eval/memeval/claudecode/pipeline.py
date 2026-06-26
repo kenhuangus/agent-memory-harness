@@ -660,6 +660,7 @@ def _pipeline_meta(cfg: dict, version_info: dict, substrate: Path, stamp: str) -
         "version_exact": version_info.get("version_exact"),
         "untagged": version_info.get("untagged"),
         "git_sha": version_info.get("git_sha", ""),
+        "harness": cfg.get("harness", "claude"),  # which agent CLI drove the run
         "benchmark": cfg["benchmark"],
         "sequence": cfg["sequence"],          # the Y domain -- NOT in memory anymore
         "stage": stage,                        # the single eval stage this run drove

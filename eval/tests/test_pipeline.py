@@ -287,6 +287,20 @@ def test_pipeline_results_path_is_version_scoped(monkeypatch) -> None:
         assert list(vd.glob("swe_bench_cl-*.json"))
 
 
+def test_pipeline_meta_records_harness() -> None:
+    # The persisted pipeline metadata must attribute the run to its harness, so a
+    # Cursor results file is distinguishable from a Claude one. Defaults to claude
+    # when unset (the cfg helper predates the harness option).
+    vinfo = {"version": "vtest", "git_sha": "abc"}
+    base = _cfg("/tmp", stage="base")
+
+    cursor_meta = P._pipeline_meta({**base, "harness": "cursor"}, vinfo, Path("/tmp/x"), "stamp")
+    assert cursor_meta["harness"] == "cursor"
+
+    claude_meta = P._pipeline_meta(base, vinfo, Path("/tmp/x"), "stamp")  # no harness key
+    assert claude_meta["harness"] == "claude"
+
+
 def test_interactive_config_defaults_to_single_accum_stage(monkeypatch, tmp_path) -> None:
     # Accept every default, including the plugin-accum source-memory selection.
     source = _source_memory(str(tmp_path))
