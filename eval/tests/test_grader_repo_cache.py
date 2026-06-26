@@ -183,6 +183,37 @@ class CheckoutRepoEnvKnob(unittest.TestCase):
         self.assertTrue(any(c == ["init"] for c in calls))  # auto fallback engaged
         self.assertTrue(any("falling back to network" in m for m in cm.output))
 
+    def test_missing_mirror_non_checkouterror_still_falls_back(self) -> None:
+        """Regression: the mirror was never created (clone failed) and the follow-up
+        ``git remote update`` raises a NON-``CheckoutError`` (a real subprocess against a
+        nonexistent mirror cwd raises ``FileNotFoundError``). Fail-open must catch it and
+        still reach the network auto path — a cache problem must never crash a task."""
+        calls: list = []
+
+        def git(args, cwd, *a, **kw) -> GitResult:
+            calls.append(list(args))
+            if args[:2] == ["clone", "--mirror"]:
+                # Mirror clone fails -> the mirror dir is never created.
+                return GitResult(returncode=1, stderr="fatal: could not read from remote")
+            if args[:2] == ["remote", "update"]:
+                # update_mirror runs git with cwd=<nonexistent mirror>; the real runner
+                # would raise FileNotFoundError here (not a CheckoutError).
+                raise FileNotFoundError(str(cwd))
+            if args and args[0] in ("init", "remote", "fetch", "checkout"):
+                _materializing(Path(cwd))
+            return GitResult(returncode=0)
+
+        g = SwebenchHostGrader(git_runner=git)
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp) / "cache"
+            dest = Path(tmp) / "repo"
+            with _EnvCache(str(cache)), \
+                    self.assertLogs(_GRADER_LOGGER, level="WARNING") as cm:
+                g._checkout_repo(dest, _task())  # must NOT raise
+            self.assertTrue((dest / "src.py").exists())  # network fallback materialized
+        self.assertTrue(any(c == ["init"] for c in calls))  # auto fallback engaged
+        self.assertTrue(any("falling back to network" in m for m in cm.output))
+
 
 def _have_git() -> bool:
     return shutil.which("git") is not None

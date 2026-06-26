@@ -400,13 +400,17 @@ def checkout_with_cache(
         # Default path: unchanged network auto checkout (fetch retried on failure).
         return prepare_checkout(repo, base_commit, dest_path, strategy="auto",
                                 timeout=timeout, **net_kwargs)
+    # Normalize once: expand ``~`` and resolve relative paths so the cache lives where
+    # intended regardless of the process cwd (else ``~/x`` becomes a literal ``./~/x``
+    # and a relative dir floats with cwd). Pass the resolved Path through both helpers.
+    cache_dir = Path(cache_dir).expanduser().resolve()
 
     # Mirror path: ensure the bare mirror exists, then check out locally from it.
     try:
         mirror = ensure_mirror(repo, cache_dir, **net_kwargs)
         return prepare_checkout(str(mirror), base_commit, dest_path, strategy="local",
-                                timeout=timeout, **git_kwargs)
-    except CheckoutError as exc:
+                                timeout=timeout, git_runner=git_runner)
+    except Exception as exc:  # fail open: ANY cache-path error -> refresh/retry, then net
         log.warning("checkout_with_cache: local mirror checkout failed for %s (%s); "
                     "refreshing mirror and retrying", repo, exc)
 
@@ -415,8 +419,8 @@ def checkout_with_cache(
         mirror = mirror_path_for(repo, cache_dir)
         update_mirror(mirror, **net_kwargs)
         return prepare_checkout(str(mirror), base_commit, dest_path, strategy="local",
-                                timeout=timeout, **git_kwargs)
-    except CheckoutError as exc:
+                                timeout=timeout, git_runner=git_runner)
+    except Exception as exc:  # fail open: a cache problem must NEVER ungrade/crash a task
         log.warning("checkout_with_cache: repo cache MISS for %s (%s); falling back "
                     "to network checkout", repo, exc)
 
