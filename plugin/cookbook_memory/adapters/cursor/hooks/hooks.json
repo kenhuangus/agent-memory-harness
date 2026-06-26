@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "memory-hook-cursor sessionStart || python3 -m cookbook_memory.adapters.cursor.hooks_handler sessionStart"
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "memory-hook-cursor sessionEnd || python3 -m cookbook_memory.adapters.cursor.hooks_handler sessionEnd"
+      }
+    ],
+    "preCompact": [
+      {
+        "command": "memory-hook-cursor preCompact || python3 -m cookbook_memory.adapters.cursor.hooks_handler preCompact"
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "memory-hook-cursor postToolUse || python3 -m cookbook_memory.adapters.cursor.hooks_handler postToolUse"
+      }
+    ]
+  }
+}

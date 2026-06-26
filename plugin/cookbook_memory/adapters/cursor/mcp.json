@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "cookbook-memory": {
+      "command": "python3",
+      "args": ["-m", "cookbook_memory", "mcp"],
+      "env": {
+        "MEMORY_STORE": "${env:MEMORY_STORE}"
+      }
+    }
+  }
+}

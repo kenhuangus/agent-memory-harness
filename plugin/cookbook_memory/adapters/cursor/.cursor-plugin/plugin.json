@@ -1,0 +1,8 @@
+{
+  "name": "cookbook-memory",
+  "version": "0.1.0",
+  "description": "Cookbook Memory for the Cursor CLI: persistent memory (recall) so the agent remembers across sessions. Routes through the Orchestrator; fail-open.",
+  "author": { "name": "Cookbook Memory team" },
+  "homepage": "https://github.com/kenhuangus/agent-memory-harness",
+  "keywords": ["memory", "mcp", "agent-memory", "recall", "remember"]
+}
