@@ -109,7 +109,9 @@
     <h1>Memory Inspector</h1>
     <p class="lead">Browse the <strong>real cookbook-memory contents</strong> the plugin wrote during benchmark runs —
       every row is a <strong><code>MemoryItem</code></strong> exactly as persisted to the <code>items</code> table
-      of a <code>.cookbook-memory/memory.db</code> store. Filter by source (daydream vs remember), tag, or domain,
+      of a <code>.cookbook-memory/memory.db</code> store. Every current memory was written autonomously by the
+      <strong>daydream</strong> pass — the plugin does not yet tag user-requested ("remember this") memories
+      distinctly, so <code>source</code> is <code>daydream</code> for all of them. Filter by source, tag, or domain,
       full-text search the content, and click any item for its full record.</p>
   </div>
 </section>
