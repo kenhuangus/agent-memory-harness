@@ -101,10 +101,23 @@ def _subprocess_git(args: list[str], cwd: Path, *, timeout: int = 600) -> GitRes
     """
     import subprocess  # lazy: heavy dep kept off the import path
 
-    proc = subprocess.run(
-        ["git", *args], cwd=str(cwd), capture_output=True, text=True,
-        timeout=timeout,
-    )
+    op = args[0] if args else "git"
+    try:
+        proc = subprocess.run(
+            ["git", *args], cwd=str(cwd), capture_output=True, text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        # A subprocess-level timeout is a transient failure like a slow github fetch —
+        # surface it as a non-zero result (not a raw raise) so the CheckoutError/_retry
+        # path can RETRY it. A raw TimeoutExpired would escape _retry (which catches only
+        # CheckoutError) and drop the task on the first blip.
+        return GitResult(returncode=124,
+                         stderr=f"git {op} timed out after {timeout}s: {exc}")
+    except OSError as exc:
+        # git missing / cwd vanished / fork failure — a non-zero outcome, not a crash,
+        # so the same CheckoutError/_retry/fail-open handling applies uniformly.
+        return GitResult(returncode=127, stderr=f"git {op} failed to run: {exc}")
     return GitResult(returncode=proc.returncode, stdout=proc.stdout or "",
                      stderr=proc.stderr or "")
 

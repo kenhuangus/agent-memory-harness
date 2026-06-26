@@ -17,6 +17,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 # Make the package importable when run directly (mirrors test_sandbox.py).
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -25,6 +26,7 @@ from memeval.claudecode.checkout import (  # noqa: E402
     CheckoutError,
     GitResult,
     _retry,
+    _subprocess_git,
     ensure_mirror,
     mirror_path_for,
     prepare_checkout,
@@ -357,6 +359,54 @@ class LocalCheckoutFromRealMirror(unittest.TestCase):
             prepare_checkout(str(mirror), base, dest, strategy="local")
             self.assertEqual((dest / "f.txt").read_text(encoding="utf-8"),
                              "base-content\n")  # base, not head
+
+
+class SubprocessGitErrorNormalization(unittest.TestCase):
+    """The real ``_subprocess_git`` converts subprocess-level failures into a non-zero
+    ``GitResult`` (which ``_run`` turns into ``CheckoutError`` so ``_retry`` can RETRY),
+    instead of letting a raw exception escape the retry (which catches only
+    ``CheckoutError``) and drop a task on the first transient blip."""
+
+    def test_timeout_becomes_nonzero_result_not_raise(self) -> None:
+        def boom(*a, **kw):
+            raise subprocess.TimeoutExpired(cmd="git fetch", timeout=600)
+
+        with mock.patch.object(subprocess, "run", boom):
+            res = _subprocess_git(["fetch", "--depth", "1", "origin", "deadbeef"],
+                                  Path("."), timeout=600)
+        self.assertNotEqual(res.returncode, 0)   # retryable, not a raised exception
+        self.assertIn("timed out", res.stderr)
+
+    def test_oserror_becomes_nonzero_result_not_raise(self) -> None:
+        def boom(*a, **kw):
+            raise FileNotFoundError("git not found")
+
+        with mock.patch.object(subprocess, "run", boom):
+            res = _subprocess_git(["fetch"], Path("."))
+        self.assertNotEqual(res.returncode, 0)   # surfaced as a result, not a crash
+
+    def test_subprocess_timeout_is_retried_via_prepare_checkout(self) -> None:
+        """End-to-end: a fetch that raises TimeoutExpired twice (normalized to a
+        non-zero result) is retried and then succeeds — proving the gap CodeRabbit
+        flagged is closed (the raw timeout no longer escapes _retry)."""
+        attempts = {"fetch": 0}
+
+        def flaky(args, cwd, *a, **kw) -> GitResult:
+            if args[:1] == ["fetch"]:
+                attempts["fetch"] += 1
+                if attempts["fetch"] < 3:
+                    # Mimic _subprocess_git's normalized timeout result.
+                    return GitResult(returncode=124, stderr="git fetch timed out after 600s")
+                Path(cwd).mkdir(parents=True, exist_ok=True)
+                (Path(cwd) / "src.py").write_text("x\n", encoding="utf-8")
+            return GitResult(returncode=0)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "repo"
+            prepare_checkout("pydata/xarray", "0" * 40, dest, strategy="auto",
+                             git_runner=flaky, retries=3, sleep=lambda _s: None)
+            self.assertTrue((dest / "src.py").exists())
+        self.assertEqual(attempts["fetch"], 3)   # retried twice, succeeded on the third
 
 
 if __name__ == "__main__":

@@ -992,6 +992,9 @@ def test_agent_checkout_local_failure_falls_back_to_auto_and_warns(monkeypatch, 
     assert any(c[:2] == ["remote", "update"] for c in calls)
     assert any(c == ["init"] for c in calls)  # auto fallback engaged
     assert any("falling back to network" in r.message for r in caplog.records)
+    # Observable fail-open: the coding turn actually RAN after the cache-miss fallback
+    # (the fake claude flips edited_flag), not just that the miss was logged.
+    assert flag.get("edited")
 
 
 def test_localexec_grader_checkout_unset_uses_historical_auto_sequence(monkeypatch) -> None:
