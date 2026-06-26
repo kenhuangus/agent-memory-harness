@@ -64,6 +64,13 @@ _DEFAULT_ITEM_RETENTION_DAYS: int = 30
 #: helper kwarg if a future pass wants finer control.
 _DEFAULT_PAGE_SIZE: int = 1000
 
+#: ADR-dreaming-028 §2 — number of nearest neighbors a per-item consolidation
+#: pass examines via `store.search()`. The pivot item plus its K neighbors
+#: form the working set for that item's dedup + contradiction judgments. K=10
+#: matches Mem0's design point (cited in the ADR's Rationale) and gives the
+#: LLM a small, focused stack to judge instead of an unbounded batch.
+_DEFAULT_NEIGHBORHOOD_K: int = 10
+
 #: ADR-dreaming-028 §1 — type-conditioned retention. The TTL pass looks up
 #: each item's retention in days by its ``metadata["okf_type"]`` (set by the
 #: parser per ADR-027). `None` means *no calendar TTL* — the item never
@@ -239,6 +246,52 @@ def _iter_store_pages(
         yield from store.iter_pages(page_size=page_size)  # type: ignore[attr-defined]
         return
     yield list(store.all())
+
+
+def _neighborhood_for(
+    store: MemoryStore,
+    item: MemoryItem,
+    *,
+    k: int = _DEFAULT_NEIGHBORHOOD_K,
+) -> list[MemoryItem]:
+    """ADR-dreaming-028 §2 — return ``item`` plus its ``k`` nearest neighbors
+    in the store (the 1+K "neighborhood stack" the per-item consolidation
+    passes operate against).
+
+    The pivot ``item`` is ALWAYS the first element of the returned list, so
+    callers can rely on ``result[0].item_id == item.item_id``. The remaining
+    elements are the top-``k`` matches from ``store.search(item.content, k=k)``,
+    in store-ranked order (best first), with the pivot itself filtered out
+    if the search backend returns it (some do, some don't — this helper
+    normalizes the behavior).
+
+    Empty/degenerate cases — search returning nothing, search raising, or the
+    store's `search` being unable to vectorize the content — all return
+    ``[item]`` (the pivot alone). Callers can detect a thin neighborhood by
+    checking ``len(result) == 1`` and skip the per-item judgment if desired.
+
+    Why a free function and not a method on the worker
+      The helper is a pure read primitive — no mutation, no event emission —
+      and parallels the existing :func:`_iter_store_pages` shape. Keeping it
+      a free function makes the test surface trivial (synthesize a store,
+      call the helper) and means consolidation passes can adopt it without
+      depending on worker-instance state.
+    """
+    try:
+        hits = store.search(item.content, k=k)
+    except Exception:
+        # ADR-harness-006 fail-open: a search backend that throws (e.g., a
+        # missing embedding API key on the accuracy profile) MUST NOT crash
+        # the consolidation pass. The caller gets the pivot alone — same as
+        # if the backend had returned no neighbors.
+        return [item]
+    neighbors: list[MemoryItem] = []
+    for hit in hits:
+        candidate = hit.item
+        if candidate.item_id == item.item_id:
+            continue  # backend included the pivot; filter it
+        neighbors.append(candidate)
+    return [item, *neighbors]
 
 
 def _retention_seconds_for(item: MemoryItem, table: dict[str, int | None]) -> int | None:
