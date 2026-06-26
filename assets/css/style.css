@@ -80,17 +80,17 @@ ul, ol { color: var(--text-dim); }
   border-bottom: 1px solid var(--border-soft);
 }
 .nav-inner { display: flex; align-items: center; gap: 18px; height: 62px; }
-.brand { display: flex; align-items: center; gap: 11px; font-weight: 700; color: var(--text); letter-spacing: -.02em; }
+.brand { display: flex; align-items: center; gap: 11px; font-weight: 700; color: var(--text); letter-spacing: -.02em; flex-shrink: 0; }
 .brand:hover { color: var(--text); }
 .brand .mark {
   width: 30px; height: 30px; border-radius: 8px; display: block; object-fit: contain;
   box-shadow: 0 4px 14px -4px rgba(34,211,238,.5);
 }
-.brand small { display: block; font-size: .68rem; font-weight: 600; color: var(--text-mute); letter-spacing: .02em; }
+.brand small { display: block; font-size: .68rem; font-weight: 600; color: var(--text-mute); letter-spacing: .02em; white-space: nowrap; }
 .nav-links { display: flex; gap: 4px; margin-left: auto; align-items: center; }
 .nav-links a {
   color: var(--text-dim); font-size: .92rem; font-weight: 500;
-  padding: 8px 13px; border-radius: 8px; transition: background .15s, color .15s;
+  padding: 8px 13px; border-radius: 8px; transition: background .15s, color .15s; white-space: nowrap;
 }
 .nav-links a:hover { color: var(--text); background: var(--bg-elev); }
 .nav-links a.active { color: var(--text); background: var(--bg-elev2); }
@@ -281,8 +281,13 @@ pre .n { color: var(--accent-3); }      /* number/ident */
 .legend i { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
 
 /* ---------- responsive ---------- */
-@media (max-width: 860px) {
-  .grid-2, .grid-3, .grid-4, .stats, .metric-row { grid-template-columns: 1fr; }
+/* The long brand subtitle only fits alongside the full nav on wide monitors. */
+@media (max-width: 1679px) {
+  .brand small { display: none; }
+}
+/* Nav collapses to the hamburger sooner than the grids: the 8-item row needs
+   the room well before content grids do. */
+@media (max-width: 1320px) {
   .nav-links {
     position: fixed; inset: 62px 0 auto 0; flex-direction: column; gap: 2px;
     background: var(--bg-elev); border-bottom: 1px solid var(--border); padding: 12px 16px;
@@ -291,6 +296,9 @@ pre .n { color: var(--accent-3); }      /* number/ident */
   .nav-links.open { transform: none; }
   .nav-links a { padding: 12px 14px; }
   .nav-toggle { display: block; }
+}
+@media (max-width: 860px) {
+  .grid-2, .grid-3, .grid-4, .stats, .metric-row { grid-template-columns: 1fr; }
   .stats { grid-template-columns: repeat(2,1fr); }
   .tl-row { grid-template-columns: 1fr; gap: 8px; }
 }
