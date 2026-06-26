@@ -1,0 +1,315 @@
+{
+  "schema": 1,
+  "memory_version": "vsympy_sympy_sequence-plugin-dreamed-8c48b84-1",
+  "benchmark": "swe_bench_cl",
+  "timestamp": "20260626T170808Z",
+  "pipeline": {
+    "version": "vsympy_sympy_sequence-plugin-dreamed-8c48b84-1",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "8c48b84",
+    "benchmark": "swe_bench_cl",
+    "sequence": "sympy_sympy_sequence",
+    "stage": "plugin-dreamed",
+    "limit": null,
+    "n_tasks": 50,
+    "model": "claude-haiku-4-5",
+    "code_mode": "agentic",
+    "grader": "swebench",
+    "plugin_workers": 1,
+    "budget_usd": 10.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash"
+    },
+    "memory_store": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsympy_sympy_sequence-plugin-dreamed-8c48b84-1/_memory",
+    "source_memory": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsympy_sympy_sequence-plugin-accum-45a508b-1/_memory",
+    "source_memory_health": {
+      "store_dir": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsympy_sympy_sequence-plugin-accum-45a508b-1/_memory/.cookbook-memory",
+      "events": 812,
+      "daydream_events": 3103,
+      "recall_events": 16,
+      "recall_with_hits": 15,
+      "recall_zero_hits": 1,
+      "recall_errors": 0,
+      "daydream_completed": 321,
+      "daydream_memory_written": 95,
+      "memory_items": 95,
+      "graph_nodes": 95,
+      "markdown_items": 95,
+      "durable_items": 95
+    },
+    "n_stages": 2,
+    "n_eval_stages": 1,
+    "stages": [
+      "dream",
+      "plugin-dreamed"
+    ],
+    "timestamp": "20260626T170808Z",
+    "started_at": 1782493688.669425,
+    "ended_at": 1782509361.290723,
+    "source_memory_copied_to": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsympy_sympy_sequence-plugin-dreamed-8c48b84-1/_memory",
+    "stages_run": [
+      "plugin-dreamed"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": {
+        "ok": true,
+        "code": "ok",
+        "remembered": true,
+        "hits": 1
+      }
+    }
+  },
+  "dream": {
+    "schema": "dream.summary",
+    "version": 1,
+    "mode": "detection_and_mutation_and_pruning_and_contradiction_and_governance",
+    "jobs_run": [
+      "dedup_detection",
+      "dedup_merge",
+      "ttl_pruning",
+      "contradiction_resolution",
+      "governance"
+    ],
+    "skipped_jobs": [],
+    "counts": {
+      "total_items": 95,
+      "duplicate_clusters": 0,
+      "items_in_duplicates": 0,
+      "items_retired": 0,
+      "items_pruned": 0,
+      "retention_seconds_effective": 2592000,
+      "items_contradicted": 0,
+      "contradiction_llm_calls": 10,
+      "contradiction_input_tokens": 11375,
+      "contradiction_output_tokens": 4382,
+      "contradiction_cost_usd_estimate": 0.0018125099999999998,
+      "contradiction_pairs_examined_estimate": 405,
+      "items_blacklisted": 0,
+      "items_must_known": 22,
+      "items_must_done": 1,
+      "governance_llm_calls": 10,
+      "governance_input_tokens": 9578,
+      "governance_output_tokens": 7175,
+      "governance_cost_usd_estimate": 0.00215352,
+      "governance_items_examined_estimate": 65
+    },
+    "clusters": [],
+    "pruned": {
+      "item_ids": [],
+      "retention_seconds_effective": 2592000
+    },
+    "contradicted": {
+      "pairs": [],
+      "model": "deepseek/deepseek-v4-flash"
+    },
+    "governance": {
+      "must_know": [
+        {
+          "item_id": "mem_047aa005",
+          "rationale": "Known bug behavior that prevents re-discovering the same quirk."
+        },
+        {
+          "item_id": "mem_0b00d9a5",
+          "rationale": "Records a design-decision suggestion about Bareiss algorithm, valuable for future development"
+        },
+        {
+          "item_id": "mem_0d5a81b4",
+          "rationale": "User workflow preference: direct edits then tests; agent should remember to avoid frustration."
+        },
+        {
+          "item_id": "mem_16684bae",
+          "rationale": "Records updated test behavior for Min()/Max(), essential for test consistency"
+        },
+        {
+          "item_id": "mem_2b35a2b3",
+          "rationale": "Custom mul_symbol behavior is a design constraint that avoids re-asking."
+        },
+        {
+          "item_id": "mem_397636c9",
+          "rationale": "Describes a rendering bug in MathML symbol handling, important context for fixing or understanding the behavior"
+        },
+        {
+          "item_id": "mem_44fd2736",
+          "rationale": "Identifies a specific simplification bug, key for debugging or future fixes"
+        },
+        {
+          "item_id": "mem_54a2436d",
+          "rationale": "Summarizes Indexed printing test scope, useful as a reference for test completeness"
+        },
+        {
+          "item_id": "mem_5e12aaae",
+          "rationale": "User's name is high-priority identity the agent should remember."
+        },
+        {
+          "item_id": "mem_6dde6180",
+          "rationale": "Specifies a test addition for Mod with I, needed to ensure test coverage is not forgotten"
+        },
+        {
+          "item_id": "mem_7ea63546",
+          "rationale": "Documents that Point.equals() is unaffected, saving re-analysis in geometry-related work"
+        },
+        {
+          "item_id": "mem_82e21230",
+          "rationale": "Documents a resolved implementation detail that affects Min/Max behavior; agent should remember to avoid reintroducing the bug."
+        },
+        {
+          "item_id": "mem_8d76945f",
+          "rationale": "Names the test file and function for Indexed printing, a frequently needed reference."
+        },
+        {
+          "item_id": "mem_958d4368",
+          "rationale": "User requirement for posify to preserve assumptions is a high-priority goal the agent should remember."
+        },
+        {
+          "item_id": "mem_9ec0e9d8",
+          "rationale": "Identifies a specific test case location for codegen; useful context for agent revisiting codegen work."
+        },
+        {
+          "item_id": "mem_ac7430f1",
+          "rationale": "Algorithm limitation that avoids re-investigating the same issue."
+        },
+        {
+          "item_id": "mem_da2c90ce",
+          "rationale": "Behavior change decision that affects future code writing."
+        },
+        {
+          "item_id": "mem_f267899c",
+          "rationale": "Describes core properties of the Indexed class; needed for agent to recall correct API usage."
+        },
+        {
+          "item_id": "mem_f34997fb",
+          "rationale": "Describes an important bugfix change in as_set(), relevant for output and logic handling"
+        },
+        {
+          "item_id": "mem_f34ec570",
+          "rationale": "Documents key boolean attributes of MatrixElement that affect algebraic simplification decisions."
+        },
+        {
+          "item_id": "mem_fa414410",
+          "rationale": "Provides mathematical justification for a convention used, important for reasoning about related code"
+        },
+        {
+          "item_id": "mem_ff25d3ac",
+          "rationale": "Records the exact fix location in the sympy repository, high-priority recall for ongoing work"
+        }
+      ],
+      "must_do": [
+        {
+          "item_id": "mem_cf59dbbe",
+          "rationale": "User wants to fix posify function to preserve assumptions; pending task."
+        }
+      ],
+      "blacklisted": [],
+      "model": "deepseek/deepseek-v4-flash"
+    }
+  },
+  "runs": [
+    {
+      "run_id": "pipeline-plugin-dreamed",
+      "timestamp": "2026-06-26T21:29:21+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "claude-code:claude-haiku-4-5:plugin-real",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:plugin-real+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.2806090571882355,
+        "relevancy": 0.0,
+        "accuracy": 0.6122448979591837,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 50,
+        "extra": {}
+      },
+      "n_tasks": 50,
+      "entries_used": 50,
+      "entries_available": 50,
+      "limit": null,
+      "selection": "flat",
+      "cost_usd": 4.729675,
+      "tokens_in": 3860,
+      "tokens_out": 945163,
+      "partial": false,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 1,
+        "memory_reached": 49,
+        "memory_hit": 49,
+        "recall_attempted": 49,
+        "recall_with_hits": 49,
+        "graded_n": 49,
+        "resolved": 30,
+        "ungraded": 1,
+        "grade_reasons": {
+          "graded": 49,
+          "official parser produced no statuses": 1
+        },
+        "errors": [
+          {
+            "task_id": "sympy__sympy-20916",
+            "stage": "solve",
+            "error": "TimeoutExpired: Command '['/Users/keith/.local/bin/claude', '-p', 'Persistent memory is available through recall if prior fixes would help. Edit the source files in this checkout directly to fix the issue, then run t"
+          }
+        ]
+      },
+      "notes": "single-stage pipeline \u00b7 swe_bench_cl \u00b7 stage plugin-dreamed",
+      "pipeline_stage": "plugin-dreamed",
+      "stage_index": 5,
+      "git_sha": "8c48b84",
+      "git_tag": "vsympy_sympy_sequence-plugin-dreamed-8c48b84-1",
+      "memory_health": {
+        "before": {
+          "store_dir": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsympy_sympy_sequence-plugin-dreamed-8c48b84-1/_memory/.cookbook-memory",
+          "events": 812,
+          "daydream_events": 3103,
+          "recall_events": 16,
+          "recall_with_hits": 15,
+          "recall_zero_hits": 1,
+          "recall_errors": 0,
+          "daydream_completed": 321,
+          "daydream_memory_written": 95,
+          "memory_items": 95,
+          "graph_nodes": 95,
+          "markdown_items": 95,
+          "durable_items": 95
+        },
+        "after": {
+          "store_dir": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsympy_sympy_sequence-plugin-dreamed-8c48b84-1/_memory/.cookbook-memory",
+          "events": 914,
+          "daydream_events": 3880,
+          "recall_events": 18,
+          "recall_with_hits": 17,
+          "recall_zero_hits": 1,
+          "recall_errors": 0,
+          "daydream_completed": 349,
+          "daydream_memory_written": 158,
+          "memory_items": 158,
+          "graph_nodes": 158,
+          "markdown_items": 158,
+          "durable_items": 158
+        },
+        "delta": {
+          "events": 102,
+          "daydream_events": 777,
+          "recall_events": 2,
+          "recall_with_hits": 2,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 28,
+          "daydream_memory_written": 63,
+          "memory_items": 63,
+          "graph_nodes": 63,
+          "markdown_items": 63,
+          "durable_items": 63
+        }
+      },
+      "warnings": []
+    }
+  ]
+}
