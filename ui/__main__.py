@@ -31,6 +31,13 @@ except ImportError:  # pragma: no cover
     import fixtures                          # type: ignore
 
 
+# Launcher's bound on the eager substrate open. Covers a cold Voyage-backed
+# accuracy-profile open on a typical pipeline substrate; longer-running opens
+# can still be triggered via the inspector's `Browse…` / Load buttons after
+# the page has loaded (the in-UI flow has no timeout).
+_OPEN_TIMEOUT_S = 30.0
+
+
 def _find_repo_root(start: Path) -> Path | None:
     """Walk up from ``start`` to the first ancestor containing a ``results/`` directory."""
     for d in (start, *start.parents):
@@ -155,15 +162,22 @@ def main(argv: list[str] | None = None) -> int:
         kwargs = {}
         if args.margin_threshold is not None:
             kwargs["margin_threshold"] = args.margin_threshold
-        # Bounded open: auto-discovery may pick a substrate whose memory.db is locked
-        # by an in-flight bench writer, which would otherwise hang the launcher. A
-        # 3s ceiling is plenty for any healthy store and lets us fail open to an
-        # empty inspector that the user can still populate via the in-UI picker.
-        substrate = _open_substrate_with_timeout(substrate_path, args.profile, kwargs, timeout_s=3.0)
+        # Bounded open. Two failure shapes this needs to cover:
+        #   (a) the substrate's memory.db is locked by an in-flight bench writer
+        #       (fails fast, no need to wait long), and
+        #   (b) a cold Voyage-backed open on the accuracy profile, where the
+        #       vector index rebuild + per-memory embedding lookups can take
+        #       10-20s on a 50-100 memory store.
+        # The previous 3s ceiling was tuned for (a) and silently failed (b),
+        # leaving the inspector empty even though the store was healthy. 30s
+        # comfortably covers (b) and still bounds a truly stuck open.
+        substrate = _open_substrate_with_timeout(
+            substrate_path, args.profile, kwargs, timeout_s=_OPEN_TIMEOUT_S,
+        )
         if substrate is None:
-            print(f"[warn] could not open substrate at {substrate_path} within 3s; "
-                  f"inspector will start empty (use the inspector picker to load one).",
-                  file=sys.stderr)
+            print(f"[warn] could not open substrate at {substrate_path} within "
+                  f"{_OPEN_TIMEOUT_S:.0f}s; inspector will start empty (use the "
+                  f"inspector picker to load it manually).", file=sys.stderr)
 
     # ---- results root (monitor) -------------------------------------------
     results_root = _resolve_results_root(args.results_root)

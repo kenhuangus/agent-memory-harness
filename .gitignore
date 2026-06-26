@@ -47,6 +47,14 @@ Thumbs.db
 # Daydream sidecar state (per ADR-harness-004)
 *.daydream-state.json
 
+# SQLite runtime temp files. WAL (write-ahead log) + SHM (shared memory) are
+# transient artifacts SQLite creates beside any *.db opened in WAL mode — they
+# get created/recreated every time `make ui` or a benchmark reader touches a
+# committed store, then dirty `git status` after the connection closes. The
+# .db itself is the real data; these companions are not.
+*.db-wal
+*.db-shm
+
 # VISTA seed live-run sandbox + scratch (not source)
 eval/.claude-sandbox-vcs/
 eval/projects/

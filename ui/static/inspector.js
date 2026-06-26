@@ -107,6 +107,13 @@ function renderSummary(s) {
   ];
   if (s.intent_mismatch_count) bits.push(el("span", { class: "pill warn" }, `intent-mismatch ${s.intent_mismatch_count}`));
   for (const w of s.warnings || []) bits.push(el("span", { class: "pill warn" }, "⚠ " + w));
+  // Loud signal when the loaded path has no cookbook-memory backends. Without
+  // this, an all-absent load reads identically to a healthy 0-memory store.
+  const allAbsent = BK.every(([n]) => s.backend_status[n] === "absent");
+  if (allAbsent) {
+    bits.push(el("span", { class: "pill warn" },
+      "⚠ no backends found at this path — try the .../_memory subdir"));
+  }
   const box = $("#summary");
   box.textContent = "";
   bits.forEach((b) => box.append(b));
@@ -131,13 +138,20 @@ async function pickStore(btn) {
 
 // Change the active substrate directory live (no inspector restart). POSTs the new dir,
 // then refreshes summary + memories + the Browse/Routing views from the new store.
+//
+// Opens can take 10-20s on a cold Voyage-backed accuracy profile (the server's
+// `/api/reopen` rebuilds the vector index synchronously), so the picker buttons
+// are disabled and a clear "loading…" pill replaces the warning chip while
+// reopen is in flight — no more deceptive "is it hung?" UX cliff.
 async function reopenStore(store) {
   const dir = (store || "").trim();
   if (!dir) { toast("enter a store directory", true); return; }
+  setReopenPending(dir);
   let summary;
   try {
     summary = await postJSON("/api/reopen", { store: dir });
   } catch (e) {
+    setReopenPending(null);
     toast("could not open store: " + e.message, true);
     return;
   }
@@ -155,6 +169,26 @@ async function reopenStore(store) {
   $("#probe-decision").textContent = "";    // clear stale probe results
   $("#probe-columns").textContent = "";
   toast("loaded " + SUMMARY.store_path);
+}
+
+// Visual feedback while `/api/reopen` is in flight. Disables every store-input/
+// button in the summary strip and adds a "loading…" pill so the user can see
+// the request is working — a Voyage-backed cold open can take ~15s.
+function setReopenPending(dir) {
+  const box = $("#summary");
+  const inputs  = box.querySelectorAll("input, button");
+  inputs.forEach((el) => { el.disabled = !!dir; });
+  let pill = box.querySelector(".pill.loading");
+  if (dir) {
+    if (!pill) {
+      pill = el("span", { class: "pill loading" }, "loading " + dir + " …");
+      box.append(pill);
+    } else {
+      pill.textContent = "loading " + dir + " …";
+    }
+  } else if (pill) {
+    pill.remove();
+  }
 }
 
 // ---- score bars (shared by routing + probe decision) ----------------------
