@@ -1168,3 +1168,111 @@ def test_worker_dream_loop_routes_reads_through_iter_pages(memory_store_dir: Pat
         f"`dream()` should call store.iter_pages exactly once per run "
         f"(today's worker materializes all items); got {iter_call_count[0]}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# §M — ADR-dreaming-028 §2 `_neighborhood_for` helper
+# --------------------------------------------------------------------------- #
+
+def test_neighborhood_returns_pivot_first_then_search_results() -> None:
+    """ADR-028 §2 — the helper always returns the pivot item as element [0],
+    followed by store.search results in store-ranked order."""
+    from memeval.dreaming.worker import _neighborhood_for
+    from memeval.schema import RetrievedItem
+
+    pivot = MemoryItem(item_id="pivot", content="alpha bug fix", timestamp=_FIXED_NOW)
+    n1 = MemoryItem(item_id="n1", content="related-1", timestamp=_FIXED_NOW)
+    n2 = MemoryItem(item_id="n2", content="related-2", timestamp=_FIXED_NOW)
+
+    class _StubStore(_DeleteAwareStore):
+        def search(self, query, *, k=5, as_of=None, **kwargs):  # type: ignore[override]
+            return [RetrievedItem(item=n1, score=0.9, rank=0),
+                    RetrievedItem(item=n2, score=0.7, rank=1)]
+
+    result = _neighborhood_for(_StubStore(), pivot, k=10)
+    assert result[0].item_id == "pivot"
+    assert [r.item_id for r in result[1:]] == ["n1", "n2"]
+
+
+def test_neighborhood_filters_pivot_from_search_hits() -> None:
+    """ADR-028 §2 — some backends return the query item itself as the top
+    search hit (semantic backends do this when content is identical to query).
+    The helper MUST de-duplicate so the pivot doesn't appear twice."""
+    from memeval.dreaming.worker import _neighborhood_for
+    from memeval.schema import RetrievedItem
+
+    pivot = MemoryItem(item_id="pivot", content="x", timestamp=_FIXED_NOW)
+    other = MemoryItem(item_id="other", content="y", timestamp=_FIXED_NOW)
+
+    class _SelfReturningStore(_DeleteAwareStore):
+        def search(self, query, *, k=5, as_of=None, **kwargs):  # type: ignore[override]
+            return [RetrievedItem(item=pivot, score=1.0, rank=0),
+                    RetrievedItem(item=other, score=0.5, rank=1)]
+
+    result = _neighborhood_for(_SelfReturningStore(), pivot)
+    assert [r.item_id for r in result] == ["pivot", "other"], (
+        "pivot must appear exactly once, as element [0]"
+    )
+
+
+def test_neighborhood_threads_k_kwarg_to_store_search() -> None:
+    """ADR-028 §2 — the `k` arg passes through to `store.search(k=...)` so a
+    caller asking for k=20 doesn't get silently clipped to 10."""
+    from memeval.dreaming.worker import _neighborhood_for
+
+    captured_ks: list[int] = []
+
+    class _CapturingStore(_DeleteAwareStore):
+        def search(self, query, *, k=5, as_of=None, **kwargs):  # type: ignore[override]
+            captured_ks.append(k)
+            return []
+
+    pivot = MemoryItem(item_id="p", content="x", timestamp=_FIXED_NOW)
+    _neighborhood_for(_CapturingStore(), pivot, k=20)
+    assert captured_ks == [20]
+
+
+def test_neighborhood_default_k_is_used_when_unspecified() -> None:
+    """ADR-028 §2 — the module-level `_DEFAULT_NEIGHBORHOOD_K` (10 per the
+    ADR's Mem0 reference design) is threaded through when callers don't
+    specify."""
+    from memeval.dreaming.worker import _DEFAULT_NEIGHBORHOOD_K, _neighborhood_for
+
+    captured: list[int] = []
+
+    class _CapturingStore(_DeleteAwareStore):
+        def search(self, query, *, k=5, as_of=None, **kwargs):  # type: ignore[override]
+            captured.append(k)
+            return []
+
+    _neighborhood_for(_CapturingStore(), MemoryItem(item_id="p", content="x", timestamp=_FIXED_NOW))
+    assert captured == [_DEFAULT_NEIGHBORHOOD_K]
+
+
+def test_neighborhood_empty_search_returns_pivot_alone() -> None:
+    """ADR-028 §2 — backends with no matches return the pivot alone. Callers
+    detect a thin neighborhood by `len(result) == 1` and can skip per-item
+    consolidation for that pivot."""
+    from memeval.dreaming.worker import _neighborhood_for
+
+    class _EmptyStore(_DeleteAwareStore):
+        def search(self, query, *, k=5, as_of=None, **kwargs):  # type: ignore[override]
+            return []
+
+    pivot = MemoryItem(item_id="p", content="x", timestamp=_FIXED_NOW)
+    assert _neighborhood_for(_EmptyStore(), pivot) == [pivot]
+
+
+def test_neighborhood_search_failure_fails_open_to_pivot_alone() -> None:
+    """ADR-028 §2 + ADR-harness-006 — a search backend that raises (e.g.,
+    missing Voyage API key on the accuracy profile) MUST NOT crash the
+    consolidation pass. The caller gets the pivot alone — same as if the
+    backend had returned no neighbors."""
+    from memeval.dreaming.worker import _neighborhood_for
+
+    class _FailingStore(_DeleteAwareStore):
+        def search(self, query, *, k=5, as_of=None, **kwargs):  # type: ignore[override]
+            raise RuntimeError("Voyage API error (HTTP 429)")
+
+    pivot = MemoryItem(item_id="p", content="x", timestamp=_FIXED_NOW)
+    assert _neighborhood_for(_FailingStore(), pivot) == [pivot]
