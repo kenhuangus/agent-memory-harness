@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SWE-Bench-CL Architecture · AI Agent Memory Harness</title>
+<meta name="description" content="The SWE-Bench-CL continual-learning CODE benchmark architecture: ordered per-repo sequences driven through the ClaudeCodeAgent, patch-apply + test-run grading, the single-stage memory pipeline (base · plugin-blank · plugin-accum · plugin-dreamed · plugin-primed) with --source-memory seeding, and the native CL metrics (forgetting, BWT, FWT, AULC, plasticity, stability).">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+<link rel="icon" type="image/svg+xml" href="assets/img/logo.svg">
+<link rel="icon" type="image/png" sizes="256x256" href="assets/img/favicon.png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<meta property="og:title" content="SWE-Bench-CL Architecture — AI Agent Memory Harness">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://kenhuangus.github.io/agent-memory-harness/assets/img/social-preview.png">
+<meta name="twitter:card" content="summary_large_image">
+<script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+<!-- NAV -->
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html"><img class="mark" src="assets/img/logo.svg" alt="Cookbook Memory" width="30" height="30"><span>Memory Harness<small>Cookbook Memory · persistent memory for coding agents</small></span></a>
+    <button class="nav-toggle" aria-label="Toggle navigation">☰</button>
+    <nav class="nav-links">
+      <a href="index.html">Overview</a>
+      <a href="plan.html">Plan</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="benchmarks.html">Benchmarks</a>
+      <a href="implementation.html">Implementation</a>
+      <a href="results.html">Results</a>
+      <a href="collaborate.html">Collaborate</a>
+      <a class="nav-cta" href="https://github.com/kenhuangus/agent-memory-harness" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<section class="page-head">
+  <div class="wrap">
+    <div class="crumb"><a href="index.html">Overview</a> / <a href="benchmarks.html">Benchmarks</a> / SWE-Bench-CL Architecture</div>
+    <h1>SWE-Bench-CL Architecture</h1>
+    <p class="lead">SWE-Bench-CL is the project's primary <strong>CODE</strong> benchmark (alongside VISTA). It reorganizes
+      SWE-bench Verified into <strong>8 per-repo sequences (273 tasks)</strong> and scores how a coding agent
+      <em>learns, retains, and transfers</em> across the strictly-ordered tasks of each sequence. The harness drives a
+      real <code>ClaudeCodeAgent</code> task-by-task, grades each patch by <strong>applying it and running the gold
+      tests</strong>, and — across a sequence — lets memory accumulate so later tasks benefit (plasticity) without
+      regressing earlier ones (stability / forgetting). Keith Mazanec's single-stage pipeline (PR #178) selects which
+      memory substrate each run starts from, so the stages compose across separate invocations through a persistent
+      store rather than within one run.</p>
+  </div>
+</section>
+
+<!-- DIAGRAM -->
+<section class="section">
+  <div class="wrap">
+    <div class="card" style="padding:18px;background:var(--bg-elev)">
+      <svg viewBox="0 0 1120 940" xmlns="http://www.w3.org/2000/svg" font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" role="img" aria-label="SWE-Bench-CL continual-learning benchmark architecture and data flow">
+        <defs>
+          <linearGradient id="cl-agent" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6366f1"/><stop offset="1" stop-color="#22d3ee"/></linearGradient>
+          <linearGradient id="cl-seq" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#1b2433"/><stop offset="1" stop-color="#243044"/></linearGradient>
+          <linearGradient id="cl-mem" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a855f7"/><stop offset="1" stop-color="#ec4899"/></linearGradient>
+          <marker id="cl-arr" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6d7e95"/></marker>
+          <marker id="cl-arr-m" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#c084fc"/></marker>
+          <marker id="cl-arr-t" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#2dd4bf"/></marker>
+        </defs>
+
+        <style>
+          .lbl{fill:#c7d2e1;font-size:13px;}
+          .lbl-sm{fill:#8aa0b8;font-size:11px;}
+          .lbl-xs{fill:#7d8ea3;font-size:10px;}
+          .box-t{fill:#eaf0f7;font-size:14px;font-weight:700;}
+          .box-s{fill:#aab8c9;font-size:11px;}
+          .white{fill:#ffffff;font-weight:700;font-size:15px;}
+          .whitesub{fill:#e8eefc;font-size:11px;}
+          .flow{stroke:#6d7e95;stroke-width:1.6;fill:none;}
+          .flow-m{stroke:#c084fc;stroke-width:1.6;fill:none;stroke-dasharray:5 4;}
+          .flow-t{stroke:#2dd4bf;stroke-width:1.6;fill:none;}
+        </style>
+
+        <!-- ============ 1. SEQUENCE (ordered tasks) ============ -->
+        <rect x="30" y="30" width="1060" height="120" rx="14" fill="url(#cl-seq)" stroke="#33415a"/>
+        <text x="50" y="58" class="box-t">① SWE-Bench-CL sequence — ordered per-repo task chain (group_id, strict Task.order)</text>
+        <text x="50" y="76" class="box-s">8 sequences · 273 tasks · e.g. django · sympy · sphinx · matplotlib · scikit-learn · astropy · xarray · pytest</text>
+
+        <!-- task chain -->
+        <g>
+          <rect x="60"  y="92" width="92" height="44" rx="8" fill="#202b3d" stroke="#3a4a66"/><text x="106" y="112" text-anchor="middle" class="lbl">task t₁</text><text x="106" y="127" text-anchor="middle" class="lbl-xs">order 1</text>
+          <rect x="186" y="92" width="92" height="44" rx="8" fill="#202b3d" stroke="#3a4a66"/><text x="232" y="112" text-anchor="middle" class="lbl">task t₂</text><text x="232" y="127" text-anchor="middle" class="lbl-xs">order 2</text>
+          <rect x="312" y="92" width="92" height="44" rx="8" fill="#202b3d" stroke="#3a4a66"/><text x="358" y="112" text-anchor="middle" class="lbl">task t₃</text><text x="358" y="127" text-anchor="middle" class="lbl-xs">order 3</text>
+          <text x="455" y="118" text-anchor="middle" class="lbl">· · ·</text>
+          <rect x="510" y="92" width="92" height="44" rx="8" fill="#202b3d" stroke="#3a4a66"/><text x="556" y="112" text-anchor="middle" class="lbl">task t_N</text><text x="556" y="127" text-anchor="middle" class="lbl-xs">order N</text>
+          <path class="flow" d="M152,114 L184,114" marker-end="url(#cl-arr)"/>
+          <path class="flow" d="M278,114 L310,114" marker-end="url(#cl-arr)"/>
+          <path class="flow" d="M404,114 L432,114" marker-end="url(#cl-arr)"/>
+          <path class="flow" d="M480,114 L508,114" marker-end="url(#cl-arr)"/>
+        </g>
+        <text x="690" y="108" class="lbl-sm">each task = one SWE-bench Verified instance</text>
+        <text x="690" y="124" class="lbl-sm">(repo · base commit · issue · gold patch · gold test_patch)</text>
+
+        <!-- arrow down into per-task loop -->
+        <path class="flow" d="M556,150 L556,182" marker-end="url(#cl-arr)"/>
+        <text x="566" y="172" class="lbl-sm">for each task, in order →</text>
+
+        <!-- ============ 2. PER-TASK LOOP ============ -->
+        <rect x="60" y="190" width="690" height="430" rx="14" fill="#161d29" stroke="#2c3852"/>
+        <text x="80" y="218" class="box-t">② Per-task execution loop</text>
+
+        <!-- ClaudeCodeAgent -->
+        <rect x="90" y="238" width="300" height="118" rx="12" fill="url(#cl-agent)"/>
+        <text x="240" y="266" text-anchor="middle" class="white">ClaudeCodeAgent</text>
+        <text x="240" y="286" text-anchor="middle" class="whitesub">runs the `claude` CLI in a sandboxed config dir</text>
+        <text x="240" y="304" text-anchor="middle" class="whitesub">model: haiku-4-5 / sonnet-4-6 / opus-4-8</text>
+        <text x="240" y="322" text-anchor="middle" class="whitesub">reads the repo, edits files → produces a patch</text>
+        <text x="240" y="340" text-anchor="middle" class="whitesub">code_mode: agentic (default) · blind</text>
+
+        <!-- cookbook memory recall (plugin-* only) -->
+        <rect x="420" y="238" width="300" height="118" rx="12" fill="#241733" stroke="#7c3aed"/>
+        <text x="570" y="264" text-anchor="middle" class="white" style="fill:#e9d5ff">cookbook-memory recall</text>
+        <text x="570" y="283" text-anchor="middle" class="whitesub" style="fill:#d8b4fe">plugin-* stages only (mode = plugin-real)</text>
+        <text x="570" y="300" text-anchor="middle" class="lbl-sm">BEFORE editing, agent calls the MCP</text>
+        <text x="570" y="315" text-anchor="middle" class="lbl-sm">`recall` tool with the issue text →</text>
+        <text x="570" y="330" text-anchor="middle" class="lbl-sm">retrieves prior fixes for this repo</text>
+        <text x="570" y="346" text-anchor="middle" class="lbl-xs">base stage has no memory (mode = off)</text>
+        <path class="flow-m" d="M420,297 L392,297" marker-end="url(#cl-arr-m)"/>
+
+        <!-- patch -->
+        <rect x="90" y="384" width="180" height="64" rx="10" fill="#202b3d" stroke="#3a4a66"/>
+        <text x="180" y="410" text-anchor="middle" class="box-t" style="font-size:13px">patch</text>
+        <text x="180" y="430" text-anchor="middle" class="lbl-sm">model_patch (unified diff)</text>
+        <path class="flow" d="M240,356 L180,382" marker-end="url(#cl-arr)"/>
+
+        <!-- grader -->
+        <rect x="300" y="372" width="420" height="120" rx="12" fill="#11261f" stroke="#1f7a52"/>
+        <text x="320" y="398" class="box-t" style="fill:#d1fae5">③ Grader — apply + test (real resolve rate)</text>
+        <text x="320" y="418" class="lbl-sm">SwebenchHostGrader (default `swebench`, Docker-free) ·</text>
+        <text x="320" y="433" class="lbl-sm">LocalExecGrader (`local`/`auto`, host venv) · overlap · none</text>
+        <text x="320" y="453" class="lbl-sm">1 · revert any agent edits to test files</text>
+        <text x="320" y="468" class="lbl-sm">2 · apply model_patch  3 · apply gold test_patch  4 · run tests</text>
+        <text x="320" y="485" class="lbl-xs">shared venv prewarmed once per sequence (one repo@version)</text>
+        <path class="flow" d="M270,416 L298,420" marker-end="url(#cl-arr)"/>
+
+        <!-- resolved? -->
+        <path d="M405,520 L470,556 L405,592 L340,556 Z" fill="#1a2433" stroke="#3a4a66"/>
+        <text x="405" y="552" text-anchor="middle" class="lbl">resolved?</text>
+        <text x="405" y="568" text-anchor="middle" class="lbl-xs">pass / fail</text>
+        <path class="flow" d="M510,492 L430,520" marker-end="url(#cl-arr)"/>
+
+        <!-- next task / write-back -->
+        <text x="500" y="548" class="lbl-sm">→ next task in sequence</text>
+        <path class="flow" d="M470,556 L640,556 L640,200 L582,200" marker-end="url(#cl-arr)"/>
+        <text x="650" y="380" class="lbl-xs" transform="rotate(90 650 380)">advance Task.order</text>
+
+        <!-- write/carry to memory (daydream between tasks) -->
+        <rect x="90" y="520" width="240" height="86" rx="10" fill="#241733" stroke="#7c3aed"/>
+        <text x="210" y="544" text-anchor="middle" class="white" style="fill:#e9d5ff;font-size:13px">write / carry → memory</text>
+        <text x="210" y="563" text-anchor="middle" class="lbl-sm">plugin Stop hook fires the</text>
+        <text x="210" y="578" text-anchor="middle" class="lbl-sm">Daydream pass between tasks;</text>
+        <text x="210" y="593" text-anchor="middle" class="lbl-sm">extracts what to remember</text>
+        <path class="flow-m" d="M340,556 L332,560" marker-end="url(#cl-arr-m)"/>
+
+        <!-- ============ 4. MEMORY SUBSTRATE ============ -->
+        <rect x="790" y="190" width="300" height="240" rx="14" fill="url(#cl-mem)"/>
+        <text x="940" y="220" text-anchor="middle" class="white">④ Persistent memory substrate</text>
+        <text x="940" y="240" text-anchor="middle" class="whitesub">results/v{version}/_memory/.cookbook-memory</text>
+        <text x="810" y="266" class="whitesub">· Markdown store</text>
+        <text x="810" y="285" class="whitesub">· SQLite-vector (memory.db · items)</text>
+        <text x="810" y="304" class="whitesub">· Graph (graph.db · nodes)</text>
+        <text x="810" y="330" class="whitesub" style="font-weight:700">Carries across the whole sequence:</text>
+        <text x="810" y="349" class="whitesub">recall reads it before each task;</text>
+        <text x="810" y="368" class="whitesub">daydream writes to it after each task.</text>
+        <text x="810" y="396" class="whitesub" style="font-style:italic">Dream (night) pass: TTL prune, dedup,</text>
+        <text x="810" y="413" class="whitesub" style="font-style:italic">contradiction + governance consolidation.</text>
+
+        <!-- recall reads / daydream writes arrows -->
+        <path class="flow-m" d="M720,290 L788,260" marker-end="url(#cl-arr-m)"/>
+        <text x="724" y="246" class="lbl-xs" style="fill:#c084fc">recall ←</text>
+        <path class="flow-m" d="M330,548 L788,400" marker-end="url(#cl-arr-m)"/>
+        <text x="600" y="470" class="lbl-xs" style="fill:#c084fc">daydream writes →</text>
+
+        <!-- ============ 5. NATIVE CL METRICS ============ -->
+        <rect x="60" y="654" width="1030" height="246" rx="14" fill="#10211d" stroke="#1f7a52"/>
+        <text x="80" y="682" class="box-t" style="fill:#d1fae5">⑤ Native continual-learning metrics — SWEBenchCLNativeEvaluator (arXiv:2507.00014)</text>
+        <text x="80" y="702" class="lbl-sm">Three result vectors per sequence: initial_pass a(i,i) [mem-ON, first solve] · final_state a(N,j) [mem-ON end-of-sequence re-test] · mem-OFF zero-shot baseline</text>
+
+        <g>
+          <rect x="80"  y="722" width="150" height="70" rx="9" fill="#16241f" stroke="#2f8a5f"/><text x="155" y="748" text-anchor="middle" class="lbl" style="fill:#a7f3d0">Forgetting (F)</text><text x="155" y="766" text-anchor="middle" class="lbl-xs">Σ initial−final / (N−1)</text><text x="155" y="781" text-anchor="middle" class="lbl-xs">lower is better</text>
+          <rect x="244" y="722" width="150" height="70" rx="9" fill="#16241f" stroke="#2f8a5f"/><text x="319" y="748" text-anchor="middle" class="lbl" style="fill:#a7f3d0">BWT</text><text x="319" y="766" text-anchor="middle" class="lbl-xs">backward transfer</text><text x="319" y="781" text-anchor="middle" class="lbl-xs">= −F</text>
+          <rect x="408" y="722" width="150" height="70" rx="9" fill="#16241f" stroke="#2f8a5f"/><text x="483" y="748" text-anchor="middle" class="lbl" style="fill:#a7f3d0">FWT</text><text x="483" y="766" text-anchor="middle" class="lbl-xs">forward transfer</text><text x="483" y="781" text-anchor="middle" class="lbl-xs">mem-ON − mem-OFF</text>
+          <rect x="572" y="722" width="150" height="70" rx="9" fill="#16241f" stroke="#2f8a5f"/><text x="647" y="748" text-anchor="middle" class="lbl" style="fill:#a7f3d0">AULC</text><text x="647" y="766" text-anchor="middle" class="lbl-xs">area under</text><text x="647" y="781" text-anchor="middle" class="lbl-xs">learning curve</text>
+          <rect x="736" y="722" width="160" height="70" rx="9" fill="#16241f" stroke="#2f8a5f"/><text x="816" y="748" text-anchor="middle" class="lbl" style="fill:#a7f3d0">CL-Plasticity</text><text x="816" y="766" text-anchor="middle" class="lbl-xs">mean diagonal a(i,i)</text><text x="816" y="781" text-anchor="middle" class="lbl-xs">(learns new tasks)</text>
+          <rect x="910" y="722" width="160" height="70" rx="9" fill="#16241f" stroke="#2f8a5f"/><text x="990" y="748" text-anchor="middle" class="lbl" style="fill:#a7f3d0">CL-Stability</text><text x="990" y="766" text-anchor="middle" class="lbl-xs">= 1 − F</text><text x="990" y="781" text-anchor="middle" class="lbl-xs">(retains old tasks)</text>
+        </g>
+        <text x="80" y="822" class="lbl-sm">ACC = (1/N) Σ final_state · CL-F1 = harmonic mean(plasticity, stability) · CL-Score = ACC − F + FWT + BWT + AULC (all λ = 1.0)</text>
+        <text x="80" y="842" class="lbl-sm">Also: per-difficulty strata (1–4) · memory-ON vs memory-OFF accuracy contrast · tool-use efficiency · snapshot-phase (initial vs final).</text>
+        <text x="80" y="876" class="lbl-xs">Headline numbers macro-average each metric across the 8 sequences. The native evaluator runs its own mem-on / re-test / mem-off A/B and assumes a per-sequence reset;</text>
+        <text x="80" y="890" class="lbl-xs">the pipeline's shared accumulating substrate deliberately breaks that, so its native CL report is captured as comparative, not paper-faithful (resolve-rate accuracy is primary).</text>
+
+        <!-- arrow loop -> metrics -->
+        <path class="flow-t" d="M405,592 L405,652" marker-end="url(#cl-arr-t)"/>
+        <text x="415" y="630" class="lbl-sm" style="fill:#2dd4bf">per-task resolved? → CL vectors</text>
+      </svg>
+    </div>
+
+    <!-- LEGEND -->
+    <div class="legend" style="margin-top:16px;display:flex;flex-wrap:wrap;gap:18px;align-items:center;">
+      <span class="lead" style="margin:0;font-size:.95rem"><strong>Legend:</strong></span>
+      <span style="display:inline-flex;align-items:center;gap:8px"><svg width="26" height="10"><line x1="0" y1="5" x2="26" y2="5" stroke="#6d7e95" stroke-width="2"/></svg> control / data flow</span>
+      <span style="display:inline-flex;align-items:center;gap:8px"><svg width="26" height="10"><line x1="0" y1="5" x2="26" y2="5" stroke="#c084fc" stroke-width="2" stroke-dasharray="5 4"/></svg> memory read/write (plugin-* only)</span>
+      <span style="display:inline-flex;align-items:center;gap:8px"><svg width="26" height="10"><line x1="0" y1="5" x2="26" y2="5" stroke="#2dd4bf" stroke-width="2"/></svg> per-task result → CL metrics</span>
+    </div>
+  </div>
+</section>
+
+<!-- STAGE MATRIX -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Keith Mazanec's pipeline · PR #178</div>
+      <h2>Stage matrix &amp; memory-source selection</h2>
+      <p class="lead">Each pipeline run drives <strong>one stage</strong> over <strong>one sequence</strong> against the
+        persistent per-version substrate. Stages compose across separate invocations through that store, rather than in
+        one mega-run. <code>plugin-accum</code> and <code>plugin-dreamed</code> copy-seed their fresh namespace from a
+        prior run's <code>_memory/</code> via <code>--source-memory</code> (auto-discovering the newest matching run
+        when omitted); the others start blank or carry nothing.</p>
+    </div>
+
+    <div class="card" style="padding:0;overflow:auto">
+      <table class="bench-table" style="width:100%;border-collapse:collapse;font-size:.92rem">
+        <thead>
+          <tr style="text-align:left;border-bottom:1px solid var(--line)">
+            <th style="padding:12px 14px">Stage</th>
+            <th style="padding:12px 14px">memory_mode</th>
+            <th style="padding:12px 14px">Starts from</th>
+            <th style="padding:12px 14px">What it measures</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom:1px solid var(--line)">
+            <td style="padding:12px 14px"><code>base</code></td>
+            <td style="padding:12px 14px"><code>off</code></td>
+            <td style="padding:12px 14px">no memory</td>
+            <td style="padding:12px 14px">the memoryless baseline (control)</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--line)">
+            <td style="padding:12px 14px"><code>builtin</code></td>
+            <td style="padding:12px 14px"><code>builtin</code></td>
+            <td style="padding:12px 14px">Claude Code's native file memory</td>
+            <td style="padding:12px 14px">native session memory over prior runs</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--line)">
+            <td style="padding:12px 14px"><code>plugin-blank</code></td>
+            <td style="padding:12px 14px"><code>plugin-real</code></td>
+            <td style="padding:12px 14px"><strong>blank</strong> shared substrate</td>
+            <td style="padding:12px 14px">memory built up within this sequence only</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--line)">
+            <td style="padding:12px 14px"><code>plugin-accum</code> <span class="pill p1" style="font-size:.7rem">seeded</span></td>
+            <td style="padding:12px 14px"><code>plugin-real</code></td>
+            <td style="padding:12px 14px"><strong>copy-seeded</strong> from a prior run (<code>--source-memory</code>)</td>
+            <td style="padding:12px 14px">accumulation — does carried memory help?</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--line)">
+            <td style="padding:12px 14px"><code>plugin-dreamed</code> <span class="pill p1" style="font-size:.7rem">seeded</span></td>
+            <td style="padding:12px 14px"><code>plugin-real</code></td>
+            <td style="padding:12px 14px"><strong>copy-seeded</strong>, then <strong>one dream pass</strong> before eval</td>
+            <td style="padding:12px 14px">does consolidating the carried memory help?</td>
+          </tr>
+          <tr>
+            <td style="padding:12px 14px"><code>plugin-primed</code></td>
+            <td style="padding:12px 14px"><code>plugin-real</code></td>
+            <td style="padding:12px 14px">shared substrate (natural recall)</td>
+            <td style="padding:12px 14px">natural-recall prompt + primed stream-json invocation</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="spacer"></div>
+    <div class="grid grid-2">
+      <div class="card bl4 fade-up">
+        <h3><span class="ic bg4 a4">🌱</span> Copy-seeding via <code>--source-memory</code></h3>
+        <p>Only <code>plugin-accum</code> and <code>plugin-dreamed</code> are in <code>_SOURCE_MEMORY_STAGES</code>.
+          <code>_seed_source_memory</code> resolves the source (a path to <code>_memory</code> / <code>.cookbook-memory</code>,
+          or a results version slug), checks it has durable memories, then <code>shutil.copytree</code>s it into this
+          run's own versioned namespace before evaluation. When <code>--source-memory</code> is omitted,
+          <code>_memory_source_candidates</code> auto-discovers the newest prior run for the same benchmark+sequence
+          that has durable items. The run must write to a <em>different</em> version than its source.</p>
+      </div>
+      <div class="card bl3 fade-up">
+        <h3><span class="ic bg3 a3">♻️</span> In-place vs seeded</h3>
+        <p><code>plugin-blank</code> starts from a blank shared substrate and only builds memory <em>within</em> the
+          sequence it runs. The seeded stages instead inherit a prior run's experience, so they isolate the value of
+          <strong>carrying</strong> (accum) and <strong>consolidating</strong> (dreamed) memory across runs. The
+          memoryless <code>base</code> and native-builtin <code>builtin</code> stages provide the controls the lift is
+          measured against.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- OVER-TIME / CL ANGLE -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Why continual learning</div>
+      <h2>Memory accumulates over the sequence</h2>
+      <p class="lead">A sequence is a strictly-ordered chain of real coding tasks from one repo. As the agent solves
+        each task, the daydream pass writes what it learned to the shared substrate; the next task's recall reads it
+        back. The benchmark scores whether later tasks benefit (<strong>plasticity / FWT</strong>) without regressing
+        the earlier ones (<strong>stability / forgetting / BWT</strong>) — the over-time learning signal that a single
+        independent-task benchmark cannot capture.</p>
+    </div>
+    <p class="center"><a class="btn btn-primary" href="benchmarks.html#swe-bench-cl">SWE-Bench-CL on the benchmarks page →</a>
+      &nbsp; <a class="btn btn-ghost" href="architecture.html">General architecture →</a></p>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="wrap footer-grid">
+    <div>
+      <a class="brand" href="index.html"><img class="mark" src="assets/img/logo.svg" alt="Cookbook Memory" width="30" height="30"><span>Memory Harness</span></a>
+      <p style="margin-top:14px;max-width:34ch;">Persistent, self-curating memory for long-running coding agents.
+        Built to be model-agnostic and benchmark-honest.</p>
+    </div>
+    <div class="cols">
+      <div class="col">
+        <h5>Project</h5>
+        <a href="index.html">Overview</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="architecture-swebench-cl.html">SWE-Bench-CL architecture</a>
+      </div>
+      <div class="col">
+        <h5>Reference</h5>
+        <a href="benchmarks.html">Benchmarks</a>
+        <a href="implementation.html">Implementation</a>
+        <a href="results.html">Results</a>
+      </div>
+    </div>
+  </div>
+  <div class="wrap" style="margin-top:30px;">
+    <span class="note">© <span data-year>2026</span> AI Agent Memory Harness project. Built for publication on GitHub Pages.</span>
+  </div>
+</footer>
+
+<script src="assets/js/main.js"></script>
+</body>
+</html>
