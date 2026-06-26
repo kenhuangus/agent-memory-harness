@@ -1,0 +1,1 @@
+{"cursor": 284181, "last_summary": "The test `test_combine_by_coords_non_monotonic_bystander_coord` in xarray/tests/test_combine.py validates that combining datasets with identical non-monotonic coordinates does not raise a ValueError", "recent_memory_ids": ["mem_3155ae45", "mem_74c1b849"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

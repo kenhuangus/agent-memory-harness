@@ -1,0 +1,1 @@
+{"cursor": 33626, "last_summary": "xarray's `where()` function drops attributes from DataArray objects when used with scalar values; need to preserve `keep_attrs` parameter through the call chain", "recent_memory_ids": ["mem_9b722a27"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
