@@ -68,6 +68,25 @@ _ROOT_PREINSTALL_SUBSTRINGS = ("sudo", "> /etc", ">/etc", "/etc/", "locale-gen")
 _CONDA_BASE_REPOS = frozenset({"sphinx-doc/sphinx"})
 
 
+def _scm_env(repo: str) -> dict[str, str]:
+    """Environment overlay for projects whose version comes from setuptools-scm.
+
+    The host grader checks out a single commit by SHA. For pytest, that tagless
+    shallow checkout makes setuptools-scm compute ``0.1.dev1+...``. Historical
+    pytest then refuses to run its own tests because ``tox.ini`` requires
+    ``pytest>=2.0`` before collection starts. Pretend a high package version for
+    pytest only; this satisfies the self-version gate without changing the code
+    under test or the SWE-bench selectors.
+    """
+    if (repo or "").strip().lower() != "pytest-dev/pytest":
+        return {}
+    pretend = "9999.0.0"
+    return {
+        "SETUPTOOLS_SCM_PRETEND_VERSION": pretend,
+        "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_PYTEST": pretend,
+    }
+
+
 def _is_root_preinstall(cmd: str) -> bool:
     """True iff ``cmd`` needs root/apt/locale/system paths (skip on host)."""
     s = (cmd or "").strip().lower()
@@ -398,8 +417,10 @@ class SwebenchHostGrader:
 
         # shared=True skips the sequence-invariant install (already done at prewarm); only
         # this checkout's spec-install + editable install run.
+        env_overlay = _scm_env(repo)
         self._install(dest, py, spec, shared=prewarmed,
-                      era_pins=self._era_base_pins(repo, version))
+                      era_pins=self._era_base_pins(repo, version),
+                      env=env_overlay or None)
 
         # Build the official eval command: spec.test_cmd + the test directives. This
         # is EXACTLY how swebench's make_eval_script_list_py composes the command;
@@ -414,6 +435,8 @@ class SwebenchHostGrader:
         # try to EXEC ``PYTHONWARNINGS=...`` as a program (raises -> ungraded).
         # Peel them off into the subprocess ENV, where they belong.
         cmd_env, rest = _split_env_prefix(shlex.split(test_cmd))
+        if env_overlay:
+            cmd_env = {**env_overlay, **cmd_env}
         argv = rest + list(directives)
         ran = self._run(self._with_python(py, argv), dest,
                         env=cmd_env or None)
@@ -651,7 +674,8 @@ class SwebenchHostGrader:
                 if ver is not None and ver < (4, 0) else [])
 
     def _install(self, dest: Any, py: str, spec: dict, *, shared: bool = False,
-                 era_pins: "tuple | list" = ()) -> None:
+                 era_pins: "tuple | list" = (),
+                 env: Optional[dict] = None) -> None:
         """Run the spec's install steps in the venv, best-effort. ROOT/apt
         ``pre_install`` entries are SKIPPED (host can't run them, logged). Failures
         are tolerated — many repos import from source; the test-run step decides
@@ -670,13 +694,15 @@ class SwebenchHostGrader:
         # per-task because it runs against THIS checkout's source.
         install = str(spec.get("install") or "").strip()
         if install:
-            self._run(self._rebind(install, py), dest)
+            self._run(self._rebind(install, py), dest, env=env)
         # Best-effort editable install of the checkout itself (source imports) — per-task.
-        self._run(["uv", "pip", "install", "--python", py, "-e", "."], dest)
+        self._run(["uv", "pip", "install", "--python", py, "-e", "."], dest,
+                  env=env)
         # Era-appropriate base-dep clamp (see _era_base_pins), LAST so it wins over any
         # too-new resolve from the installs above.
         if era_pins:
-            self._run(["uv", "pip", "install", "--python", py, *era_pins], dest)
+            self._run(["uv", "pip", "install", "--python", py, *era_pins], dest,
+                      env=env)
 
     def _install_shared(self, py: str, spec: dict, *, dest: Any = None) -> None:
         """Install the sequence-invariant pieces into the venv (``pre_install`` +

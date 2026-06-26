@@ -145,16 +145,13 @@ def prepare_checkout(
     return dest_path.resolve()
 
 
-#: Paths excluded from the captured PREDICTION diff. The agentic CODE path runs the
-#: plugin-real memory store at ``<checkout>/.cookbook-memory`` (so the plugin's
-#: ``.mcp.json`` ``${CLAUDE_PROJECT_DIR}/.cookbook-memory`` resolves), which leaves an
-#: untracked store dir INSIDE the checkout. ``git add -A`` would stage it, so the diff
-#: would begin with ``diff --git a/.cookbook-memory/.seeded …`` — corrupting the patch
-#: the SWE-bench grader applies (seen on django-10097 / django-10880: accuracy 0.0).
-#: These are git pathspecs (``:(exclude)…``) applied to BOTH the stage and the diff so
-#: tracked AND untracked store content is kept out; real source-file changes are
-#: unaffected.
-_PREDICTION_DIFF_EXCLUDES = (".cookbook-memory",)
+#: Paths excluded from the captured PREDICTION diff. Agentic CODE runs memory
+#: substrates inside the checkout: plugin-real uses ``.cookbook-memory`` and builtin
+#: memory writes ``CLAUDE.md`` plus ``sessions/``. ``git add -A`` would otherwise
+#: stage those memory artifacts and corrupt the SWE-bench patch. These are git
+#: pathspecs (``:(exclude)…``) applied to BOTH the stage and the diff so tracked AND
+#: untracked memory content is kept out; real source-file changes are unaffected.
+_PREDICTION_DIFF_EXCLUDES = (".cookbook-memory", "CLAUDE.md", "sessions")
 
 
 def _exclude_pathspecs() -> list[str]:
