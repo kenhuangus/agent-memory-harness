@@ -15,6 +15,9 @@ is :class:`memeval.harness.InMemoryStore`; the real backends here are:
   over the Neo4j Bolt driver. **Phase A** is a parity FLOOR — ``search`` delegates scoring/BFS/tie-break
   to a transient in-memory ``GraphStore`` for EXACT id+order parity. ``neo4j`` is imported lazily inside
   ``connect()`` only (never at module load); a set ``uri`` with no driver fails loud.
+* :class:`falkor_store.FalkorGraphStore`   — the Redis/openCypher paid-path graph seam. **PR1** is a parity
+  FLOOR — nodes + ``okf_links`` only, with ``search`` delegated to a transient in-memory ``GraphStore``.
+  ``falkordb`` is imported lazily inside ``connect()`` only; a set target with no client fails loud.
 
 Heavy deps are lazy-imported inside the methods that need them, so importing this package stays
 stdlib-only (offline path unaffected). All backends are **implemented** (``write`` / ``get`` /
@@ -26,7 +29,14 @@ from __future__ import annotations
 
 from typing import Any
 
-__all__ = ["MarkdownStore", "SqliteVectorStore", "GraphStore", "Neo4jGraphStore", "Fts5Store"]
+__all__ = [
+    "MarkdownStore",
+    "SqliteVectorStore",
+    "GraphStore",
+    "Neo4jGraphStore",
+    "FalkorGraphStore",
+    "Fts5Store",
+]
 
 
 def __getattr__(name: str) -> Any:  # lazy re-export; keeps package import cheap
@@ -48,4 +58,9 @@ def __getattr__(name: str) -> Any:  # lazy re-export; keeps package import cheap
         # import (offline/CI path unaffected; importing the package never pulls in neo4j).
         from .neo4j_store import Neo4jGraphStore
         return Neo4jGraphStore
+    if name == "FalkorGraphStore":
+        # The Redis/openCypher paid-path seam. Lazy, like Neo4jGraphStore — and falkor_store itself imports
+        # falkordb only inside connect(), so package import never pulls in falkordb/redis.
+        from .falkor_store import FalkorGraphStore
+        return FalkorGraphStore
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
