@@ -36,7 +36,11 @@ swebench = pytest.importorskip(
 from memeval.schema import Benchmark, Task, TaskKind  # noqa: E402
 from memeval.claudecode.checkout import GitResult  # noqa: E402
 from memeval.grader import CmdResult, get_grader  # noqa: E402
-from memeval.grader_swebench import SwebenchHostGrader  # noqa: E402
+from memeval.grader_swebench import (  # noqa: E402
+    SwebenchHostGrader,
+    _scm_env,
+    _split_env_prefix,
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -397,3 +401,52 @@ def test_install_clamps_era_deps_last(tmp_path) -> None:
     g._install(dest, "PY", spec, era_pins=[])
     assert all(c[-2:] != ["setuptools<60", "docutils<0.16"]
                for c in calls if c[:3] == ["uv", "pip", "install"])
+
+
+def test_scm_env_is_scoped_to_pytest() -> None:
+    """pytest's tagless shallow checkout needs a pretend setuptools-scm version;
+    other repos keep the pre-existing empty environment overlay."""
+    env = _scm_env("pytest-dev/pytest")
+    assert env["SETUPTOOLS_SCM_PRETEND_VERSION"] == "9999.0.0"
+    assert env["SETUPTOOLS_SCM_PRETEND_VERSION_FOR_PYTEST"] == "9999.0.0"
+    assert _scm_env("django/django") == {}
+    assert _scm_env("") == {}
+
+
+def test_install_forwards_env_overlay_to_per_task_installs(tmp_path) -> None:
+    """The pytest SCM pretend version must reach both the spec install and editable
+    install; otherwise pytest installs as 0.1.dev1 and its own minversion gate
+    aborts every test command before collection."""
+    calls: list = []
+
+    def fake_runner(args, cwd, env=None):
+        calls.append((list(args), dict(env or {})))
+        return CmdResult(returncode=0)
+
+    g = SwebenchHostGrader(runner=fake_runner)
+    dest = tmp_path / "repo"
+    dest.mkdir()
+    env = _scm_env("pytest-dev/pytest")
+    g._install(dest, "PY", {"install": "python -m pip install -e ."}, env=env)
+
+    per_task = [
+        (args, got_env) for args, got_env in calls
+        if args[:2] == ["PY", "-m"] or args[:3] == ["uv", "pip", "install"]
+    ]
+    assert per_task
+    assert all(
+        got_env.get("SETUPTOOLS_SCM_PRETEND_VERSION_FOR_PYTEST") == "9999.0.0"
+        for _args, got_env in per_task
+    )
+
+
+def test_test_cmd_env_merges_scm_overlay_after_inline_env() -> None:
+    """Inline env from a SWE-bench test command and the pytest SCM overlay compose
+    into the subprocess env used for the test run."""
+    inline, rest = _split_env_prefix(["PYTHONWARNINGS=ignore", "pytest", "-rA"])
+    scm = _scm_env("pytest-dev/pytest")
+    merged = {**scm, **inline}
+
+    assert rest == ["pytest", "-rA"]
+    assert merged["PYTHONWARNINGS"] == "ignore"
+    assert merged["SETUPTOOLS_SCM_PRETEND_VERSION_FOR_PYTEST"] == "9999.0.0"

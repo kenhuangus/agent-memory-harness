@@ -185,11 +185,12 @@ def test_prepare_checkout_and_capture_diff_with_fake_git() -> None:
         assert diff.startswith("diff --git a/orm.py b/orm.py")
 
 
-def test_capture_diff_excludes_plugin_store_dir() -> None:
-    """The plugin-real store dir (.cookbook-memory) lives INSIDE the checkout; it must
+def test_capture_diff_excludes_memory_artifacts() -> None:
+    """Memory artifacts live INSIDE the checkout; they must
     be excluded from BOTH the stage and the diff so the prediction is the clean CODE
-    patch, never ``diff --git a/.cookbook-memory/.seeded ...`` (which corrupts the patch
-    the SWE-bench grader applies — observed as accuracy 0.0 on django-10097/10880)."""
+    patch, never ``diff --git a/.cookbook-memory/.seeded ...`` or builtin
+    ``CLAUDE.md`` / ``sessions`` files (which corrupt the patch the SWE-bench grader
+    applies)."""
     calls: list = []
 
     def _recording_git(args, cwd, *a, **kw) -> GitResult:
@@ -205,9 +206,14 @@ def test_capture_diff_excludes_plugin_store_dir() -> None:
     add_calls = [c for c in calls if c and c[0] == "add"]
     diff_calls = [c for c in calls if c and c[0] == "diff"]
     assert add_calls and diff_calls, calls
-    # Both the stage and the diff carry the :(exclude) pathspec for the store dir.
-    assert any(":(exclude).cookbook-memory" in c for c in add_calls), add_calls
-    assert ":(exclude).cookbook-memory" in diff_calls[0], diff_calls[0]
+    # Both the stage and the diff carry the :(exclude) pathspecs for memory artifacts.
+    for exclude in (
+        ":(exclude).cookbook-memory",
+        ":(exclude)CLAUDE.md",
+        ":(exclude)sessions",
+    ):
+        assert any(exclude in c for c in add_calls), add_calls
+        assert exclude in diff_calls[0], diff_calls[0]
 
 
 # --------------------------------------------------------------------------- #
