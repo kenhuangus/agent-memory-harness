@@ -16,6 +16,7 @@ const el = (tag, attrs = {}, children = []) => {
 };
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const fmtTs = (t) => (t ? new Date(t * 1000).toISOString().slice(0, 10) : "—");
+const fmtSession = (s) => (s ? String(s).slice(0, 8) : "—");
 const BK = [["markdown", "md"], ["vectors", "vec"], ["graph", "graph"]];
 const SHORT = { markdown: "md", vectors: "vec", graph: "graph" };
 const BACKEND_LABEL = { markdown: "markdown", vectors: "sqlite-vector", graph: "graph" };
@@ -240,6 +241,7 @@ function renderBrowse() {
     if (!filter) return true;
     return (
       m.item_id.toLowerCase().includes(filter) ||
+      (m.session_id || "").toLowerCase().includes(filter) ||
       (m.content || "").toLowerCase().includes(filter) ||
       (m.tags || []).join(" ").toLowerCase().includes(filter)
     );
@@ -248,7 +250,7 @@ function renderBrowse() {
   rows.sort((a, b) => {
     let av, bv;
     if (key === "tags") { av = (a.tags || []).join(","); bv = (b.tags || []).join(","); }
-    else { av = a[key]; bv = b[key]; }
+    else { av = a[key] ?? ""; bv = b[key] ?? ""; }
     if (av < bv) return -dir;
     if (av > bv) return dir;
     return 0;
@@ -258,6 +260,7 @@ function renderBrowse() {
   for (const m of rows) {
     const tr = el("tr", { on: { click: () => openDetail(m) } }, [
       el("td", { class: "id" }, m.item_id),
+      el("td", { class: "dim", title: m.session_id || null }, fmtSession(m.session_id)),
       el("td", { class: "content" }, m.snippet),
       el("td", { class: "dim" }, (m.tags || []).map((t) => el("span", { class: "tag" }, t))),
       el("td", { class: "dim" }, fmtTs(m.timestamp)),
@@ -426,6 +429,7 @@ function openDetail(m) {
   add("version", String(m.version));
   add("relevancy", String(m.relevancy));
   add("source", m.source || "—");
+  add("session_id", m.session_id || "—");
   add("backends", BK.filter(([n]) => m.membership[n]).map(([n]) => SHORT[n]).join(", ") || "none");
   if (m.okf && (m.okf.title || m.okf.type || m.okf.resource)) {
     add("okf.title", m.okf.title || "—");

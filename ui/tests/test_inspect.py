@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+from memeval.schema import MemoryItem
+
 from ui import fixtures
 from ui.server import UIHandler, _State
 from ui.substrate import open_substrate, _EmptyStore
@@ -54,6 +56,20 @@ def test_fanout_routed_items_land_in_all_three(seeded):
     m = by_id["retry-max-attempts"]
     assert m["membership"] == {"markdown": True, "vectors": True, "graph": True}
     assert sorted(m["routing"]["actual_landing"]) == ["graph", "markdown", "vectors"]
+
+
+def test_memories_include_session_id(seeded):
+    store, _ = seeded
+    sub = open_substrate(str(store), "fusion")
+    sub.engine.write(MemoryItem(
+        item_id="session-linked-memory",
+        content="The session-linked memory keeps provenance for monitor cross-reference.",
+        session_id="session-abcdef1234567890",
+        source="note",
+        tags=["session"],
+    ))
+    by_id = {m["item_id"]: m for m in sub.memories()}
+    assert by_id["session-linked-memory"]["session_id"] == "session-abcdef1234567890"
 
 
 def test_classify_predictions(seeded):
@@ -354,7 +370,7 @@ def test_resolve_store_root_descends_into_plugin_subdir(tmp_path):
     # and the inspector reads the nested corpus when pointed at the parent
     sub = open_substrate(str(mem), "fusion")
     assert sub.summary()["total_unique"] == 16
-    assert any("nested plugin store dir" in w for w in sub.warnings)
+    assert not any("nested plugin store dir" in w for w in sub.summary()["warnings"])
 
 
 def test_resolve_store_root_direct(tmp_path):
