@@ -11,9 +11,9 @@ Additive, read-only, zero extra dependencies.
 ## Run
 
 ```bash
-./router_ui/run.sh                  # newest pipeline substrate (results/v*/_memory)
-./router_ui/run.sh --seed --open    # synthetic demo corpus (no real run needed) + open browser
-./router_ui/run.sh --store /path/to/_memory
+./ui/run.sh                  # newest pipeline substrate (results/v*/_memory)
+./ui/run.sh --seed --open    # synthetic demo corpus (no real run needed) + open browser
+./ui/run.sh --store /path/to/_memory
 ```
 
 Then open the printed `http://127.0.0.1:8765`.
@@ -41,16 +41,16 @@ elsewhere a Tk dialog) and feeds the chosen path straight into the same live reo
   signals under the default `base_all` policy, where every memory fans out to all three backends).
 - **Query Probe** — a query's routing decision + raw per-backend results (score semantics labeled) +
   the routed engine answer.
-- **Capture as eval case** — appends to `router_ui/captured_cases.jsonl`, feeding the fast unit-eval tier.
+- **Capture as eval case** — appends to `ui/captured_cases.jsonl`, feeding the fast unit-eval tier.
 
 ## How it runs
 
-Run from the repo root. `run.sh` puts the repo root on `PYTHONPATH` (so `router_ui` resolves) and
+Run from the repo root. `run.sh` puts the repo root on `PYTHONPATH` (so `ui` resolves) and
 `cd`s there so `results/` auto-discovery works; it uses the repo's `.venv` (which provides `memeval`
 after `make setup`), falling back to `python3`. The inspector is stdlib-only — no extra dependencies.
 
 Tests (dev only — needs `pytest` + `memeval` importable), from the repo root:
 
 ```bash
-PYTHONPATH=. python -m pytest router_ui/tests/ -q   # 26 tests, real-substrate validated
+PYTHONPATH=. python -m pytest ui/tests/ -q   # 26 tests, real-substrate validated
 ```

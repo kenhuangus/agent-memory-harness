@@ -52,6 +52,31 @@ $$(".tab").forEach((b) =>
 );
 
 // ---- summary strip --------------------------------------------------------
+
+// Empty-state summary — shown when /api/summary returns 503 (no substrate
+// loaded). The picker UI (input + Load + Browse…) stays exposed so the user
+// can actually pick something instead of staring at a dead error banner.
+function renderEmptySummary(reason) {
+  const storeInput = el("input", {
+    class: "store-input", type: "text", value: "", spellcheck: "false",
+    placeholder: "path to a .../_memory directory",
+    title: "enter the substrate directory and press Enter, or click Browse…",
+  });
+  storeInput.addEventListener("keydown", (e) => { if (e.key === "Enter") reopenStore(storeInput.value); });
+  const storePill = el("span", { class: "pill store-pill" }, [
+    el("b", {}, "store "), storeInput,
+    el("button", { class: "store-load", type: "button",
+      on: { click: () => reopenStore(storeInput.value) } }, "Load"),
+    el("button", { class: "store-browse", type: "button",
+      title: "pick a memory store with the system folder dialog",
+      on: { click: (e) => pickStore(e.currentTarget) } }, "Browse…"),
+  ]);
+  const note = el("span", { class: "pill warn" }, reason || "no substrate loaded");
+  const box = $("#summary");
+  box.textContent = "";
+  box.append(storePill, note);
+}
+
 function renderSummary(s) {
   const counts = BK.map(([n]) => `${SHORT[n]} ${s.counts[n] ?? 0}`).join(" · ");
   const fan = ["1", "2", "3"].map((k) => `${k}→${s.fanout_histogram[k] || 0}`).join(" ");
@@ -531,7 +556,17 @@ async function boot() {
     renderBrowse();
     renderRouting();
   } catch (e) {
-    $("#summary").textContent = "failed to load: " + e.message;
+    // Server returned 503 when no substrate is loaded — show the picker so
+    // the user can actually load one, instead of a dead error banner.
+    const msg = String(e && e.message || e);
+    if (msg.includes("503")) {
+      renderEmptySummary("no substrate loaded — pick a .../_memory directory");
+    } else {
+      renderEmptySummary("failed to load: " + msg);
+    }
+    MEMORIES = [];
+    renderBrowse();
+    renderRouting();
   }
 }
 boot();

@@ -1,0 +1,90 @@
+/* ui · shell — top bar + view-switcher chrome that nests the monitor and
+   inspector under a single page. Each per-view stylesheet (monitor.css and
+   inspector.css) keeps its own visual identity; shell.css only owns the
+   outer chrome and the visibility toggle. */
+
+.ui-shell-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 18px;
+  background: #0a0d10;
+  border-bottom: 1px solid #2a323d;
+  color: #e6e1d5;
+  font-family: "IBM Plex Sans Condensed", system-ui, sans-serif;
+  letter-spacing: 0.18em;
+  font-size: 11px;
+  text-transform: uppercase;
+  position: relative;
+  z-index: 100;
+}
+
+.ui-shell-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.ui-shell-mark {
+  color: #d4a017;
+  font-weight: 700;
+  letter-spacing: -0.05em;
+}
+.ui-shell-name { color: #e6e1d5; font-weight: 700; }
+.ui-shell-sub  { color: #968f7f; font-family: "IBM Plex Mono", monospace; text-transform: lowercase; letter-spacing: 0; font-size: 10px; }
+
+.ui-shell-tabs {
+  display: flex;
+  gap: 2px;
+  border: 1px solid #2a323d;
+  padding: 1px;
+}
+.ui-shell-tab {
+  background: transparent;
+  border: none;
+  color: #968f7f;
+  font-family: "IBM Plex Sans Condensed", system-ui, sans-serif;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  padding: 5px 14px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.ui-shell-tab:hover  { color: #e6e1d5; }
+.ui-shell-tab.active { background: #d4a017; color: #0a0d10; font-weight: 600; }
+
+.ui-shell-meta {
+  color: #5e5a4d;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+  text-align: right;
+}
+
+/* Visibility toggle — the only thing the shell does to per-view content. */
+.ui-view { display: none; }
+body.ui-mode-monitor   #view-monitor   { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+body.ui-mode-inspector #view-inspector { display: block; }
+
+/* Both views share monitor.css's dark operator palette + scanlines + radial
+   gradients. No per-view background override needed — only display toggles. */
+body.ui-mode-monitor,
+body.ui-mode-inspector {
+  background: #0a0d10;
+}
+
+/* Shell ensures the page lays out top-bar + view content in a column,
+   matching what each per-view CSS already expects. */
+html, body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .ui-shell-bar { flex-wrap: wrap; gap: 8px; }
+  .ui-shell-meta { display: none; }
+}
