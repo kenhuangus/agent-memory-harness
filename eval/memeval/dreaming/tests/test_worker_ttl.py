@@ -1073,3 +1073,98 @@ def test_ttl_retention_table_covers_every_taxonomy_value() -> None:
         f"TYPE_RETENTION_DAYS missing entries for: {sorted(missing)} — "
         "adding a value to OKF_CONTENT_TYPES requires a retention decision."
     )
+
+
+# --------------------------------------------------------------------------- #
+# §L — ADR-dreaming-028 §2 `iter_pages` protocol surface
+# --------------------------------------------------------------------------- #
+
+def test_iter_store_pages_default_falls_back_to_single_page_from_all() -> None:
+    """ADR-028 §2 — backends without `iter_pages()` get a single page wrapping
+    `store.all()`. Byte-identical to today's read pattern; v1-contract intact.
+    """
+    from memeval.dreaming.worker import _iter_store_pages
+
+    store = _DeleteAwareStore()
+    store.write(MemoryItem(item_id="a", content="alpha", timestamp=_FIXED_NOW))
+    store.write(MemoryItem(item_id="b", content="beta", timestamp=_FIXED_NOW))
+    store.write(MemoryItem(item_id="c", content="gamma", timestamp=_FIXED_NOW))
+
+    pages = list(_iter_store_pages(store))
+    assert len(pages) == 1, "default fallback yields exactly one page"
+    assert {item.item_id for item in pages[0]} == {"a", "b", "c"}
+
+
+def test_iter_store_pages_uses_native_iter_pages_when_available() -> None:
+    """ADR-028 §2 — backends opting into `iter_pages(page_size)` get their
+    native implementation called directly. Helper delegates without
+    materializing the page list itself.
+    """
+    from memeval.dreaming.worker import _iter_store_pages
+
+    captured_calls: list[int] = []
+
+    class _StreamingStore(_DeleteAwareStore):
+        def iter_pages(self, *, page_size: int):  # type: ignore[no-untyped-def]
+            captured_calls.append(page_size)
+            items = list(self._items.values())
+            for i in range(0, len(items), page_size):
+                yield items[i : i + page_size]
+
+    store = _StreamingStore()
+    for i in range(5):
+        store.write(MemoryItem(item_id=f"item-{i}", content=f"c{i}", timestamp=_FIXED_NOW))
+
+    pages = list(_iter_store_pages(store, page_size=2))
+    assert captured_calls == [2], "page_size kwarg threaded through to override"
+    assert len(pages) == 3, "5 items at page_size=2 → 3 pages (2 + 2 + 1)"
+    assert [len(p) for p in pages] == [2, 2, 1]
+    # Total content preserved across pages.
+    assert sum(len(p) for p in pages) == 5
+
+
+def test_iter_store_pages_default_page_size_is_used_when_unspecified() -> None:
+    """ADR-028 §2 — when the caller doesn't pass `page_size`, the helper
+    threads the module-level `_DEFAULT_PAGE_SIZE` through to overriding
+    backends. Locks down the call contract so a future refactor that
+    moves the default elsewhere doesn't silently change page size at
+    every call site.
+    """
+    from memeval.dreaming.worker import _DEFAULT_PAGE_SIZE, _iter_store_pages
+
+    captured: list[int] = []
+
+    class _CapturingStore(_DeleteAwareStore):
+        def iter_pages(self, *, page_size: int):  # type: ignore[no-untyped-def]
+            captured.append(page_size)
+            yield []  # don't need real items for this assertion
+
+    list(_iter_store_pages(_CapturingStore()))
+    assert captured == [_DEFAULT_PAGE_SIZE]
+
+
+def test_worker_dream_loop_routes_reads_through_iter_pages(memory_store_dir: Path) -> None:
+    """ADR-028 §2 wiring — the worker's `dream()` method must use
+    `_iter_store_pages()`, NOT a direct `store.all()` call, when reading the
+    consolidation working set. Verified by a streaming-store override that
+    counts how many times its `iter_pages` is called; today's worker
+    materializes the full list per `dream()` invocation, so exactly one
+    `iter_pages` call is expected.
+    """
+    iter_call_count = [0]
+
+    class _CountingStore(_DeleteAwareStore):
+        def iter_pages(self, *, page_size: int):  # type: ignore[no-untyped-def]
+            iter_call_count[0] += 1
+            yield list(self._items.values())
+
+    store = _CountingStore()
+    store.write(MemoryItem(
+        item_id="m1", content="alpha", timestamp=_FIXED_NOW,
+    ))
+
+    worker.DreamingWorker(store).run()
+    assert iter_call_count[0] == 1, (
+        f"`dream()` should call store.iter_pages exactly once per run "
+        f"(today's worker materializes all items); got {iter_call_count[0]}"
+    )
