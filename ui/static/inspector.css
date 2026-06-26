@@ -63,15 +63,36 @@
 
 .summary {
   flex: 1 1 auto;
+  /* Two-row layout: the store-pill claims its own row at the top so the
+     full absolute path is visible at all viewport widths; the metric pills
+     wrap freely below it. The CSS doesn't enforce the split — render code
+     can append a `.summary-row` if it wants explicit control — but the
+     `.store-pill` itself becomes full-width via the rule below. */
   display: flex;
   flex-wrap: wrap;
   gap: 6px 14px;
   font-size: 11px;
   color: var(--text-2);
-  padding: 6px 10px;
+  padding: 8px 10px;
   background: var(--bg-1);
   border: 1px solid var(--line);
   border-left: 2px solid var(--steel);
+}
+.summary .store-pill {
+  /* Take the full width of the summary strip so the path input gets all
+     available room, separate from the metric pills that wrap below. */
+  flex: 1 0 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 8px;
+}
+.summary .store-pill > b { flex: 0 0 auto; }
+.summary .store-pill .store-input {
+  /* Grow to fill whatever the row has left after the buttons. */
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
 }
 .summary b { color: var(--text); font-weight: 500; }
 .summary .pill {

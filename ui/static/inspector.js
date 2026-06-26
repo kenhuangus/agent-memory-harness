@@ -107,6 +107,13 @@ function renderSummary(s) {
   ];
   if (s.intent_mismatch_count) bits.push(el("span", { class: "pill warn" }, `intent-mismatch ${s.intent_mismatch_count}`));
   for (const w of s.warnings || []) bits.push(el("span", { class: "pill warn" }, "⚠ " + w));
+  // Loud signal when the loaded path has no cookbook-memory backends. Without
+  // this, an all-absent load reads identically to a healthy 0-memory store.
+  const allAbsent = BK.every(([n]) => s.backend_status[n] === "absent");
+  if (allAbsent) {
+    bits.push(el("span", { class: "pill warn" },
+      "⚠ no backends found at this path — try the .../_memory subdir"));
+  }
   const box = $("#summary");
   box.textContent = "";
   bits.forEach((b) => box.append(b));
