@@ -1,4 +1,4 @@
-.PHONY: help setup install-claude-plugin pipeline viewer monitor typecheck test test-daydream test-redaction \
+.PHONY: help setup install-claude-plugin pipeline ui typecheck test test-daydream test-redaction \
         vista-off vista-builtin vista-plugin-real vista-smoke
 
 # Everything runs through `uv` against a project-local .venv on Python 3.13 — no
@@ -14,8 +14,7 @@ help:
 	@echo "  setup          - create .venv (Python 3.13) + install eval + plugin (uv)"
 	@echo "  install-claude-plugin - install plugin into the user's real Claude Code config"
 	@echo "  pipeline       - run ONE stage over ONE sequence (ARGS='--yes ...' to override)"
-	@echo "  viewer         - launch the router memory-inspector web UI (ARGS='--seed --open ...')"
-	@echo "  monitor        - launch the live results monitor for in-flight benchmark runs (ARGS='--open ...')"
+	@echo "  ui             - launch the combined memory UI (monitor + inspector under one URL; ARGS='--open ...')"
 	@echo "  test           - run the full pytest suite"
 	@echo "  typecheck      - mypy --strict on memeval/dreaming/ (ADR-dreaming-010)"
 	@echo "  test-daydream  - run only the dreaming-domain tests"
@@ -60,24 +59,18 @@ install-claude-plugin:
 pipeline:
 	$(UVRUN) memeval-pipeline $(ARGS)
 
-# Launch the router memory-inspector web UI to browse the memories the plugin saved
-# during a run and evaluate how the router routed them. Defaults to the newest pipeline
-# substrate (results/v*/_memory); override/extend with ARGS, e.g.:
-#   make viewer ARGS="--seed --open"           # synthetic demo corpus + open browser
-#   make viewer ARGS="--store /path/to/_memory --port 9000"
-# Delegates to router_ui/run.sh, which uses the repo .venv and sets PYTHONPATH.
-viewer:
-	./router_ui/run.sh $(ARGS)
-
-# Launch the live operator dashboard for in-flight benchmark runs. Auto-discovers
-# every results/<run>/_memory/.cookbook-memory basedir, lets you switch between
-# them via dropdown, and polls every 3s for live KPIs + charts + recent memories.
-# Defaults bind to 127.0.0.1:8770; override/extend with ARGS, e.g.:
-#   make monitor ARGS="--open"                       # open browser on start
-#   make monitor ARGS="--port 9001 --results-root /alt/results"
-# Delegates to results_monitor/run.sh, which uses the repo .venv.
-monitor:
-	./results_monitor/run.sh $(ARGS)
+# Launch the combined memory UI under one URL: the live operator monitor
+# (in-flight benchmark runs) AND the memory-store inspector (browse + routing-
+# effectiveness + query probe). Top-bar tab swaps which view is visible. The
+# monitor auto-discovers results/<run>/_memory/.cookbook-memory basedirs; the
+# inspector defaults to the newest results/v*/_memory and supports a
+# --store / --seed override. Override/extend with ARGS, e.g.:
+#   make ui ARGS="--open"                                # open browser on start
+#   make ui ARGS="--seed --open"                         # synthetic inspector corpus
+#   make ui ARGS="--store /path/to/_memory --port 9001"
+# Delegates to ui/run.sh, which uses the repo .venv and sets PYTHONPATH.
+ui:
+	./ui/run.sh $(ARGS)
 
 typecheck:
 	# strict-typecheck scope: production dreaming code only — the redaction

@@ -125,7 +125,7 @@ memeval-pipeline --help                          # all flags
 
 Inspect what a run actually saved with the **router memory-inspector** web UI (browse the
 plugin's memories + evaluate how the router routed them — see
-[`router_ui/README.md`](router_ui/README.md)):
+[`ui/README.md`](ui/README.md)):
 
 ```bash
 make viewer                                      # newest results/v*/_memory substrate

@@ -3,10 +3,10 @@ anomaly flagging, probe shape, de-dup, edges, capture, and the empty/no-file-cre
 and vector-dim-mismatch degradations.
 
 Run from the repo root (needs `memeval` importable — the repo `.venv` after `make setup` —
-and the repo root on PYTHONPATH so `router_ui` resolves; the same env `router_ui/run.sh`
-sets up, see router_ui/README.md "How it runs"):
-    PYTHONPATH=. python -m pytest router_ui/tests/ -q
-Launch the inspector UI itself with `./router_ui/run.sh` (router_ui/README.md "Run").
+and the repo root on PYTHONPATH so `ui` resolves; the same env `ui/run.sh`
+sets up, see ui/README.md "How it runs"):
+    PYTHONPATH=. python -m pytest ui/tests/ -q
+Launch the inspector UI itself with `./ui/run.sh` (ui/README.md "Run").
 """
 
 from __future__ import annotations
@@ -16,9 +16,9 @@ from pathlib import Path
 
 import pytest
 
-from router_ui import fixtures
-from router_ui.server import InspectorHandler, _State
-from router_ui.substrate import open_substrate, _EmptyStore
+from ui import fixtures
+from ui.server import UIHandler, _State
+from ui.substrate import open_substrate, _EmptyStore
 
 
 @pytest.fixture()
@@ -28,7 +28,7 @@ def seeded(tmp_path):
     return store, manifest
 
 
-class _CaptureHandler(InspectorHandler):
+class _CaptureHandler(UIHandler):
     def __init__(self, path, substrate):
         self.path = path
         self.state = _State(substrate)   # the swappable active-substrate holder
@@ -248,7 +248,7 @@ def test_reopen_validates_input(seeded, tmp_path):
 
 def test_pick_store_returns_chosen_dir(seeded, monkeypatch):
     store, _ = seeded
-    import router_ui.server as server
+    import ui.server as server
     monkeypatch.setattr(server, "pick_directory", lambda initial=None: "/picked/_memory")
     h = _CaptureHandler("/api/pick-store", open_substrate(str(store), "fusion"))
 
@@ -261,7 +261,7 @@ def test_pick_store_returns_chosen_dir(seeded, monkeypatch):
 
 def test_pick_store_cancelled(seeded, monkeypatch):
     store, _ = seeded
-    import router_ui.server as server
+    import ui.server as server
     monkeypatch.setattr(server, "pick_directory", lambda initial=None: None)
     h = _CaptureHandler("/api/pick-store", open_substrate(str(store), "fusion"))
 
@@ -272,8 +272,8 @@ def test_pick_store_cancelled(seeded, monkeypatch):
 
 def test_pick_store_unavailable(seeded, monkeypatch):
     store, _ = seeded
-    import router_ui.server as server
-    from router_ui.picker import PickerUnavailable
+    import ui.server as server
+    from ui.picker import PickerUnavailable
 
     def _boom(initial=None):
         raise PickerUnavailable("no dialog here")
@@ -322,7 +322,7 @@ def test_capture_appends_jsonl(seeded, monkeypatch, tmp_path):
     store, _ = seeded
     sub = open_substrate(str(store), "fusion")
     cap = tmp_path / "captured_cases.jsonl"
-    monkeypatch.setattr("router_ui.substrate.captured_cases_path", lambda: cap)
+    monkeypatch.setattr("ui.substrate.captured_cases_path", lambda: cap)
 
     r1 = sub.capture({"kind": "route", "content": "what calls foo()", "expected": {"backend": "graph"}, "note": "x"})
     assert r1["ok"] and r1["count"] == 1
@@ -345,7 +345,7 @@ def test_capture_rejects_bad_kind(seeded):
 
 
 def test_resolve_store_root_descends_into_plugin_subdir(tmp_path):
-    from router_ui.substrate import resolve_store_root
+    from ui.substrate import resolve_store_root
     # plugin layout: backends nested under <_memory>/.cookbook-memory/
     mem = tmp_path / "_memory"
     nested = mem / ".cookbook-memory"
@@ -358,14 +358,14 @@ def test_resolve_store_root_descends_into_plugin_subdir(tmp_path):
 
 
 def test_resolve_store_root_direct(tmp_path):
-    from router_ui.substrate import resolve_store_root
+    from ui.substrate import resolve_store_root
     store = tmp_path / "_memory"
     fixtures.seed(str(store))
     assert resolve_store_root(str(store)) == store  # artifacts directly under it
 
 
 def test_resolve_profile_auto_offline(monkeypatch):
-    from router_ui.substrate import resolve_profile
+    from ui.substrate import resolve_profile
     monkeypatch.delenv("VOYAGE_API_KEY", raising=False)
     monkeypatch.delenv("MEMORY_PROFILE", raising=False)
     monkeypatch.delenv("MEMEVAL_LOCAL_ANN", raising=False)
@@ -377,7 +377,7 @@ def test_resolve_profile_auto_offline(monkeypatch):
 
 
 def test_resolve_profile_accuracy_local(monkeypatch):
-    from router_ui.substrate import resolve_profile
+    from ui.substrate import resolve_profile
     monkeypatch.delenv("MEMORY_PROFILE", raising=False)
     monkeypatch.delenv("VOYAGE_API_KEY", raising=False)
     monkeypatch.delenv("MEMEVAL_LOCAL_ANN", raising=False)
@@ -402,7 +402,7 @@ def test_accuracy_local_degrades_when_embedder_unavailable(seeded, monkeypatch):
         warnings.append("accuracy-local profile unavailable (forced for test)")
         return None
 
-    monkeypatch.setattr("router_ui.substrate._try_minilm", _unavailable)
+    monkeypatch.setattr("ui.substrate._try_minilm", _unavailable)
     sub = open_substrate(str(store), "accuracy-local")
     assert sub.profile == "fusion"
     assert any("accuracy-local profile unavailable" in w for w in sub.warnings)
