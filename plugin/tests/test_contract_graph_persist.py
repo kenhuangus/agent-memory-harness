@@ -15,10 +15,33 @@ from cookbook_memory.core.contract import build_store
 from memeval.schema import MemoryItem
 
 
+class _SearchSpy:
+    def __init__(self, wrapped):
+        self.wrapped = wrapped
+        self.search_calls = 0
+
+    def write(self, item):
+        return self.wrapped.write(item)
+
+    def get(self, item_id):
+        return self.wrapped.get(item_id)
+
+    def search(self, *args, **kwargs):
+        self.search_calls += 1
+        return self.wrapped.search(*args, **kwargs)
+
+    def all(self):
+        return self.wrapped.all()
+
+    def delete(self, item_id):
+        return self.wrapped.delete(item_id)
+
+
 def test_build_store_persists_graph_db(tmp_path, monkeypatch):
     # Force the offline profile so the test needs no embedder key.
     monkeypatch.delenv("VOYAGE_API_KEY", raising=False)
     monkeypatch.delenv("MEMORY_PROFILE", raising=False)
+    monkeypatch.delenv("MEMEVAL_LOCAL_ANN", raising=False)
 
     store = build_store(str(tmp_path))
     store.write(MemoryItem(item_id="m1", content="durable graph layer", timestamp=1.0))
@@ -30,11 +53,41 @@ def test_build_store_persists_graph_db(tmp_path, monkeypatch):
     assert (tmp_path / "markdown").is_dir()
 
 
+def test_default_fusion_build_store_registers_and_uses_fts5(tmp_path, monkeypatch):
+    monkeypatch.delenv("VOYAGE_API_KEY", raising=False)
+    monkeypatch.delenv("MEMORY_PROFILE", raising=False)
+    monkeypatch.delenv("MEMEVAL_LOCAL_ANN", raising=False)
+
+    store = build_store(str(tmp_path))
+    router = store._router
+    assert "fts5" in router.backends
+
+    item = MemoryItem(
+        item_id="fts5-live-path",
+        content="ZetaNeedle321 verifies the live FTS5 lexical backend path",
+        timestamp=1.0,
+    )
+    store.write(item)
+    assert "fts5" in store.last_receipt.backends
+
+    fts5 = router.backends["fts5"]
+    assert fts5.get(item.item_id) is not None
+    assert any(hit.item_id == item.item_id for hit in fts5.search("ZetaNeedle321", k=5))
+    assert (tmp_path / "fts5.db").is_file()
+
+    spy = _SearchSpy(fts5)
+    router.backends["fts5"] = spy
+    hits = store.search("ZetaNeedle321", k=5)
+    assert spy.search_calls == 1
+    assert any(hit.item_id == item.item_id for hit in hits)
+
+
 def test_graph_db_survives_a_fresh_build_store(tmp_path, monkeypatch):
     # A second build_store over the same root (a new "process") reloads the graph
     # mirror rather than starting empty -- the property the shared substrate relies on.
     monkeypatch.delenv("VOYAGE_API_KEY", raising=False)
     monkeypatch.delenv("MEMORY_PROFILE", raising=False)
+    monkeypatch.delenv("MEMEVAL_LOCAL_ANN", raising=False)
 
     first = build_store(str(tmp_path))
     first.write(MemoryItem(item_id="g1", content="remembered across processes", timestamp=1.0))

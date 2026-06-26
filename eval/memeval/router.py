@@ -39,6 +39,7 @@ from .schema import MemoryItem, RetrievedItem
 GRAPH = "graph"
 VECTORS = "vectors"
 MARKDOWN = "markdown"
+FTS5 = "fts5"
 
 # Signal weights. Intent predicates are strong; code tokens are modest so a
 # semantic "why <code_token>" still routes to vectors, not markdown.
@@ -1073,7 +1074,10 @@ class Router:
         base = self._config.write_base
         content = item.content or ""
         if policy == "base_all":  # recall-safe default: base + every secondary index
-            names = [base, *(n for n in (MARKDOWN, VECTORS, GRAPH) if n != base)]
+            secondary = [MARKDOWN, VECTORS, GRAPH]
+            if FTS5 in self.backends:  # lexical index is optional — include it only when wired in
+                secondary.append(FTS5)
+            names = [base, *(n for n in secondary if n != base)]
         elif policy == "base_selective":  # base + only the classify(content) backend
             choice = self._classifier.classify(content).choice
             names = [base] + ([choice] if choice != base else [])
