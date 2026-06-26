@@ -1,0 +1,174 @@
+{
+  "schema": 1,
+  "memory_version": "vdjango_django_sequence-plugin-accum-a4538fc-1",
+  "benchmark": "swe_bench_cl",
+  "timestamp": "20260626T145647Z",
+  "pipeline": {
+    "version": "vdjango_django_sequence-plugin-accum-a4538fc-1",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "a4538fc",
+    "benchmark": "swe_bench_cl",
+    "sequence": "django_django_sequence",
+    "stage": "plugin-accum",
+    "limit": null,
+    "n_tasks": 50,
+    "model": "claude-haiku-4-5",
+    "code_mode": "agentic",
+    "grader": "swebench",
+    "plugin_workers": 1,
+    "budget_usd": 10.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash"
+    },
+    "memory_store": "/Users/nerd/Git/agent-memory-harness/results/vdjango_django_sequence-plugin-accum-a4538fc-1/_memory",
+    "source_memory": "/Users/nerd/Git/agent-memory-harness/results/vdjango_django_sequence-plugin-blank-818ccff-1/_memory",
+    "source_memory_health": {
+      "store_dir": "/Users/nerd/Git/agent-memory-harness/results/vdjango_django_sequence-plugin-blank-818ccff-1/_memory/.cookbook-memory",
+      "events": 100,
+      "daydream_events": 1009,
+      "recall_events": 0,
+      "recall_with_hits": 0,
+      "recall_zero_hits": 0,
+      "recall_errors": 0,
+      "daydream_completed": 35,
+      "daydream_memory_written": 87,
+      "memory_items": 87,
+      "graph_nodes": 87,
+      "markdown_items": 87,
+      "durable_items": 87
+    },
+    "n_stages": 1,
+    "n_eval_stages": 1,
+    "stages": [
+      "plugin-accum"
+    ],
+    "timestamp": "20260626T145647Z",
+    "started_at": 1782485807.736157,
+    "ended_at": 1782499137.011104,
+    "source_memory_copied_to": "/Users/nerd/Git/agent-memory-harness/results/vdjango_django_sequence-plugin-accum-a4538fc-1/_memory",
+    "stages_run": [
+      "plugin-accum"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": {
+        "ok": true,
+        "code": "ok",
+        "remembered": true,
+        "hits": 1
+      }
+    }
+  },
+  "dream": {
+    "status": "not-run"
+  },
+  "runs": [
+    {
+      "run_id": "pipeline-plugin-accum",
+      "timestamp": "2026-06-26T18:38:57+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "claude-code:claude-haiku-4-5:plugin-real",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:plugin-real+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.06635779413758637,
+        "relevancy": 0.0,
+        "accuracy": 0.14583333333333334,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 50,
+        "extra": {}
+      },
+      "n_tasks": 50,
+      "entries_used": 50,
+      "entries_available": 50,
+      "limit": null,
+      "selection": "flat",
+      "cost_usd": 3.370364,
+      "tokens_in": 3714,
+      "tokens_out": 673330,
+      "partial": false,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 1,
+        "memory_reached": 48,
+        "memory_hit": 48,
+        "recall_attempted": 48,
+        "recall_with_hits": 48,
+        "graded_n": 48,
+        "resolved": 7,
+        "ungraded": 2,
+        "grade_reasons": {
+          "get_test_directives yielded no test files from test_patch": 1,
+          "graded": 48,
+          "official parser produced no statuses": 1
+        },
+        "errors": [
+          {
+            "task_id": "django__django-11433",
+            "stage": "solve",
+            "error": "TimeoutExpired: Command '['/Users/nerd/.local/bin/claude', '-p', \"Persistent memory is available through recall if prior fixes would help. Edit the source files in this checkout directly to fix the issue, then run th"
+          }
+        ]
+      },
+      "notes": "single-stage pipeline \u00b7 swe_bench_cl \u00b7 stage plugin-accum",
+      "pipeline_stage": "plugin-accum",
+      "stage_index": 4,
+      "git_sha": "a4538fc",
+      "git_tag": "vdjango_django_sequence-plugin-accum-a4538fc-1",
+      "memory_health": {
+        "before": {
+          "store_dir": "/Users/nerd/Git/agent-memory-harness/results/vdjango_django_sequence-plugin-accum-a4538fc-1/_memory/.cookbook-memory",
+          "events": 100,
+          "daydream_events": 1009,
+          "recall_events": 0,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 35,
+          "daydream_memory_written": 87,
+          "memory_items": 87,
+          "graph_nodes": 87,
+          "markdown_items": 87,
+          "durable_items": 87
+        },
+        "after": {
+          "store_dir": "/Users/nerd/Git/agent-memory-harness/results/vdjango_django_sequence-plugin-accum-a4538fc-1/_memory/.cookbook-memory",
+          "events": 202,
+          "daydream_events": 1767,
+          "recall_events": 2,
+          "recall_with_hits": 2,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 64,
+          "daydream_memory_written": 146,
+          "memory_items": 146,
+          "graph_nodes": 146,
+          "markdown_items": 146,
+          "durable_items": 146
+        },
+        "delta": {
+          "events": 102,
+          "daydream_events": 758,
+          "recall_events": 2,
+          "recall_with_hits": 2,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 29,
+          "daydream_memory_written": 59,
+          "memory_items": 59,
+          "graph_nodes": 59,
+          "markdown_items": 59,
+          "durable_items": 59
+        }
+      },
+      "warnings": []
+    }
+  ]
+}

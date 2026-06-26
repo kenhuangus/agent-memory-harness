@@ -1,0 +1,1 @@
+{"cursor": 132671, "last_summary": "ASCIIUsernameValidator uses flags = re.ASCII while UnicodeUsernameValidator uses flags = 0. Both are deconstructible subclasses of RegexValidator and have identical regex patterns aside from flags.", "recent_memory_ids": ["mem_30248aae", "mem_68f531a2"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
