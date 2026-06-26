@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Memory Inspector &middot; AI Agent Memory Harness</title>
+<meta name="description" content="Inspect the real cookbook-memory contents written by the plugin during benchmark runs — filter by source, tag and domain, full-text search content, and open per-item detail. Backed by the MemoryItem schema (eval/memeval/schema.py).">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+<link rel="icon" type="image/svg+xml" href="assets/img/logo.svg">
+<link rel="icon" type="image/png" sizes="256x256" href="assets/img/favicon.png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<meta property="og:title" content="Memory Inspector — AI Agent Memory Harness">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://kenhuangus.github.io/agent-memory-harness/assets/img/social-preview.png">
+<meta name="twitter:card" content="summary_large_image">
+<script>document.documentElement.classList.add('js');</script>
+<style>
+/* ---- Memory Inspector (self-contained, no JS libs) ---- */
+.mi-toolbar { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; margin:22px 0 14px; }
+.mi-field { display:flex; flex-direction:column; gap:5px; }
+.mi-field label { font: 600 11px var(--font); letter-spacing:.05em; text-transform:uppercase; color: var(--text-mute); }
+.mi-field input, .mi-field select {
+  background: var(--bg-code); color: var(--text); border:1px solid var(--border);
+  border-radius:8px; padding:8px 11px; font: 500 14px var(--font); min-width:160px;
+}
+.mi-field input.mi-search { min-width:280px; }
+.mi-field input:focus, .mi-field select:focus { outline:none; border-color: var(--accent); }
+.mi-stats { display:flex; gap:18px; flex-wrap:wrap; margin:6px 0 18px; }
+.mi-stat { font: 600 13px var(--font); color: var(--text-dim); }
+.mi-stat strong { color: var(--text); font-weight:700; }
+.mi-clear { background:none; border:1px solid var(--border); color: var(--text-dim);
+  border-radius:8px; padding:8px 13px; font: 600 13px var(--font); cursor:pointer; }
+.mi-clear:hover { border-color: var(--accent); color: var(--text); }
+
+.mi-group { margin:26px 0 0; }
+.mi-group > h3 { font: 700 15px var(--font); margin:0 0 4px; display:flex; align-items:center; gap:9px; }
+.mi-group > h3 .mi-count { font: 600 12px var(--mono); color: var(--text-mute); }
+.mi-group > .mi-grouppath { font: 500 12px var(--mono); color: var(--text-mute); margin:0 0 12px; word-break:break-all; }
+
+.mi-card {
+  background: var(--bg-elev, rgba(139,157,255,.04)); border:1px solid var(--border-soft);
+  border-radius:10px; padding:14px 16px; margin:10px 0; cursor:pointer; transition: border-color .15s, transform .15s;
+}
+.mi-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+.mi-card-top { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:8px; }
+.mi-id { font: 600 12px var(--mono); color: var(--accent); }
+.mi-badge { font: 600 11px var(--font); padding:2px 9px; border-radius:999px; letter-spacing:.02em; }
+.mi-badge.src-daydream { background: rgba(139,157,255,.14); color: var(--accent); }
+.mi-badge.src-remember { background: rgba(45,212,191,.14); color: var(--accent-2); }
+.mi-badge.src-other    { background: rgba(251,191,36,.14); color: var(--accent-3); }
+.mi-meta-inline { margin-left:auto; font: 500 12px var(--mono); color: var(--text-mute); }
+.mi-content { font: 400 14.5px/1.55 var(--font); color: var(--text); }
+.mi-tags { margin-top:9px; display:flex; flex-wrap:wrap; gap:6px; }
+.mi-tag { font: 600 11px var(--mono); background: var(--bg-code); border:1px solid var(--border-soft);
+  color: var(--text-dim); padding:2px 8px; border-radius:6px; }
+.mi-empty { color: var(--text-mute); font: 500 15px var(--font); padding:40px 0; text-align:center; }
+
+/* detail drawer */
+.mi-overlay { position:fixed; inset:0; background: rgba(0,0,0,.55); display:none; z-index:90; }
+.mi-overlay.open { display:block; }
+.mi-drawer {
+  position:fixed; top:0; right:0; bottom:0; width:min(560px,94vw); z-index:91;
+  background: var(--bg, #0d1117); border-left:1px solid var(--border); padding:26px 26px 40px;
+  overflow-y:auto; transform: translateX(100%); transition: transform .22s ease; box-shadow:-12px 0 40px rgba(0,0,0,.4);
+}
+.mi-drawer.open { transform: translateX(0); }
+.mi-drawer h2 { font: 700 18px var(--font); margin:0 0 4px; }
+.mi-drawer .mi-id { font-size:13px; }
+.mi-close { position:absolute; top:18px; right:18px; background:none; border:1px solid var(--border);
+  color: var(--text-dim); border-radius:8px; width:34px; height:34px; font-size:18px; cursor:pointer; line-height:1; }
+.mi-close:hover { border-color: var(--accent); color: var(--text); }
+.mi-detail-content { background: var(--bg-code); border:1px solid var(--border-soft); border-radius:10px;
+  padding:14px 16px; font: 400 14.5px/1.6 var(--font); color: var(--text); white-space:pre-wrap; margin:14px 0 18px; }
+.mi-kv { display:grid; grid-template-columns: 130px 1fr; gap:8px 14px; font: 500 13.5px var(--font); }
+.mi-kv dt { color: var(--text-mute); font-weight:600; }
+.mi-kv dd { margin:0; color: var(--text); font-family: var(--mono); font-size:13px; word-break:break-all; }
+.mi-source-note { background: rgba(45,212,191,.07); border:1px solid var(--border-soft); border-left:3px solid var(--accent-2);
+  border-radius:8px; padding:12px 15px; margin:18px 0 6px; font: 400 13.5px/1.55 var(--font); color: var(--text-dim); }
+.mi-source-note code { font-family: var(--mono); font-size:12.5px; color: var(--text); }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html"><img class="mark" src="assets/img/logo.svg" alt="Cookbook Memory" width="30" height="30"><span>Memory Harness<small>Cookbook Memory · persistent memory for coding agents</small></span></a>
+    <button class="nav-toggle" aria-label="Toggle navigation">☰</button>
+    <nav class="nav-links">
+      <a href="index.html">Overview</a>
+      <a href="plan.html">Plan</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="benchmarks.html">Benchmarks</a>
+      <a href="implementation.html">Implementation</a>
+      <a href="results.html">Results</a>
+      <a href="memory-inspector.html" aria-current="page">Memory Inspector</a>
+      <a href="collaborate.html">Collaborate</a>
+      <a class="nav-cta" href="https://github.com/kenhuangus/agent-memory-harness" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<section class="page-head">
+  <div class="wrap">
+    <div class="crumb"><a href="index.html">Overview</a> / Memory Inspector</div>
+    <h1>Memory Inspector</h1>
+    <p class="lead">Browse the <strong>real cookbook-memory contents</strong> the plugin wrote during benchmark runs —
+      every row is a <strong><code>MemoryItem</code></strong> exactly as persisted to the <code>items</code> table
+      of a <code>.cookbook-memory/memory.db</code> store. Filter by source (daydream vs remember), tag, or domain,
+      full-text search the content, and click any item for its full record.</p>
+  </div>
+</section>
+
+<main id="main">
+<section class="section"><div class="wrap">
+
+  <div class="mi-source-note">
+    <strong>Data source.</strong> This page is fully static — no server, no SQLite at runtime. The data is exported from the
+    <strong>real committed memory stores</strong> in the repo (not fabricated) into
+    <code>data/memory-inspector.json</code>. Schema is the frozen
+    <code>MemoryItem</code> model in <code>eval/memeval/schema.py</code> (table <code>items</code>).
+    Source stores: <span id="mi-src-paths"></span>
+  </div>
+
+  <div class="mi-toolbar">
+    <div class="mi-field">
+      <label for="mi-q">Search content</label>
+      <input id="mi-q" class="mi-search" type="search" placeholder="full-text search across content…" autocomplete="off">
+    </div>
+    <div class="mi-field">
+      <label for="mi-source">Source</label>
+      <select id="mi-source"><option value="">All sources</option></select>
+    </div>
+    <div class="mi-field">
+      <label for="mi-tag">Tag</label>
+      <select id="mi-tag"><option value="">All tags</option></select>
+    </div>
+    <div class="mi-field">
+      <label for="mi-domain">Domain / store</label>
+      <select id="mi-domain"><option value="">All domains</option></select>
+    </div>
+    <button class="mi-clear" id="mi-clear" type="button">Clear filters</button>
+  </div>
+
+  <div class="mi-stats">
+    <span class="mi-stat"><strong id="mi-shown">0</strong> shown</span>
+    <span class="mi-stat">of <strong id="mi-total">0</strong> items</span>
+    <span class="mi-stat"><strong id="mi-stores">0</strong> stores</span>
+    <span class="mi-stat"><strong id="mi-tokens">0</strong> tokens</span>
+  </div>
+
+  <div id="mi-results"></div>
+
+</div></section>
+</main>
+
+<!-- detail drawer -->
+<div class="mi-overlay" id="mi-overlay"></div>
+<aside class="mi-drawer" id="mi-drawer" aria-hidden="true" aria-label="Memory item detail">
+  <button class="mi-close" id="mi-close" aria-label="Close detail">×</button>
+  <div class="mi-id" id="d-id"></div>
+  <h2 id="d-title">Memory item</h2>
+  <div class="mi-detail-content" id="d-content"></div>
+  <dl class="mi-kv" id="d-kv"></dl>
+  <div class="mi-tags" id="d-tags" style="margin-top:16px;"></div>
+</aside>
+
+<footer class="footer">
+  <div class="wrap footer-grid">
+    <div>
+      <a class="brand" href="index.html"><img class="mark" src="assets/img/logo.svg" alt="Cookbook Memory" width="30" height="30"><span>Memory Harness</span></a>
+      <p style="margin-top:14px;max-width:34ch;">Persistent, self-curating memory for long-running coding agents.</p>
+    </div>
+    <div class="cols">
+      <div class="col"><h5>Project</h5><a href="index.html">Overview</a><a href="plan.html">2-week plan</a><a href="architecture.html">Architecture</a></div>
+      <div class="col"><h5>Reference</h5><a href="benchmarks.html">Benchmarks</a><a href="implementation.html">Implementation</a><a href="results.html">Results</a><a href="memory-inspector.html">Memory Inspector</a></div>
+    </div>
+  </div>
+  <div class="wrap" style="margin-top:30px;"><span class="note">© <span data-year>2026</span> AI Agent Memory Harness project.</span></div>
+</footer>
+
+<script src="assets/js/main.js"></script>
+<script>
+(function () {
+  "use strict";
+  var DATA = { items: [], stores: [], data_sources: [] };
+  var els = {
+    q: document.getElementById("mi-q"),
+    source: document.getElementById("mi-source"),
+    tag: document.getElementById("mi-tag"),
+    domain: document.getElementById("mi-domain"),
+    clear: document.getElementById("mi-clear"),
+    results: document.getElementById("mi-results"),
+    shown: document.getElementById("mi-shown"),
+    total: document.getElementById("mi-total"),
+    stores: document.getElementById("mi-stores"),
+    tokens: document.getElementById("mi-tokens"),
+    srcPaths: document.getElementById("mi-src-paths"),
+    overlay: document.getElementById("mi-overlay"),
+    drawer: document.getElementById("mi-drawer"),
+    close: document.getElementById("mi-close"),
+    dId: document.getElementById("d-id"),
+    dContent: document.getElementById("d-content"),
+    dKv: document.getElementById("d-kv"),
+    dTags: document.getElementById("d-tags"),
+  };
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+  function srcClass(s) {
+    if (s === "daydream") return "src-daydream";
+    if (s === "remember") return "src-remember";
+    return "src-other";
+  }
+  function fmtTime(ts) {
+    var n = Number(ts);
+    if (!n) return "—";
+    if (n < 1e12) n = n * 1000;
+    try { return new Date(n).toISOString().replace("T", " ").slice(0, 19) + " UTC"; }
+    catch (e) { return String(ts); }
+  }
+
+  function populateSelects() {
+    var sources = {}, tags = {}, domains = {};
+    DATA.items.forEach(function (it) {
+      if (it.source) sources[it.source] = 1;
+      (it.tags || []).forEach(function (t) { tags[t] = 1; });
+      if (it.domain) domains[it.domain] = 1;
+    });
+    function fill(sel, keys) {
+      keys.sort().forEach(function (k) {
+        var o = document.createElement("option");
+        o.value = k; o.textContent = k; sel.appendChild(o);
+      });
+    }
+    fill(els.source, Object.keys(sources));
+    fill(els.tag, Object.keys(tags));
+    fill(els.domain, Object.keys(domains));
+  }
+
+  function matches(it) {
+    var q = els.q.value.trim().toLowerCase();
+    if (q && (it.content || "").toLowerCase().indexOf(q) === -1 &&
+        (it.tags || []).join(" ").toLowerCase().indexOf(q) === -1 &&
+        (it.item_id || "").toLowerCase().indexOf(q) === -1) return false;
+    if (els.source.value && it.source !== els.source.value) return false;
+    if (els.tag.value && (it.tags || []).indexOf(els.tag.value) === -1) return false;
+    if (els.domain.value && it.domain !== els.domain.value) return false;
+    return true;
+  }
+
+  function cardHTML(it) {
+    var tags = (it.tags || []).map(function (t) {
+      return '<span class="mi-tag">' + esc(t) + "</span>";
+    }).join("");
+    return '<div class="mi-card" data-id="' + esc(it.item_id) + '">' +
+      '<div class="mi-card-top">' +
+        '<span class="mi-id">' + esc(it.item_id) + "</span>" +
+        '<span class="mi-badge ' + srcClass(it.source) + '">' + esc(it.source || "?") + "</span>" +
+        '<span class="mi-meta-inline">' + esc(it.tokens || 0) + " tok · rel " + esc(it.relevancy) + "</span>" +
+      "</div>" +
+      '<div class="mi-content">' + esc(it.content) + "</div>" +
+      (tags ? '<div class="mi-tags">' + tags + "</div>" : "") +
+      "</div>";
+  }
+
+  function render() {
+    var shown = DATA.items.filter(matches);
+    // group by store
+    var groups = {};
+    shown.forEach(function (it) { (groups[it.store] = groups[it.store] || []).push(it); });
+    var storeMeta = {};
+    DATA.stores.forEach(function (s) { storeMeta[s.store_id] = s; });
+
+    var html = "";
+    Object.keys(groups).sort().forEach(function (storeId) {
+      var meta = storeMeta[storeId] || { domain: storeId, path: storeId };
+      html += '<div class="mi-group">' +
+        "<h3>" + esc(meta.domain) +
+          ' <span class="mi-count">' + groups[storeId].length + " items</span></h3>" +
+        '<p class="mi-grouppath">' + esc(meta.path) + "</p>" +
+        groups[storeId].map(cardHTML).join("") +
+        "</div>";
+    });
+    if (!shown.length) html = '<div class="mi-empty">No memory items match these filters.</div>';
+    els.results.innerHTML = html;
+
+    els.shown.textContent = shown.length;
+    els.tokens.textContent = shown.reduce(function (a, it) { return a + (Number(it.tokens) || 0); }, 0);
+    els.stores.textContent = Object.keys(groups).length;
+  }
+
+  function openDetail(id) {
+    var it = DATA.items.filter(function (x) { return x.item_id === id; })[0];
+    if (!it) return;
+    els.dId.textContent = it.item_id;
+    els.dContent.textContent = it.content;
+    var rows = [
+      ["source", it.source || "—"],
+      ["domain / store", it.domain || "—"],
+      ["store path", it.store || "—"],
+      ["tokens", it.tokens],
+      ["relevancy", it.relevancy],
+      ["version", it.version],
+      ["session_id", it.session_id || "—"],
+      ["timestamp", fmtTime(it.timestamp)],
+    ];
+    var metaKeys = Object.keys(it.metadata || {});
+    if (metaKeys.length) rows.push(["metadata", JSON.stringify(it.metadata)]);
+    els.dKv.innerHTML = rows.map(function (r) {
+      return "<dt>" + esc(r[0]) + "</dt><dd>" + esc(r[1]) + "</dd>";
+    }).join("");
+    els.dTags.innerHTML = (it.tags || []).map(function (t) {
+      return '<span class="mi-tag">' + esc(t) + "</span>";
+    }).join("");
+    els.overlay.classList.add("open");
+    els.drawer.classList.add("open");
+    els.drawer.setAttribute("aria-hidden", "false");
+  }
+  function closeDetail() {
+    els.overlay.classList.remove("open");
+    els.drawer.classList.remove("open");
+    els.drawer.setAttribute("aria-hidden", "true");
+  }
+
+  function wire() {
+    [els.q, els.source, els.tag, els.domain].forEach(function (e) {
+      e.addEventListener("input", render);
+      e.addEventListener("change", render);
+    });
+    els.clear.addEventListener("click", function () {
+      els.q.value = ""; els.source.value = ""; els.tag.value = ""; els.domain.value = "";
+      render();
+    });
+    els.results.addEventListener("click", function (ev) {
+      var card = ev.target.closest(".mi-card");
+      if (card) openDetail(card.getAttribute("data-id"));
+    });
+    els.overlay.addEventListener("click", closeDetail);
+    els.close.addEventListener("click", closeDetail);
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape") closeDetail();
+    });
+  }
+
+  fetch("data/memory-inspector.json")
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      DATA = j;
+      els.total.textContent = DATA.items.length;
+      els.srcPaths.innerHTML = (DATA.data_sources || []).map(function (p) {
+        return "<code>" + esc(p) + "</code>";
+      }).join(", ");
+      populateSelects();
+      wire();
+      render();
+    })
+    .catch(function (e) {
+      els.results.innerHTML = '<div class="mi-empty">Could not load memory data (' + esc(e.message) + ").</div>";
+    });
+})();
+</script>
+</body>
+</html>
