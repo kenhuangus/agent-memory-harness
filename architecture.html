@@ -55,6 +55,26 @@
   <div class="wrap">
     <div class="card" style="padding:18px;background:var(--bg-elev)">
       <svg viewBox="0 0 1100 880" xmlns="http://www.w3.org/2000/svg" font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" role="img" aria-label="AI Agent Memory Harness end-to-end architecture: run_bench drives Claude Code per journey, recall reads memory, a native evaluator scores the run, and the Stop-hook daydream writer persists extracted memories through a router over three backends">
+        <style>
+          /* ===== Animated data-flow styling ===== */
+          .edge-anim { stroke-dasharray: 7 6; animation: march 1.1s linear infinite; }
+          @keyframes march { to { stroke-dashoffset: -26; } }
+          .pulse { transform-box: fill-box; transform-origin: center; }
+          .glow-b { animation: glowb 3.2s ease-in-out infinite; }
+          .glow-t { animation: glowt 3.2s ease-in-out infinite 0.6s; }
+          .glow-p { animation: glowp 3.2s ease-in-out infinite 1.6s; }
+          .glow-a { animation: glowa 3.2s ease-in-out infinite 2.2s; }
+          @keyframes glowb { 0%,100%{filter:none;} 18%{filter:drop-shadow(0 0 7px #8b9dff);} }
+          @keyframes glowt { 0%,100%{filter:none;} 18%{filter:drop-shadow(0 0 7px #2dd4bf);} }
+          @keyframes glowp { 0%,100%{filter:none;} 18%{filter:drop-shadow(0 0 7px #f472b6);} }
+          @keyframes glowa { 0%,100%{filter:none;} 18%{filter:drop-shadow(0 0 8px #fbbf24);} }
+          .pkt { opacity: 0.95; }
+          @media (prefers-reduced-motion: reduce) {
+            .edge-anim { animation: none; }
+            .glow-b,.glow-t,.glow-p,.glow-a { animation: none; }
+            .pkt { display: none; }
+          }
+        </style>
         <defs>
           <linearGradient id="g-agent" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6366f1"/><stop offset="1" stop-color="#22d3ee"/></linearGradient>
           <linearGradient id="g-bus" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#1b2433"/><stop offset="1" stop-color="#243044"/></linearGradient>
@@ -69,20 +89,20 @@
         <!-- ===== EVAL DRIVER ===== -->
         <text x="44" y="40" fill="#6d7e95" font-size="12" font-weight="700" letter-spacing="2">EVAL DRIVER · memeval.claudecode</text>
         <g>
-          <rect x="44" y="52" width="300" height="96" rx="14" fill="#121826" stroke="url(#g-agent)" stroke-width="1.6"/>
+          <rect x="44" y="52" width="300" height="96" rx="14" fill="#121826" stroke="url(#g-agent)" stroke-width="1.6" class="glow-b"/>
           <text x="194" y="84" text-anchor="middle" fill="#e7edf5" font-size="17" font-weight="700">run_bench</text>
           <text x="194" y="107" text-anchor="middle" fill="#9fb0c5" font-size="12">Claude Code CLI · subscription auth</text>
           <text x="194" y="128" text-anchor="middle" fill="#cbd5e8" font-size="12">mode: off · builtin · plugin-real</text>
         </g>
         <g>
-          <rect x="400" y="52" width="300" height="96" rx="14" fill="#121826" stroke="#8b9dff" stroke-width="1.4"/>
+          <rect x="400" y="52" width="300" height="96" rx="14" fill="#121826" stroke="#8b9dff" stroke-width="1.4" class="glow-b"/>
           <text x="550" y="80" text-anchor="middle" fill="#e7edf5" font-size="16" font-weight="700">ClaudeCodeAgent</text>
           <text x="550" y="101" text-anchor="middle" fill="#9fb0c5" font-size="12">one journey / task per run</text>
           <text x="550" y="122" text-anchor="middle" fill="#cbd5e8" font-size="12">QA turn · agentic CODE checkout</text>
           <text x="550" y="140" text-anchor="middle" fill="#6d7e95" font-size="11">--plugin-workers · serialized bundle build</text>
         </g>
         <g>
-          <rect x="756" y="52" width="300" height="96" rx="14" fill="#121826" stroke="#2dd4bf" stroke-width="1.4"/>
+          <rect x="756" y="52" width="300" height="96" rx="14" fill="#121826" stroke="#2dd4bf" stroke-width="1.4" class="glow-t"/>
           <text x="906" y="80" text-anchor="middle" fill="#e7edf5" font-size="16" font-weight="700">Native Evaluator</text>
           <text x="906" y="101" text-anchor="middle" fill="#9fb0c5" font-size="12">scores recorded trajectories</text>
           <text x="906" y="121" text-anchor="middle" fill="#cbd5e8" font-size="12">VISTA · SWE-Bench-CL</text>
@@ -91,65 +111,74 @@
 
         <!-- ===== RECALL / READ ===== -->
         <g>
-          <rect x="400" y="196" width="300" height="78" rx="12" fill="#0e1320" stroke="#2dd4bf" stroke-dasharray="4 3"/>
+          <rect x="400" y="196" width="300" height="78" rx="12" fill="#0e1320" stroke="#2dd4bf" stroke-dasharray="4 3" class="glow-t"/>
           <text x="550" y="223" text-anchor="middle" fill="#2dd4bf" font-size="13.5" font-weight="700">Recall / retrieve step</text>
           <text x="550" y="245" text-anchor="middle" fill="#9fb0c5" font-size="11.5">builtin → native Grep/Read over sessions/</text>
           <text x="550" y="263" text-anchor="middle" fill="#9fb0c5" font-size="11.5">plugin-real → cookbook-memory MCP `recall`</text>
         </g>
 
         <!-- driver flow arrows -->
-        <line x1="344" y1="100" x2="398" y2="100" stroke="#8b9dff" stroke-width="1.8" marker-end="url(#ah-b)"/>
+        <line x1="344" y1="100" x2="398" y2="100" stroke="#8b9dff" stroke-width="1.8" marker-end="url(#ah-b)" class="edge-anim"/>
+        <circle class="pkt" r="3.6" fill="#cdd6ff"><animateMotion path="M344,100 L394,100" dur="1.4s" begin="0s" repeatCount="indefinite"/></circle>
         <rect x="346" y="78" width="50" height="18" rx="5" fill="#0b0e14"/><text x="371" y="91" text-anchor="middle" fill="#8b9dff" font-size="10.5" font-weight="600">drive</text>
-        <line x1="550" y1="148" x2="550" y2="194" stroke="#2dd4bf" stroke-width="1.8" marker-end="url(#ah-t)"/>
-        <line x1="582" y1="194" x2="582" y2="150" stroke="#2dd4bf" stroke-width="1.8" marker-end="url(#ah-t)"/>
+        <line x1="550" y1="148" x2="550" y2="194" stroke="#2dd4bf" stroke-width="1.8" marker-end="url(#ah-t)" class="edge-anim"/>
+        <circle class="pkt" r="3.6" fill="#9af0e3"><animateMotion path="M550,148 L550,190" dur="1.3s" begin="0.4s" repeatCount="indefinite"/></circle>
+        <line x1="582" y1="194" x2="582" y2="150" stroke="#2dd4bf" stroke-width="1.8" marker-end="url(#ah-t)" class="edge-anim"/>
+        <circle class="pkt" r="3.6" fill="#9af0e3"><animateMotion path="M582,194 L582,154" dur="1.3s" begin="1s" repeatCount="indefinite"/></circle>
         <rect x="446" y="166" width="50" height="18" rx="5" fill="#0b0e14"/><text x="471" y="179" text-anchor="middle" fill="#2dd4bf" font-size="10.5" font-weight="600">recall</text>
         <rect x="592" y="164" width="56" height="18" rx="5" fill="#0b0e14"/><text x="620" y="177" text-anchor="middle" fill="#2dd4bf" font-size="10.5" font-weight="600">notes</text>
-        <line x1="700" y1="100" x2="754" y2="100" stroke="#2dd4bf" stroke-width="1.8" marker-end="url(#ah-t)"/>
+        <line x1="700" y1="100" x2="754" y2="100" stroke="#2dd4bf" stroke-width="1.8" marker-end="url(#ah-t)" class="edge-anim"/>
+        <circle class="pkt" r="3.6" fill="#9af0e3"><animateMotion path="M700,100 L750,100" dur="1.4s" begin="0.7s" repeatCount="indefinite"/></circle>
         <rect x="700" y="78" width="56" height="18" rx="5" fill="#0b0e14"/><text x="728" y="91" text-anchor="middle" fill="#2dd4bf" font-size="10.5" font-weight="600">output</text>
 
         <!-- ===== WRITE PATH: Stop hook -> daydream ===== -->
         <text x="44" y="318" fill="#6d7e95" font-size="12" font-weight="700" letter-spacing="2">WRITE / CONSOLIDATION · Stop hook → daydream</text>
         <g>
-          <rect x="44" y="334" width="232" height="92" rx="12" fill="#121826" stroke="#f472b6"/>
+          <rect x="44" y="334" width="232" height="92" rx="12" fill="#121826" stroke="#f472b6" class="glow-p"/>
           <text x="160" y="362" text-anchor="middle" fill="#e7edf5" font-size="14.5" font-weight="700">Stop hook</text>
           <text x="160" y="384" text-anchor="middle" fill="#f472b6" font-size="11" font-weight="600">ASYNC · fail-open</text>
           <text x="160" y="406" text-anchor="middle" fill="#9fb0c5" font-size="11.5">fires on session end</text>
         </g>
         <g>
-          <rect x="312" y="334" width="232" height="92" rx="12" fill="#121826" stroke="#f472b6"/>
+          <rect x="312" y="334" width="232" height="92" rx="12" fill="#121826" stroke="#f472b6" class="glow-p"/>
           <text x="428" y="360" text-anchor="middle" fill="#e7edf5" font-size="14.5" font-weight="700">daydream-cli</text>
           <text x="428" y="381" text-anchor="middle" fill="#9fb0c5" font-size="11.5">`daydream` per session</text>
           <text x="428" y="399" text-anchor="middle" fill="#9fb0c5" font-size="11.5">`dream --all` consolidation</text>
           <text x="428" y="417" text-anchor="middle" fill="#6d7e95" font-size="10.5">transcript_formatter noise filter</text>
         </g>
         <g>
-          <rect x="580" y="334" width="232" height="92" rx="12" fill="#121826" stroke="#f472b6"/>
+          <rect x="580" y="334" width="232" height="92" rx="12" fill="#121826" stroke="#f472b6" class="glow-p"/>
           <text x="696" y="360" text-anchor="middle" fill="#e7edf5" font-size="14.5" font-weight="700">OpenRouter LLM</text>
           <text x="696" y="381" text-anchor="middle" fill="#9fb0c5" font-size="11.5">extract: what to remember</text>
           <text x="696" y="399" text-anchor="middle" fill="#6d7e95" font-size="10.5">ling-2.6-flash (default)</text>
           <text x="696" y="417" text-anchor="middle" fill="#6d7e95" font-size="10.5">→ _extract → MemoryItems</text>
         </g>
         <g>
-          <rect x="848" y="334" width="208" height="92" rx="12" fill="#121826" stroke="#fbbf24"/>
+          <rect x="848" y="334" width="208" height="92" rx="12" fill="#121826" stroke="#fbbf24" class="glow-a"/>
           <text x="952" y="362" text-anchor="middle" fill="#e7edf5" font-size="14.5" font-weight="700">RouterStore</text>
           <text x="952" y="383" text-anchor="middle" fill="#9fb0c5" font-size="11.5">classify → route</text>
           <text x="952" y="401" text-anchor="middle" fill="#9fb0c5" font-size="11.5">dedup + write-routing</text>
           <text x="952" y="419" text-anchor="middle" fill="#6d7e95" font-size="10.5">default profile: fusion (RRF)</text>
         </g>
-        <line x1="276" y1="380" x2="310" y2="380" stroke="#f472b6" stroke-width="1.8" marker-end="url(#ah-p)"/>
-        <line x1="544" y1="380" x2="578" y2="380" stroke="#f472b6" stroke-width="1.8" marker-end="url(#ah-p)"/>
-        <line x1="812" y1="380" x2="846" y2="380" stroke="#f472b6" stroke-width="1.8" marker-end="url(#ah-p)"/>
+        <line x1="276" y1="380" x2="310" y2="380" stroke="#f472b6" stroke-width="1.8" marker-end="url(#ah-p)" class="edge-anim"/>
+        <circle class="pkt" r="3.6" fill="#fbb6da"><animateMotion path="M276,380 L306,380" dur="1.2s" begin="0s" repeatCount="indefinite"/></circle>
+        <line x1="544" y1="380" x2="578" y2="380" stroke="#f472b6" stroke-width="1.8" marker-end="url(#ah-p)" class="edge-anim"/>
+        <circle class="pkt" r="3.6" fill="#fbb6da"><animateMotion path="M544,380 L574,380" dur="1.2s" begin="0.45s" repeatCount="indefinite"/></circle>
+        <line x1="812" y1="380" x2="846" y2="380" stroke="#f472b6" stroke-width="1.8" marker-end="url(#ah-p)" class="edge-anim"/>
+        <circle class="pkt" r="3.6" fill="#fbb6da"><animateMotion path="M812,380 L842,380" dur="1.2s" begin="0.9s" repeatCount="indefinite"/></circle>
         <!-- recall step reads from RouterStore (plugin-real) -->
-        <path d="M952,334 C952,300 760,250 700,235" fill="none" stroke="#2dd4bf" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#ah-t)"/>
+        <path d="M952,334 C952,300 760,250 700,235" fill="none" stroke="#2dd4bf" stroke-width="1.6" marker-end="url(#ah-t)" class="edge-anim"/>
+        <circle class="pkt" r="3.4" fill="#9af0e3"><animateMotion path="M952,334 C952,300 760,250 700,235" dur="1.8s" begin="1.2s" repeatCount="indefinite"/></circle>
 
         <!-- ===== STORAGE ===== -->
         <rect x="848" y="452" width="208" height="30" rx="9" fill="url(#g-bus)" stroke="#243044"/>
         <text x="952" y="472" text-anchor="middle" fill="#9fb0c5" font-size="11.5" font-weight="600">Router · one MemoryStore facade</text>
-        <line x1="952" y1="426" x2="952" y2="450" stroke="#fbbf24" stroke-width="1.8" marker-end="url(#ah-a)"/>
+        <line x1="952" y1="426" x2="952" y2="450" stroke="#fbbf24" stroke-width="1.8" marker-end="url(#ah-a)" class="edge-anim"/>
+        <circle class="pkt" r="3.4" fill="#fde29a"><animateMotion path="M952,426 L952,446" dur="1s" begin="1.3s" repeatCount="indefinite"/></circle>
 
         <text x="44" y="518" fill="#6d7e95" font-size="12" font-weight="700" letter-spacing="2">STORAGE BACKENDS · per-store index</text>
         <g>
-          <rect x="44" y="534" width="318" height="150" rx="12" fill="#121826" stroke="#243044"/>
+          <rect x="44" y="534" width="318" height="150" rx="12" fill="#121826" stroke="#243044" class="glow-a"/>
           <rect x="44" y="534" width="318" height="4" rx="2" fill="#8b9dff"/>
           <text x="203" y="572" text-anchor="middle" fill="#e7edf5" font-size="15" font-weight="700">MarkdownStore</text>
           <text x="203" y="597" text-anchor="middle" fill="#9fb0c5" font-size="12">OKF notes · source-of-truth base</text>
@@ -157,7 +186,7 @@
           <text x="203" y="652" text-anchor="middle" fill="#6d7e95" font-size="11">markdown/ · always written</text>
         </g>
         <g>
-          <rect x="391" y="534" width="318" height="150" rx="12" fill="#121826" stroke="#243044"/>
+          <rect x="391" y="534" width="318" height="150" rx="12" fill="#121826" stroke="#243044" class="glow-a"/>
           <rect x="391" y="534" width="318" height="4" rx="2" fill="#2dd4bf"/>
           <text x="550" y="572" text-anchor="middle" fill="#e7edf5" font-size="15" font-weight="700">SqliteVectorStore</text>
           <text x="550" y="597" text-anchor="middle" fill="#9fb0c5" font-size="12">embed → cosine similarity</text>
@@ -165,7 +194,7 @@
           <text x="550" y="652" text-anchor="middle" fill="#6d7e95" font-size="11">opt-in: MiniLM + sqlite-vec ANN</text>
         </g>
         <g>
-          <rect x="738" y="534" width="318" height="150" rx="12" fill="#121826" stroke="#243044"/>
+          <rect x="738" y="534" width="318" height="150" rx="12" fill="#121826" stroke="#243044" class="glow-a"/>
           <rect x="738" y="534" width="318" height="4" rx="2" fill="#fbbf24"/>
           <text x="897" y="572" text-anchor="middle" fill="#e7edf5" font-size="15" font-weight="700">GraphStore</text>
           <text x="897" y="597" text-anchor="middle" fill="#9fb0c5" font-size="12">OKF links · seed-then-traverse</text>
@@ -173,9 +202,12 @@
           <text x="897" y="652" text-anchor="middle" fill="#6d7e95" font-size="11">paid seam: Neo4j (uri=)</text>
         </g>
         <!-- router -> backends -->
-        <path d="M880,482 C760,508 360,512 203,532" fill="none" stroke="#fbbf24" stroke-width="1.6" marker-end="url(#ah-a)"/>
-        <line x1="940" y1="482" x2="610" y2="532" stroke="#fbbf24" stroke-width="1.6" marker-end="url(#ah-a)"/>
-        <line x1="960" y1="482" x2="930" y2="532" stroke="#fbbf24" stroke-width="1.6" marker-end="url(#ah-a)"/>
+        <path d="M880,482 C760,508 360,512 203,532" fill="none" stroke="#fbbf24" stroke-width="1.6" marker-end="url(#ah-a)" class="edge-anim"/>
+        <circle class="pkt" r="3.4" fill="#fde29a"><animateMotion path="M880,482 C760,508 360,512 203,532" dur="1.7s" begin="1.5s" repeatCount="indefinite"/></circle>
+        <line x1="940" y1="482" x2="610" y2="532" stroke="#fbbf24" stroke-width="1.6" marker-end="url(#ah-a)" class="edge-anim"/>
+        <circle class="pkt" r="3.4" fill="#fde29a"><animateMotion path="M940,482 L610,532" dur="1.5s" begin="1.6s" repeatCount="indefinite"/></circle>
+        <line x1="960" y1="482" x2="930" y2="532" stroke="#fbbf24" stroke-width="1.6" marker-end="url(#ah-a)" class="edge-anim"/>
+        <circle class="pkt" r="3.4" fill="#fde29a"><animateMotion path="M960,482 L930,532" dur="1.3s" begin="1.7s" repeatCount="indefinite"/></circle>
 
         <!-- opt-in / not-default note -->
         <g>
