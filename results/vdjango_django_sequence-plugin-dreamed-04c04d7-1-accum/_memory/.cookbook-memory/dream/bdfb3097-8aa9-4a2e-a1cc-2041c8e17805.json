@@ -1,0 +1,1 @@
+{"cursor": 571090, "last_summary": "The model `PrimaryKeyWithDefault` in `tests/basic/models.py` uses `uuid = models.UUIDField(primary_key=True, default=uuid.uuid4)` and is the test model for defaulted-pk save behavior.", "recent_memory_ids": ["mem_10eb7804"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

@@ -1,0 +1,1 @@
+{"cursor": 194964, "last_summary": "In FileSystemStorage._save(), os.chmod() only executes when self.file_permissions_mode is not None, which is why a None default caused tempfile-originated permissions to persist unmodified.", "recent_memory_ids": ["mem_da682f07", "mem_553ec705"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

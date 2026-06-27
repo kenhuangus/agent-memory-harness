@@ -1,0 +1,1 @@
+{"cursor": 316001, "last_summary": "The check_referrer_policy function in django/core/checks/security/base.py validates the value against REFERRER_POLICY_VALUES set and returns W022 on None or E023 on invalid values.", "recent_memory_ids": ["mem_f6472449", "mem_51ef07a6", "mem_1f6b11dd"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

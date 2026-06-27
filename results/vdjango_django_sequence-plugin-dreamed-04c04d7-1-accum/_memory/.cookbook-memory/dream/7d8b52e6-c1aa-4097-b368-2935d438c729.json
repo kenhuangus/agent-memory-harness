@@ -1,0 +1,1 @@
+{"cursor": 361672, "last_summary": "The PRAGMA index_list column-count comment referring to SQLite 3.8.9 in django/db/backends/sqlite3/introspection.py was removed, as 3.9.0 is now the minimum.", "recent_memory_ids": ["mem_093ced2e", "mem_207eb1da", "mem_75f95220"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

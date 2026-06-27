@@ -1,0 +1,1 @@
+{"cursor": 225718, "last_summary": "The database operation method `ops.bulk_batch_size(fields, objs)` returns the maximum number of objects that can be inserted in a single batch for the current database backend.", "recent_memory_ids": ["mem_1789eb6d"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

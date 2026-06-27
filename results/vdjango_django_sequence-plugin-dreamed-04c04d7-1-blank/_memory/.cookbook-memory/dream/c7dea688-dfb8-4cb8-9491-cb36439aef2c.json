@@ -1,0 +1,1 @@
+{"cursor": 238031, "last_summary": "The original issue reporter is Ahmet Kucuk, and the bug was that bulk_create's batch_size parameter overrode the compatible batch size calculation, unlike bulk_update which properly used min().", "recent_memory_ids": ["mem_e9481b79"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

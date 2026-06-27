@@ -1,0 +1,1 @@
+{"cursor": 390086, "last_summary": "The changes to add SSL client cert/key support to PostgreSQL dbshell followed the same pattern as issue #28322, where similar support was added for a related SSL parameter.", "recent_memory_ids": ["mem_9800846d", "mem_99ba2dac"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

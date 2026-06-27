@@ -1,0 +1,1 @@
+{"cursor": 664608, "last_summary": "ModelChoiceField's to_python() was refactored to extract the lookup key before the try/except block, early-return on success, and raise ValidationError with params on failure.", "recent_memory_ids": ["mem_f79b2280"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

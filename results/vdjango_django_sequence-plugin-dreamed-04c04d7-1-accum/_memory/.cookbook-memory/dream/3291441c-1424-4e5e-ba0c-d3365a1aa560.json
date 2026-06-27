@@ -1,0 +1,1 @@
+{"cursor": 285575, "last_summary": "The top-level authenticate() function (django/contrib/auth/__init__.py) iterates through all backends; any backend.authenticate() that returns None causes the loop to continue to the next backend.", "recent_memory_ids": ["mem_da9ec645", "mem_59d353ca"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
