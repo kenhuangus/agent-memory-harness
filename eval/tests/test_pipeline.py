@@ -301,6 +301,32 @@ def test_pipeline_meta_records_harness() -> None:
     assert claude_meta["harness"] == "claude"
 
 
+def test_pipeline_meta_records_extraction_prompt_variant(monkeypatch) -> None:
+    # The persisted pipeline metadata records WHICH daydream extraction prompt the run
+    # resolved (variant + sha256 + char_count), so a result file is self-describing about
+    # its prompt version. Defaults to V0 when DREAM_EXTRACTION_VARIANT is unset; an explicit
+    # variant is reflected, and the sha256/char_count match the dreaming registry's own
+    # resolution (not a raw env echo).
+    from memeval.dreaming.prompts import resolve_extraction_prompt
+
+    vinfo = {"version": "vtest", "git_sha": "abc"}
+    base = _cfg("/tmp", stage="plugin-dreamed")
+
+    monkeypatch.delenv("DREAM_EXTRACTION_VARIANT", raising=False)
+    default_meta = P._pipeline_meta(base, vinfo, Path("/tmp/x"), "stamp")
+    ep = default_meta["dream"]["extraction_prompt"]
+    expected = resolve_extraction_prompt()
+    assert ep["variant"] == "V0"
+    assert ep["sha256"] == expected.sha256
+    assert ep["char_count"] == expected.char_count
+
+    monkeypatch.setenv("DREAM_EXTRACTION_VARIANT", "v5")  # case-insensitive resolution
+    v5_meta = P._pipeline_meta(base, vinfo, Path("/tmp/x"), "stamp")
+    ep5 = v5_meta["dream"]["extraction_prompt"]
+    assert ep5["variant"] == "V5"
+    assert ep5["sha256"] == resolve_extraction_prompt("V5").sha256
+
+
 def test_interactive_config_defaults_to_single_accum_stage(monkeypatch, tmp_path) -> None:
     # Accept every default, including the plugin-accum source-memory selection.
     source = _source_memory(str(tmp_path))
@@ -725,7 +751,7 @@ def test_summary_renders_ungraded_accuracy_as_dash() -> None:
 
     # ``resolved`` cell is ``—`` here: this stage dict predates the grading-visibility
     # fields, so it falls back gracefully (no resolved/n -> dash).
-    assert "| plugin-blank | — | 0.0000 | 0.0000 | 0.0000 | — | 1 | $0.0000 |" in md
+    assert "| plugin-blank | — | 0.0000 | 0.0000 | 0.0000 | — | 0 | 1 | $0.0000 |" in md
     assert "accuracy_ungraded" in md
 
 
@@ -755,10 +781,11 @@ def test_summary_surfaces_resolved_and_grade_reasons() -> None:
         "dream": {"status": "not-run"},
     })
 
-    # Main table carries a resolved column (0/3 here).
-    assert "| base |" in md and " 0/3 " in md
+    # Main table uses the graded denominator, matching accuracy.
+    assert "| base | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0/1 | 1 | 3 | $0.1000 |" in md
     # Task grading section breaks down graded/ungraded + the reason histogram.
     assert "## Task grading" in md
+    assert "| base | 0/1 | 0/3 | 1 | 2 |" in md
     assert "checkout_failed×2" in md
     assert "graded×1" in md
 

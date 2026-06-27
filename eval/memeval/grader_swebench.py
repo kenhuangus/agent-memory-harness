@@ -45,7 +45,9 @@ from .grader import (
     CmdResult,
     CmdRunner,
     _subprocess_cmd,
+    django_label,
     instance_id_of,
+    is_django_selector,
     patch_target_files,
     revert_test_files,
 )
@@ -337,6 +339,8 @@ class SwebenchHostGrader:
         }
 
         directives = get_test_directives(instance)
+        if not directives:
+            directives = _django_directives_from_patch_or_selectors(task) if repo == "django/django" else []
         if not directives:
             return self._ungraded(
                 "get_test_directives yielded no test files from test_patch", task)
@@ -763,3 +767,42 @@ class SwebenchHostGrader:
 
 
 __all__ = ["SwebenchHostGrader"]
+
+
+def _django_directives_from_patch_or_selectors(task: Task) -> list[str]:
+    """Recover Django runtests directives when a gold patch edits only fixtures.
+
+    SWE-bench normally derives Django directives from Python files touched by
+    ``test_patch``. A few Django instances add fixture rows (for example
+    ``tests/validators/*.txt``), so that function returns an empty list even
+    though there is still an obvious Django test app. Prefer the fixture's
+    ``tests/<app>/...`` label; fall back to selector modules only if no such
+    label is present.
+    """
+    app_labels: list[str] = []
+    seen_apps: set[str] = set()
+    for target in patch_target_files(task.test_patch or ""):
+        parts = target.split("/")
+        if len(parts) >= 3 and parts[0] == "tests" and parts[1]:
+            app = parts[1]
+            if app not in seen_apps:
+                app_labels.append(app)
+                seen_apps.add(app)
+    if app_labels:
+        return app_labels
+
+    modules: list[str] = []
+    seen: set[str] = set()
+    for selector in [*(task.fail_to_pass or []), *(task.pass_to_pass or [])]:
+        if not is_django_selector(selector):
+            continue
+        # The normalized label is itself a runnable runtests directive — bare
+        # module (``validators.tests``), ``module.Class``, or the full
+        # ``module.Class.method`` all run. Don't strip to ``parts[:-2]``: that
+        # both discarded bare labels (``len < 3``) and over-trimmed
+        # ``module.Class`` down to ``module``. Keep the label as-is and dedupe.
+        label = django_label(selector).strip()
+        if label and label not in seen:
+            modules.append(label)
+            seen.add(label)
+    return modules

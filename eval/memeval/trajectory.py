@@ -100,6 +100,7 @@ __all__ = [
 # Step kinds the harness emits (mirrors TrajectoryStep docstring). Kept here so
 # the builder can validate/normalize without re-importing the schema constant.
 STEP_KINDS = ("retrieve", "generate", "write", "judge", "error", "note")
+_UNSET = object()
 
 
 # --------------------------------------------------------------------------- #
@@ -392,7 +393,7 @@ class TrajectoryLogger:
         self,
         *,
         prediction: Optional[str] = None,
-        success: Optional[bool] = None,
+        success: Any = _UNSET,
         ended_at: float = 0.0,
         metadata: Optional[dict[str, Any]] = None,
     ) -> Trajectory:
@@ -408,7 +409,7 @@ class TrajectoryLogger:
         traj = self._open
         if prediction is not None:
             traj.prediction = prediction
-        if success is not None:
+        if success is not _UNSET:
             traj.success = success
         traj.ended_at = ended_at
         if metadata:

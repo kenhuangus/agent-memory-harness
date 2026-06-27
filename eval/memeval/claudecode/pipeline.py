@@ -645,11 +645,36 @@ def _resolve_config(args: argparse.Namespace) -> dict:
 # The run
 # --------------------------------------------------------------------------- #
 def _dream_meta() -> dict:
-    """The dreamer (subconscious) model recorded for provenance (ADR-dreaming-004)."""
-    return {
+    """The dreamer (subconscious) model + extraction prompt recorded for provenance
+    (ADR-dreaming-004).
+
+    ``extraction_prompt`` is the *resolved* identity of the daydream extraction prompt
+    this run would use — the variant key (``V0``..``V5``), the sha256 of its text, and its
+    char count — read via ``resolve_extraction_prompt`` so it reflects the real
+    ``DREAM_EXTRACTION_VARIANT`` resolution (default ``V0``, case-normalized), not a raw
+    env echo. Recorded on EVERY run (not just plugin-dreamed) to document the substrate's
+    lineage; the sha256 pins the exact text even if a variant's body later drifts. The
+    per-memory ground truth remains the ``daydream.prompt_resolved`` diary events.
+    Fail-open: provenance must never abort a run."""
+    meta: dict[str, Any] = {
         "provider": os.environ.get("DREAM_PROVIDER", "openrouter"),
         "model": os.environ.get("DREAM_MODEL", "inclusionai/ling-2.6-flash"),
     }
+    try:
+        from ..dreaming.prompts import resolve_extraction_prompt
+
+        ident = resolve_extraction_prompt()  # reads DREAM_EXTRACTION_VARIANT, default V0
+        meta["extraction_prompt"] = {
+            "variant": ident.variant,
+            "sha256": ident.sha256,
+            "char_count": ident.char_count,
+        }
+    except Exception as exc:  # noqa: BLE001 - provenance must never break a run
+        meta["extraction_prompt"] = {
+            "variant": None,
+            "error": f"{type(exc).__name__}: {str(exc)[:120]}",
+        }
+    return meta
 
 
 def _pipeline_meta(cfg: dict, version_info: dict, substrate: Path, stamp: str) -> dict:
@@ -909,6 +934,14 @@ def _stage_warnings(stage: str, cfg: dict, rr: Any, before: dict[str, Any],
             "code": "accuracy_ungraded",
             "message": "no graded tasks; accuracy is not a resolve-rate measurement",
         })
+    elif rr.metadata.get("ungraded", 0) > 0:
+        warnings.append({
+            "code": "partial_grading",
+            "message": (
+                f"{rr.metadata.get('ungraded', 0)} of {rr.n_tasks} tasks were ungraded; "
+                "accuracy denominator is graded tasks only"
+            ),
+        })
     return warnings
 
 
@@ -995,8 +1028,11 @@ def _make_progress_cb(stage: str, total: int, on_task=None, cost_base: float = 0
         state["last"] = done
         _rebase_cost(partial, cost_base)  # show THIS stage's cost, not the pipeline total
         elapsed = int(time.monotonic() - state["t0"])
-        resolved = sum(1 for t in partial.trajectories if t.success)
-        print(f"  [{done}/{total}] {stage}: {resolved} resolved · "
+        resolved = sum(1 for t in partial.trajectories if t.success is True)
+        graded = sum(1 for t in partial.trajectories if t.success is not None)
+        ungraded = done - graded
+        print(f"  [{done}/{total}] {stage}: {resolved}/{graded} graded resolved"
+              f" · {ungraded} ungraded · "
               f"${partial.cost_usd:.4f} · {elapsed}s elapsed", flush=True)
         sys.stdout.flush()
         if on_task is not None:
@@ -1445,8 +1481,11 @@ def _run_one(stage: str, cfg: dict, substrate: Path, cost: Any,
     _rebase_cost(rr, cost_base)
     m = rr.metrics
     secs = int(time.monotonic() - t0)
-    resolved = sum(1 for t in rr.trajectories if t.success)
-    print(f"  ✓ stage {stage} done · {resolved}/{rr.n_tasks} resolved · acc={m.accuracy:.3f} "
+    resolved = sum(1 for t in rr.trajectories if t.success is True)
+    graded = sum(1 for t in rr.trajectories if t.success is not None)
+    ungraded = rr.n_tasks - graded
+    print(f"  ✓ stage {stage} done · {resolved}/{graded} graded resolved"
+          f" · {ungraded}/{rr.n_tasks} ungraded · acc={m.accuracy:.3f} "
           f"rel={m.relevancy:.3f} eff={m.efficiency:.3f} · ${rr.cost_usd:.4f} · {secs}s",
           flush=True)
     if cfg["native_cl"]:
