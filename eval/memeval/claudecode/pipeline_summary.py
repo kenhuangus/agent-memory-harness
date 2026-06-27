@@ -253,8 +253,11 @@ def render_summary_md(summary: dict) -> str:
         f"**Tasks:** {pm.get('n_tasks')} · **Stages:** {pm.get('n_stages')}"
     )
     dreamer = pm.get("dream") or {}
+    extraction = dreamer.get("extraction_prompt") or {}
+    prompt_variant = extraction.get("variant") or "?"
     lines.append(
         f"**Dreamer:** {dreamer.get('provider')} / {dreamer.get('model')} · "
+        f"**Extraction prompt:** {prompt_variant} · "
         f"**Grader:** {pm.get('grader')} · **git:** {pm.get('git_sha')}"
     )
     lines.append("")

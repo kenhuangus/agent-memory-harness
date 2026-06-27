@@ -645,11 +645,36 @@ def _resolve_config(args: argparse.Namespace) -> dict:
 # The run
 # --------------------------------------------------------------------------- #
 def _dream_meta() -> dict:
-    """The dreamer (subconscious) model recorded for provenance (ADR-dreaming-004)."""
-    return {
+    """The dreamer (subconscious) model + extraction prompt recorded for provenance
+    (ADR-dreaming-004).
+
+    ``extraction_prompt`` is the *resolved* identity of the daydream extraction prompt
+    this run would use — the variant key (``V0``..``V5``), the sha256 of its text, and its
+    char count — read via ``resolve_extraction_prompt`` so it reflects the real
+    ``DREAM_EXTRACTION_VARIANT`` resolution (default ``V0``, case-normalized), not a raw
+    env echo. Recorded on EVERY run (not just plugin-dreamed) to document the substrate's
+    lineage; the sha256 pins the exact text even if a variant's body later drifts. The
+    per-memory ground truth remains the ``daydream.prompt_resolved`` diary events.
+    Fail-open: provenance must never abort a run."""
+    meta: dict[str, Any] = {
         "provider": os.environ.get("DREAM_PROVIDER", "openrouter"),
         "model": os.environ.get("DREAM_MODEL", "inclusionai/ling-2.6-flash"),
     }
+    try:
+        from ..dreaming.prompts import resolve_extraction_prompt
+
+        ident = resolve_extraction_prompt()  # reads DREAM_EXTRACTION_VARIANT, default V0
+        meta["extraction_prompt"] = {
+            "variant": ident.variant,
+            "sha256": ident.sha256,
+            "char_count": ident.char_count,
+        }
+    except Exception as exc:  # noqa: BLE001 - provenance must never break a run
+        meta["extraction_prompt"] = {
+            "variant": None,
+            "error": f"{type(exc).__name__}: {str(exc)[:120]}",
+        }
+    return meta
 
 
 def _pipeline_meta(cfg: dict, version_info: dict, substrate: Path, stamp: str) -> dict:
