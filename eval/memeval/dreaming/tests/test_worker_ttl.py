@@ -1584,3 +1584,160 @@ def test_dream_routes_to_v2_path_when_flag_on(
 
     assert v2_called[0] == 1, "v2 neighborhood path should be called once"
     assert v1_called[0] == 0, "v1 path must NOT be called when flag is on"
+
+
+# --------------------------------------------------------------------------- #
+# §P — ADR-dreaming-028 §2 PR #2e neighborhood-scoped dedup helper
+# --------------------------------------------------------------------------- #
+
+def test_dedup_neighborhood_returns_empty_for_empty_items(memory_store_dir: Path) -> None:
+    """ADR-028 §2 PR #2e — empty items short-circuits with empty result, no LLM."""
+    from memeval.dreaming.worker import _detect_duplicates_neighborhood
+
+    llm = _StubLLM(responses=[])
+    result = _detect_duplicates_neighborhood(
+        items=[], store=_DeleteAwareStore(), client=llm,
+        max_calls=10, model="stub", session_id="s1", now=_FIXED_NOW,
+    )
+    assert result.pairs == []
+    assert result.llm_calls == 0
+    assert llm.calls == []
+
+
+def test_dedup_neighborhood_respects_max_calls_zero(memory_store_dir: Path) -> None:
+    """ADR-028 §2 PR #2e — max_calls=0 returns empty result, no LLM call."""
+    from memeval.dreaming.worker import _detect_duplicates_neighborhood
+
+    pivot = MemoryItem(item_id="p", content="x", timestamp=_FIXED_NOW)
+    llm = _StubLLM(responses=[])
+    result = _detect_duplicates_neighborhood(
+        items=[pivot], store=_DeleteAwareStore(), client=llm,
+        max_calls=0, model="stub", session_id="s1", now=_FIXED_NOW,
+    )
+    assert result.pairs == []
+    assert llm.calls == []
+
+
+def test_dedup_neighborhood_skips_pivots_with_empty_neighborhood(memory_store_dir: Path) -> None:
+    """ADR-028 §2 PR #2e — thin neighborhood (no neighbors) → skip without
+    burning an LLM call."""
+    from memeval.dreaming.worker import _detect_duplicates_neighborhood
+
+    p1 = MemoryItem(item_id="p1", content="a", timestamp=_FIXED_NOW)
+    p2 = MemoryItem(item_id="p2", content="b", timestamp=_FIXED_NOW)
+    n1 = MemoryItem(item_id="n1", content="c", timestamp=_FIXED_NOW)
+    store = _StubSearchStore(lookup={"b": [n1]})
+
+    llm = _StubLLM(responses=[_StubCompletion('{"pairs": []}')])
+    result = _detect_duplicates_neighborhood(
+        items=[p1, p2], store=store, client=llm,
+        max_calls=10, model="stub", session_id="s1", now=_FIXED_NOW,
+    )
+    assert result.llm_calls == 1, "only p2 had a neighborhood; p1 should skip"
+
+
+def test_dedup_neighborhood_finds_pair_within_neighborhood(memory_store_dir: Path) -> None:
+    """ADR-028 §2 PR #2e — LLM identifies a same-thing pair within the
+    pivot's neighborhood; helper returns it as a DedupPair after
+    deterministic loser selection (latest timestamp wins)."""
+    from memeval.dreaming.worker import DedupPair, _detect_duplicates_neighborhood
+
+    pivot = MemoryItem(item_id="p", content="paginator needs __iter__", timestamp=_FIXED_NOW)
+    nbr = MemoryItem(item_id="n", content="added iteration to paginator", timestamp=_FIXED_NOW - _DAY)
+    store = _StubSearchStore(lookup={"paginator needs __iter__": [nbr]})
+
+    resp = _StubCompletion('{"pairs": [{"a_id": "p", "b_id": "n", "rationale": "same fix"}]}')
+    llm = _StubLLM(responses=[resp])
+    result = _detect_duplicates_neighborhood(
+        items=[pivot], store=store, client=llm,
+        max_calls=10, model="stub", session_id="s1", now=_FIXED_NOW,
+    )
+    assert len(result.pairs) == 1
+    pair = result.pairs[0]
+    assert isinstance(pair, DedupPair)
+    # p is newer (_FIXED_NOW) → winner; n is older → loser.
+    assert pair.winner_id == "p"
+    assert pair.loser_id == "n"
+    assert pair.rationale == "same fix"
+
+
+def test_dedup_neighborhood_dedupes_pair_surfaced_from_two_pivots(memory_store_dir: Path) -> None:
+    """ADR-028 §2 PR #2e — cross-pivot dedup: same pair surfaced from both A's
+    neighborhood and B's neighborhood is returned ONCE, not twice."""
+    from memeval.dreaming.worker import _detect_duplicates_neighborhood
+
+    a = MemoryItem(item_id="A", content="a-content", timestamp=_FIXED_NOW)
+    b = MemoryItem(item_id="B", content="b-content", timestamp=_FIXED_NOW - _DAY)
+    store = _StubSearchStore(lookup={"a-content": [b], "b-content": [a]})
+
+    resp_a = _StubCompletion('{"pairs": [{"a_id": "A", "b_id": "B", "rationale": "same"}]}')
+    resp_b = _StubCompletion('{"pairs": [{"a_id": "B", "b_id": "A", "rationale": "still same"}]}')
+    llm = _StubLLM(responses=[resp_a, resp_b])
+    result = _detect_duplicates_neighborhood(
+        items=[a, b], store=store, client=llm,
+        max_calls=10, model="stub", session_id="s1", now=_FIXED_NOW,
+    )
+    assert len(result.pairs) == 1, "same pair must not be returned twice"
+    assert result.llm_calls == 2, "both pivots judged; dedup happens after the LLM call"
+
+
+def test_dedup_neighborhood_bounds_pivots_by_max_calls(memory_store_dir: Path) -> None:
+    """ADR-028 §2 PR #2e — max_calls caps PIVOT count."""
+    from memeval.dreaming.worker import _detect_duplicates_neighborhood
+
+    items = [
+        MemoryItem(item_id=f"p{i}", content=f"c{i}", timestamp=_FIXED_NOW)
+        for i in range(5)
+    ]
+    nbr = MemoryItem(item_id="nbr", content="ny", timestamp=_FIXED_NOW)
+    store = _StubSearchStore(lookup={p.content: [nbr] for p in items})
+
+    llm = _StubLLM(responses=[_StubCompletion('{"pairs": []}') for _ in range(10)])
+    result = _detect_duplicates_neighborhood(
+        items=items, store=store, client=llm,
+        max_calls=3, model="stub", session_id="s1", now=_FIXED_NOW,
+    )
+    assert len(llm.calls) == 3
+    assert result.llm_calls == 3
+
+
+def test_dedup_neighborhood_drops_pair_with_protected_loser(memory_store_dir: Path) -> None:
+    """ADR-028 §2 PR #2e — pair whose loser_id is in protected_ids is dropped.
+    Conservative posture parallel to the contradiction helper."""
+    from memeval.dreaming.worker import _detect_duplicates_neighborhood
+
+    p = MemoryItem(item_id="p", content="x", timestamp=_FIXED_NOW)
+    n = MemoryItem(item_id="n", content="y", timestamp=_FIXED_NOW - _DAY)
+    store = _StubSearchStore(lookup={"x": [n]})
+
+    llm = _StubLLM(responses=[_StubCompletion('{"pairs": [{"a_id": "p", "b_id": "n", "rationale": "r"}]}')])
+    result = _detect_duplicates_neighborhood(
+        items=[p], store=store, client=llm,
+        max_calls=10, model="stub", session_id="s1", now=_FIXED_NOW,
+        protected_ids={"n"},
+    )
+    assert result.pairs == [], "pair with protected loser must be dropped"
+
+
+def test_dedup_neighborhood_fails_open_on_llm_exception(memory_store_dir: Path) -> None:
+    """ADR-028 §2 PR #2e + ADR-harness-006 — LLM raising MUST NOT crash.
+    Affected pivot is skipped via `dream.dedup_skipped_unavailable_llm`."""
+    from memeval.dreaming.worker import _detect_duplicates_neighborhood
+
+    p1 = MemoryItem(item_id="p1", content="x", timestamp=_FIXED_NOW)
+    p2 = MemoryItem(item_id="p2", content="y", timestamp=_FIXED_NOW)
+    n = MemoryItem(item_id="nbr", content="z", timestamp=_FIXED_NOW)
+    store = _StubSearchStore(lookup={"x": [n], "y": [n]})
+
+    class _RaisingLLM(_StubLLM):
+        def complete(self, *args, **kwargs):
+            self.calls.append({})
+            raise RuntimeError("Voyage API error (HTTP 429)")
+
+    llm = _RaisingLLM(responses=[])
+    result = _detect_duplicates_neighborhood(
+        items=[p1, p2], store=store, client=llm,
+        max_calls=10, model="stub", session_id="s1", now=_FIXED_NOW,
+    )
+    assert result.pairs == []
+    assert result.llm_calls == 2, "fail-open still burns a call (Pushback H parity)"
