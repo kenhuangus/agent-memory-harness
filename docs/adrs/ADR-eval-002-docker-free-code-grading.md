@@ -2,19 +2,19 @@
 id: ADR-eval-002
 domain: eval
 title: Docker removed entirely — Claude Code CLI is the coding agent; LocalExecGrader / retrieval replace the SWE-bench Docker grader
-status: Accepted
+status: Superseded
 date: 2026-06-22
 contract: false
 supersedes: none
-superseded_by: none
+superseded_by: ADR-eval-008
 owner: Ken (P2)
 origin: user directive (overrides the design doc's "keep Docker opt-in")
 ---
 
 # ADR-eval-002: Docker removed entirely — Claude Code CLI is the coding agent; LocalExecGrader / retrieval replace the SWE-bench Docker grader
 
-**Status:** Accepted · **Date:** 2026-06-22 · **Contract:** no
-**Supersedes:** none · **Superseded by:** none
+**Status:** Superseded · **Date:** 2026-06-22 · **Contract:** no
+**Supersedes:** none · **Superseded by:** [ADR-eval-008](ADR-eval-008-opt-in-swebench-docker-grader.md) for the Docker-grading prohibition only
 
 ## Context
 CODE tasks (SWE-ContextBench, SWE-Bench-CL) were originally scored by an

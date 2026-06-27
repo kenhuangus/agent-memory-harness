@@ -40,11 +40,12 @@ the move).
 | ADR | Decision | Status | Contract |
 |-----|----------|--------|----------|
 | [ADR-eval-001](ADR-eval-001-extract-memory-package.md) | Extract the memory system into its own package; `memeval` stays pure eval | Accepted | no |
-| [ADR-eval-002](ADR-eval-002-docker-free-code-grading.md) | Docker removed entirely: Claude Code CLI is the coding agent; `LocalExecGrader` / retrieval replace the SWE-bench Docker grader | Accepted | no |
+| [ADR-eval-002](ADR-eval-002-docker-free-code-grading.md) | Docker removed entirely: Claude Code CLI is the coding agent; `LocalExecGrader` / retrieval replace the SWE-bench Docker grader | Superseded by [ADR-eval-008](ADR-eval-008-opt-in-swebench-docker-grader.md) for the Docker-grading prohibition only | no |
 | [ADR-eval-003](ADR-eval-003-pipeline-shared-memory-substrate.md) | The eval pipeline owns only the memory store DIRECTORY; ONE shared substrate per pipeline version, touched only by the plugin | Proposed | **yes** |
 | [ADR-eval-004](ADR-eval-004-pipeline-version-from-git-tag.md) | A pipeline run's version is the git tag on its `main` commit (fallback `MEMORY_VERSION`) | Proposed | no |
 | [ADR-eval-005](ADR-eval-005-grade-reason-visibility.md) | Surface per-task grade reasons in the run output: read the grader's `last_reason`, carry it on `trajectory.metadata`, aggregate `resolved/ungraded/grade_reasons` into the summary | Accepted | no |
 | [ADR-eval-006](ADR-eval-006-grader-historical-env-compat.md) | Make the docker-free grader run historical SWE-bench commits: per-repo Python pin, setuptools-scm pretend-version, pytest plugin-autoload disable, junk/truncated-selector filter, `-rA` status parser | Accepted | no |
+| [ADR-eval-008](ADR-eval-008-opt-in-swebench-docker-grader.md) | Reintroduce Docker only as an opt-in SWE-bench grader for historical environment coverage | Accepted | no |
 | [ADR-storage-001](ADR-storage-001-orchestrator-in-process-library.md) | Orchestrator is an in-process library; store-by-`$MEMORY_STORE`, no daemon | Accepted | **yes** |
 | [ADR-storage-002](ADR-storage-002-persist-graph-backend.md) | The graph backend is constructed with a durable path under `$MEMORY_STORE`, not in-memory | Proposed | no |
 | [ADR-storage-003](ADR-storage-003-router-profile-spectrum-fusion-default.md) | The router is a profile-driven speed↔accuracy spectrum; the shipped default is cross-backend fan-out-and-fuse | Accepted | no |
