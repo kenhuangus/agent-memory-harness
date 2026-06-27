@@ -87,6 +87,70 @@ class Fts5StoreTests(unittest.TestCase):
         finally:
             s.close()
 
+    def test_iter_pages_empty_store_yields_nothing(self) -> None:
+        """ADR-028 §2 PR #2g — empty store yields no pages at all."""
+        s = self.store()
+        try:
+            self.assertEqual(list(s.iter_pages(page_size=10)), [])
+        finally:
+            s.close()
+
+    def test_iter_pages_single_page_smaller_than_page_size(self) -> None:
+        """ADR-028 §2 PR #2g — items fitting in one page yield a single page
+        containing all of them (in insertion/rowid order, same as `all()`)."""
+        s = self.store()
+        try:
+            s.write(_mk("a", "alpha"))
+            s.write(_mk("b", "beta"))
+            s.write(_mk("c", "gamma"))
+            pages = list(s.iter_pages(page_size=10))
+            self.assertEqual(len(pages), 1)
+            self.assertEqual([it.item_id for it in pages[0]], ["a", "b", "c"])
+        finally:
+            s.close()
+
+    def test_iter_pages_partitions_at_page_size_boundary(self) -> None:
+        """ADR-028 §2 PR #2g — 5 items at page_size=2 yields three pages
+        of sizes (2, 2, 1); cross-page order is preserved."""
+        s = self.store()
+        try:
+            for i in range(5):
+                s.write(_mk(f"item-{i}", f"content-{i}"))
+            pages = list(s.iter_pages(page_size=2))
+            self.assertEqual([len(p) for p in pages], [2, 2, 1])
+            flat_ids = [it.item_id for p in pages for it in p]
+            self.assertEqual(flat_ids, [f"item-{i}" for i in range(5)])
+        finally:
+            s.close()
+
+    def test_iter_pages_invalid_page_size_raises(self) -> None:
+        """ADR-028 §2 PR #2g — `page_size <= 0` is a programming error, not a
+        graceful fall-through (would yield empty forever otherwise)."""
+        s = self.store()
+        try:
+            with self.assertRaises(ValueError):
+                list(s.iter_pages(page_size=0))
+            with self.assertRaises(ValueError):
+                list(s.iter_pages(page_size=-1))
+        finally:
+            s.close()
+
+    def test_iter_pages_concatenation_matches_all(self) -> None:
+        """ADR-028 §2 PR #2g — flattening pages from iter_pages yields the
+        same items in the same order as `all()`. The page-walk is a strict
+        refinement of the materialize-all read; behavior parity is required."""
+        s = self.store()
+        try:
+            for i in range(12):
+                s.write(_mk(f"m{i}", f"text-{i}"))
+            from_all = [it.item_id for it in s.all()]
+            from_iter = [
+                it.item_id for page in s.iter_pages(page_size=5) for it in page
+            ]
+            self.assertEqual(from_all, from_iter)
+        finally:
+            s.close()
+
     def test_overwrite_is_idempotent_and_refreshes_index(self) -> None:
         s = self.store()
         try:
