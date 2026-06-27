@@ -43,14 +43,22 @@ def build_store(store_path: str) -> MemoryStore:
 
     **Profile selection** is the engine's call, not the plugin's, and needs no plugin input:
 
-    * ``$MEMORY_PROFILE`` (``speed`` | ``fusion`` | ``fusion-local`` | ``accuracy`` |
-      ``accuracy-local``) forces a profile when set.
+    * ``$MEMORY_PROFILE`` (``speed`` | ``fusion`` | ``fusion-local`` | ``fusion-falkor`` |
+      ``accuracy`` | ``accuracy-local``) forces a profile when set.
     * Otherwise: if a real embedder key (``$VOYAGE_API_KEY``) is present, use the **accuracy**
       profile (semantic-exemplar classifier + Voyage embedder wired into the vector store at the
       matching dimension + graph->vector cascade). With no key, use the **fusion** profile
       (cross-backend RRF -- the best fully-offline recall; no key, no embedder-dimension mismatch).
       ``speed`` (the bare v1 router) is never auto-selected -- it is reachable only by explicit
       ``$MEMORY_PROFILE=speed``.
+    * ``fusion-falkor`` is the **fusion** profile with ONLY its graph backend swapped for an
+      EXTERNAL FalkorDB server: it CONNECTS to ``$FALKORDB_URL`` (default ``redis://localhost:6379``)
+      with ``native=True``; every other backend (vectors, markdown, fts5) is byte-identical to
+      ``fusion``. Reachable ONLY by explicit ``$MEMORY_PROFILE=fusion-falkor`` -- never auto-selected.
+      It fails **loud** if the server is unreachable; it does NOT fall back to the in-memory graph,
+      because a silent fallback would mislabel the graph backend and corrupt a ``fusion`` vs
+      ``fusion-falkor`` measurement (contrast ``fusion-local``/``accuracy-local``, whose fallback is a
+      still-valid offline profile). Requires a running (e.g. Docker) FalkorDB at ``$FALKORDB_URL``.
     * ``$MEMEVAL_LOCAL_ANN=1`` opts into ``accuracy-local`` when ``$MEMORY_PROFILE`` is not set:
       local MiniLM embeddings plus sqlite-vec when available, with exact brute-force fallback.
 
@@ -148,21 +156,63 @@ def build_store(store_path: str) -> MemoryStore:
                 embed=embed,
                 embed_model=embed_model,
             )
+    elif profile == "fusion-falkor":
+        # Routing config IS the fusion profile -- only the graph BACKEND differs (swapped below for an
+        # external FalkorDB). profile_name records the swap so a run is labelled fusion-falkor, not fusion.
+        vectors = SqliteVectorStore(db_path)
+        config = replace(fusion_profile(), profile_name="fusion-falkor")
     else:
         vectors = SqliteVectorStore(db_path)
         config = fusion_profile() if profile == "fusion" else speed_profile()
 
-    # All backends persist under the store root so the graph (typed OKF links) survives a
-    # process exit like the vector and markdown layers do -- without a path, GraphStore is RAM-only
-    # and evaporates each turn, contributing nothing to a memory that accumulates across runs.
+    # The graph backend. Every profile except fusion-falkor uses the in-memory GraphStore persisted
+    # under the store root so the graph (typed OKF links) survives a process exit like the vector and
+    # markdown layers do -- without a path, GraphStore is RAM-only and evaporates each turn, contributing
+    # nothing to a memory that accumulates across runs. fusion-falkor swaps in the EXTERNAL FalkorDB
+    # server instead (fail-loud, no silent fallback -- see _build_falkor_graph).
+    if profile == "fusion-falkor":
+        graph: MemoryStore = _build_falkor_graph()
+    else:
+        graph = GraphStore(path=str(root / "graph.db"))
+
+    # All other backends persist under the store root and are IDENTICAL to the fusion path.
     backends: dict[str, MemoryStore] = {
         "vectors": vectors,
         "markdown": MarkdownStore(root / "markdown"),
-        "graph": GraphStore(path=str(root / "graph.db")),
+        "graph": graph,
         # FTS5 is the lexical backend fusion fans out to; Track 0 recall@10 beat markdown 0.842 vs 0.825.
         "fts5": Fts5Store(str(root / "fts5.db")),
     }
     return RouterStore(Router.with_config(backends, config))
+
+
+def _build_falkor_graph() -> MemoryStore:
+    """Build the external-FalkorDB graph backend for ``fusion-falkor`` -- fail-loud, no fallback.
+
+    Connects to ``$FALKORDB_URL`` (default ``redis://localhost:6379``) with ``native=True`` and the
+    same default traversal depth the in-memory :class:`GraphStore` uses, so only the storage layer
+    differs from ``fusion``. ``FalkorGraphStore``'s constructor round-trips to the server (index +
+    max-seq read), so *constructing it IS the reachability probe*. Any failure is re-raised LOUD:
+    ``fusion-falkor`` must NEVER silently fall back to the in-memory ``GraphStore``, because that
+    would mislabel the graph backend and corrupt a ``fusion`` vs ``fusion-falkor`` measurement.
+
+    Kept lazy (imports happen only here) so the offline default never imports ``falkordb``.
+    """
+    # Lazy: keep falkordb/redis off the offline import path -- only loaded when fusion-falkor is chosen.
+    from memeval.stores.falkor_store import FalkorGraphStore
+    from memeval.stores.graph_store import _MAX_DEPTH
+
+    url = (os.environ.get("FALKORDB_URL") or "redis://localhost:6379").strip() or "redis://localhost:6379"
+    try:
+        return FalkorGraphStore(url=url, native=True, max_depth=_MAX_DEPTH)
+    except Exception as exc:
+        raise RuntimeError(
+            f"MEMORY_PROFILE=fusion-falkor requires a reachable FalkorDB at $FALKORDB_URL ({url!r}), "
+            "but building the graph backend failed. Start a Docker FalkorDB (e.g. "
+            "`docker run -p 6379:6379 falkordb/falkordb`) or point $FALKORDB_URL at one. fusion-falkor "
+            "does NOT fall back to the in-memory GraphStore -- a silent fallback would mislabel the "
+            "graph backend and corrupt a fusion vs fusion-falkor measurement."
+        ) from exc
 
 
 __all__ = ["MemoryItem", "RetrievedItem", "MemoryStore", "build_store"]
