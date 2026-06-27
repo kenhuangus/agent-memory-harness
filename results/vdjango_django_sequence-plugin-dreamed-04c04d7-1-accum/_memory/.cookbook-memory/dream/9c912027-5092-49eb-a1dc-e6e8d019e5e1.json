@@ -1,0 +1,1 @@
+{"cursor": 294283, "last_summary": "When adding a new default for an existing security middleware setting, always add explicit tests for the default behavior in both middleware and system check tests.", "recent_memory_ids": ["mem_03f19a1e", "mem_e08da95e"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

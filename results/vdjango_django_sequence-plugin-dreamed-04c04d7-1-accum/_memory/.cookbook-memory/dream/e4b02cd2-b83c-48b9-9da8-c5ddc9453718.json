@@ -1,0 +1,1 @@
+{"cursor": 494943, "last_summary": "When tracking whether a value was explicitly set before a fallback default is applied, record the 'explicit' flag BEFORE the default-generating code path.", "recent_memory_ids": ["mem_b7eeee25", "mem_8f5983f4"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

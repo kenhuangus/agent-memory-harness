@@ -1,0 +1,1 @@
+{"cursor": 264373, "last_summary": "When changing a Django setting's default value, update the documentation (docs/ref/settings.txt) and all tests that assert the old default (test_utils/tests.py, file_storage/tests.py).", "recent_memory_ids": ["mem_1b6aed72"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

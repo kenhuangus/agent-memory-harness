@@ -1,0 +1,1 @@
+{"cursor": 198001, "last_summary": "In Django's contenttypes management code, all database writes (save, bulk_create, get_by_natural_key) pass `using=db` explicitly when operating on a non-default database to ensure correct routing.", "recent_memory_ids": ["mem_4c9856f5"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

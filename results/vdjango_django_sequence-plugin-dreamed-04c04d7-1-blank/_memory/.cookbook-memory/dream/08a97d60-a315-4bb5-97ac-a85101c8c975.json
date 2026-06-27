@@ -1,0 +1,1 @@
+{"cursor": 812626, "last_summary": "When splitting a dotted path like 'module.Outer.Inner' to find the module boundary, check sys.modules for progressively shorter prefixes rather than doing a blind rsplit('.',1).", "recent_memory_ids": ["mem_7f12c8ce", "mem_be4c5c1e"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

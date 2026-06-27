@@ -1,0 +1,1 @@
+{"cursor": 672985, "last_summary": "Django's app registry get_app_config() and get_registered_model() serve separate call paths (get_model vs lazy_model_operation) and must both be updated for any app_label case-handling change.", "recent_memory_ids": ["mem_0ce0c7b7"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

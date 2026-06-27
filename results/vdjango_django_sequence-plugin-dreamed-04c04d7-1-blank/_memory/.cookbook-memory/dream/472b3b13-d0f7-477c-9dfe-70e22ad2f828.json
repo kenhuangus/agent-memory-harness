@@ -1,0 +1,1 @@
+{"cursor": 525663, "last_summary": "When iterating over a LOOKUP_SEP-split field path and a segment fails to resolve, break from the inner loop to prevent stale _cls from generating cascading errors on subsequent parts.", "recent_memory_ids": ["mem_4ec2c0b0"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

@@ -1,0 +1,1 @@
+{"cursor": 412089, "last_summary": "When a class attribute is replaced by a property, __deepcopy__, __getstate__, and __setstate__ that iterate over __dict__ automatically include any new backing-store attributes added to __init__.", "recent_memory_ids": ["mem_ae888ed2"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

@@ -1,0 +1,1 @@
+{"cursor": 110804, "last_summary": "When using `^` and `$` anchors in Python regex validation (e.g., Django RegexValidator), `$` matches before a trailing newline \u2014 use `\\A` and `\\Z` instead to reject trailing newlines.", "recent_memory_ids": ["mem_ab5f0a88"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

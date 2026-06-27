@@ -1,0 +1,1 @@
+{"cursor": 359844, "last_summary": "When a Django function class inherits from TimezoneMixin/TruncBase and overrides as_sql, always use self.get_tzname() instead of timezone.get_current_timezone_name() to respect the tzinfo parameter.", "recent_memory_ids": ["mem_c70c4010"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

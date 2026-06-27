@@ -1,0 +1,1 @@
+{"cursor": 93301, "last_summary": "When writing Python regexes to validate string content (not multiline), remember that `$` matches before a trailing newline; use `\\A` and `\\Z` instead of `^` and `$` to reject trailing newlines.", "recent_memory_ids": ["mem_9905c62e"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

@@ -1,0 +1,1 @@
+{"cursor": 345511, "last_summary": "When subclassing Django's Field to create a read-only field, call `kwargs.setdefault('disabled', True)` in `__init__` \u2014 the disabled flag gates built-in tamper prevention in form processing.", "recent_memory_ids": ["mem_df48d238", "mem_bc977f84"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

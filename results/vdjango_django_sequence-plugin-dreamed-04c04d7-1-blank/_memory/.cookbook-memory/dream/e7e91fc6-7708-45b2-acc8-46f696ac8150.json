@@ -1,0 +1,1 @@
+{"cursor": 408061, "last_summary": "When a Django template filter uses `+` for concatenation with lazy strings (gettext_lazy), it raises TypeError because __proxy__ lacks __radd__. Fix: on TypeError, force str() on both operands.", "recent_memory_ids": ["mem_b84baa4e"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

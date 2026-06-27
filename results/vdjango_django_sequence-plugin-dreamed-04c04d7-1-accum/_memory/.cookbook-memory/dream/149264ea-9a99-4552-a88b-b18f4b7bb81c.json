@@ -1,0 +1,1 @@
+{"cursor": 393338, "last_summary": "When removing a min-version barrier, remove commentary about older-version behavior (e.g. 'SQLite 3.8.9+ has 5 columns, older versions only 3') because those conditions can no longer occur.", "recent_memory_ids": ["mem_0f3294a6"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

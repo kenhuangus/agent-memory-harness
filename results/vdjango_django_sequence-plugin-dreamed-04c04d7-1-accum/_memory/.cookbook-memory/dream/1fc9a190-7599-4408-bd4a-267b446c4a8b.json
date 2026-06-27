@@ -1,0 +1,1 @@
+{"cursor": 635907, "last_summary": "When model fields use TextChoices/IntegerChoices, the enum members inherit from str/int, so after to_python() extracts .value, the resulting value compares equal to the original enum member via ==.", "recent_memory_ids": ["mem_0e9e7bf3"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

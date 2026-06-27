@@ -1,0 +1,1 @@
+{"cursor": 513687, "last_summary": "When adding a DISTINCT flag to a Django aggregate class, set `allow_distinct = True` on the class body; the base Aggregate template and as_sql() already handle DISTINCT SQL generation.", "recent_memory_ids": ["mem_9ea1d09b"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

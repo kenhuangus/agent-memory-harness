@@ -1,0 +1,1 @@
+{"cursor": 684743, "last_summary": "When find_ordering_name handles ordering from a related model's Meta, check for BaseExpression first because get_order_dir expects a string, not an OrderBy object.", "recent_memory_ids": ["mem_4114302d"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

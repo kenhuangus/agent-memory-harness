@@ -1,0 +1,1 @@
+{"cursor": 266060, "last_summary": "When adding distinct support to Django aggregate subclasses, set `allow_distinct = True` on the subclass; the base Aggregate class already handles template rendering and validation.", "recent_memory_ids": ["mem_10d1b4d2"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
