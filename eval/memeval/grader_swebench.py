@@ -153,7 +153,7 @@ class SwebenchHostGrader:
         timeout: int = 1800,
         python_exe: Optional[str] = None,
         python_exes: Optional[dict[str, str]] = None,
-        allow_python_substitution: bool = False,
+        allow_python_substitution: bool = True,
     ) -> None:
         self._runner = runner or _subprocess_cmd
         self._git_runner = git_runner  # forwarded to checkout (None -> its default)
@@ -568,11 +568,12 @@ class SwebenchHostGrader:
         not be fetched. Before degrading, try exact external interpreters from the
         constructor, ``MEMEVAL_SWEBENCH_PYTHON_3_6`` / ``..._3_5``,
         ``MEMEVAL_SWEBENCH_PYTHONS=3.6=/path,3.5=/path``, or ``python3.6`` /
-        ``python3.5`` on PATH. Only when ``allow_python_substitution`` is set do we fall
+        ``python3.5`` on PATH. By default, if no exact interpreter is available, fall
         back to the nearest uv-available python >= the pin; that is logged + recorded
-        as host-substitution and is NOT leaderboard-comparable. Offline (stub runner)
-        ``uv venv`` reports rc 0 but writes no interpreter -> ``None`` (caller falls
-        back), and no fallback search runs.
+        as host-substitution and is NOT leaderboard-comparable. Pass
+        ``allow_python_substitution=False`` to force exact-interpreter-only grading.
+        Offline (stub runner) ``uv venv`` reports rc 0 but writes no interpreter ->
+        ``None`` (caller falls back), and no fallback search runs.
 
         ``seed`` adds ``--seed`` (pip/setuptools/wheel) — opt-in PER REPO via
         :meth:`_needs_seed`, so a repo that doesn't need it gets a venv byte-identical

@@ -293,9 +293,8 @@ def test_make_venv_uses_exact_external_python_before_substitution(tmp_path) -> N
     assert g.python_substitutions == {}
 
 
-def test_make_venv_does_not_substitute_python_by_default(tmp_path) -> None:
-    """Unsupported old pins are ungraded by default instead of silently grading under a
-    newer uv-managed interpreter."""
+def test_make_venv_can_disable_python_substitution(tmp_path) -> None:
+    """Unsupported old pins can be forced to exact-interpreter-only grading."""
     calls: list = []
 
     def fake_runner(args, cwd, env=None):
@@ -306,7 +305,7 @@ def test_make_venv_does_not_substitute_python_by_default(tmp_path) -> None:
             raise AssertionError("nearest-version substitution should be opt-in")
         return CmdResult(returncode=0)
 
-    g = SwebenchHostGrader(runner=fake_runner)
+    g = SwebenchHostGrader(runner=fake_runner, allow_python_substitution=False)
     dest = tmp_path / "repo"
     dest.mkdir()
 
@@ -314,9 +313,9 @@ def test_make_venv_does_not_substitute_python_by_default(tmp_path) -> None:
     assert not any(c[:3] == ["uv", "python", "list"] for c in calls)
 
 
-def test_make_venv_can_substitute_nearest_uv_python_when_enabled(tmp_path) -> None:
+def test_make_venv_substitutes_nearest_uv_python_by_default(tmp_path) -> None:
     """A pinned python uv cannot provision (3.6) can still be graded under a newer
-    uv-available python when the run explicitly opts into host-substitution."""
+    uv-available python by default, preserving host gradeability for old Django pins."""
     calls: list = []
 
     def fake_runner(args, cwd, env=None):
@@ -335,7 +334,7 @@ def test_make_venv_can_substitute_nearest_uv_python_when_enabled(tmp_path) -> No
                 "cpython-3.8.20-linux-x86_64-gnu   <download available>\n"))
         return CmdResult(returncode=0)
 
-    g = SwebenchHostGrader(runner=fake_runner, allow_python_substitution=True)
+    g = SwebenchHostGrader(runner=fake_runner)
     dest = tmp_path / "repo"
     dest.mkdir()
     task = Task(task_id="django__django-9296", benchmark=Benchmark.SWE_BENCH_CL,
