@@ -60,3 +60,7 @@ eval/.claude-sandbox-vcs/
 eval/projects/
 eval/_*.sh
 eval/_*.py
+
+# Archived seed telemetry from --source-memory (events.jsonl.seed / *.daydream-events.jsonl.seed);
+# run-specific provenance, never a committed deliverable (pipeline._archive_seed_telemetry).
+*.seed

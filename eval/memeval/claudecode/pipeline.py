@@ -900,10 +900,17 @@ _SEED_TELEMETRY_GLOBS = ("events.jsonl", "dream/*.daydream-events.jsonl")
 
 
 def _archive_seed_telemetry(target: Path) -> None:
-    """Rename a seeded run's inherited telemetry logs to ``*.seed.jsonl`` so this run's
-    own events.jsonl / daydream diaries start fresh (recall + dream telemetry isolation)."""
+    """Rename a seeded run's inherited telemetry logs to ``*.seed`` so this run's own
+    events.jsonl / daydream diaries start fresh (recall + dream telemetry isolation).
+
+    The telemetry lives under the plugin store dir ``<target>/.cookbook-memory`` (see
+    :func:`_store_health`), NOT directly under the ``_memory``-level ``target`` the seed
+    copy lands in — glob there or the archive is a silent no-op."""
+    store = target / ".cookbook-memory"
+    if not store.is_dir():
+        store = target  # defensive: a caller that already passed the store dir
     for pattern in _SEED_TELEMETRY_GLOBS:
-        for log in target.glob(pattern):
+        for log in store.glob(pattern):
             if log.is_file():
                 # Append ``.seed`` to the full name: "events.jsonl" -> "events.jsonl.seed",
                 # which no longer matches the exact "events.jsonl" reader nor the

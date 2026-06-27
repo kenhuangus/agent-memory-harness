@@ -620,8 +620,12 @@ def test_plugin_accum_seed_copies_source_into_target_namespace(tmp_path) -> None
     assert info and info["path"] == str(source.resolve())
     store = target / ".cookbook-memory"
     assert (store / "markdown" / "memory" / "prior.md").read_text(encoding="utf-8") == "prior memory\n"
-    assert (store / "events.jsonl").is_file()
-    assert (store / "dream" / "prior.daydream-events.jsonl").is_file()
+    # Seed telemetry is ARCHIVED to *.seed (not inherited as live logs) so this run's
+    # recall/dream telemetry starts clean — the prior run's logs no longer poison it.
+    assert not (store / "events.jsonl").exists()
+    assert (store / "events.jsonl.seed").is_file()
+    assert not (store / "dream" / "prior.daydream-events.jsonl").exists()
+    assert (store / "dream" / "prior.daydream-events.jsonl.seed").is_file()
     assert (store / "attachments" / "payload.bin").read_bytes() == b"full dataset sidecar"
     with sqlite3.connect(store / "memory.db") as conn:
         assert conn.execute("SELECT content FROM items WHERE item_id = ?",
@@ -852,25 +856,31 @@ def test_pipeline_disabled_sandbox_is_explicit_optout(monkeypatch) -> None:
 def test_copy_memory_dataset_archives_seed_telemetry(tmp_path) -> None:
     """Seeding carries MEMORIES forward but archives the prior run's per-run TELEMETRY
     (events.jsonl + dream daydream-events) to *.seed, so this run's recall/dream telemetry
-    isn't poisoned by the seed's history (the --source-memory confound)."""
-    src = tmp_path / "src"
-    (src / "markdown").mkdir(parents=True)
-    (src / "dream").mkdir(parents=True)
-    (src / "memory.db").write_text("DB")                                  # memory -> carries
-    (src / "markdown" / "m.md").write_text("mem")                         # memory -> carries
-    (src / "dream" / "s1.json").write_text("{}")                          # dream state -> carries
-    (src / "events.jsonl").write_text('{"op":"recall"}\n')               # telemetry -> archived
-    (src / "dream" / "s1.daydream-events.jsonl").write_text('{"e":1}\n')  # telemetry -> archived
+    isn't poisoned by the seed's history (the --source-memory confound).
+
+    Uses the REAL nested layout: the seed source is the ``_memory``-level dir and the
+    telemetry lives under ``.cookbook-memory/`` — exactly how _seed_source_memory calls
+    _copy_memory_dataset. (A flattened fixture would false-green past the wrong-level glob.)"""
+    src = tmp_path / "src"                      # _memory level (parent of .cookbook-memory)
+    store = src / ".cookbook-memory"
+    (store / "markdown").mkdir(parents=True)
+    (store / "dream").mkdir(parents=True)
+    (store / "memory.db").write_text("DB")                                  # memory -> carries
+    (store / "markdown" / "m.md").write_text("mem")                         # memory -> carries
+    (store / "dream" / "s1.json").write_text("{}")                          # dream state -> carries
+    (store / "events.jsonl").write_text('{"op":"recall"}\n')               # telemetry -> archived
+    (store / "dream" / "s1.daydream-events.jsonl").write_text('{"e":1}\n')  # telemetry -> archived
 
     tgt = tmp_path / "run"
     P._copy_memory_dataset(src, tgt)
+    tstore = tgt / ".cookbook-memory"
 
     # memory + dream state carried over
-    assert (tgt / "memory.db").is_file()
-    assert (tgt / "markdown" / "m.md").is_file()
-    assert (tgt / "dream" / "s1.json").is_file()
-    # telemetry archived, not inherited as live logs
-    assert not (tgt / "events.jsonl").exists()
-    assert (tgt / "events.jsonl.seed").is_file()
-    assert not (tgt / "dream" / "s1.daydream-events.jsonl").exists()
-    assert (tgt / "dream" / "s1.daydream-events.jsonl.seed").is_file()
+    assert (tstore / "memory.db").is_file()
+    assert (tstore / "markdown" / "m.md").is_file()
+    assert (tstore / "dream" / "s1.json").is_file()
+    # telemetry archived under the store dir, not inherited as live logs
+    assert not (tstore / "events.jsonl").exists()
+    assert (tstore / "events.jsonl.seed").is_file()
+    assert not (tstore / "dream" / "s1.daydream-events.jsonl").exists()
+    assert (tstore / "dream" / "s1.daydream-events.jsonl.seed").is_file()
