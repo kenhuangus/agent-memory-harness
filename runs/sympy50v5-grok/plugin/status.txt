@@ -1,0 +1,202 @@
+DRIVER_START=2026-06-27T00:51:44Z arm=plugin limit=50 orklen=73 DREAM_EXTRACTION_VARIANT=V5
+TASKS_LOADED n=50 seq=sympy_sympy_sequence
+PREWARM repo=sympy/sympy@1.0 2026-06-27T00:51:45Z
+PREWARM_DONE python=/tmp/memeval-swe-seqvenv-l9vzxjiu/sympy__sympy__1.0/.venv-swe-grade/bin/python 2026-06-27T00:52:12Z
+TASK_START [1/50] sympy__sympy-12096 2026-06-27T00:52:12Z
+  RECALL task=sympy__sympy-12096 store_count=0 recalled=0
+TASK_DONE [1/50] sympy__sympy-12096 CHECKOUT_FAIL
+TASK_START [2/50] sympy__sympy-12481 2026-06-27T00:57:14Z
+  RECALL task=sympy__sympy-12481 store_count=0 recalled=0
+  DAYDREAM task=sympy__sympy-12481 added=0 store_count_after=0
+TASK_DONE [2/50] sympy__sympy-12481 resolved=True diff_len=1638 rc=0 100.2s running_resolved=1
+TASK_START [3/50] sympy__sympy-13372 2026-06-27T00:59:10Z
+  RECALL task=sympy__sympy-13372 store_count=0 recalled=0
+  DAYDREAM task=sympy__sympy-13372 added=1 store_count_after=1
+TASK_DONE [3/50] sympy__sympy-13372 resolved=True diff_len=1257 rc=0 99.1s running_resolved=2
+TASK_START [4/50] sympy__sympy-13480 2026-06-27T01:00:58Z
+  RECALL task=sympy__sympy-13480 store_count=1 recalled=1
+  DAYDREAM task=sympy__sympy-13480 added=1 store_count_after=2
+TASK_DONE [4/50] sympy__sympy-13480 resolved=True diff_len=586 rc=0 72.3s running_resolved=3
+TASK_START [5/50] sympy__sympy-14711 2026-06-27T01:02:18Z
+  RECALL task=sympy__sympy-14711 store_count=2 recalled=2
+  DAYDREAM task=sympy__sympy-14711 added=1 store_count_after=3
+TASK_DONE [5/50] sympy__sympy-14711 resolved=None diff_len=433 rc=0 341.8s running_resolved=3
+TASK_START [6/50] sympy__sympy-15017 2026-06-27T01:08:12Z
+  RECALL task=sympy__sympy-15017 store_count=3 recalled=3
+  DAYDREAM task=sympy__sympy-15017 added=0 store_count_after=3
+TASK_DONE [6/50] sympy__sympy-15017 resolved=True diff_len=2799 rc=0 150.5s running_resolved=4
+TASK_START [7/50] sympy__sympy-15345 2026-06-27T01:10:54Z
+  RECALL task=sympy__sympy-15345 store_count=3 recalled=3
+  DAYDREAM task=sympy__sympy-15345 added=1 store_count_after=4
+TASK_DONE [7/50] sympy__sympy-15345 resolved=True diff_len=1651 rc=0 141.0s running_resolved=5
+TASK_START [8/50] sympy__sympy-15809 2026-06-27T01:13:25Z
+  RECALL task=sympy__sympy-15809 store_count=4 recalled=4
+  DAYDREAM task=sympy__sympy-15809 added=1 store_count_after=5
+TASK_DONE [8/50] sympy__sympy-15809 resolved=True diff_len=1344 rc=0 76.5s running_resolved=6
+TASK_START [9/50] sympy__sympy-15875 2026-06-27T01:14:48Z
+  RECALL task=sympy__sympy-15875 store_count=5 recalled=5
+  DAYDREAM task=sympy__sympy-15875 added=0 store_count_after=5
+TASK_DONE [9/50] sympy__sympy-15875 resolved=False diff_len=2002 rc=0 189.8s running_resolved=6
+TASK_START [10/50] sympy__sympy-16450 2026-06-27T01:18:05Z
+  RECALL task=sympy__sympy-16450 store_count=5 recalled=5
+  DAYDREAM task=sympy__sympy-16450 added=0 store_count_after=5
+TASK_DONE [10/50] sympy__sympy-16450 resolved=True diff_len=1314 rc=0 177.8s running_resolved=7
+TASK_START [11/50] sympy__sympy-16766 2026-06-27T01:21:13Z
+  RECALL task=sympy__sympy-16766 store_count=5 recalled=5
+  DAYDREAM task=sympy__sympy-16766 added=1 store_count_after=6
+TASK_DONE [11/50] sympy__sympy-16766 resolved=True diff_len=1374 rc=0 37.1s running_resolved=8
+TASK_START [12/50] sympy__sympy-16886 2026-06-27T01:21:56Z
+  RECALL task=sympy__sympy-16886 store_count=6 recalled=5
+  DAYDREAM task=sympy__sympy-16886 added=1 store_count_after=7
+TASK_DONE [12/50] sympy__sympy-16886 resolved=True diff_len=458 rc=0 57.5s running_resolved=9
+TASK_START [13/50] sympy__sympy-17139 2026-06-27T01:23:02Z
+  RECALL task=sympy__sympy-17139 store_count=7 recalled=5
+  DAYDREAM task=sympy__sympy-17139 added=0 store_count_after=7
+TASK_DONE [13/50] sympy__sympy-17139 resolved=False diff_len=535 rc=0 220.4s running_resolved=9
+TASK_START [14/50] sympy__sympy-17655 2026-06-27T01:27:15Z
+  RECALL task=sympy__sympy-17655 store_count=7 recalled=5
+  DAYDREAM task=sympy__sympy-17655 added=1 store_count_after=8
+TASK_DONE [14/50] sympy__sympy-17655 resolved=True diff_len=688 rc=0 179.2s running_resolved=10
+TASK_START [15/50] sympy__sympy-18189 2026-06-27T01:30:20Z
+  RECALL task=sympy__sympy-18189 store_count=8 recalled=5
+  DAYDREAM task=sympy__sympy-18189 added=1 store_count_after=9
+TASK_DONE [15/50] sympy__sympy-18189 resolved=True diff_len=651 rc=0 131.2s running_resolved=11
+TASK_START [16/50] sympy__sympy-18763 2026-06-27T01:32:37Z
+  RECALL task=sympy__sympy-18763 store_count=9 recalled=5
+  DAYDREAM task=sympy__sympy-18763 added=0 store_count_after=9
+TASK_DONE [16/50] sympy__sympy-18763 resolved=False diff_len=535 rc=0 51.4s running_resolved=11
+TASK_START [17/50] sympy__sympy-19495 2026-06-27T01:33:35Z
+  RECALL task=sympy__sympy-19495 store_count=9 recalled=5
+  DAYDREAM task=sympy__sympy-19495 added=0 store_count_after=9
+TASK_DONE [17/50] sympy__sympy-19495 resolved=False diff_len=1709 rc=0 75.9s running_resolved=11
+TASK_START [18/50] sympy__sympy-19637 2026-06-27T01:34:57Z
+  RECALL task=sympy__sympy-19637 store_count=9 recalled=5
+  DAYDREAM task=sympy__sympy-19637 added=0 store_count_after=9
+TASK_DONE [18/50] sympy__sympy-19637 resolved=True diff_len=411 rc=0 39.5s running_resolved=12
+TASK_START [19/50] sympy__sympy-19954 2026-06-27T01:35:44Z
+  RECALL task=sympy__sympy-19954 store_count=9 recalled=5
+  DAYDREAM task=sympy__sympy-19954 added=0 store_count_after=9
+TASK_DONE [19/50] sympy__sympy-19954 resolved=True diff_len=2132 rc=0 89.6s running_resolved=13
+TASK_START [20/50] sympy__sympy-20916 2026-06-27T01:37:19Z
+  RECALL task=sympy__sympy-20916 store_count=9 recalled=5
+  DAYDREAM task=sympy__sympy-20916 added=0 store_count_after=9
+TASK_DONE [20/50] sympy__sympy-20916 resolved=False diff_len=1633 rc=0 83.4s running_resolved=13
+TASK_START [21/50] sympy__sympy-21847 2026-06-27T01:39:17Z
+  RECALL task=sympy__sympy-21847 store_count=9 recalled=5
+TASK_DONE [21/50] sympy__sympy-21847 CHECKOUT_FAIL
+TASK_START [22/50] sympy__sympy-22714 2026-06-27T01:44:18Z
+  RECALL task=sympy__sympy-22714 store_count=9 recalled=5
+  DAYDREAM task=sympy__sympy-22714 added=0 store_count_after=9
+TASK_DONE [22/50] sympy__sympy-22714 resolved=True diff_len=1267 rc=0 84.2s running_resolved=14
+TASK_START [23/50] sympy__sympy-23534 2026-06-27T01:45:52Z
+  RECALL task=sympy__sympy-23534 store_count=9 recalled=5
+TASK_DONE [23/50] sympy__sympy-23534 CHECKOUT_FAIL
+TASK_START [24/50] sympy__sympy-24539 2026-06-27T01:50:52Z
+  RECALL task=sympy__sympy-24539 store_count=9 recalled=5
+  DAYDREAM task=sympy__sympy-24539 added=1 store_count_after=10
+TASK_DONE [24/50] sympy__sympy-24539 resolved=True diff_len=755 rc=1 875.6s running_resolved=15
+TASK_START [25/50] sympy__sympy-24562 2026-06-27T02:05:37Z
+  RECALL task=sympy__sympy-24562 store_count=10 recalled=5
+  DAYDREAM task=sympy__sympy-24562 added=0 store_count_after=10
+TASK_DONE [25/50] sympy__sympy-24562 resolved=True diff_len=549 rc=0 144.0s running_resolved=16
+TASK_START [26/50] sympy__sympy-11618 2026-06-27T02:08:11Z
+  RECALL task=sympy__sympy-11618 store_count=10 recalled=5
+  DAYDREAM task=sympy__sympy-11618 added=0 store_count_after=10
+TASK_DONE [26/50] sympy__sympy-11618 resolved=True diff_len=727 rc=0 63.1s running_resolved=17
+TASK_START [27/50] sympy__sympy-12419 2026-06-27T02:09:22Z
+  RECALL task=sympy__sympy-12419 store_count=10 recalled=5
+  DAYDREAM task=sympy__sympy-12419 added=0 store_count_after=10
+TASK_DONE [27/50] sympy__sympy-12419 resolved=True diff_len=2189 rc=0 215.4s running_resolved=18
+TASK_START [28/50] sympy__sympy-13031 2026-06-27T02:13:05Z
+  RECALL task=sympy__sympy-13031 store_count=10 recalled=5
+  DAYDREAM task=sympy__sympy-13031 added=1 store_count_after=11
+TASK_DONE [28/50] sympy__sympy-13031 resolved=True diff_len=2293 rc=0 95.1s running_resolved=19
+TASK_START [29/50] sympy__sympy-13091 2026-06-27T02:14:47Z
+  RECALL task=sympy__sympy-13091 store_count=11 recalled=5
+  DAYDREAM task=sympy__sympy-13091 added=3 store_count_after=14
+TASK_DONE [29/50] sympy__sympy-13091 resolved=False diff_len=22489 rc=0 176.8s running_resolved=19
+TASK_START [30/50] sympy__sympy-13551 2026-06-27T02:17:55Z
+  RECALL task=sympy__sympy-13551 store_count=14 recalled=5
+  DAYDREAM task=sympy__sympy-13551 added=1 store_count_after=15
+TASK_DONE [30/50] sympy__sympy-13551 resolved=True diff_len=1006 rc=0 180.8s running_resolved=20
+TASK_START [31/50] sympy__sympy-13615 2026-06-27T02:21:03Z
+  RECALL task=sympy__sympy-13615 store_count=15 recalled=5
+  DAYDREAM task=sympy__sympy-13615 added=0 store_count_after=15
+TASK_DONE [31/50] sympy__sympy-13615 resolved=True diff_len=1046 rc=0 152.3s running_resolved=21
+TASK_START [32/50] sympy__sympy-13647 2026-06-27T02:23:41Z
+  RECALL task=sympy__sympy-13647 store_count=15 recalled=5
+  DAYDREAM task=sympy__sympy-13647 added=0 store_count_after=15
+TASK_DONE [32/50] sympy__sympy-13647 resolved=True diff_len=525 rc=0 86.6s running_resolved=22
+TASK_START [33/50] sympy__sympy-13757 2026-06-27T02:25:18Z
+  RECALL task=sympy__sympy-13757 store_count=15 recalled=5
+  DAYDREAM task=sympy__sympy-13757 added=0 store_count_after=15
+TASK_DONE [33/50] sympy__sympy-13757 resolved=True diff_len=388 rc=0 113.9s running_resolved=23
+TASK_START [34/50] sympy__sympy-13798 2026-06-27T02:27:24Z
+  RECALL task=sympy__sympy-13798 store_count=15 recalled=5
+  DAYDREAM task=sympy__sympy-13798 added=0 store_count_after=15
+TASK_DONE [34/50] sympy__sympy-13798 resolved=True diff_len=2341 rc=0 136.5s running_resolved=24
+TASK_START [35/50] sympy__sympy-13877 2026-06-27T02:29:51Z
+  RECALL task=sympy__sympy-13877 store_count=15 recalled=5
+  DAYDREAM task=sympy__sympy-13877 added=0 store_count_after=15
+TASK_DONE [35/50] sympy__sympy-13877 resolved=True diff_len=1110 rc=0 79.3s running_resolved=25
+TASK_START [36/50] sympy__sympy-13974 2026-06-27T02:31:18Z
+  RECALL task=sympy__sympy-13974 store_count=15 recalled=5
+  DAYDREAM task=sympy__sympy-13974 added=0 store_count_after=15
+TASK_DONE [36/50] sympy__sympy-13974 resolved=False diff_len=2802 rc=0 174.4s running_resolved=25
+TASK_START [37/50] sympy__sympy-14531 2026-06-27T02:34:25Z
+  RECALL task=sympy__sympy-14531 store_count=15 recalled=5
+  DAYDREAM task=sympy__sympy-14531 added=0 store_count_after=15
+TASK_DONE [37/50] sympy__sympy-14531 resolved=True diff_len=7426 rc=0 127.4s running_resolved=26
+TASK_START [38/50] sympy__sympy-14976 2026-06-27T02:36:40Z
+  RECALL task=sympy__sympy-14976 store_count=15 recalled=5
+  DAYDREAM task=sympy__sympy-14976 added=1 store_count_after=16
+TASK_DONE [38/50] sympy__sympy-14976 resolved=True diff_len=2229 rc=0 251.8s running_resolved=27
+TASK_START [39/50] sympy__sympy-15349 2026-06-27T02:41:01Z
+  RECALL task=sympy__sympy-15349 store_count=16 recalled=5
+  DAYDREAM task=sympy__sympy-15349 added=0 store_count_after=16
+TASK_DONE [39/50] sympy__sympy-15349 resolved=True diff_len=1520 rc=0 81.5s running_resolved=28
+TASK_START [40/50] sympy__sympy-15599 2026-06-27T02:42:36Z
+  RECALL task=sympy__sympy-15599 store_count=16 recalled=5
+  DAYDREAM task=sympy__sympy-15599 added=1 store_count_after=17
+TASK_DONE [40/50] sympy__sympy-15599 resolved=True diff_len=1167 rc=0 214.2s running_resolved=29
+TASK_START [41/50] sympy__sympy-15976 2026-06-27T02:46:20Z
+  RECALL task=sympy__sympy-15976 store_count=17 recalled=5
+  DAYDREAM task=sympy__sympy-15976 added=0 store_count_after=17
+TASK_DONE [41/50] sympy__sympy-15976 resolved=True diff_len=10481 rc=0 296.3s running_resolved=30
+TASK_START [42/50] sympy__sympy-16792 2026-06-27T02:51:26Z
+  RECALL task=sympy__sympy-16792 store_count=17 recalled=5
+  DAYDREAM task=sympy__sympy-16792 added=1 store_count_after=18
+TASK_DONE [42/50] sympy__sympy-16792 resolved=True diff_len=2906 rc=0 128.9s running_resolved=31
+TASK_START [43/50] sympy__sympy-17318 2026-06-27T02:53:44Z
+  RECALL task=sympy__sympy-17318 store_count=18 recalled=5
+  DAYDREAM task=sympy__sympy-17318 added=0 store_count_after=18
+TASK_DONE [43/50] sympy__sympy-17318 resolved=True diff_len=1553 rc=0 232.4s running_resolved=32
+TASK_START [44/50] sympy__sympy-18211 2026-06-27T02:57:47Z
+  RECALL task=sympy__sympy-18211 store_count=18 recalled=5
+  DAYDREAM task=sympy__sympy-18211 added=0 store_count_after=18
+TASK_DONE [44/50] sympy__sympy-18211 resolved=False diff_len=16396 rc=0 190.0s running_resolved=32
+TASK_START [45/50] sympy__sympy-18698 2026-06-27T03:01:21Z
+  RECALL task=sympy__sympy-18698 store_count=18 recalled=5
+  DAYDREAM task=sympy__sympy-18698 added=0 store_count_after=18
+TASK_DONE [45/50] sympy__sympy-18698 resolved=True diff_len=1047 rc=0 216.7s running_resolved=33
+TASK_START [46/50] sympy__sympy-19040 2026-06-27T03:05:17Z
+  RECALL task=sympy__sympy-19040 store_count=18 recalled=5
+  DAYDREAM task=sympy__sympy-19040 added=0 store_count_after=18
+TASK_DONE [46/50] sympy__sympy-19040 resolved=True diff_len=1455 rc=0 239.3s running_resolved=34
+TASK_START [47/50] sympy__sympy-19346 2026-06-27T03:09:29Z
+  RECALL task=sympy__sympy-19346 store_count=18 recalled=5
+  DAYDREAM task=sympy__sympy-19346 added=0 store_count_after=18
+TASK_DONE [47/50] sympy__sympy-19346 resolved=True diff_len=1913 rc=0 69.6s running_resolved=35
+TASK_START [48/50] sympy__sympy-19783 2026-06-27T03:10:59Z
+  RECALL task=sympy__sympy-19783 store_count=18 recalled=5
+  DAYDREAM task=sympy__sympy-19783 added=0 store_count_after=18
+TASK_DONE [48/50] sympy__sympy-19783 resolved=True diff_len=1827 rc=0 80.0s running_resolved=36
+TASK_START [49/50] sympy__sympy-20154 2026-06-27T03:12:35Z
+  RECALL task=sympy__sympy-20154 store_count=18 recalled=5
+  DAYDREAM task=sympy__sympy-20154 added=1 store_count_after=19
+TASK_DONE [49/50] sympy__sympy-20154 resolved=True diff_len=3991 rc=0 108.9s running_resolved=37
+TASK_START [50/50] sympy__sympy-20428 2026-06-27T03:14:35Z
+  RECALL task=sympy__sympy-20428 store_count=19 recalled=5
+  DAYDREAM task=sympy__sympy-20428 added=1 store_count_after=20
+TASK_DONE [50/50] sympy__sympy-20428 resolved=True diff_len=1735 rc=0 375.9s running_resolved=38
+DRIVER_DONE arm=plugin resolved=38/50 2026-06-27T03:21:08Z

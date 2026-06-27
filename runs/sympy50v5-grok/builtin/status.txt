@@ -1,0 +1,154 @@
+DRIVER_START=2026-06-26T22:41:29Z arm=builtin limit=50 orklen=73 DREAM_EXTRACTION_VARIANT=V5
+TASKS_LOADED n=50 seq=sympy_sympy_sequence
+PREWARM repo=sympy/sympy@1.0 2026-06-26T22:41:30Z
+PREWARM_DONE python=/tmp/memeval-swe-seqvenv-2_zhkt8i/sympy__sympy__1.0/.venv-swe-grade/bin/python 2026-06-26T22:41:48Z
+TASK_START [1/50] sympy__sympy-12096 2026-06-26T22:41:48Z
+  BUILTIN_RECALL task=sympy__sympy-12096 sessions=0 read_hits=0 []
+TASK_DONE [1/50] sympy__sympy-12096 resolved=True diff_len=1115 rc=0 121.2s running_resolved=1
+TASK_START [2/50] sympy__sympy-12481 2026-06-26T22:43:49Z
+  BUILTIN_RECALL task=sympy__sympy-12481 sessions=1 read_hits=1 ['sympy__sympy-12096']
+TASK_DONE [2/50] sympy__sympy-12481 resolved=True diff_len=1637 rc=0 65.6s running_resolved=2
+TASK_START [3/50] sympy__sympy-13372 2026-06-26T22:44:55Z
+  BUILTIN_RECALL task=sympy__sympy-13372 sessions=2 read_hits=2 ['sympy__sympy-12096', 'sympy__sympy-12481']
+TASK_DONE [3/50] sympy__sympy-13372 resolved=True diff_len=766 rc=0 80.5s running_resolved=3
+TASK_START [4/50] sympy__sympy-13480 2026-06-26T22:46:15Z
+  BUILTIN_RECALL task=sympy__sympy-13480 sessions=3 read_hits=0 []
+TASK_DONE [4/50] sympy__sympy-13480 resolved=True diff_len=586 rc=0 53.3s running_resolved=4
+TASK_START [5/50] sympy__sympy-14711 2026-06-26T22:47:09Z
+  BUILTIN_RECALL task=sympy__sympy-14711 sessions=4 read_hits=4 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [5/50] sympy__sympy-14711 resolved=True diff_len=433 rc=0 44.1s running_resolved=5
+TASK_START [6/50] sympy__sympy-15017 2026-06-26T22:47:53Z
+  BUILTIN_RECALL task=sympy__sympy-15017 sessions=5 read_hits=5 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [6/50] sympy__sympy-15017 resolved=True diff_len=2799 rc=0 90.8s running_resolved=6
+TASK_START [7/50] sympy__sympy-15345 2026-06-26T22:49:23Z
+  BUILTIN_RECALL task=sympy__sympy-15345 sessions=6 read_hits=6 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [7/50] sympy__sympy-15345 resolved=True diff_len=1654 rc=0 134.5s running_resolved=7
+TASK_START [8/50] sympy__sympy-15809 2026-06-26T22:51:38Z
+  BUILTIN_RECALL task=sympy__sympy-15809 sessions=7 read_hits=7 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [8/50] sympy__sympy-15809 resolved=True diff_len=1344 rc=0 69.6s running_resolved=8
+TASK_START [9/50] sympy__sympy-15875 2026-06-26T22:52:48Z
+  BUILTIN_RECALL task=sympy__sympy-15875 sessions=8 read_hits=8 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [9/50] sympy__sympy-15875 resolved=False diff_len=1617 rc=0 287.5s running_resolved=8
+TASK_START [10/50] sympy__sympy-16450 2026-06-26T22:57:35Z
+  BUILTIN_RECALL task=sympy__sympy-16450 sessions=9 read_hits=9 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [10/50] sympy__sympy-16450 resolved=True diff_len=1314 rc=0 221.2s running_resolved=9
+TASK_START [11/50] sympy__sympy-16766 2026-06-26T23:01:16Z
+  BUILTIN_RECALL task=sympy__sympy-16766 sessions=10 read_hits=10 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [11/50] sympy__sympy-16766 resolved=True diff_len=587 rc=0 80.5s running_resolved=10
+TASK_START [12/50] sympy__sympy-16886 2026-06-26T23:02:37Z
+  BUILTIN_RECALL task=sympy__sympy-16886 sessions=11 read_hits=11 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [12/50] sympy__sympy-16886 resolved=True diff_len=458 rc=0 54.1s running_resolved=11
+TASK_START [13/50] sympy__sympy-17139 2026-06-26T23:03:31Z
+  BUILTIN_RECALL task=sympy__sympy-17139 sessions=12 read_hits=12 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [13/50] sympy__sympy-17139 resolved=True diff_len=1475 rc=0 246.3s running_resolved=12
+TASK_START [14/50] sympy__sympy-17655 2026-06-26T23:07:37Z
+  BUILTIN_RECALL task=sympy__sympy-17655 sessions=13 read_hits=13 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [14/50] sympy__sympy-17655 resolved=True diff_len=1227 rc=0 152.0s running_resolved=13
+TASK_START [15/50] sympy__sympy-18189 2026-06-26T23:10:09Z
+  BUILTIN_RECALL task=sympy__sympy-18189 sessions=14 read_hits=14 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [15/50] sympy__sympy-18189 resolved=True diff_len=651 rc=0 127.1s running_resolved=14
+TASK_START [16/50] sympy__sympy-18763 2026-06-26T23:12:16Z
+  BUILTIN_RECALL task=sympy__sympy-18763 sessions=15 read_hits=3 ['sympy__sympy-13480', 'sympy__sympy-16450', 'sympy__sympy-16766']
+TASK_DONE [16/50] sympy__sympy-18763 resolved=False diff_len=1102 rc=0 60.3s running_resolved=14
+TASK_START [17/50] sympy__sympy-19495 2026-06-26T23:13:17Z
+  BUILTIN_RECALL task=sympy__sympy-19495 sessions=16 read_hits=3 ['sympy__sympy-13480', 'sympy__sympy-16450', 'sympy__sympy-18763']
+TASK_DONE [17/50] sympy__sympy-19495 resolved=False diff_len=728 rc=0 140.3s running_resolved=14
+TASK_START [18/50] sympy__sympy-19637 2026-06-26T23:15:37Z
+  BUILTIN_RECALL task=sympy__sympy-19637 sessions=17 read_hits=17 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [18/50] sympy__sympy-19637 resolved=True diff_len=411 rc=0 43.3s running_resolved=15
+TASK_START [19/50] sympy__sympy-19954 2026-06-26T23:16:20Z
+  BUILTIN_RECALL task=sympy__sympy-19954 sessions=18 read_hits=18 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [19/50] sympy__sympy-19954 resolved=True diff_len=2130 rc=0 212.4s running_resolved=16
+TASK_START [20/50] sympy__sympy-20916 2026-06-26T23:19:53Z
+  BUILTIN_RECALL task=sympy__sympy-20916 sessions=19 read_hits=19 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [20/50] sympy__sympy-20916 resolved=False diff_len=2168 rc=0 85.0s running_resolved=16
+TASK_START [21/50] sympy__sympy-21847 2026-06-26T23:21:18Z
+  BUILTIN_RECALL task=sympy__sympy-21847 sessions=20 read_hits=0 []
+TASK_DONE [21/50] sympy__sympy-21847 resolved=True diff_len=1045 rc=0 35.7s running_resolved=17
+TASK_START [22/50] sympy__sympy-22714 2026-06-26T23:21:54Z
+  BUILTIN_RECALL task=sympy__sympy-22714 sessions=21 read_hits=21 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [22/50] sympy__sympy-22714 resolved=True diff_len=697 rc=0 75.9s running_resolved=18
+TASK_START [23/50] sympy__sympy-23534 2026-06-26T23:23:10Z
+  BUILTIN_RECALL task=sympy__sympy-23534 sessions=22 read_hits=22 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [23/50] sympy__sympy-23534 resolved=True diff_len=395 rc=0 38.7s running_resolved=19
+TASK_START [24/50] sympy__sympy-24539 2026-06-26T23:23:48Z
+  BUILTIN_RECALL task=sympy__sympy-24539 sessions=23 read_hits=0 []
+TASK_DONE [24/50] sympy__sympy-24539 resolved=True diff_len=558 rc=0 41.8s running_resolved=20
+TASK_START [25/50] sympy__sympy-24562 2026-06-26T23:24:30Z
+  BUILTIN_RECALL task=sympy__sympy-24562 sessions=24 read_hits=1 ['sympy__sympy-19495']
+TASK_DONE [25/50] sympy__sympy-24562 resolved=True diff_len=556 rc=0 72.9s running_resolved=21
+TASK_START [26/50] sympy__sympy-11618 2026-06-26T23:25:43Z
+  BUILTIN_RECALL task=sympy__sympy-11618 sessions=25 read_hits=25 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [26/50] sympy__sympy-11618 resolved=None diff_len=736 rc=0 544.1s running_resolved=21
+TASK_START [27/50] sympy__sympy-12419 2026-06-26T23:34:47Z
+  BUILTIN_RECALL task=sympy__sympy-12419 sessions=26 read_hits=26 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [27/50] sympy__sympy-12419 resolved=True diff_len=2185 rc=0 166.0s running_resolved=22
+TASK_START [28/50] sympy__sympy-13031 2026-06-26T23:37:33Z
+  BUILTIN_RECALL task=sympy__sympy-13031 sessions=27 read_hits=27 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [28/50] sympy__sympy-13031 resolved=True diff_len=1810 rc=0 125.5s running_resolved=23
+TASK_START [29/50] sympy__sympy-13091 2026-06-26T23:39:39Z
+  BUILTIN_RECALL task=sympy__sympy-13091 sessions=28 read_hits=2 ['sympy__sympy-13372', 'sympy__sympy-17139']
+TASK_DONE [29/50] sympy__sympy-13091 resolved=True diff_len=20328 rc=1 180.5s running_resolved=24
+TASK_START [30/50] sympy__sympy-13551 2026-06-26T23:42:40Z
+  BUILTIN_RECALL task=sympy__sympy-13551 sessions=29 read_hits=29 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [30/50] sympy__sympy-13551 resolved=True diff_len=1341 rc=0 151.5s running_resolved=25
+TASK_START [31/50] sympy__sympy-13615 2026-06-26T23:45:11Z
+  BUILTIN_RECALL task=sympy__sympy-13615 sessions=30 read_hits=30 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [31/50] sympy__sympy-13615 resolved=True diff_len=916 rc=0 174.3s running_resolved=26
+TASK_START [32/50] sympy__sympy-13647 2026-06-26T23:48:06Z
+  BUILTIN_RECALL task=sympy__sympy-13647 sessions=31 read_hits=31 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [32/50] sympy__sympy-13647 resolved=True diff_len=525 rc=0 160.6s running_resolved=27
+TASK_START [33/50] sympy__sympy-13757 2026-06-26T23:50:47Z
+  BUILTIN_RECALL task=sympy__sympy-13757 sessions=32 read_hits=32 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [33/50] sympy__sympy-13757 resolved=True diff_len=1684 rc=0 168.2s running_resolved=28
+TASK_START [34/50] sympy__sympy-13798 2026-06-26T23:53:35Z
+  BUILTIN_RECALL task=sympy__sympy-13798 sessions=33 read_hits=33 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [34/50] sympy__sympy-13798 resolved=True diff_len=2309 rc=0 161.0s running_resolved=29
+TASK_START [35/50] sympy__sympy-13877 2026-06-26T23:56:16Z
+  BUILTIN_RECALL task=sympy__sympy-13877 sessions=34 read_hits=34 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [35/50] sympy__sympy-13877 resolved=True diff_len=2752 rc=0 138.4s running_resolved=30
+TASK_START [36/50] sympy__sympy-13974 2026-06-26T23:58:34Z
+TASK_DONE [36/50] sympy__sympy-13974 CHECKOUT_FAIL
+TASK_START [37/50] sympy__sympy-14531 2026-06-27T00:03:34Z
+  BUILTIN_RECALL task=sympy__sympy-14531 sessions=36 read_hits=36 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [37/50] sympy__sympy-14531 resolved=True diff_len=7426 rc=0 153.3s running_resolved=31
+TASK_START [38/50] sympy__sympy-14976 2026-06-27T00:06:08Z
+  BUILTIN_RECALL task=sympy__sympy-14976 sessions=37 read_hits=37 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [38/50] sympy__sympy-14976 resolved=True diff_len=2229 rc=0 127.8s running_resolved=32
+TASK_START [39/50] sympy__sympy-15349 2026-06-27T00:08:16Z
+  BUILTIN_RECALL task=sympy__sympy-15349 sessions=38 read_hits=38 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [39/50] sympy__sympy-15349 resolved=True diff_len=1520 rc=0 74.7s running_resolved=33
+TASK_START [40/50] sympy__sympy-15599 2026-06-27T00:09:31Z
+  BUILTIN_RECALL task=sympy__sympy-15599 sessions=39 read_hits=39 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [40/50] sympy__sympy-15599 resolved=True diff_len=1167 rc=0 319.9s running_resolved=34
+TASK_START [41/50] sympy__sympy-15976 2026-06-27T00:14:51Z
+  BUILTIN_RECALL task=sympy__sympy-15976 sessions=40 read_hits=40 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [41/50] sympy__sympy-15976 resolved=True diff_len=10831 rc=0 151.1s running_resolved=35
+TASK_START [42/50] sympy__sympy-16792 2026-06-27T00:17:22Z
+  BUILTIN_RECALL task=sympy__sympy-16792 sessions=41 read_hits=41 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [42/50] sympy__sympy-16792 resolved=True diff_len=4689 rc=0 142.5s running_resolved=36
+TASK_START [43/50] sympy__sympy-17318 2026-06-27T00:19:44Z
+  BUILTIN_RECALL task=sympy__sympy-17318 sessions=42 read_hits=42 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [43/50] sympy__sympy-17318 resolved=True diff_len=1553 rc=0 464.6s running_resolved=37
+TASK_START [44/50] sympy__sympy-18211 2026-06-27T00:27:29Z
+  BUILTIN_RECALL task=sympy__sympy-18211 sessions=43 read_hits=43 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [44/50] sympy__sympy-18211 resolved=False diff_len=1618 rc=0 140.8s running_resolved=37
+TASK_START [45/50] sympy__sympy-18698 2026-06-27T00:29:50Z
+  BUILTIN_RECALL task=sympy__sympy-18698 sessions=44 read_hits=44 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [45/50] sympy__sympy-18698 resolved=False diff_len=1023 rc=0 150.2s running_resolved=37
+TASK_START [46/50] sympy__sympy-19040 2026-06-27T00:32:20Z
+  BUILTIN_RECALL task=sympy__sympy-19040 sessions=45 read_hits=45 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [46/50] sympy__sympy-19040 resolved=True diff_len=1237 rc=0 337.2s running_resolved=38
+TASK_START [47/50] sympy__sympy-19346 2026-06-27T00:37:58Z
+  BUILTIN_RECALL task=sympy__sympy-19346 sessions=46 read_hits=46 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [47/50] sympy__sympy-19346 resolved=True diff_len=1916 rc=0 65.9s running_resolved=39
+TASK_START [48/50] sympy__sympy-19783 2026-06-27T00:39:04Z
+  BUILTIN_RECALL task=sympy__sympy-19783 sessions=47 read_hits=47 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [48/50] sympy__sympy-19783 resolved=True diff_len=2741 rc=0 197.3s running_resolved=40
+TASK_START [49/50] sympy__sympy-20154 2026-06-27T00:42:21Z
+  BUILTIN_RECALL task=sympy__sympy-20154 sessions=48 read_hits=48 ['sympy__sympy-12096', 'sympy__sympy-12481', 'sympy__sympy-13372']
+TASK_DONE [49/50] sympy__sympy-20154 resolved=None diff_len=1708 rc=0 372.1s running_resolved=40
+TASK_START [50/50] sympy__sympy-20428 2026-06-27T00:48:34Z
+  BUILTIN_RECALL task=sympy__sympy-20428 sessions=49 read_hits=4 ['sympy__sympy-15875', 'sympy__sympy-22714', 'sympy__sympy-13091']
+TASK_DONE [50/50] sympy__sympy-20428 resolved=False diff_len=3168 rc=0 184.3s running_resolved=40
+DRIVER_DONE arm=builtin resolved=40/50 2026-06-27T00:51:38Z

@@ -1,0 +1,105 @@
+DRIVER_START=2026-06-26T20:43:58Z arm=base limit=50 orklen=73 DREAM_EXTRACTION_VARIANT=V5
+TASKS_LOADED n=50 seq=sympy_sympy_sequence
+PREWARM repo=sympy/sympy@1.0 2026-06-26T20:43:59Z
+PREWARM_DONE python=/tmp/memeval-swe-seqvenv-qkal1huq/sympy__sympy__1.0/.venv-swe-grade/bin/python 2026-06-26T20:44:08Z
+TASK_START [1/50] sympy__sympy-12096 2026-06-26T20:44:08Z
+TASK_DONE [1/50] sympy__sympy-12096 resolved=True diff_len=1027 rc=1 269.8s running_resolved=1
+TASK_START [2/50] sympy__sympy-12481 2026-06-26T20:48:38Z
+TASK_DONE [2/50] sympy__sympy-12481 resolved=True diff_len=1638 rc=0 97.8s running_resolved=2
+TASK_START [3/50] sympy__sympy-13372 2026-06-26T20:50:17Z
+TASK_DONE [3/50] sympy__sympy-13372 resolved=True diff_len=766 rc=0 120.3s running_resolved=3
+TASK_START [4/50] sympy__sympy-13480 2026-06-26T20:52:17Z
+TASK_DONE [4/50] sympy__sympy-13480 resolved=True diff_len=586 rc=0 45.6s running_resolved=4
+TASK_START [5/50] sympy__sympy-14711 2026-06-26T20:53:02Z
+TASK_DONE [5/50] sympy__sympy-14711 resolved=True diff_len=433 rc=0 61.8s running_resolved=5
+TASK_START [6/50] sympy__sympy-15017 2026-06-26T20:54:04Z
+TASK_DONE [6/50] sympy__sympy-15017 resolved=False diff_len=3597 rc=0 102.8s running_resolved=5
+TASK_START [7/50] sympy__sympy-15345 2026-06-26T20:55:47Z
+TASK_DONE [7/50] sympy__sympy-15345 resolved=True diff_len=1656 rc=0 282.6s running_resolved=6
+TASK_START [8/50] sympy__sympy-15809 2026-06-26T21:00:30Z
+TASK_DONE [8/50] sympy__sympy-15809 resolved=True diff_len=1344 rc=0 83.1s running_resolved=7
+TASK_START [9/50] sympy__sympy-15875 2026-06-26T21:01:53Z
+TASK_DONE [9/50] sympy__sympy-15875 resolved=True diff_len=878 rc=0 164.2s running_resolved=8
+TASK_START [10/50] sympy__sympy-16450 2026-06-26T21:04:37Z
+TASK_DONE [10/50] sympy__sympy-16450 resolved=True diff_len=1577 rc=0 157.6s running_resolved=9
+TASK_START [11/50] sympy__sympy-16766 2026-06-26T21:07:15Z
+TASK_DONE [11/50] sympy__sympy-16766 resolved=True diff_len=1457 rc=0 113.0s running_resolved=10
+TASK_START [12/50] sympy__sympy-16886 2026-06-26T21:09:09Z
+TASK_DONE [12/50] sympy__sympy-16886 resolved=True diff_len=458 rc=0 40.5s running_resolved=11
+TASK_START [13/50] sympy__sympy-17139 2026-06-26T21:09:49Z
+TASK_DONE [13/50] sympy__sympy-17139 resolved=True diff_len=474 rc=0 160.5s running_resolved=12
+TASK_START [14/50] sympy__sympy-17655 2026-06-26T21:12:30Z
+TASK_DONE [14/50] sympy__sympy-17655 resolved=True diff_len=1365 rc=0 243.6s running_resolved=13
+TASK_START [15/50] sympy__sympy-18189 2026-06-26T21:16:33Z
+TASK_DONE [15/50] sympy__sympy-18189 resolved=True diff_len=651 rc=0 147.4s running_resolved=14
+TASK_START [16/50] sympy__sympy-18763 2026-06-26T21:18:59Z
+TASK_DONE [16/50] sympy__sympy-18763 resolved=False diff_len=1708 rc=0 68.7s running_resolved=14
+TASK_START [17/50] sympy__sympy-19495 2026-06-26T21:20:07Z
+TASK_DONE [17/50] sympy__sympy-19495 resolved=False diff_len=1790 rc=0 141.2s running_resolved=14
+TASK_START [18/50] sympy__sympy-19637 2026-06-26T21:22:29Z
+TASK_DONE [18/50] sympy__sympy-19637 resolved=True diff_len=411 rc=0 31.8s running_resolved=15
+TASK_START [19/50] sympy__sympy-19954 2026-06-26T21:23:01Z
+TASK_DONE [19/50] sympy__sympy-19954 resolved=None diff_len=2132 rc=0 375.7s running_resolved=15
+TASK_START [20/50] sympy__sympy-20916 2026-06-26T21:29:16Z
+TASK_DONE [20/50] sympy__sympy-20916 resolved=False diff_len=1670 rc=0 53.0s running_resolved=15
+TASK_START [21/50] sympy__sympy-21847 2026-06-26T21:30:09Z
+TASK_DONE [21/50] sympy__sympy-21847 resolved=True diff_len=1045 rc=0 66.9s running_resolved=16
+TASK_START [22/50] sympy__sympy-22714 2026-06-26T21:31:16Z
+TASK_DONE [22/50] sympy__sympy-22714 resolved=True diff_len=694 rc=0 87.1s running_resolved=17
+TASK_START [23/50] sympy__sympy-23534 2026-06-26T21:32:43Z
+TASK_DONE [23/50] sympy__sympy-23534 resolved=True diff_len=998 rc=0 56.2s running_resolved=18
+TASK_START [24/50] sympy__sympy-24539 2026-06-26T21:33:40Z
+TASK_DONE [24/50] sympy__sympy-24539 resolved=True diff_len=691 rc=0 108.8s running_resolved=19
+TASK_START [25/50] sympy__sympy-24562 2026-06-26T21:35:29Z
+TASK_DONE [25/50] sympy__sympy-24562 resolved=True diff_len=560 rc=0 72.0s running_resolved=20
+TASK_START [26/50] sympy__sympy-11618 2026-06-26T21:36:41Z
+TASK_DONE [26/50] sympy__sympy-11618 resolved=True diff_len=977 rc=0 40.7s running_resolved=21
+TASK_START [27/50] sympy__sympy-12419 2026-06-26T21:37:21Z
+TASK_DONE [27/50] sympy__sympy-12419 resolved=True diff_len=2187 rc=0 147.6s running_resolved=22
+TASK_START [28/50] sympy__sympy-13031 2026-06-26T21:39:49Z
+TASK_DONE [28/50] sympy__sympy-13031 resolved=True diff_len=1810 rc=0 158.0s running_resolved=23
+TASK_START [29/50] sympy__sympy-13091 2026-06-26T21:42:27Z
+TASK_DONE [29/50] sympy__sympy-13091 resolved=True diff_len=19446 rc=0 206.4s running_resolved=24
+TASK_START [30/50] sympy__sympy-13551 2026-06-26T21:45:53Z
+TASK_DONE [30/50] sympy__sympy-13551 resolved=True diff_len=1720 rc=0 96.0s running_resolved=25
+TASK_START [31/50] sympy__sympy-13615 2026-06-26T21:47:30Z
+TASK_DONE [31/50] sympy__sympy-13615 CHECKOUT_FAIL
+TASK_START [32/50] sympy__sympy-13647 2026-06-26T21:52:29Z
+TASK_DONE [32/50] sympy__sympy-13647 resolved=True diff_len=525 rc=0 71.1s running_resolved=26
+TASK_START [33/50] sympy__sympy-13757 2026-06-26T21:53:41Z
+TASK_DONE [33/50] sympy__sympy-13757 resolved=True diff_len=1684 rc=0 144.4s running_resolved=27
+TASK_START [34/50] sympy__sympy-13798 2026-06-26T21:56:05Z
+TASK_DONE [34/50] sympy__sympy-13798 resolved=False diff_len=2103 rc=0 62.1s running_resolved=27
+TASK_START [35/50] sympy__sympy-13877 2026-06-26T21:57:07Z
+TASK_DONE [35/50] sympy__sympy-13877 resolved=True diff_len=2736 rc=0 182.1s running_resolved=28
+TASK_START [36/50] sympy__sympy-13974 2026-06-26T22:00:09Z
+TASK_DONE [36/50] sympy__sympy-13974 resolved=True diff_len=4842 rc=0 248.7s running_resolved=29
+TASK_START [37/50] sympy__sympy-14531 2026-06-26T22:04:18Z
+TASK_DONE [37/50] sympy__sympy-14531 resolved=True diff_len=7426 rc=0 142.0s running_resolved=30
+TASK_START [38/50] sympy__sympy-14976 2026-06-26T22:06:40Z
+TASK_DONE [38/50] sympy__sympy-14976 resolved=True diff_len=2229 rc=0 78.0s running_resolved=31
+TASK_START [39/50] sympy__sympy-15349 2026-06-26T22:07:58Z
+TASK_DONE [39/50] sympy__sympy-15349 resolved=True diff_len=1520 rc=0 44.4s running_resolved=32
+TASK_START [40/50] sympy__sympy-15599 2026-06-26T22:08:42Z
+TASK_DONE [40/50] sympy__sympy-15599 resolved=True diff_len=1227 rc=1 272.9s running_resolved=33
+TASK_START [41/50] sympy__sympy-15976 2026-06-26T22:13:15Z
+TASK_DONE [41/50] sympy__sympy-15976 resolved=True diff_len=10712 rc=0 143.3s running_resolved=34
+TASK_START [42/50] sympy__sympy-16792 2026-06-26T22:15:39Z
+TASK_DONE [42/50] sympy__sympy-16792 resolved=True diff_len=5305 rc=0 132.3s running_resolved=35
+TASK_START [43/50] sympy__sympy-17318 2026-06-26T22:17:51Z
+TASK_DONE [43/50] sympy__sympy-17318 resolved=True diff_len=1553 rc=0 464.3s running_resolved=36
+TASK_START [44/50] sympy__sympy-18211 2026-06-26T22:25:35Z
+TASK_DONE [44/50] sympy__sympy-18211 resolved=True diff_len=2386 rc=0 186.6s running_resolved=37
+TASK_START [45/50] sympy__sympy-18698 2026-06-26T22:28:42Z
+TASK_DONE [45/50] sympy__sympy-18698 resolved=True diff_len=1721 rc=0 159.3s running_resolved=38
+TASK_START [46/50] sympy__sympy-19040 2026-06-26T22:31:21Z
+TASK_DONE [46/50] sympy__sympy-19040 resolved=True diff_len=2000 rc=0 260.2s running_resolved=39
+TASK_START [47/50] sympy__sympy-19346 2026-06-26T22:35:42Z
+TASK_DONE [47/50] sympy__sympy-19346 resolved=True diff_len=1916 rc=0 52.7s running_resolved=40
+TASK_START [48/50] sympy__sympy-19783 2026-06-26T22:36:35Z
+TASK_DONE [48/50] sympy__sympy-19783 resolved=True diff_len=2741 rc=0 181.0s running_resolved=41
+TASK_START [49/50] sympy__sympy-20154 2026-06-26T22:39:36Z
+TASK_DONE [49/50] sympy__sympy-20154 resolved=True diff_len=1631 rc=0 48.1s running_resolved=42
+TASK_START [50/50] sympy__sympy-20428 2026-06-26T22:40:24Z
+TASK_DONE [50/50] sympy__sympy-20428 resolved=False diff_len=940 rc=0 61.1s running_resolved=42
+DRIVER_DONE arm=base resolved=42/50 2026-06-26T22:41:25Z

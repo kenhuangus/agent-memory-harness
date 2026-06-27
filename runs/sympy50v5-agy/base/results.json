@@ -1,0 +1,500 @@
+[
+  {
+    "task_id": "sympy__sympy-12096",
+    "repo": "sympy/sympy",
+    "base_commit": "d7c3045115693e887bcd03599b7ca4650ac5f2cb",
+    "n_sessions": 0,
+    "agy_rc": 0,
+    "diff_len": 535,
+    "success": true,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-12481",
+    "repo": "sympy/sympy",
+    "base_commit": "c807dfe7569692cad24f02a08477b70c1679a4dd",
+    "n_sessions": 1,
+    "agy_rc": 0,
+    "diff_len": 790,
+    "success": true,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-13372",
+    "repo": "sympy/sympy",
+    "base_commit": "30379ea6e225e37833a764ac2da7b7fadf5fe374",
+    "n_sessions": 2,
+    "agy_rc": 1,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-13480",
+    "repo": "sympy/sympy",
+    "base_commit": "f57fe3f4b3f2cab225749e1b3b38ae1bf80b62f0",
+    "n_sessions": 3,
+    "agy_rc": 0,
+    "diff_len": 586,
+    "success": true,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-14711",
+    "repo": "sympy/sympy",
+    "base_commit": "c6753448b5c34f95e250105d76709fe4d349ca1f",
+    "n_sessions": 4,
+    "agy_rc": 0,
+    "diff_len": 1304,
+    "success": true,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-15017",
+    "repo": "sympy/sympy",
+    "base_commit": "6810dee426943c1a2fe85b5002dd0d4cf2246a05",
+    "n_sessions": 5,
+    "agy_rc": 0,
+    "diff_len": 3580,
+    "success": true,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-15345",
+    "repo": "sympy/sympy",
+    "base_commit": "9ef28fba5b4d6d0168237c9c005a550e6dc27d81",
+    "n_sessions": 6,
+    "agy_rc": 0,
+    "diff_len": 700,
+    "success": true,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-15809",
+    "repo": "sympy/sympy",
+    "base_commit": "28d913d3cead6c5646307ffa6540b21d65059dfd",
+    "n_sessions": 7,
+    "agy_rc": 0,
+    "diff_len": 1344,
+    "success": true,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-15875",
+    "repo": "sympy/sympy",
+    "base_commit": "b506169ad727ee39cb3d60c8b3ff5e315d443d8e",
+    "n_sessions": 8,
+    "agy_rc": 0,
+    "diff_len": 1345,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-16450",
+    "repo": "sympy/sympy",
+    "base_commit": "aefdd023dc4f73c441953ed51f5f05a076f0862f",
+    "n_sessions": 9,
+    "agy_rc": 0,
+    "diff_len": 541,
+    "success": true,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-16766",
+    "repo": "sympy/sympy",
+    "base_commit": "b8fe457a02cc24b3470ff678d0099c350b7fef43",
+    "n_sessions": 10,
+    "agy_rc": 0,
+    "diff_len": 658,
+    "success": true,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-16886",
+    "repo": "sympy/sympy",
+    "base_commit": "c50643a49811e9fe2f4851adff4313ad46f7325e",
+    "n_sessions": 11,
+    "agy_rc": 0,
+    "diff_len": 458,
+    "success": true,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-17139",
+    "repo": "sympy/sympy",
+    "base_commit": "1d3327b8e90a186df6972991963a5ae87053259d",
+    "n_sessions": 12,
+    "agy_rc": 1,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-17655",
+    "repo": "sympy/sympy",
+    "base_commit": "f5e965947af2410ded92cfad987aaf45262ea434",
+    "n_sessions": 13,
+    "agy_rc": 0,
+    "diff_len": 884,
+    "success": true,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-18189",
+    "repo": "sympy/sympy",
+    "base_commit": "1923822ddf8265199dbd9ef9ce09641d3fd042b9",
+    "n_sessions": 14,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-18763",
+    "repo": "sympy/sympy",
+    "base_commit": "70381f282f2d9d039da860e391fe51649df2779d",
+    "n_sessions": 15,
+    "agy_rc": 0,
+    "diff_len": 535,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-19495",
+    "repo": "sympy/sympy",
+    "base_commit": "25fbcce5b1a4c7e3956e6062930f4a44ce95a632",
+    "n_sessions": 16,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-19637",
+    "repo": "sympy/sympy",
+    "base_commit": "63f8f465d48559fecb4e4bf3c48b75bf15a3e0ef",
+    "n_sessions": 17,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-19954",
+    "repo": "sympy/sympy",
+    "base_commit": "6f54459aa0248bf1467ad12ee6333d8bc924a642",
+    "n_sessions": 18,
+    "agy_rc": 1,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-20916",
+    "repo": "sympy/sympy",
+    "base_commit": "82298df6a51491bfaad0c6d1980e7e3ca808ae93",
+    "n_sessions": 19,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-21847",
+    "repo": "sympy/sympy",
+    "base_commit": "d9b18c518d64d0ebe8e35a98c2fb519938b9b151",
+    "n_sessions": 20,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-22714",
+    "repo": "sympy/sympy",
+    "base_commit": "3ff4717b6aef6086e78f01cdfa06f64ae23aed7e",
+    "n_sessions": 21,
+    "agy_rc": 1,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-23534",
+    "repo": "sympy/sympy",
+    "base_commit": "832c24fec1046eaa544a4cab4c69e3af3e651759",
+    "n_sessions": 22,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-24539",
+    "repo": "sympy/sympy",
+    "base_commit": "193e3825645d93c73e31cdceb6d742cc6919624d",
+    "n_sessions": 23,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-24562",
+    "repo": "sympy/sympy",
+    "base_commit": "b1cb676cf92dd1a48365b731979833375b188bf2",
+    "n_sessions": 24,
+    "success": null,
+    "error": "checkout: git fetch --depth 1 origin b1cb676cf92dd1a48365b731979833375b188bf2 failed (rc=128): fatal: unable to access 'https://github.com/sympy/sympy/': SSL connection timeout",
+    "diff_len": 0
+  },
+  {
+    "task_id": "sympy__sympy-11618",
+    "repo": "sympy/sympy",
+    "base_commit": "360290c4c401e386db60723ddb0109ed499c9f6e",
+    "n_sessions": 25,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-12419",
+    "repo": "sympy/sympy",
+    "base_commit": "479939f8c65c8c2908bbedc959549a257a7c0b0b",
+    "n_sessions": 26,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-13031",
+    "repo": "sympy/sympy",
+    "base_commit": "2dfa7457f20ee187fbb09b5b6a1631da4458388c",
+    "n_sessions": 27,
+    "success": null,
+    "error": "checkout: git fetch --depth 1 origin 2dfa7457f20ee187fbb09b5b6a1631da4458388c failed (rc=128): fatal: unable to access 'https://github.com/sympy/sympy/': SSL connection timeout",
+    "diff_len": 0
+  },
+  {
+    "task_id": "sympy__sympy-13091",
+    "repo": "sympy/sympy",
+    "base_commit": "d1320814eda6549996190618a21eaf212cfd4d1e",
+    "n_sessions": 28,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-13551",
+    "repo": "sympy/sympy",
+    "base_commit": "9476425b9e34363c2d9ac38e9f04aa75ae54a775",
+    "n_sessions": 29,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-13615",
+    "repo": "sympy/sympy",
+    "base_commit": "50d8a102f0735da8e165a0369bbb994c7d0592a6",
+    "n_sessions": 30,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-13647",
+    "repo": "sympy/sympy",
+    "base_commit": "67e3c956083d0128a621f65ee86a7dacd4f9f19f",
+    "n_sessions": 31,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-13757",
+    "repo": "sympy/sympy",
+    "base_commit": "a5e6a101869e027e7930e694f8b1cfb082603453",
+    "n_sessions": 32,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-13798",
+    "repo": "sympy/sympy",
+    "base_commit": "7121bdf1facdd90d05b6994b4c2e5b2865a4638a",
+    "n_sessions": 33,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-13877",
+    "repo": "sympy/sympy",
+    "base_commit": "1659712001810f5fc563a443949f8e3bb38af4bd",
+    "n_sessions": 34,
+    "agy_rc": 1,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-13974",
+    "repo": "sympy/sympy",
+    "base_commit": "84c125972ad535b2dfb245f8d311d347b45e5b8a",
+    "n_sessions": 35,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-14531",
+    "repo": "sympy/sympy",
+    "base_commit": "205da797006360fc629110937e39a19c9561313e",
+    "n_sessions": 36,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-14976",
+    "repo": "sympy/sympy",
+    "base_commit": "9cbea134220b0b951587e11b63e2c832c7246cbc",
+    "n_sessions": 37,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-15349",
+    "repo": "sympy/sympy",
+    "base_commit": "768da1c6f6ec907524b8ebbf6bf818c92b56101b",
+    "n_sessions": 38,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-15599",
+    "repo": "sympy/sympy",
+    "base_commit": "5e17a90c19f7eecfa10c1ab872648ae7e2131323",
+    "n_sessions": 39,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-15976",
+    "repo": "sympy/sympy",
+    "base_commit": "701441853569d370506514083b995d11f9a130bd",
+    "n_sessions": 40,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-16792",
+    "repo": "sympy/sympy",
+    "base_commit": "09786a173e7a0a488f46dd6000177c23e5d24eed",
+    "n_sessions": 41,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-17318",
+    "repo": "sympy/sympy",
+    "base_commit": "d4e0231b08147337745dcf601e62de7eefe2fb2d",
+    "n_sessions": 42,
+    "agy_rc": 1,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-18211",
+    "repo": "sympy/sympy",
+    "base_commit": "b4f1aa3540fe68d078d76e78ba59d022dd6df39f",
+    "n_sessions": 43,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-18698",
+    "repo": "sympy/sympy",
+    "base_commit": "3dff1b98a78f28c953ae2140b69356b8391e399c",
+    "n_sessions": 44,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-19040",
+    "repo": "sympy/sympy",
+    "base_commit": "b9179e80d2daa1bb6cba1ffe35ca9e6612e115c9",
+    "n_sessions": 45,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-19346",
+    "repo": "sympy/sympy",
+    "base_commit": "94fb720696f5f5d12bad8bc813699fd696afd2fb",
+    "n_sessions": 46,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-19783",
+    "repo": "sympy/sympy",
+    "base_commit": "586a43201d0357e92e8c93548d69a9f42bf548f4",
+    "n_sessions": 47,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-20154",
+    "repo": "sympy/sympy",
+    "base_commit": "bdb49c4abfb35554a3c8ce761696ffff3bb837fe",
+    "n_sessions": 48,
+    "agy_rc": 0,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  },
+  {
+    "task_id": "sympy__sympy-20428",
+    "repo": "sympy/sympy",
+    "base_commit": "c0e85160406f9bf2bcaa2992138587668a1cd0bc",
+    "n_sessions": 49,
+    "agy_rc": 1,
+    "diff_len": 0,
+    "success": false,
+    "ungraded_reason": null
+  }
+]
