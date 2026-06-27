@@ -64,6 +64,15 @@ jobs:
   benchmark:
     runs-on: ubuntu-latest
     steps:
+      # Paid models are disabled in this repo to avoid API spend. Only the free,
+      # offline EchoModel (model=echo) may run here. Run paid models locally or in
+      # your own fork (where you control the budget and secrets).
+      - name: Block paid runs (echo-only)
+        if: ${{ inputs.model != 'echo' }}
+        run: |
+          echo "::error::Paid benchmark runs are disabled in this repo. Only model=echo (free/offline) is allowed. Run a paid model locally or in your own fork."
+          exit 1
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
