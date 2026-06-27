@@ -1,0 +1,1 @@
+{"cursor": 699543, "last_summary": "EnumSerializer at django/db/migrations/serializer.py:119-126 already correctly uses `__qualname__` for nested enum classes.", "recent_memory_ids": ["mem_4e3d5387", "mem_1cba8e9d", "mem_537ac2ea", "mem_9a0f1c66", "mem_9579ff3b"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

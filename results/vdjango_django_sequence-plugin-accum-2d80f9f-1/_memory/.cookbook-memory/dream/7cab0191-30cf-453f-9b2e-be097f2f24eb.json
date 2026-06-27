@@ -1,0 +1,1 @@
+{"cursor": 89806, "last_summary": "The Django file locking module's non-blocking mode (`LOCK_NB`) requires callers to inspect the return value of `lock()` to determine whether the lock was acquired or if it would block.", "recent_memory_ids": ["mem_06e8abea", "mem_7b840350"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

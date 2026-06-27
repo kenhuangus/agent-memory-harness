@@ -1,0 +1,1 @@
+{"cursor": 561326, "last_summary": "Django's SQLite introspection module consistently uses self.connection.ops.quote_name(table_name) when passing table names to PRAGMA table_info, PRAGMA foreign_key_list, and PRAGMA index_list.", "recent_memory_ids": ["mem_62926cfb"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

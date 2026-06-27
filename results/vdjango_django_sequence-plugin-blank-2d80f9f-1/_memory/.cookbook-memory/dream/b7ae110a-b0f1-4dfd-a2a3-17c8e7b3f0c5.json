@@ -1,0 +1,1 @@
+{"cursor": 181029, "last_summary": "No other occurrences of `'db'` or `'passwd'` kwargs existed in the entire `django/db/backends/mysql/` directory beyond the `get_connection_params()` method in `base.py`.", "recent_memory_ids": ["mem_bcb7a6d2", "mem_3a1a375d", "mem_7c780972"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

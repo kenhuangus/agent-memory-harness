@@ -1,0 +1,1 @@
+{"cursor": 477598, "last_summary": "Query.group_by can be None (no GROUP BY), a tuple of expressions (explicit group by), or True (group by all select fields of the model).", "recent_memory_ids": ["mem_9637904f", "mem_402cecb6"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
