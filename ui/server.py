@@ -40,10 +40,16 @@ Stdlib only. Binds 127.0.0.1 by default.
 from __future__ import annotations
 
 import json
+import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
+
+#: Allowlisted run-id charset — real run dirs are ASCII alnum + ``.`` ``_`` ``-``.
+#: Used to validate ``/api/run/<id>`` ids: blocks traversal and keeps the id safe to
+#: embed verbatim in a Content-Disposition filename.
+_RUN_ID_RE = re.compile(r"[A-Za-z0-9._-]+")
 
 try:  # dual import: package (``-m ui``) and standalone (run-dir self-test)
     from .substrate import open_substrate
@@ -173,7 +179,10 @@ class UIHandler(BaseHTTPRequestHandler):
         if root is None or not root.is_dir():
             self._json({"error": "results root not configured"}, code=404)
             return None
-        if "/" in run_id or run_id in ("", ".", ".."):
+        # Allowlist the run-id charset (real run dirs are alnum + ``._-``). This both
+        # blocks path traversal AND keeps the id safe to embed verbatim in a
+        # Content-Disposition filename (no quotes / control bytes / separators).
+        if not run_id or run_id in (".", "..") or not _RUN_ID_RE.fullmatch(run_id):
             self._json({"error": "bad run id"}, code=400)
             return None
         run_dir = root / run_id

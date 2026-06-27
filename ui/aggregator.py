@@ -538,10 +538,16 @@ def _aggregate_recalls(events_path: Path) -> dict[str, Any]:
     empty = 0
 
     for ev in _iter_jsonl(events_path):
-        if ev.get("op") != "recall":
+        # Fail-open on semantically-malformed-but-valid JSON: a non-dict event, a
+        # non-dict meta, or a hits list holding non-dict entries must degrade to an
+        # empty/partial aggregate, never crash snapshot().
+        if not isinstance(ev, dict) or ev.get("op") != "recall":
             continue
-        meta = ev.get("meta") or {}
-        hits_raw = meta.get("hits") or []
+        meta = ev.get("meta")
+        if not isinstance(meta, dict):
+            meta = {}
+        hits_raw = meta.get("hits")
+        hits_raw = [h for h in hits_raw if isinstance(h, dict)] if isinstance(hits_raw, list) else []
         n = meta.get("n")
         if not isinstance(n, int):
             n = len(hits_raw)  # tolerate odd/legacy lines missing meta.n

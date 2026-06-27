@@ -382,3 +382,27 @@ def test_report_route_unknown_run_is_404(tmp_path):
     h.do_GET()
     assert h.json_code == 404
     assert h.dl is None       # no file was sent
+
+
+def test_aggregate_recalls_fail_open_on_malformed_lines(tmp_path):
+    """Valid JSON but semantically-malformed recall lines (non-dict meta, hits holding
+    non-dict entries, a non-dict event) must DEGRADE — never crash snapshot()."""
+    ev = tmp_path / "events.jsonl"
+    records = [
+        "not-an-object",                                        # non-dict event line
+        {"op": "recall", "query": "bad meta", "meta": "oops"},  # non-dict meta
+        {"op": "recall", "query": "bad hits", "meta": {"hits": ["bad", 3, None]}},  # hits not dicts
+        {"op": "recall", "query": "mixed", "meta": {"n": 2, "k": 5, "hits": [
+            {"id": "m1", "score": 0.4, "rank": 0, "content": "ok"},
+            "garbage",                                          # one bad hit among good
+        ]}},
+        _recall_line("good one", [_hit("m2", 0.6, 0, "fine")]),
+    ]
+    _write_events(ev, records)
+    agg = _aggregate_recalls(ev)  # must not raise
+    # 4 recall events parsed (the non-dict line skipped); the good + mixed contribute hits.
+    assert agg["count"] == 4
+    queries = [r["query"] for r in agg["recalls"]]
+    assert "good one" in queries and "mixed" in queries
+    mixed = next(r for r in agg["recalls"] if r["query"] == "mixed")
+    assert len(mixed["hits"]) == 1 and mixed["hits"][0]["id"] == "m1"  # garbage hit dropped
