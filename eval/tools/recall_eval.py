@@ -91,18 +91,30 @@ def _report_profile(name, rows) -> None:
 
 
 def _suggest_floor(rows: list[dict]) -> None:
-    """Largest gap in the sorted score distribution = a clean bimodal split point."""
+    """Largest gap in the CENTRAL score band = a clean bimodal split point.
+
+    Bounded to the 5th-95th percentile so a single heavy-tail outlier (a graph
+    backend's unnormalized max) can't masquerade as the split. A score scale this
+    compressed (gap << its own median) means scores can't separate good from bad
+    -- the signal, not the threshold, is the lever.
+    """
     scores = sorted(float(h["score"]) for r in rows for h in r["hits"]
                     if h.get("score") is not None)
-    if len(scores) < 4:
+    if len(scores) < 8:
         print("\n(too few scored hits to suggest a floor)")
         return
+    lo, hi = _pct(scores, 5), _pct(scores, 95)
+    band = [s for s in scores if lo <= s <= hi]
     best_gap, best_mid = 0.0, None
-    for a, b in zip(scores, scores[1:]):
+    for a, b in zip(band, band[1:]):
         if b - a > best_gap:
             best_gap, best_mid = b - a, (a + b) / 2
-    print(f"\nSuggested floor ~ {best_mid:.3f} (largest score gap = {best_gap:.3f}); "
-          f"set via RECALL_MIN_SCORE. Verify against a smoke run before trusting it.")
+    med = _pct(scores, 50)
+    verdict = ("scores are separable -- a floor is a live lever"
+               if best_gap > 0.2 * max(med, 1e-9)
+               else "scores are too compressed to separate -- floor is a DEAD lever, fix the signal")
+    print(f"\nSuggested floor ~ {best_mid:.3f} (largest central-band gap = {best_gap:.3f}, "
+          f"median {med:.3f}): {verdict}. Verify against a smoke run.")
 
 
 def _judge(rows, cache_path, model):
@@ -155,6 +167,7 @@ def _judge(rows, cache_path, model):
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Tier-1 retrieval-quality eval.")
     ap.add_argument("dataset", nargs="?", default="eval/tools/recall_dataset.jsonl")
+    ap.add_argument("--by-run", action="store_true", help="also break down per run (score scales differ)")
     ap.add_argument("--judge", action="store_true", help="LLM-label relevance (needs API key)")
     ap.add_argument("--judge-cache", default="eval/tools/recall_judge_cache.jsonl")
     ap.add_argument("--model", default=os.environ.get("DREAM_MODEL", "openrouter/auto"))
@@ -164,6 +177,15 @@ def main(argv=None) -> int:
     print(f"loaded {len(rows)} recalls from {args.dataset}")
     for name, rs in sorted(_by_profile(rows).items(), key=lambda kv: str(kv[0])):
         _report_profile(name, rs)
+    if args.by_run:
+        # profile is often unstamped (None) while score SCALES differ per run;
+        # break down by run so a 0.05-scale run isn't pooled with an 8.8-scale one.
+        runs: dict = {}
+        for r in rows:
+            runs.setdefault(r.get("run"), []).append(r)
+        for run, rs in sorted(runs.items(), key=lambda kv: str(kv[0])):
+            if any(r.get("hits") for r in rs):
+                _report_profile(f"run={run}", rs)
     _suggest_floor(rows)
     if args.judge:
         _judge(rows, args.judge_cache, args.model)
