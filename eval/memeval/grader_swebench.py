@@ -776,12 +776,13 @@ def _django_directives_from_patch_or_selectors(task: Task) -> list[str]:
     for selector in [*(task.fail_to_pass or []), *(task.pass_to_pass or [])]:
         if not is_django_selector(selector):
             continue
-        label = django_label(selector)
-        parts = label.split(".")
-        if len(parts) < 3:
-            continue
-        module = ".".join(parts[:-2])
-        if module and module not in seen:
-            modules.append(module)
-            seen.add(module)
+        # The normalized label is itself a runnable runtests directive — bare
+        # module (``validators.tests``), ``module.Class``, or the full
+        # ``module.Class.method`` all run. Don't strip to ``parts[:-2]``: that
+        # both discarded bare labels (``len < 3``) and over-trimmed
+        # ``module.Class`` down to ``module``. Keep the label as-is and dedupe.
+        label = django_label(selector).strip()
+        if label and label not in seen:
+            modules.append(label)
+            seen.add(label)
     return modules

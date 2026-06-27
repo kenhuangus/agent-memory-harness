@@ -98,3 +98,28 @@ def test_django_fixture_only_patch_gets_selector_directive_fallback() -> None:
     directives = _django_directives_from_patch_or_selectors(task)
 
     assert directives == ["validators"]
+
+
+def test_django_selector_fallback_preserves_bare_and_full_labels() -> None:
+    # When no ``tests/<app>/...`` patch target exists, the recovery falls back to
+    # the selectors. A bare module label (``validators.tests``) is itself a runnable
+    # runtests directive and must NOT be discarded; a canonical unittest-form
+    # selector keeps its full ``module.Class.method`` label. (CodeRabbit PR #225:
+    # the old ``parts[:-2]`` / ``len < 3`` logic dropped bare labels and over-trimmed.)
+    from memeval.schema import Benchmark, TaskKind
+    from memeval.schema import Task
+
+    task = Task(
+        task_id="django__django-fixture-only",
+        benchmark=Benchmark.SWE_BENCH_CL,
+        kind=TaskKind.CODE,
+        question="fixture-only patch",
+        repo="django/django",
+        test_patch="diff --git a/docs/x.txt b/docs/x.txt\n",  # no tests/<app>/ target
+        fail_to_pass=["validators.tests"],
+        pass_to_pass=["test_ok (validators.tests.TestCase)"],
+    )
+
+    directives = _django_directives_from_patch_or_selectors(task)
+
+    assert directives == ["validators.tests", "validators.tests.TestCase.test_ok"]
