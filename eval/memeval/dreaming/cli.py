@@ -223,16 +223,33 @@ def _handle_daydream(args: argparse.Namespace) -> int:
 
 
 def _handle_dream(args: argparse.Namespace) -> int:
-    """Run night-dream consolidation — catches _DreamLockHeld + _UnsupportedFsError separately per ADR-021."""
+    """Run night-dream consolidation — catches _DreamLockHeld + _UnsupportedFsError separately per ADR-021.
+
+    Binds an :func:`event_context` for the duration of the run so every
+    ``dream.*`` event the worker emits (and every fail-open warning emitted
+    here in the CLI) reaches the per-session diary at
+    ``<basedir>/dream/<session_id>.daydream-events.jsonl``. Without the
+    context, ``emit()`` short-circuits before any write — silently dropping
+    the entire dream-cycle audit trail, including the final ``dream.summary``
+    that carries item-counts, cost, and per-pass metrics.
+    """
+    import uuid
+
     from memeval.dreaming import _state, worker
-    from memeval.dreaming.events import emit
+    from memeval.dreaming.events import emit, event_context
+
+    # Fresh session_id per dream run (uuid4 mirrors the daydream pattern; the
+    # daydream side gets its session_id from the Stop-hook stdin payload, but
+    # dream has no upstream session — operator-triggered or cron).
+    session_id = str(uuid.uuid4())
 
     prev = _set_store_env(args.store)
     try:
         try:
             basedir = _state.resolve_basedir()
             store = _make_store(basedir)
-            worker.dream(store=store)
+            with event_context(session_id=session_id, basedir=basedir):
+                worker.dream(store=store)
             return 0
         except (KeyboardInterrupt, SystemExit):
             raise
@@ -240,7 +257,8 @@ def _handle_dream(args: argparse.Namespace) -> int:
             log.warning(
                 "daydream-cli: another Dream sweep holds the basedir lock; fail-open exit 0"
             )
-            emit("dream.lock_contended", basedir=str(basedir))
+            with event_context(session_id=session_id, basedir=basedir):
+                emit("dream.lock_contended", basedir=str(basedir))
             return 0
         except _state._UnsupportedFsError as exc:
             log.warning(
@@ -248,20 +266,29 @@ def _handle_dream(args: argparse.Namespace) -> int:
                 "set DREAM_ALLOW_NETWORK_FS=1 to override; fail-open exit 0",
                 exc,
             )
-            emit("dream.unsupported_fs", basedir=str(basedir))
+            with event_context(session_id=session_id, basedir=basedir):
+                emit("dream.unsupported_fs", basedir=str(basedir))
             return 0
         except NotImplementedError:
             log.warning(
                 "daydream-cli: night consolidation not yet implemented; fail-open exit 0"
             )
-            emit("daydream.dream_all_skipped", reason="NotImplementedError")
+            with event_context(session_id=session_id, basedir=basedir):
+                emit("daydream.dream_all_skipped", reason="NotImplementedError")
             return 0
         except Exception as exc:
             log.warning(
                 "daydream-cli: dream --all raised %s: %s; fail-open exit 0",
                 type(exc).__name__, exc,
             )
-            emit("daydream.dream_all_error", error_type=type(exc).__name__)
+            # `basedir` may be unbound if resolve_basedir() raised — guard.
+            try:
+                _basedir = basedir
+            except NameError:
+                _basedir = None
+            if _basedir is not None:
+                with event_context(session_id=session_id, basedir=_basedir):
+                    emit("daydream.dream_all_error", error_type=type(exc).__name__)
             return 0
     finally:
         _restore_store_env(args.store, prev)
