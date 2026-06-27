@@ -465,6 +465,14 @@ class RouterConfig:
     # lift, D028); the real cross-encoder (`VoyageReranker`) is the captained path (D045).
     reranker: Optional[Any] = None
     rerank_top_n: int = 50
+    # Recall score FLOOR (precision knob, peer of `reranker`): drop FINAL hits scoring below this on the
+    # user-facing ranked result, AFTER every scoring stage (rerank / fusion / cascade). None (default) =
+    # NO floor = byte-for-byte today. Pure top-k recall returns the full k even when every match is weak;
+    # a per-hit floor drops the all-garbage recalls + trims weak tails, allowing a result with fewer than
+    # k items — or none at all (the correct precision outcome when all candidates are garbage; never
+    # backfilled with sub-floor hits). `<= 0` is treated as "no floor". The offline/eval default stays
+    # None; the accuracy/Voyage-calibrated default (0.15) is wired by the plugin's build_store, not here.
+    recall_min_score: Optional[float] = None
     embed: Optional[Any] = None
     embed_model: Optional[str] = None
     # Write-routing (D009: the router owns WHERE to STORE). markdown is the always-written literal
@@ -941,6 +949,47 @@ class _FusionRetriever:
         return merged
 
 
+class _ScoreFloorStore:
+    """Retrieval-only :class:`~memeval.protocols.MemoryStore` view that drops FINAL hits scoring below
+    ``min_score`` — a precision floor over the user-facing ranked result.
+
+    Applied by :meth:`Router.route` as the OUTERMOST wrapper, AFTER any rerank / fusion / cascade, so it
+    filters whatever scores those stages produced: the single chokepoint for "filter the final scored
+    hits once, after all scoring stages." Pure top-k recall returns the full ``k`` even when every match
+    is weak; this drops every hit with ``score < min_score``, allowing a result with fewer than ``k``
+    items — or none at all (the correct precision outcome when all candidates are garbage; it never
+    backfills with sub-floor hits). Surviving hits are returned UNCHANGED — fields, order, and their
+    original ``rank`` are preserved (no re-ranking), so a recall with the floor disabled is byte-identical.
+
+    A thin view over the inner store: ``get`` / ``all`` / ``write`` / ``delete`` pass straight through.
+    Constructed only when the active profile sets a positive ``recall_min_score`` (``Router.route`` skips
+    the wrap for ``None`` / ``<= 0``), so the default routed retriever is untouched.
+    """
+
+    def __init__(self, inner: MemoryStore, min_score: float) -> None:
+        self._inner = inner
+        self._min_score = min_score
+
+    # -- MemoryStore protocol ----------------------------------------------
+    def search(self, query: str, *, k: int = 5, as_of: Optional[float] = None,
+               **kwargs: Any) -> list[RetrievedItem]:
+        """Inner top-``k``, with every hit scoring below ``min_score`` dropped (may return < k or [])."""
+        hits = self._inner.search(query, k=k, as_of=as_of, **kwargs)
+        return [h for h in hits if h.score >= self._min_score]
+
+    def get(self, item_id: str) -> Optional[MemoryItem]:
+        return self._inner.get(item_id)
+
+    def all(self) -> list[MemoryItem]:
+        return self._inner.all()
+
+    def write(self, item: MemoryItem) -> None:
+        self._inner.write(item)
+
+    def delete(self, item_id: str) -> bool:
+        return self._inner.delete(item_id)
+
+
 class Router:
     """Routes a query to one registered :class:`MemoryStore` backend (rule-based v1).
 
@@ -986,18 +1035,27 @@ class Router:
         return {"choice": result.choice, "scores": result.scores, "margin": result.margin}
 
     def route(self, query: str, **kwargs: Any) -> MemoryStore:
-        """Return the store for ``query`` — the routed retriever, with the profile's rerank stage applied.
+        """Return the store for ``query`` — the routed retriever, with the profile's rerank + floor applied.
 
         Resolves the base retriever (fusion / cascade / single-route — see :meth:`_base_route`); then,
         when the active profile sets a ``reranker``, wraps it so ``search`` over-fetches ``rerank_top_n``
         candidates and the reranker re-scores them to ``k``. Reranking is the router's read-orchestration,
         the same as fusion — the caller (the plugin) never wires a reranker; the *profile* does.
+
+        Finally, when the profile sets a positive ``recall_min_score``, wraps the result in a
+        :class:`_ScoreFloorStore` so the FINAL hits scoring below the floor are dropped. The floor is the
+        OUTERMOST wrapper on purpose — it must see post-rerank / post-fusion / post-cascade scores, the
+        same user-facing scores the caller gets. ``recall_min_score`` of ``None`` or ``<= 0`` adds no wrap,
+        keeping the routed retriever byte-for-byte today.
         """
         retriever = self._base_route(query)
         if self._config.reranker is not None:
             from .stores.rerankers import RerankedStore  # lazy: avoid a router<->stores import cycle
             retriever = RerankedStore(retriever, self._config.reranker,
                                       rerank_top_n=self._config.rerank_top_n)
+        floor = self._config.recall_min_score
+        if floor is not None and floor > 0:
+            retriever = _ScoreFloorStore(retriever, floor)
         return retriever
 
     def _base_route(self, query: str) -> MemoryStore:

@@ -62,6 +62,15 @@ def build_store(store_path: str) -> MemoryStore:
     * ``$MEMEVAL_LOCAL_ANN=1`` opts into ``accuracy-local`` when ``$MEMORY_PROFILE`` is not set:
       local MiniLM embeddings plus sqlite-vec when available, with exact brute-force fallback.
 
+    **Recall score floor** (``$RECALL_MIN_SCORE``) — a precision knob over the FINAL recall hits: any hit
+    scoring below the floor is dropped, so a weak all-garbage recall can return fewer than ``k`` hits, or
+    nothing, instead of ``k`` weak matches. When ``$RECALL_MIN_SCORE`` is set it overrides for ANY profile
+    (a value ``<= 0`` disables the floor). When it is UNSET, only the ``accuracy`` profile gets a default:
+    ``0.15`` — the accuracy-calibrated value from n=52 real accuracy/Voyage recalls (PROVISIONAL; a clean
+    bimodal split put garbage recalls' top score ``<= 0.09`` and real matches ``>= 0.189``, so 0.15 sits in
+    the gap). Every OTHER profile defaults to NO floor (only accuracy was measured). Set ``RECALL_MIN_SCORE=0``
+    to disable, or a float to override.
+
     Kept lazy so a missing engine surfaces as a handled construction failure (the caller falls
     back to a fail-open no-op) rather than an import-time crash.
     """
@@ -175,6 +184,12 @@ def build_store(store_path: str) -> MemoryStore:
     else:
         graph = GraphStore(path=str(root / "graph.db"))
 
+    # Recall score FLOOR (precision over the FINAL hits): $RECALL_MIN_SCORE overrides for ANY profile
+    # (<= 0 disables); unset -> only `accuracy` gets the calibrated 0.15 default, every other profile
+    # stays floor-free (only accuracy was measured). Resolved from the profile NAME, so `accuracy-local`
+    # / `fusion-local` (which can fall back to a fusion config offline) do NOT inherit accuracy's floor.
+    config = replace(config, recall_min_score=_resolve_recall_min_score(profile))
+
     # All other backends persist under the store root and are IDENTICAL to the fusion path.
     backends: dict[str, MemoryStore] = {
         "vectors": vectors,
@@ -183,7 +198,13 @@ def build_store(store_path: str) -> MemoryStore:
         # FTS5 is the lexical backend fusion fans out to; Track 0 recall@10 beat markdown 0.842 vs 0.825.
         "fts5": Fts5Store(str(root / "fts5.db")),
     }
-    return RouterStore(Router.with_config(backends, config))
+    store = RouterStore(Router.with_config(backends, config))
+    # Observability: stamp the effective profile + score floor on the returned store so a run's retrieval
+    # config is never ambiguous on disk. The plugin surfaces these in the recall event meta (client.py);
+    # additive attributes, read defensively there (the plugin still treats the store as an opaque box).
+    store.profile_name = config.profile_name
+    store.recall_min_score = config.recall_min_score
+    return store
 
 
 def _build_falkor_graph() -> MemoryStore:
@@ -213,6 +234,25 @@ def _build_falkor_graph() -> MemoryStore:
             "does NOT fall back to the in-memory GraphStore -- a silent fallback would mislabel the "
             "graph backend and corrupt a fusion vs fusion-falkor measurement."
         ) from exc
+
+
+def _resolve_recall_min_score(profile: str) -> Optional[float]:
+    """The effective recall score floor for ``profile`` (see :func:`build_store` for the full contract).
+
+    ``$RECALL_MIN_SCORE`` set and parseable wins for ANY profile: a value ``> 0`` is the floor; ``<= 0``
+    disables it (``None``). An unparseable value is ignored (falls through to the profile default), so a
+    typo never silently turns the floor off. With the env unset/blank, only the ``accuracy`` profile
+    carries a default floor (``0.15``, the calibrated value); every other profile defaults to ``None``.
+    """
+    raw = os.environ.get("RECALL_MIN_SCORE")
+    if raw is not None and raw.strip() != "":
+        try:
+            val = float(raw)
+        except ValueError:
+            pass  # unparseable -> fall through to the profile default (don't silently disable)
+        else:
+            return val if val > 0 else None  # <= 0 explicitly disables the floor
+    return 0.15 if profile == "accuracy" else None
 
 
 __all__ = ["MemoryItem", "RetrievedItem", "MemoryStore", "build_store"]
