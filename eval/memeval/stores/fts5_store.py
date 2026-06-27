@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 from ..harness import _bm25_scores, _tokenize
 from ..schema import MemoryItem, RetrievedItem
@@ -136,6 +136,33 @@ class Fts5Store:
                 f"SELECT {_ITEM_COLS} FROM items ORDER BY rowid"
             ).fetchall()
         return [self._row_to_item(r) for r in rows]
+
+    def iter_pages(self, *, page_size: int = 1000) -> Iterator[list[MemoryItem]]:
+        """ADR-dreaming-028 §2 PR #2g — stream items in pages of up to
+        ``page_size``. Avoids materializing the full ``items`` table in
+        Python (today's ``all()`` pattern) on large stores.
+
+        Implementation uses ``cursor.fetchmany(page_size)`` over a single
+        rowid-ordered SELECT so SQLite never has to seek; rows arrive in
+        the same order ``all()`` returns. The store's ``self._lock`` is
+        held for the duration of iteration — consumers should not call
+        other store operations from inside the loop. The dream worker
+        runs under a basedir flock so no concurrent dream invocations
+        compete; within a single process the lock serializes connection
+        access the same way ``all()`` already does.
+        """
+        if page_size <= 0:
+            raise ValueError(f"page_size must be > 0, got {page_size}")
+        with self._lock:
+            self._raise_if_closed()
+            cursor = self._conn.execute(
+                f"SELECT {_ITEM_COLS} FROM items ORDER BY rowid"
+            )
+            while True:
+                rows = cursor.fetchmany(page_size)
+                if not rows:
+                    break
+                yield [self._row_to_item(r) for r in rows]
 
     def delete(self, item_id: str) -> bool:
         with self._lock:
