@@ -49,6 +49,15 @@
           <span class="status-label" id="status-label">—</span>
           <span class="status-age" id="status-age">—</span>
         </div>
+        <!-- Print Report — export the SELECTED run (one click vs digging 3 subdirs).
+             Both buttons hit /api/run/<id>/report.{json,md}; disabled until a run is picked. -->
+        <div class="report-cluster">
+          <span class="report-label">report</span>
+          <button id="report-json" class="report-btn" type="button" disabled
+                  title="download this run's snapshot as JSON">JSON</button>
+          <button id="report-md" class="report-btn" type="button" disabled
+                  title="download this run's report as Markdown">MD</button>
+        </div>
         <div class="refresh-cluster">
           <button id="refresh-toggle" class="refresh-toggle" data-state="on">refresh on</button>
           <span class="refresh-countdown" id="refresh-countdown">3s</span>
@@ -56,7 +65,15 @@
       </div>
     </header>
 
-    <main class="dash">
+    <!-- Monitor SUB-TABS — swap which monitor section is visible without
+         touching the run dropdown, the refresh loop, or the top-level tab.
+         Both panels share the same snapshot + 3s poll (monitor.js). -->
+    <nav class="mon-subtabs" role="tablist">
+      <button class="mon-subtab active" data-subtab="overview" role="tab" aria-selected="true">Overview</button>
+      <button class="mon-subtab"        data-subtab="recalls"  role="tab" aria-selected="false">Recalls</button>
+    </nav>
+
+    <main class="dash mon-panel active" id="mon-overview" data-subpanel="overview">
       <section class="kpi-row" id="kpi-row">
         <article class="kpi" data-kind="memory">
           <header class="kpi-head">
@@ -181,6 +198,51 @@
       </section>
     </main>
 
+    <!-- RECALLS sub-panel — the read side: what memories got recalled.
+         Rendered from snapshot.recalls by monitor.js on the same 3s poll. -->
+    <main class="dash mon-panel" id="mon-recalls" data-subpanel="recalls">
+      <section class="recalls-kpis">
+        <div class="recalls-kpi">
+          <span class="recalls-kpi-num" id="recalls-count">—</span>
+          <span class="recalls-kpi-lab">recalls</span>
+        </div>
+        <div class="recalls-kpi">
+          <span class="recalls-kpi-num" id="recalls-avg-hits">—</span>
+          <span class="recalls-kpi-lab">avg hits</span>
+        </div>
+        <div class="recalls-kpi">
+          <span class="recalls-kpi-num" id="recalls-median">—</span>
+          <span class="recalls-kpi-lab">median score</span>
+        </div>
+        <div class="recalls-kpi">
+          <span class="recalls-kpi-num" id="recalls-empty">—</span>
+          <span class="recalls-kpi-lab">empty</span>
+        </div>
+        <div class="recalls-kpi recalls-kpi-warn" id="recalls-lowconf-kpi">
+          <span class="recalls-kpi-num" id="recalls-lowconf">—</span>
+          <span class="recalls-kpi-lab">low score <span class="recalls-warn-mark">⚠</span></span>
+        </div>
+        <div class="recalls-spark-cell">
+          <span class="recalls-kpi-lab">score dist</span>
+          <div class="recalls-spark" id="recalls-spark" title="hit-score distribution (min→max)"></div>
+          <span class="recalls-spark-range" id="recalls-spark-range">—</span>
+        </div>
+      </section>
+
+      <section class="recalls-table-wrap">
+        <header class="recent-head">
+          <span class="chart-name">per-recall</span>
+          <span class="chart-leader"></span>
+          <span class="chart-tag" id="recalls-table-tag">—</span>
+        </header>
+        <!-- ⚠ flags a recall whose top score is below a DISPLAY-ONLY threshold;
+             it is not the retrieval threshold (recall is pure top-k). -->
+        <div class="recalls-table" id="recalls-table">
+          <div class="recalls-empty">no recalls yet this run</div>
+        </div>
+      </section>
+    </main>
+
     <footer class="footbar">
       <span class="foot-meta" id="foot-meta">—</span>
       <span class="foot-leader"></span>
@@ -197,6 +259,11 @@
     <header>
       <h1>Memory Inspector</h1>
       <div id="summary" class="summary">loading…</div>
+      <!-- Auto-refresh toggle — same markup/idiom as the monitor's refresh-toggle
+           so both views feel consistent. Default ON; re-fetches summary + memories
+           every 3s (paused while a modal is open or an input is focused). -->
+      <button id="inspector-refresh-toggle" class="refresh-toggle" data-state="on" type="button"
+              title="auto-refresh summary + memories every 3s">refresh on</button>
     </header>
 
     <nav class="tabs">

@@ -44,6 +44,11 @@ let MEMORIES = [];
 let SUMMARY = null;
 let browseSort = { key: "item_id", dir: 1 };
 
+// Auto-refresh: mirror the monitor's 3s cadence so newly-written memories appear
+// during a live run without a manual reload. Default ON.
+const INSPECTOR_REFRESH_MS = 3000;
+let inspectorRefreshOn = true;
+
 // ---- tabs -----------------------------------------------------------------
 $$(".tab").forEach((b) =>
   b.addEventListener("click", () => {
@@ -584,6 +589,51 @@ async function captureRetrieval(data) {
 }
 $("#probe-go").addEventListener("click", runProbe);
 $("#probe-q").addEventListener("keydown", (e) => { if (e.key === "Enter") runProbe(); });
+
+// ---- auto-refresh (3s, like the monitor) ----------------------------------
+// Re-fetch summary + memories and re-render Browse/Routing so a live run's new
+// memories surface automatically. UI state is preserved: the refresh is paused
+// while a modal is open or an input is focused (so it never clobbers an artifact
+// popover, a detail view, or in-progress typing in the store/filter/probe inputs),
+// the Browse/Routing/Probe tab selection and the browse sort/filter are module
+// state untouched by a re-render, and the window scroll position is restored after
+// the rows are rebuilt. The flagged-only checkbox and probe results are left as-is.
+function inspectorBusy() {
+  if (!$("#modal").classList.contains("hidden")) return true;   // detail/artifact popover open
+  if ($("#summary .pill.loading")) return true;                 // a /api/reopen is in flight
+  const ae = document.activeElement;
+  if (ae && ["INPUT", "TEXTAREA", "SELECT"].includes(ae.tagName)) return true;  // user is typing
+  return false;
+}
+
+async function refreshInspector() {
+  if (!inspectorRefreshOn || !SUMMARY || inspectorBusy()) return;
+  let summary, memories;
+  try {
+    summary = await getJSON("/api/summary");
+    memories = (await getJSON("/api/memories")).memories;
+  } catch (e) {
+    return;   // transient (e.g. a 503 mid-reopen) — try again next tick
+  }
+  if (inspectorBusy()) return;   // a modal/typing may have started during the fetch
+  const sx = window.scrollX, sy = window.scrollY;
+  SUMMARY = summary;
+  MEMORIES = memories;
+  renderSummary(SUMMARY);
+  renderBrowse();
+  renderRouting();
+  window.scrollTo(sx, sy);       // rows were rebuilt; keep the viewport where it was
+}
+
+const inspectorRefreshToggle = $("#inspector-refresh-toggle");
+if (inspectorRefreshToggle) {
+  inspectorRefreshToggle.addEventListener("click", () => {
+    inspectorRefreshOn = !inspectorRefreshOn;
+    inspectorRefreshToggle.dataset.state = inspectorRefreshOn ? "on" : "off";
+    inspectorRefreshToggle.textContent = inspectorRefreshOn ? "refresh on" : "refresh off";
+  });
+}
+setInterval(refreshInspector, INSPECTOR_REFRESH_MS);
 
 // ---- boot -----------------------------------------------------------------
 async function boot() {
