@@ -28,13 +28,16 @@ ACTIVE_WINDOW_S = 30  # last_activity younger than this -> "running"
 RECALL_LIST_CAP = 200          # newest-first cap on the per-recall list in a snapshot
 RECALL_SNIPPET_CHARS = 120     # per-hit content truncation; keeps the payload bounded
 SCORE_HISTOGRAM_BUCKETS = 8    # fixed bucket count for the score-distribution sparkline
-# DISPLAY-ONLY soft threshold: a recall whose BEST hit scores below this is given a
-# ⚠ flag in the UI so the "low-score-but-still-returned" pattern is visible. This is
-# observability ONLY — ``recall`` is pure top-k with NO score cutoff, and the score
-# scale is backend-dependent (FTS5/BM25 vs vector cosine), so this absolute value is
-# a coarse visual hint, NOT the retrieval threshold. Wiring a real retrieval
-# threshold is a separate follow-up; do not couple recall behavior to this constant.
-LOW_CONFIDENCE_TOP_SCORE = 0.30
+# DISPLAY-ONLY ⚠ reference: a recall whose BEST hit scores below the reference floor is
+# flagged so the "weak match" pattern is visible. The reference is, per recall, the ACTUAL
+# recall score floor recorded in the event (``meta.min_score``, stamped by the live
+# RECALL_MIN_SCORE knob) — so the ⚠ band always matches what the live system drops at —
+# falling back to DEFAULT_LOW_CONFIDENCE_FLOOR for runs that recorded no floor (historical
+# data / floor disabled). 0.15 is the calibrated garbage/real split (n=52 accuracy recalls:
+# garbage top ≤0.09, real ≥0.19); it replaces an earlier uncalibrated 0.30 guess that
+# decoupled the view from the shipped 0.15 floor. Observability ONLY — never a retrieval
+# decision (the real floor lives in RouterConfig.recall_min_score / contract.build_store).
+DEFAULT_LOW_CONFIDENCE_FLOOR = 0.15
 
 
 def discover_runs(results_root: Path) -> list[dict[str, Any]]:
@@ -261,9 +264,16 @@ def report_markdown(snap: dict[str, Any]) -> str:
     out.append(avg_line)
     out.append(f"- **score median:** {_score(stats.get('median'))} "
                f"(min {_score(stats.get('min'))} · max {_score(stats.get('max'))})")
+    floors = recalls.get("applied_floors") or []
+    profiles = recalls.get("profiles") or []
+    if profiles:
+        out.append(f"- **profile:** {', '.join(profiles)}")
+    if floors:
+        out.append(f"- **recall score floor (live):** {', '.join(_score(f) for f in floors)}")
     thr = recalls.get("low_confidence_threshold")
+    ref = (f"recorded floor, else {thr}" if floors else f"{thr}")
     out.append(f"- **low-confidence recalls:** {_num(recalls.get('low_confidence_count'))}"
-               + (f" (top score < {thr}, display-only)" if thr is not None else ""))
+               + (f" (top score < {ref}, display-only)" if thr is not None else ""))
     hist = stats.get("histogram") or []
     if hist:
         out.append(f"- **score histogram:** `{_histogram_ascii(hist)}`")
@@ -566,14 +576,24 @@ def _aggregate_recalls(events_path: Path) -> dict[str, Any]:
 
         top_score = max(hit_scores) if hit_scores else None
         min_score = min(hit_scores) if hit_scores else None
-        # Display-only ⚠ flag; never a retrieval decision. See LOW_CONFIDENCE_TOP_SCORE.
-        low_confidence = top_score is not None and top_score < LOW_CONFIDENCE_TOP_SCORE
+        # The recall's ACTUAL config, recorded in the event (contract stamps these): the
+        # active profile + the score floor that was applied. ``applied_floor`` drives the ⚠
+        # reference so the view matches the live system; ``None`` (no floor recorded) falls
+        # back to the calibrated default.
+        profile = meta.get("profile") if isinstance(meta.get("profile"), str) else None
+        af = meta.get("min_score")
+        applied_floor = af if isinstance(af, (int, float)) and af > 0 else None
+        # Display-only ⚠ flag; never a retrieval decision. See DEFAULT_LOW_CONFIDENCE_FLOOR.
+        reference = applied_floor if applied_floor is not None else DEFAULT_LOW_CONFIDENCE_FLOOR
+        low_confidence = top_score is not None and top_score < reference
 
         recalls.append({
             "query": ev.get("query"),
             "ts": ev.get("ts"),
             "n": n,
             "k": k,
+            "profile": profile,
+            "applied_floor": applied_floor,
             "top_score": top_score,
             "min_score": min_score,
             "low_confidence": low_confidence,
@@ -600,8 +620,13 @@ def _aggregate_recalls(events_path: Path) -> dict[str, Any]:
         "avg_hits": (hits_total / nonempty) if nonempty else None,
         "k": next(iter(k_values)) if len(k_values) == 1 else None,
         "low_confidence_count": sum(1 for r in recalls if r["low_confidence"]),
-        # Surfaced so the UI can label the ⚠ threshold honestly as display-only.
-        "low_confidence_threshold": LOW_CONFIDENCE_TOP_SCORE,
+        # The ⚠ reference: per recall it's the recorded floor (applied_floor); this is the
+        # fallback for recalls with no recorded floor. Surfaced so the UI labels it honestly.
+        "low_confidence_threshold": DEFAULT_LOW_CONFIDENCE_FLOOR,
+        # The effective recall floor(s) actually recorded across this run's recalls (live
+        # RECALL_MIN_SCORE), so the view shows the real retrieval config, not just the display ref.
+        "applied_floors": sorted({r["applied_floor"] for r in recalls if r["applied_floor"] is not None}),
+        "profiles": sorted({r["profile"] for r in recalls if r["profile"]}),
         "score_stats": _score_stats(all_scores),
         "recalls": capped,
         "truncated": truncated,

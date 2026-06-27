@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 
 from ui.aggregator import (
-    LOW_CONFIDENCE_TOP_SCORE,
+    DEFAULT_LOW_CONFIDENCE_FLOOR,
     RECALL_LIST_CAP,
     _aggregate_recalls,
     report_markdown,
@@ -23,14 +23,20 @@ from ui.aggregator import (
 from ui.server import UIHandler, _State
 
 
-def _recall_line(query, hits, *, ts=0.0, k=5):
-    """One on-disk recall event. Mirrors core/events.py: extra kwargs nest in ``meta``."""
+def _recall_line(query, hits, *, ts=0.0, k=5, min_score=None, profile=None):
+    """One on-disk recall event. Mirrors core/events.py: extra kwargs nest in ``meta``.
+    ``min_score``/``profile`` mirror what contract.build_store stamps (PR #234)."""
+    meta = {"k": k, "n": len(hits), "hits": hits}
+    if min_score is not None:
+        meta["min_score"] = min_score
+    if profile is not None:
+        meta["profile"] = profile
     return {
         "ts": ts,
         "op": "recall",
         "ids": [h["id"] for h in hits],
         "query": query,
-        "meta": {"k": k, "n": len(hits), "hits": hits},
+        "meta": meta,
     }
 
 
@@ -91,15 +97,44 @@ def test_aggregate_recalls_counts_and_stats(tmp_path):
 def test_aggregate_recalls_low_confidence_flag(tmp_path):
     agg = _aggregate_recalls(_events_with_recalls(tmp_path))
 
-    assert agg["low_confidence_threshold"] == LOW_CONFIDENCE_TOP_SCORE
-    # Only the 'xarray merge' recall has a top score (0.22) under 0.30.
-    assert agg["low_confidence_count"] == 1
+    assert agg["low_confidence_threshold"] == DEFAULT_LOW_CONFIDENCE_FLOOR  # 0.15, calibrated
+    # Recalibration: the modest 'xarray merge' top (0.22) is a REAL match and is no longer
+    # flagged under the calibrated 0.15 default (the old 0.30 guess wrongly flagged it).
+    # Neither recall here is below 0.15, so nothing is flagged.
+    assert agg["low_confidence_count"] == 0
 
     by_query = {r["query"]: r for r in agg["recalls"]}
-    assert by_query["xarray merge"]["low_confidence"] is True
+    assert by_query["xarray merge"]["low_confidence"] is False     # 0.22 ≥ 0.15 → real match
     assert by_query["fix evalf guard"]["low_confidence"] is False
     # An empty recall is "empty", never flagged low-confidence.
     assert by_query["nothing matches"]["low_confidence"] is False
+
+
+def test_low_confidence_uses_recorded_floor(tmp_path):
+    """The ⚠ reference is the recall's RECORDED floor (meta.min_score, stamped by the live
+    RECALL_MIN_SCORE knob), falling back to the calibrated default — so the view matches what
+    the live system drops at. The recorded profile + floor are surfaced for observability."""
+    ev = tmp_path / "events.jsonl"
+    records = [
+        # garbage recall, NO floor recorded → uses the 0.15 default; top 0.09 < 0.15 → ⚠.
+        _recall_line("all garbage", [_hit("m1", 0.09, 0), _hit("m2", 0.04, 1)]),
+        # floor recorded high (0.5) under accuracy; top 0.30 < 0.5 → ⚠ relative to ITS floor
+        # (would NOT flag under the 0.15 default — proves the per-recall reference is used).
+        _recall_line("near its floor", [_hit("m3", 0.30, 0)], min_score=0.5, profile="accuracy"),
+    ]
+    _write_events(ev, records)
+    agg = _aggregate_recalls(ev)
+
+    by_q = {r["query"]: r for r in agg["recalls"]}
+    assert by_q["all garbage"]["low_confidence"] is True
+    assert by_q["all garbage"]["applied_floor"] is None
+    assert by_q["near its floor"]["low_confidence"] is True          # 0.30 < its recorded 0.5
+    assert by_q["near its floor"]["applied_floor"] == 0.5
+    assert by_q["near its floor"]["profile"] == "accuracy"
+    # Aggregate surfaces the live floors + profiles actually recorded.
+    assert agg["applied_floors"] == [0.5]
+    assert agg["profiles"] == ["accuracy"]
+    assert agg["low_confidence_threshold"] == DEFAULT_LOW_CONFIDENCE_FLOOR
 
 
 def test_aggregate_recalls_list_shape_and_order(tmp_path):
@@ -258,7 +293,7 @@ def _synthetic_snapshot() -> dict:
         "reject_distinct": 3,
         "recalls": {
             "count": 2, "empty_count": 1, "avg_hits": 1.0, "k": 5,
-            "low_confidence_count": 1, "low_confidence_threshold": 0.30,
+            "low_confidence_count": 1, "low_confidence_threshold": 0.15,
             "score_stats": {
                 "count": 1, "min": 0.22, "median": 0.22, "max": 0.22, "mean": 0.22,
                 "histogram": [1, 0, 0, 0, 0, 0, 0, 0], "bucket_edges": [],
