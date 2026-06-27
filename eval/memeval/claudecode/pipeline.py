@@ -889,9 +889,35 @@ def _source_memory_health_or_die(source: Path, stage: str) -> dict[str, Any]:
     return health
 
 
+#: Per-run TELEMETRY logs that must NOT carry over when seeding from a prior run's
+#: memory dataset. The MEMORIES (memory.db / markdown / graph.db / fts5.db / dream
+#: state) are what a seeded run inherits; the prior run's event/diary logs are
+#: run-specific. Copying them poisons this run's recall/dream telemetry with the
+#: seed's history (e.g. a recall-quality comparison reads the SEED's recalls, not the
+#: run's; recall events are ts=0 so they can't be separated after the fact). Archive
+#: them to ``<name>.seed.jsonl`` so provenance is preserved but the run starts clean.
+_SEED_TELEMETRY_GLOBS = ("events.jsonl", "dream/*.daydream-events.jsonl")
+
+
+def _archive_seed_telemetry(target: Path) -> None:
+    """Rename a seeded run's inherited telemetry logs to ``*.seed.jsonl`` so this run's
+    own events.jsonl / daydream diaries start fresh (recall + dream telemetry isolation)."""
+    for pattern in _SEED_TELEMETRY_GLOBS:
+        for log in target.glob(pattern):
+            if log.is_file():
+                # Append ``.seed`` to the full name: "events.jsonl" -> "events.jsonl.seed",
+                # which no longer matches the exact "events.jsonl" reader nor the
+                # "*.daydream-events.jsonl" glob, so this run's telemetry starts clean.
+                log.rename(log.parent / (log.name + ".seed"))
+
+
 def _copy_memory_dataset(source: Path, target: Path) -> None:
-    """Copy the complete plugin-owned memory dataset, not just Markdown notes."""
+    """Copy the complete plugin-owned memory dataset, not just Markdown notes.
+
+    The seed's MEMORIES carry forward; its per-run TELEMETRY logs are archived (not
+    inherited) so this run's recall/dream telemetry reflects only this run."""
     shutil.copytree(source, target, dirs_exist_ok=True)
+    _archive_seed_telemetry(target)
 
 
 def _seed_source_memory(cfg: dict, substrate: Path) -> Optional[dict[str, Any]]:

@@ -847,3 +847,30 @@ def test_pipeline_disabled_sandbox_is_explicit_optout(monkeypatch) -> None:
     monkeypatch.setattr(P, "_sandbox_auth_probe", lambda *a, **k: probed.__setitem__("n", probed["n"] + 1) or True)
     P._ensure_sandbox_ready("claude-haiku-4-5")  # must NOT raise, must NOT probe
     assert probed["n"] == 0
+
+
+def test_copy_memory_dataset_archives_seed_telemetry(tmp_path) -> None:
+    """Seeding carries MEMORIES forward but archives the prior run's per-run TELEMETRY
+    (events.jsonl + dream daydream-events) to *.seed, so this run's recall/dream telemetry
+    isn't poisoned by the seed's history (the --source-memory confound)."""
+    src = tmp_path / "src"
+    (src / "markdown").mkdir(parents=True)
+    (src / "dream").mkdir(parents=True)
+    (src / "memory.db").write_text("DB")                                  # memory -> carries
+    (src / "markdown" / "m.md").write_text("mem")                         # memory -> carries
+    (src / "dream" / "s1.json").write_text("{}")                          # dream state -> carries
+    (src / "events.jsonl").write_text('{"op":"recall"}\n')               # telemetry -> archived
+    (src / "dream" / "s1.daydream-events.jsonl").write_text('{"e":1}\n')  # telemetry -> archived
+
+    tgt = tmp_path / "run"
+    P._copy_memory_dataset(src, tgt)
+
+    # memory + dream state carried over
+    assert (tgt / "memory.db").is_file()
+    assert (tgt / "markdown" / "m.md").is_file()
+    assert (tgt / "dream" / "s1.json").is_file()
+    # telemetry archived, not inherited as live logs
+    assert not (tgt / "events.jsonl").exists()
+    assert (tgt / "events.jsonl.seed").is_file()
+    assert not (tgt / "dream" / "s1.daydream-events.jsonl").exists()
+    assert (tgt / "dream" / "s1.daydream-events.jsonl.seed").is_file()
