@@ -105,6 +105,14 @@ _CURSOR_MODEL_CHOICES = (
     ("gpt-5.5-high", "OpenAI GPT-5.5 (1M, high)"),
     ("claude-opus-4-8-thinking-high", "Anthropic Opus 4.8 (1M, thinking)"),
 )
+_GRADER_CHOICES = (
+    ("swebench", "host uv venv using SWE-bench specs + parsers (default)"),
+    ("swebench-docker", "official SWE-bench Docker harness for historical envs"),
+    ("auto", "SWE tasks use best available local grader; QA/context use native metrics"),
+    ("local", "host-local per-task venv grader"),
+    ("overlap", "cheap gold-patch token-overlap smoke heuristic"),
+    ("none", "leave CODE tasks ungraded"),
+)
 
 
 def _bench_spec(benchmark: str) -> dict[str, Any]:
@@ -511,6 +519,24 @@ def _ask_model(default: str, *, harness: str = "claude") -> str:
         return raw
 
 
+def _ask_grader(default: str) -> str:
+    """Numbered menu for CODE graders. Typed custom grader ids are accepted."""
+    if not _interactive():
+        return default
+    print("  grader (type a number or grader id):")
+    names = [name for name, _label in _GRADER_CHOICES]
+    for i, (name, label) in enumerate(_GRADER_CHOICES, 1):
+        marker = " (default)" if name == default else ""
+        print(f"    {i}. {name}  ·  {label}{marker}")
+    while True:
+        raw = input(f"  grader [{default}]: ").strip()
+        if not raw:
+            return default
+        if raw.isdigit() and 1 <= int(raw) <= len(names):
+            return names[int(raw) - 1]
+        return raw
+
+
 def _ask_memory_source(stage: str, candidates: list[dict[str, Any]], default: str) -> str:
     """Numbered menu for stages that require a prior memory folder."""
     if not _interactive():
@@ -572,9 +598,7 @@ def _resolve_config(args: argparse.Namespace) -> dict:
         if harness == "cursor" and model_is_default:
             model = _DEFAULT_CURSOR_MODEL
         model = _ask_model(model, harness=harness)
-        grader = _ask("grader", grader,
-                      choices=["auto", "local", "swebench", "swebench-docker",
-                               "overlap", "none"])
+        grader = _ask_grader(grader)
         budget = _ask("budget (USD, 0 = no cap)", budget, cast=float)
     elif harness == "cursor" and model_is_default:
         # Non-interactive (--yes / no TTY): still swap the default model for cursor.
