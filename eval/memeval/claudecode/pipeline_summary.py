@@ -49,12 +49,15 @@ def stage_row(
     if extra:
         row_extra.update(extra)
     bench = pipeline_meta.get("benchmark", "")
-    return result_record(
+    row = result_record(
         rr,
         run_id=f"pipeline-{stage}",
         notes=f"single-stage pipeline · {bench} · stage {stage}",
         extra=row_extra,
     )
+    for task in row.get("tasks", []):
+        task["stage"] = stage
+    return row
 
 
 def write_pipeline_results(
@@ -133,6 +136,7 @@ def build_summary(
             "resolved": reliability.get("resolved"),
             "ungraded": reliability.get("ungraded"),
             "grade_reasons": reliability.get("grade_reasons") or {},
+            "tasks": list(r.get("tasks") or []),
             "memory_reached": reliability.get("memory_reached"),
             "memory_hit": reliability.get("memory_hit"),
             "recall_attempted": reliability.get("recall_attempted"),

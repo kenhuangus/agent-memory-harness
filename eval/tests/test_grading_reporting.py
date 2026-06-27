@@ -10,9 +10,11 @@ import json
 import types
 
 from memeval.claudecode import pipeline as P
-from memeval.claudecode.pipeline_summary import render_summary_md
+from memeval.claudecode.pipeline_summary import build_summary, render_summary_md, stage_row
 from memeval.grader_swebench import _django_directives_from_patch_or_selectors
 from memeval.loaders.swe_bench_cl import SWEBenchCLLoader
+from memeval.results import result_record
+from memeval.schema import Benchmark, Metrics, ModelConfig, RunResult, Trajectory
 from memeval.trajectory import TrajectoryLogger, read_trajectory_list
 
 
@@ -72,6 +74,94 @@ def test_stage_warning_for_partial_grading() -> None:
         "code": "partial_grading",
         "message": "1 of 50 tasks were ungraded; accuracy denominator is graded tasks only",
     }]
+
+
+def test_result_record_outputs_per_task_grading_rows() -> None:
+    rr = RunResult(
+        benchmark=Benchmark.SWE_BENCH_CL,
+        config=ModelConfig(name="m"),
+        metrics=Metrics(accuracy=0.5, n=2),
+        n_tasks=2,
+        trajectories=[
+            Trajectory(
+                task_id="t1",
+                benchmark=Benchmark.SWE_BENCH_CL,
+                model="m",
+                prediction="diff --git a/x b/x\n",
+                success=True,
+                metadata={"grade_reason": "graded"},
+            ),
+            Trajectory(
+                task_id="t2",
+                benchmark=Benchmark.SWE_BENCH_CL,
+                model="m",
+                prediction="",
+                success=None,
+                metadata={
+                    "grade_reason": "exception",
+                    "solve_error": "RuntimeError: failed",
+                },
+            ),
+        ],
+    )
+
+    rec = result_record(rr)
+
+    assert rec["tasks"] == [
+        {
+            "task_id": "t1",
+            "stage": None,
+            "patch_status": "applied",
+            "solve_error": None,
+            "grade_status": "graded",
+            "grade_reason": "graded",
+            "resolved": True,
+        },
+        {
+            "task_id": "t2",
+            "stage": None,
+            "patch_status": "empty",
+            "solve_error": "RuntimeError: failed",
+            "grade_status": "ungraded",
+            "grade_reason": "exception",
+            "resolved": False,
+        },
+    ]
+
+
+def test_pipeline_outputs_per_task_rows_with_stage() -> None:
+    rr = RunResult(
+        benchmark=Benchmark.SWE_BENCH_CL,
+        config=ModelConfig(name="m"),
+        metrics=Metrics(accuracy=1.0, n=1),
+        n_tasks=1,
+        trajectories=[
+            Trajectory(
+                task_id="t1",
+                benchmark=Benchmark.SWE_BENCH_CL,
+                model="m",
+                prediction="diff --git a/x b/x\n",
+                success=True,
+                metadata={"grade_reason": "graded"},
+            )
+        ],
+    )
+    meta = {
+        "benchmark": "swe_bench_cl",
+        "version": "vtest",
+        "git_sha": "abc123",
+    }
+
+    row = stage_row(rr, stage="plugin-blank", stage_index=2, pipeline_meta=meta)
+    summary = build_summary(
+        benchmark="swe_bench_cl",
+        rows=[row],
+        pipeline_meta=meta,
+        dream=None,
+    )
+
+    assert row["tasks"][0]["stage"] == "plugin-blank"
+    assert summary["stages"][0]["tasks"] == row["tasks"]
 
 
 def test_trajectory_logger_can_record_explicit_ungraded_success(tmp_path) -> None:
