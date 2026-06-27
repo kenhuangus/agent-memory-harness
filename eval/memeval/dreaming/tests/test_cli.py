@@ -734,6 +734,102 @@ def test_dream_all_does_not_swallow_keyboardinterrupt(
 
 
 # --------------------------------------------------------------------------- #
+# §H-event-context — _handle_dream binds event_context so worker events
+# reach the per-session diary file (regression test for the silent-drop bug
+# where dream.* events disappeared in production because _handle_dream
+# never set the session_id/basedir context-vars events.py guards on).
+# --------------------------------------------------------------------------- #
+
+
+def test_dream_all_binds_event_context_around_worker_call(
+    memory_store_dir: Path, monkeypatch: pytest.MonkeyPatch, fake_make_store: MagicMock,
+) -> None:
+    """`_handle_dream` MUST wrap `worker.dream()` in an event_context bound to
+    a session_id + the resolved basedir. Without the context, every
+    `emit("dream.*")` inside the worker short-circuits silently — operators
+    lose the entire dream-cycle audit trail."""
+    from memeval.dreaming import events as events_mod
+    from memeval.dreaming import worker
+
+    captured_contexts: list[tuple[str | None, Path | None]] = []
+    real_event_context = events_mod.event_context
+
+    def _spy_event_context(**kwargs: Any):
+        captured_contexts.append((kwargs.get("session_id"), kwargs.get("basedir")))
+        return real_event_context(**kwargs)
+
+    monkeypatch.setattr(events_mod, "event_context", _spy_event_context)
+    monkeypatch.setattr(worker, "dream", lambda **kw: None)
+
+    assert cli.main(["dream", "--all"]) == 0
+    assert captured_contexts, (
+        "event_context was never entered — _handle_dream is dropping every "
+        "dream.* event the worker emits"
+    )
+    sid, basedir = captured_contexts[0]
+    assert isinstance(sid, str) and len(sid) >= 32, (
+        "session_id should be a fresh uuid per dream run"
+    )
+    assert basedir is not None
+
+
+def test_dream_all_worker_events_reach_diary_file(
+    memory_store_dir: Path, monkeypatch: pytest.MonkeyPatch, fake_make_store: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """End-to-end: a sentinel event emitted from inside `worker.dream()` MUST
+    land in the per-session diary file at
+    `<basedir>/dream/<session_id>.daydream-events.jsonl`. The pre-fix
+    behavior wrote NOTHING (events.py short-circuits when context-vars are
+    unbound), so the entire cycle's audit trail vanished."""
+    import json
+    import uuid
+
+    from memeval.dreaming import worker
+    from memeval.dreaming.events import emit as real_emit
+
+    fixed_sid = "11111111-2222-3333-4444-555555555555"
+    monkeypatch.setattr(uuid, "uuid4", lambda: uuid.UUID(fixed_sid))
+
+    def _emit_sentinel(**kwargs: Any) -> None:
+        real_emit("dream.test_sentinel", marker="ok")
+
+    monkeypatch.setattr(worker, "dream", _emit_sentinel)
+    assert cli.main(["dream", "--all"]) == 0
+
+    diary = memory_store_dir / "dream" / f"{fixed_sid}.daydream-events.jsonl"
+    assert diary.exists(), (
+        f"diary file {diary} not created — event_context did not write through"
+    )
+    events = [json.loads(line) for line in diary.read_text().splitlines() if line.strip()]
+    assert any(e.get("event_type") == "dream.test_sentinel" for e in events), (
+        f"sentinel event not in diary; got events: "
+        f"{[e.get('event_type') for e in events]}"
+    )
+
+
+def test_dream_lock_contended_emit_lands_in_diary(
+    memory_store_dir: Path, monkeypatch: pytest.MonkeyPatch, fake_make_store: MagicMock,
+) -> None:
+    """Fail-open `dream.lock_contended` event must also reach the diary —
+    pre-fix the emit happened outside event_context and silently dropped."""
+    import json
+    import uuid
+
+    from memeval.dreaming import _state, worker
+
+    fixed_sid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    monkeypatch.setattr(uuid, "uuid4", lambda: uuid.UUID(fixed_sid))
+    monkeypatch.setattr(worker, "dream", lambda **kw: (_ for _ in ()).throw(_state._DreamLockHeld()))
+
+    assert cli.main(["dream", "--all"]) == 0
+    diary = memory_store_dir / "dream" / f"{fixed_sid}.daydream-events.jsonl"
+    assert diary.exists(), "fail-open path must also write to the diary"
+    events = [json.loads(line) for line in diary.read_text().splitlines() if line.strip()]
+    assert any(e.get("event_type") == "dream.lock_contended" for e in events)
+
+
+# --------------------------------------------------------------------------- #
 # §E — OPENROUTER_API_KEY startup alert (migration PR §E)
 # --------------------------------------------------------------------------- #
 
