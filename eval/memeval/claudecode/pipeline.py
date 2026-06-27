@@ -909,6 +909,14 @@ def _stage_warnings(stage: str, cfg: dict, rr: Any, before: dict[str, Any],
             "code": "accuracy_ungraded",
             "message": "no graded tasks; accuracy is not a resolve-rate measurement",
         })
+    elif rr.metadata.get("ungraded", 0) > 0:
+        warnings.append({
+            "code": "partial_grading",
+            "message": (
+                f"{rr.metadata.get('ungraded', 0)} of {rr.n_tasks} tasks were ungraded; "
+                "accuracy denominator is graded tasks only"
+            ),
+        })
     return warnings
 
 
@@ -995,8 +1003,11 @@ def _make_progress_cb(stage: str, total: int, on_task=None, cost_base: float = 0
         state["last"] = done
         _rebase_cost(partial, cost_base)  # show THIS stage's cost, not the pipeline total
         elapsed = int(time.monotonic() - state["t0"])
-        resolved = sum(1 for t in partial.trajectories if t.success)
-        print(f"  [{done}/{total}] {stage}: {resolved} resolved · "
+        resolved = sum(1 for t in partial.trajectories if t.success is True)
+        graded = sum(1 for t in partial.trajectories if t.success is not None)
+        ungraded = done - graded
+        print(f"  [{done}/{total}] {stage}: {resolved}/{graded} graded resolved"
+              f" · {ungraded} ungraded · "
               f"${partial.cost_usd:.4f} · {elapsed}s elapsed", flush=True)
         sys.stdout.flush()
         if on_task is not None:
@@ -1445,8 +1456,11 @@ def _run_one(stage: str, cfg: dict, substrate: Path, cost: Any,
     _rebase_cost(rr, cost_base)
     m = rr.metrics
     secs = int(time.monotonic() - t0)
-    resolved = sum(1 for t in rr.trajectories if t.success)
-    print(f"  ✓ stage {stage} done · {resolved}/{rr.n_tasks} resolved · acc={m.accuracy:.3f} "
+    resolved = sum(1 for t in rr.trajectories if t.success is True)
+    graded = sum(1 for t in rr.trajectories if t.success is not None)
+    ungraded = rr.n_tasks - graded
+    print(f"  ✓ stage {stage} done · {resolved}/{graded} graded resolved"
+          f" · {ungraded}/{rr.n_tasks} ungraded · acc={m.accuracy:.3f} "
           f"rel={m.relevancy:.3f} eff={m.efficiency:.3f} · ${rr.cost_usd:.4f} · {secs}s",
           flush=True)
     if cfg["native_cl"]:

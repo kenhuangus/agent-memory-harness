@@ -725,7 +725,7 @@ def test_summary_renders_ungraded_accuracy_as_dash() -> None:
 
     # ``resolved`` cell is ``—`` here: this stage dict predates the grading-visibility
     # fields, so it falls back gracefully (no resolved/n -> dash).
-    assert "| plugin-blank | — | 0.0000 | 0.0000 | 0.0000 | — | 1 | $0.0000 |" in md
+    assert "| plugin-blank | — | 0.0000 | 0.0000 | 0.0000 | — | 0 | 1 | $0.0000 |" in md
     assert "accuracy_ungraded" in md
 
 
@@ -755,10 +755,11 @@ def test_summary_surfaces_resolved_and_grade_reasons() -> None:
         "dream": {"status": "not-run"},
     })
 
-    # Main table carries a resolved column (0/3 here).
-    assert "| base |" in md and " 0/3 " in md
+    # Main table uses the graded denominator, matching accuracy.
+    assert "| base | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0/1 | 1 | 3 | $0.1000 |" in md
     # Task grading section breaks down graded/ungraded + the reason histogram.
     assert "## Task grading" in md
+    assert "| base | 0/1 | 0/3 | 1 | 2 |" in md
     assert "checkout_failed×2" in md
     assert "graded×1" in md
 
