@@ -112,6 +112,23 @@ _DEFAULT_GOVERNANCE_MAX_CALLS: int = 20
 _GOVERNANCE_BATCH_SIZE: int = 10
 _GOVERNANCE_MAX_TOKENS: int = 1024
 
+# ── Induction (ADR-dreaming-028 §3 — the "generalizer", CREATE-only) ──────────
+# Induction is the highest-risk pass (synthesis from LLM inference), so it ships
+# DEFAULT OFF behind `DREAM_INDUCTION=1` with a small call budget, per ADR-028
+# §Tradeoffs ("induction ships with a much lower call budget than deduction
+# initially, gated on real-bench measurement of synthesis quality").
+_DEFAULT_INDUCTION_MAX_CALLS: int = 5
+_INDUCTION_MAX_TOKENS: int = 1024
+_INDUCTION_CONTENT_MAX_LEN: int = 400
+#: Minimum cluster size before induction will attempt a synthesis. ADR-028 §3:
+#: "clusters of three or more `Fix` cards for structurally similar bugs."
+_INDUCTION_MIN_CLUSTER: int = 3
+#: Lower-durability source types induction generalizes UP from. The synthesized
+#: card is typed Invariant/Convention (durable, no calendar TTL per §1).
+_INDUCTION_SOURCE_TYPES: frozenset[str] = frozenset({"Fix", "Bug", "Workaround"})
+#: Target types the induction LLM may emit; anything else is dropped.
+_INDUCTION_TARGET_TYPES: frozenset[str] = frozenset({"Invariant", "Convention"})
+
 
 def _now() -> float:
     """Module-level seam for ``time.time()`` — monkeypatchable in tests (JOB4 §J-TTL-1)."""
@@ -249,6 +266,36 @@ def _read_governance_max_calls() -> int:
             raw, _DEFAULT_GOVERNANCE_MAX_CALLS,
         )
         return _DEFAULT_GOVERNANCE_MAX_CALLS
+    return max(0, value)
+
+
+def _read_use_induction() -> bool:
+    """ADR-028 §3: induction (create-only generalizer) is DEFAULT OFF.
+
+    Opt in with ``DREAM_INDUCTION=1``. Any other value (including unset) leaves
+    induction disabled — the conservative posture for the riskiest pass.
+    """
+    return os.environ.get("DREAM_INDUCTION") == "1"
+
+
+def _read_induction_max_calls() -> int:
+    """Resolve ``$DREAM_INDUCTION_MAX_CALLS`` to an int (separate budget per §3).
+
+    Unset → default 5 (deliberately small). ``"0"``/negative → 0 (disabled).
+    Non-integer → default with a warning. Independent of the dedup/contradiction
+    budget so synthesis cost is capped on its own knob (ADR-028 §3 + §Tradeoffs).
+    """
+    raw = os.environ.get("DREAM_INDUCTION_MAX_CALLS")
+    if raw is None or raw == "":
+        return _DEFAULT_INDUCTION_MAX_CALLS
+    try:
+        value = int(raw)
+    except ValueError:
+        log.warning(
+            "DREAM_INDUCTION_MAX_CALLS=%r is not an integer; falling back to %d default",
+            raw, _DEFAULT_INDUCTION_MAX_CALLS,
+        )
+        return _DEFAULT_INDUCTION_MAX_CALLS
     return max(0, value)
 
 
@@ -1232,6 +1279,265 @@ def _get_dedup_system_prompt() -> Any:
     return RedactedText(DEDUP_SYSTEM_PROMPT)
 
 
+def _get_induction_system_prompt() -> Any:
+    """Lazy-load and ``RedactedText``-wrap the ``INDUCTION_SYSTEM_PROMPT`` (ADR-010 bypass).
+    Used by the create-only induction pass (ADR-dreaming-028 §3)."""
+    from .prompts import INDUCTION_SYSTEM_PROMPT
+    from .redaction import RedactedText
+    return RedactedText(INDUCTION_SYSTEM_PROMPT)
+
+
+class InductionCard(NamedTuple):
+    """One synthesized card emitted by the induction pass (ADR-028 §3).
+
+    ``item_id`` is the new card's id; ``synthesized_from`` names every source
+    item the synthesis generalized (mandatory provenance per §3); ``okf_type``
+    is the durable target type (Invariant/Convention).
+    """
+
+    item_id: str
+    okf_type: str
+    synthesized_from: tuple[str, ...]
+    rationale: str
+
+
+class InductionResult(NamedTuple):
+    """Aggregate result of the induction pass (mirrors DedupResult shape)."""
+
+    created: list[InductionCard]
+    llm_calls: int
+    tokens_in: int
+    tokens_out: int
+    cost_usd: float
+    clusters_examined: int
+
+
+def _cluster_for_induction(
+    items: list[MemoryItem],
+    *,
+    min_cluster: int = _INDUCTION_MIN_CLUSTER,
+) -> list[list[MemoryItem]]:
+    """Group lower-durability survivors into induction candidate clusters.
+
+    ADR-028 §3 + §Open-items ("first cut uses tag-and-type clustering with a
+    similarity floor"). Deterministic, embedding-free so it works against any
+    backend: cluster by ``(okf_type, tag)`` over the source types in
+    ``_INDUCTION_SOURCE_TYPES``, keeping only clusters with at least
+    ``min_cluster`` distinct items. A card carrying several tags can seed
+    several clusters; duplicate clusters (same id set) are emitted once.
+    Ordering is stable (sorted cluster keys, items by item_id) so a given store
+    state always yields the same clusters.
+    """
+    buckets: dict[tuple[str, str], list[MemoryItem]] = {}
+    for it in items:
+        okf_type = (it.metadata or {}).get("okf_type") or "Memory"
+        if okf_type not in _INDUCTION_SOURCE_TYPES:
+            continue
+        for tag in sorted(set(it.tags or [])):
+            buckets.setdefault((okf_type, tag), []).append(it)
+
+    clusters: list[list[MemoryItem]] = []
+    seen_keys: set[frozenset[str]] = set()
+    for key in sorted(buckets):
+        members = sorted(buckets[key], key=lambda i: i.item_id)
+        if len(members) < min_cluster:
+            continue
+        id_key = frozenset(m.item_id for m in members)
+        if id_key in seen_keys:
+            continue
+        seen_keys.add(id_key)
+        clusters.append(members)
+    return clusters
+
+
+def _run_induction(
+    items: list[MemoryItem],
+    store: MemoryStore,
+    client: Any,
+    *,
+    max_calls: int,
+    model: str,
+    session_id: str,
+    now: float,
+    min_cluster: int = _INDUCTION_MIN_CLUSTER,
+) -> InductionResult:
+    """ADR-dreaming-028 §3 — the induction / generalizer pass (CREATE-only).
+
+    Reads post-deduction survivors, clusters related lower-durability cards
+    (:func:`_cluster_for_induction`), and for each cluster (up to ``max_calls``)
+    asks the LLM to synthesize ONE durable lesson. Each accepted synthesis is
+    written as a NEW :class:`MemoryItem` typed Invariant/Convention with
+    ``metadata.synthesized_from`` provenance naming the sources.
+
+    Authority boundary (the load-bearing piece of the deduction/induction
+    split): this function only ever calls ``store.write`` — never
+    ``store.delete``. It cannot retire any card.
+
+    Fail-open per [ADR-harness-006]: every LLM failure mode (exception, empty
+    completion, parse error, bad/missing synthesis, invalid type) becomes an
+    event + continue, never raises.
+    """
+    if not items or max_calls <= 0:
+        return InductionResult(
+            created=[], llm_calls=0, tokens_in=0, tokens_out=0,
+            cost_usd=0.0, clusters_examined=0,
+        )
+
+    from ..cost import cost_of
+    from .redaction import redact
+
+    clusters = _cluster_for_induction(items, min_cluster=min_cluster)
+    emit("dream.induction_started", n_clusters=len(clusters), max_calls=max_calls)
+    if not clusters:
+        return InductionResult(
+            created=[], llm_calls=0, tokens_in=0, tokens_out=0,
+            cost_usd=0.0, clusters_examined=0,
+        )
+
+    system_prompt = _get_induction_system_prompt()
+    created: list[InductionCard] = []
+    llm_calls = 0
+    total_tokens_in = 0
+    total_tokens_out = 0
+    clusters_examined = 0
+
+    for cluster in clusters:
+        if llm_calls >= max_calls:
+            break
+        clusters_examined += 1
+        cluster_idx = clusters_examined - 1
+
+        payload = json.dumps([
+            {
+                "id": str(redact(it.item_id)),
+                "content": str(redact(it.content)) if it.content is not None else "",
+                "timestamp": it.timestamp,
+                "tags": [str(redact(t)) for t in it.tags],
+            }
+            for it in cluster
+        ])
+        wrapped = _wrap_batch_in_envelope(
+            payload, session_id=session_id, now=now, batch_idx=cluster_idx,
+        )
+
+        try:
+            completion = client.complete(
+                wrapped, system=system_prompt, max_tokens=_INDUCTION_MAX_TOKENS,
+            )
+        except Exception as exc:  # noqa: BLE001 — fail-open on any exception
+            emit(
+                "dream.induction_skipped_unavailable_llm",
+                cluster_index=cluster_idx,
+                reason=f"{type(exc).__name__}: {exc}",
+            )
+            llm_calls += 1
+            continue
+        llm_calls += 1
+        if not completion.text:
+            emit(
+                "dream.induction_skipped_unavailable_llm",
+                cluster_index=cluster_idx, reason="empty completion text",
+            )
+            continue
+
+        try:
+            data = json.loads(completion.text)
+        except json.JSONDecodeError as exc:
+            emit("dream.induction_batch_parse_failed", cluster_index=cluster_idx, reason=str(exc))
+            continue
+        if not isinstance(data, dict) or "synthesis" not in data:
+            emit(
+                "dream.induction_batch_parse_failed",
+                cluster_index=cluster_idx, reason="missing or bad 'synthesis' key",
+            )
+            continue
+
+        total_tokens_in += completion.tokens_in
+        total_tokens_out += completion.tokens_out
+
+        synthesis = data["synthesis"]
+        if synthesis is None:
+            emit("dream.induction_synthesis_rejected", cluster_index=cluster_idx, reason="llm returned null")
+            continue
+        if not isinstance(synthesis, dict):
+            emit(
+                "dream.induction_batch_parse_failed",
+                cluster_index=cluster_idx, reason="'synthesis' not an object",
+            )
+            continue
+
+        okf_type = synthesis.get("type")
+        content = synthesis.get("content")
+        rationale = synthesis.get("rationale", "")
+        if okf_type not in _INDUCTION_TARGET_TYPES:
+            emit("dream.induction_invalid_type_dropped", cluster_index=cluster_idx, okf_type=str(okf_type))
+            continue
+        if not isinstance(content, str) or not content.strip():
+            emit(
+                "dream.induction_batch_parse_failed",
+                cluster_index=cluster_idx, reason="empty or non-string content",
+            )
+            continue
+        if not isinstance(rationale, str):
+            rationale = ""
+
+        source_ids = tuple(sorted(it.item_id for it in cluster))
+        # Deterministic id derived from the source set + target type, so re-running
+        # induction over an unchanged cluster does not mint a second copy.
+        digest = hashlib.sha1(
+            (" ".join(source_ids) + "|" + okf_type).encode("utf-8")
+        ).hexdigest()[:16]
+        new_id = f"induct-{digest}"
+
+        # Idempotency: if a synthesized card with this id already exists, skip the
+        # write (re-running the dream cycle must not duplicate syntheses).
+        if store.get(new_id) is not None:
+            emit("dream.induction_synthesis_rejected", cluster_index=cluster_idx, reason="already synthesized")
+            continue
+
+        merged_tags = sorted({t for it in cluster for t in (it.tags or [])})
+        new_item = MemoryItem(
+            item_id=new_id,
+            content=content[:_INDUCTION_CONTENT_MAX_LEN],
+            timestamp=now,
+            source="dream-induction",
+            session_id=session_id,
+            tags=merged_tags,
+            metadata={
+                "okf_type": okf_type,
+                "synthesized_from": list(source_ids),
+                "induction_rationale": rationale[:_RATIONALE_MAX_LEN],
+            },
+        )
+        # CREATE-only: the single store mutation this pass is permitted to make.
+        store.write(new_item)
+        card = InductionCard(
+            item_id=new_id,
+            okf_type=okf_type,
+            synthesized_from=source_ids,
+            rationale=rationale[:_RATIONALE_MAX_LEN],
+        )
+        created.append(card)
+        emit(
+            "dream.induction_card_emitted",
+            item_id=new_id,
+            okf_type=okf_type,
+            n_sources=len(source_ids),
+            cluster_index=cluster_idx,
+        )
+
+    total_cost = cost_of(model, total_tokens_in, total_tokens_out)
+    created.sort(key=lambda c: c.item_id)
+    return InductionResult(
+        created=created,
+        llm_calls=llm_calls,
+        tokens_in=total_tokens_in,
+        tokens_out=total_tokens_out,
+        cost_usd=total_cost,
+        clusters_examined=clusters_examined,
+    )
+
+
 def _dedup_first_seen(tags: list[GovernanceTag]) -> list[GovernanceTag]:
     """Within-class dedup. First-seen by ``item_id`` wins; silent (no event)."""
     seen: set[str] = set()
@@ -1892,6 +2198,34 @@ class DreamingWorker:
                 ("all_winners", all_winners),
             ])
 
+            # ── ADR-028 §3 induction (generalizer) — CREATE-only, DEFAULT OFF ──
+            # Runs AFTER all deduction deletes complete (it generalizes from the
+            # post-deduction survivors) and AFTER the disjointness check (its new
+            # ids are fresh `induct-*` cards, never part of any delete set, so it
+            # cannot affect the mutation-disjoint invariant). Gated by
+            # `DREAM_INDUCTION=1` with its own `DREAM_INDUCTION_MAX_CALLS` budget.
+            induction_result = InductionResult(
+                created=[], llm_calls=0, tokens_in=0, tokens_out=0,
+                cost_usd=0.0, clusters_examined=0,
+            )
+            if _read_use_induction():
+                induction_survivors = [
+                    it for it in items
+                    if it.item_id not in pruned_set
+                    and it.item_id not in retired_ids_set
+                    and it.item_id not in contradicted_loser_ids
+                    and it.item_id not in blacklisted_ids_set
+                ]
+                induction_result = _run_induction(
+                    induction_survivors,
+                    self.store,
+                    llm_client,
+                    max_calls=_read_induction_max_calls(),
+                    model=getattr(llm_client, "model", "unknown"),
+                    session_id=_session_id_for_dream(basedir),
+                    now=now_cached if now_cached else _now(),
+                )
+
             duplicate_clusters = len(cluster_specs)
             items_in_duplicates = sum(c["count"] for c in cluster_specs)
             items_retired = sum(len(c["retired_ids"]) for c in cluster_specs)
@@ -1939,6 +2273,12 @@ class DreamingWorker:
                     "governance_output_tokens": governance_raw.tokens_out,
                     "governance_cost_usd_estimate": governance_raw.cost_usd,
                     "governance_items_examined_estimate": governance_raw.items_examined_estimate,
+                    "items_synthesized": len(induction_result.created),
+                    "induction_llm_calls": induction_result.llm_calls,
+                    "induction_input_tokens": induction_result.tokens_in,
+                    "induction_output_tokens": induction_result.tokens_out,
+                    "induction_cost_usd_estimate": induction_result.cost_usd,
+                    "induction_clusters_examined": induction_result.clusters_examined,
                 },
                 "clusters": cluster_specs,
                 "pruned": {
@@ -1971,6 +2311,18 @@ class DreamingWorker:
                     ],
                     "model": getattr(llm_client, "model", "unknown"),
                 },
+                "synthesized": {
+                    "cards": [
+                        {
+                            "item_id": c.item_id,
+                            "okf_type": c.okf_type,
+                            "synthesized_from": list(c.synthesized_from),
+                            "rationale": c.rationale,
+                        }
+                        for c in induction_result.created
+                    ],
+                    "model": getattr(llm_client, "model", "unknown"),
+                },
             }
 
             emit(
@@ -1995,6 +2347,9 @@ class DreamingWorker:
                 governance_output_tokens=governance_raw.tokens_out,
                 governance_cost_usd_estimate=governance_raw.cost_usd,
                 governance_items_examined_estimate=governance_raw.items_examined_estimate,
+                items_synthesized=len(induction_result.created),
+                induction_llm_calls=induction_result.llm_calls,
+                induction_cost_usd_estimate=induction_result.cost_usd,
             )
 
             return summary
@@ -2012,4 +2367,6 @@ __all__ = [
     "ContradictionResult",
     "GovernanceTag",
     "GovernanceResult",
+    "InductionCard",
+    "InductionResult",
 ]

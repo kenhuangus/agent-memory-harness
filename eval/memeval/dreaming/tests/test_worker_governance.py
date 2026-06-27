@@ -392,6 +392,7 @@ def test_run_governance_key_always_present(monkeypatch: pytest.MonkeyPatch) -> N
 _EXPECTED_TOP_LEVEL_KEYS = {
     "schema", "version", "mode", "jobs_run", "skipped_jobs",
     "counts", "clusters", "pruned", "contradicted", "governance",
+    "synthesized",  # ADR-028 §3 induction block (additive)
 }
 
 _EXPECTED_COUNTS_KEYS = {
@@ -403,6 +404,9 @@ _EXPECTED_COUNTS_KEYS = {
     "items_blacklisted", "items_must_known", "items_must_done",
     "governance_llm_calls", "governance_input_tokens", "governance_output_tokens",
     "governance_cost_usd_estimate", "governance_items_examined_estimate",
+    "items_synthesized", "induction_llm_calls", "induction_input_tokens",
+    "induction_output_tokens", "induction_cost_usd_estimate",
+    "induction_clusters_examined",
 }
 
 
@@ -463,7 +467,10 @@ def test_governance_counts_key_set_exact(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_governance_counts_values_are_int_except_two_costs(monkeypatch: pytest.MonkeyPatch) -> None:
     """B8 — 18 keys are strict int (not bool); two cost keys are strict float."""
     result = _basic_result(monkeypatch)
-    float_keys = {"contradiction_cost_usd_estimate", "governance_cost_usd_estimate"}
+    float_keys = {
+        "contradiction_cost_usd_estimate", "governance_cost_usd_estimate",
+        "induction_cost_usd_estimate",
+    }
     for key, v in result["counts"].items():
         if key in float_keys:
             assert type(v) is float, f"{key} should be float, got {type(v).__name__}"

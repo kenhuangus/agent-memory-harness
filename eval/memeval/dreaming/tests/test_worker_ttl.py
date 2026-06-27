@@ -145,10 +145,13 @@ def test_run_no_ttl_victims_zero_pruned(memory_store_dir: Path) -> None:
 # already extended with `contradicted` + 6 cost-observability entries.
 # These tests preserve the TTL-specific properties under the
 # Job-3-extended shape.
+# ADR-028 §3 (induction) extends the dict additively: a top-level `synthesized`
+# block + 6 new `counts` entries. Always present (default 0 / 0.0 when induction
+# is OFF, the default), so the exact-set pins below stay deterministic.
 _EXPECTED_TOP_LEVEL_KEYS = {
     "schema", "version", "mode", "jobs_run",
     "skipped_jobs", "counts", "clusters", "pruned", "contradicted",
-    "governance",
+    "governance", "synthesized",
 }
 
 _EXPECTED_COUNTS_KEYS = {
@@ -161,6 +164,9 @@ _EXPECTED_COUNTS_KEYS = {
     "governance_llm_calls", "governance_input_tokens",
     "governance_output_tokens", "governance_cost_usd_estimate",
     "governance_items_examined_estimate",
+    "items_synthesized", "induction_llm_calls", "induction_input_tokens",
+    "induction_output_tokens", "induction_cost_usd_estimate",
+    "induction_clusters_examined",
 }
 
 
@@ -214,7 +220,10 @@ def test_ttl_counts_values_are_int(memory_store_dir: Path) -> None:
     """B8 — Job 3 supersedes Job 2 §B8: TWO float keys (contradiction_cost_usd_estimate
     + governance_cost_usd_estimate); all 18 other keys are strict int."""
     result = worker.DreamingWorker(_seed(_FIXED_NOW, ("a", "x", 1))).run()
-    float_keys = {"contradiction_cost_usd_estimate", "governance_cost_usd_estimate"}
+    float_keys = {
+        "contradiction_cost_usd_estimate", "governance_cost_usd_estimate",
+        "induction_cost_usd_estimate",
+    }
     for k, v in result["counts"].items():
         if k in float_keys:
             assert type(v) is float, f"{k} = {v!r} ({type(v).__name__}); expected float"
