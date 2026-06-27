@@ -884,3 +884,30 @@ def test_copy_memory_dataset_archives_seed_telemetry(tmp_path) -> None:
     assert (tstore / "events.jsonl.seed").is_file()
     assert not (tstore / "dream" / "s1.daydream-events.jsonl").exists()
     assert (tstore / "dream" / "s1.daydream-events.jsonl.seed").is_file()
+
+
+def test_recall_policy_env_threads_to_plugin_agent(monkeypatch, tmp_path) -> None:
+    """$MEMEVAL_RECALL_POLICY selects the plugin-real agent's recall posture
+    ("natural" | "forced"). Unset keeps the "natural" default (byte-identical to
+    prior behavior); non-plugin-real stages ignore it; bad values fail loud.
+
+    The "forced" retry-until-recall loop already lives in agent.py; this only
+    makes it reachable from a run without a code edit, so teammates can A/B it."""
+    cfg = {"model": "claude-haiku-4-5", "code_mode": "agentic",
+           "timeout": 600, "harness": "claude"}
+
+    # unset -> the agent's "natural" default (existing behavior)
+    monkeypatch.delenv("MEMEVAL_RECALL_POLICY", raising=False)
+    assert P._make_agent("plugin-accum", cfg, tmp_path).plugin_real_recall_policy == "natural"
+
+    # forced -> forced (the override threads through to the agent)
+    monkeypatch.setenv("MEMEVAL_RECALL_POLICY", "forced")
+    assert P._make_agent("plugin-accum", cfg, tmp_path).plugin_real_recall_policy == "forced"
+
+    # non-plugin-real stage ("base" -> mode "off") ignores the override
+    assert P._make_agent("base", cfg, tmp_path).plugin_real_recall_policy == "natural"
+
+    # invalid value -> the ClaudeCodeAgent ctor rejects it (fail loud)
+    monkeypatch.setenv("MEMEVAL_RECALL_POLICY", "bogus")
+    with pytest.raises(ValueError):
+        P._make_agent("plugin-accum", cfg, tmp_path)

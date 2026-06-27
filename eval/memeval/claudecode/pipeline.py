@@ -740,7 +740,15 @@ def _make_agent(stage: str, cfg: dict, substrate: Path):
             project_dir=substrate if mode == "plugin-real" else None,
         )
     from .agent import ClaudeCodeAgent
-    plugin_opts = _STAGE_PLUGIN_REAL_OPTIONS.get(stage, {})
+    plugin_opts = dict(_STAGE_PLUGIN_REAL_OPTIONS.get(stage, {}))
+    # Recall-policy override: select the agent's plugin-real recall posture
+    # ("natural" | "forced") via $MEMEVAL_RECALL_POLICY, plugin-real stages only.
+    # Unset -> the agent's "natural" default (existing behavior, byte-identical).
+    # Invalid -> the ClaudeCodeAgent ctor raises (fail loud). The "forced" loop
+    # itself already lives in agent.py; this just makes it reachable from a run.
+    _recall_policy = os.environ.get("MEMEVAL_RECALL_POLICY")
+    if _recall_policy and mode == "plugin-real":
+        plugin_opts["plugin_real_recall_policy"] = _recall_policy
     return ClaudeCodeAgent(
         model=cfg["model"], memory_mode=mode, code_mode=cfg["code_mode"],
         timeout=cfg["timeout"],
