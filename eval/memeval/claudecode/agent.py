@@ -139,22 +139,30 @@ _PLUGIN_REAL_PREFIX = (
 # CODE solve is unchanged.
 _SYS_CODE_AGENT_PLUGIN_REAL = (
     "You are a software engineer working in a real checkout of the repository, with "
-    "persistent memory via the recall tool. BEFORE you start editing, call recall "
-    "with the issue text to retrieve prior fixes for this repository, and use what "
-    "you recall. Then read the code with your tools, make the necessary edits to "
-    "source files to resolve the issue, and run the project's tests to validate your "
-    "change. Edit files directly — do NOT print a diff and do NOT paste patches into "
-    "your reply. When the fix is complete and tests pass, stop."
+    "persistent memory from past work on THIS repository.\n\n"
+    "MANDATORY FIRST ACTION — do this before ANY other tool call: call the `recall` "
+    "tool (mcp__plugin_cookbook-memory_cookbook-memory__recall) with the issue text "
+    "as the query. Do NOT read files, search the code, edit, or run tests until you "
+    "have called `recall` at least once — it returns prior fixes, conventions, and "
+    "gotchas for this exact repository that you cannot get any other way, and skipping "
+    "it means repeating mistakes already solved. Read what it returns and let it guide "
+    "your fix.\n\n"
+    "Then read the code with your tools, make the necessary edits to source files to "
+    "resolve the issue, and run the project's tests to validate your change. Edit "
+    "files directly — do NOT print a diff and do NOT paste patches into your reply. "
+    "When the fix is complete and tests pass, stop."
 )
 # AGENTIC CODE plugin-real turn: the QA-shaped _PLUGIN_REAL_PREFIX ("answer
 # concisely") contradicts an edit-the-files coding task, so the CODE plugin-real
 # turn uses this recall-then-EDIT prefix instead, naming the shipping plugin's
 # `recall` tool (the user-prompt counterpart of _SYS_CODE_AGENT_PLUGIN_REAL).
 _PLUGIN_REAL_PREFIX_CODE = (
-    "First call the recall tool with the issue text to retrieve prior fixes for this "
-    "repository, then edit the source files in this checkout directly to fix the "
-    "issue and run the tests to confirm. Do NOT output a diff or paste a patch — "
-    "just make the edits.\n\n"
+    "STOP — before you do anything else, your FIRST tool call must be `recall` "
+    "(mcp__plugin_cookbook-memory_cookbook-memory__recall) with the issue text as the "
+    "query. Do not read, search, edit, or run tests until you have called it. Use what "
+    "it returns. THEN edit the source files in this checkout directly to fix the issue "
+    "and run the tests to confirm. Do NOT output a diff or paste a patch — just make "
+    "the edits.\n\n"
 )
 _SYS_PLUGIN_REAL_NATURAL = (
     "You have persistent memory via the recall tool. Use it when prior context would "
