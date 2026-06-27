@@ -1,0 +1,1 @@
+{"cursor": 697562, "last_summary": "Add test_where_preserves_attrs() to xarray/tests/test_computation.py covering four scenarios: x has attrs, y has attrs with different keys, cond has attrs, and y-only attrs (scalars).", "recent_memory_ids": ["mem_22f13855"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
