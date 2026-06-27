@@ -165,13 +165,78 @@ def _fire_daydream_subprocess(
     )
 
 
+#: Plugin-side recall INJECTION (Option B), OFF by default. When $MEMORY_INJECT_RECALL
+#: is truthy, the UserPromptSubmit hook recalls relevant memories itself and injects
+#: them into the turn's context (Claude Code ``additionalContext``) — so the agent gets
+#: memory WITHOUT having to choose to call the recall tool. Unset -> byte-identical to
+#: the historical no-context behavior. $MEMORY_INJECT_RECALL_K caps hits (default 5).
+#: Cost: builds the store + runs a query embed on every UserPromptSubmit; under the
+#: accuracy/Voyage profile that is a network call + cold store open per turn —
+#: acceptable for the experiment; a resident recall daemon would amortize it later.
+_INJECT_TOGGLE_KEY = "MEMORY_INJECT_RECALL"
+_INJECT_K_KEY = "MEMORY_INJECT_RECALL_K"
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+
+def _inject_enabled() -> bool:
+    return (os.environ.get(_INJECT_TOGGLE_KEY) or "").strip().lower() in _TRUTHY
+
+
+def _inject_k() -> int:
+    try:
+        return max(1, int(os.environ.get(_INJECT_K_KEY, "5")))
+    except (TypeError, ValueError):
+        return 5
+
+
+def _recall_injection(
+    payload: dict[str, Any], settings: Settings, events: EventStream
+) -> Optional[dict[str, Any]]:
+    """Recall memories for the submitted prompt and return a UserPromptSubmit
+    ``additionalContext`` response that injects them — or ``None`` (fail-open) when
+    there is no prompt, no store, or nothing relevant. Reuses the SAME recall path as
+    the MCP ``recall`` tool, so the injected memories match what the agent would get,
+    and the recall is recorded in the events stream like any other recall."""
+    prompt = (payload.get("prompt") or "").strip()
+    if not prompt:
+        return None
+    try:
+        from ...core.client import MemoryClient
+
+        client = MemoryClient(
+            store=(str(settings.store_path) if settings.store_path else None),
+            session_id=settings.session_id,
+            events=events,
+        )
+        hits = client.recall(prompt, k=_inject_k())
+    except Exception:  # noqa: BLE001 — fail-open: never break the turn
+        return None
+    lines = [
+        f"- {(h.content or '').strip()}" for h in hits if (h.content or "").strip()
+    ]
+    if not lines:
+        return None
+    context = (
+        "Relevant memories from past work on THIS project (auto-recalled — "
+        "use where they apply):\n" + "\n".join(lines)
+    )
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "UserPromptSubmit",
+            "additionalContext": context,
+        }
+    }
+
+
 def handle(event_name: str, payload: dict[str, Any], *, store: Optional[str] = None) -> dict[str, Any]:
     """Process one hook event; return the hook response dict.
 
     Always emits a ``note`` event naming the hook (preserved from the pre-PR
     behavior). On ``Stop`` / ``PreCompact``, additionally shells out to
-    ``python -m memeval.dreaming.cli daydream`` per ADR-001. Returns ``{}`` either way — no
-    ``additionalContext``, no decision, no session interference.
+    ``python -m memeval.dreaming.cli daydream`` per ADR-001. On ``UserPromptSubmit``,
+    when ``$MEMORY_INJECT_RECALL`` is set, recalls relevant memories and injects them
+    into the turn via ``additionalContext`` (Option B). Otherwise returns ``{}`` — no
+    ``additionalContext``, no decision, no session interference (the historical default).
     """
     settings = Settings.from_env(
         store=store, session_id=payload.get("session_id"),
@@ -184,6 +249,10 @@ def handle(event_name: str, payload: dict[str, Any], *, store: Optional[str] = N
     )
     if event_name in _GATED_EVENTS:
         _fire_daydream_subprocess(event_name, payload, settings, events)
+    if event_name == "UserPromptSubmit" and _inject_enabled():
+        injected = _recall_injection(payload, settings, events)
+        if injected:
+            return injected
     return {}
 
 

@@ -447,3 +447,78 @@ def test_main_sessionstart_does_not_invoke_subprocess(monkeypatch: pytest.Monkey
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
     assert hooks_handler.main(["SessionStart"]) == 0
     assert len(recorder.calls) == 0
+
+
+# --------------------------------------------------------------------------- #
+# Option B: plugin-side recall injection ($MEMORY_INJECT_RECALL)
+# --------------------------------------------------------------------------- #
+
+
+class _FakeHit:
+    def __init__(self, content: str) -> None:
+        self.content = content
+
+
+def _patch_recall(monkeypatch: pytest.MonkeyPatch, hits: list) -> None:
+    """Patch MemoryClient so _recall_injection returns `hits` without a real store."""
+    import cookbook_memory.core.client as client_mod
+
+    class _FakeClient:
+        def __init__(self, **kwargs: Any) -> None: ...
+        def recall(self, query: str, k: int = 5) -> list:
+            return hits
+
+    monkeypatch.setattr(client_mod, "MemoryClient", _FakeClient)
+
+
+def test_inject_off_by_default_returns_empty(monkeypatch, tmp_path) -> None:
+    """Unset toggle -> no injection, byte-identical to the historical default."""
+    monkeypatch.delenv("MEMORY_INJECT_RECALL", raising=False)
+    _patch_recall(monkeypatch, [_FakeHit("should not appear")])
+    _make_settings_via_env(monkeypatch, tmp_path)
+    assert hooks_handler.handle("UserPromptSubmit", {"session_id": "s", "prompt": "fix it"}) == {}
+
+
+def test_inject_on_injects_recalled_memories(monkeypatch, tmp_path) -> None:
+    """Toggle on + UserPromptSubmit + hits -> additionalContext with the memories."""
+    monkeypatch.setenv("MEMORY_INJECT_RECALL", "1")
+    _patch_recall(monkeypatch, [_FakeHit("use _replace, not __init__"), _FakeHit("run the io tests")])
+    _make_settings_via_env(monkeypatch, tmp_path)
+    out = hooks_handler.handle("UserPromptSubmit", {"session_id": "s", "prompt": "fix IndexVariable"})
+    ctx = out["hookSpecificOutput"]["additionalContext"]
+    assert out["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit"
+    assert "use _replace, not __init__" in ctx and "run the io tests" in ctx
+
+
+def test_inject_only_on_userpromptsubmit(monkeypatch, tmp_path) -> None:
+    """The toggle never injects on non-UserPromptSubmit events."""
+    monkeypatch.setenv("MEMORY_INJECT_RECALL", "1")
+    _patch_recall(monkeypatch, [_FakeHit("nope")])
+    _make_settings_via_env(monkeypatch, tmp_path)
+    assert hooks_handler.handle("SessionStart", {"session_id": "s", "prompt": "x"}) == {}
+
+
+def test_inject_failopen_on_no_hits_and_errors(monkeypatch, tmp_path) -> None:
+    """No hits -> {}; a recall that raises -> {} (never breaks the turn)."""
+    monkeypatch.setenv("MEMORY_INJECT_RECALL", "1")
+    _make_settings_via_env(monkeypatch, tmp_path)
+    _patch_recall(monkeypatch, [])  # no hits
+    assert hooks_handler.handle("UserPromptSubmit", {"session_id": "s", "prompt": "x"}) == {}
+
+    import cookbook_memory.core.client as client_mod
+
+    class _Boom:
+        def __init__(self, **kwargs: Any) -> None: ...
+        def recall(self, *a: Any, **k: Any) -> list:
+            raise RuntimeError("store exploded")
+
+    monkeypatch.setattr(client_mod, "MemoryClient", _Boom)
+    assert hooks_handler.handle("UserPromptSubmit", {"session_id": "s", "prompt": "x"}) == {}
+
+
+def test_inject_empty_prompt_no_injection(monkeypatch, tmp_path) -> None:
+    """A blank prompt -> no recall, no injection."""
+    monkeypatch.setenv("MEMORY_INJECT_RECALL", "1")
+    _patch_recall(monkeypatch, [_FakeHit("nope")])
+    _make_settings_via_env(monkeypatch, tmp_path)
+    assert hooks_handler.handle("UserPromptSubmit", {"session_id": "s", "prompt": "   "}) == {}
