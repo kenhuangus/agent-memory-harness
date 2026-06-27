@@ -268,8 +268,8 @@ def test_extraction_variants_are_mutually_distinct() -> None:
 def test_extraction_variant_registry_complete() -> None:
     """The `_EXTRACTION_VARIANTS` registry must enumerate exactly V0..V5
     so the selector advertises the full set via list_extraction_variants()."""
-    assert list_extraction_variants() == ["V0", "V1", "V2", "V3", "V4", "V5"]
-    assert set(_EXTRACTION_VARIANTS) == {"V0", "V1", "V2", "V3", "V4", "V5"}
+    assert list_extraction_variants() == ["V0", "V1", "V2", "V3", "V4", "V5", "V6"]
+    assert set(_EXTRACTION_VARIANTS) == {"V0", "V1", "V2", "V3", "V4", "V5", "V6"}
 
 
 def test_extraction_variant_v0_is_backward_compat_baseline() -> None:
@@ -402,11 +402,13 @@ def test_extraction_variants_are_all_documented_size() -> None:
     each) on top of V5's existing transferable-lesson framing, pushing it to
     1.82× — real content expansion, not a paste error. Bound widened to 2.0×
     to accommodate; tighten again if a future variant adds size without
-    structural justification."""
+    structural justification. V6 adds a second (problem-solving process) track
+    plus two taxonomy types (Strategy, Mistake), reaching 2.10× — structural
+    expansion, not duplication; bound widened to 2.2×."""
     v0_len = len(EXTRACTION_SYSTEM_PROMPT)
     for v, prompt in _EXTRACTION_VARIANTS.items():
         ratio = len(prompt) / v0_len
-        assert 0.8 <= ratio <= 2.0, (
+        assert 0.8 <= ratio <= 2.2, (
             f"{v} length {len(prompt)} is {ratio:.2f}× V0's {v0_len} — "
             "suspiciously off; check for truncation or accidental duplication."
         )
@@ -493,6 +495,9 @@ def test_okf_content_types_closed_set_membership() -> None:
         "Decision",
         "Preference",
         "Identity",
+        # V6 problem-solving process track (LLM-selectable in the V6 body only).
+        "Strategy",
+        "Mistake",
         # Worker-reserved (ADR-dreaming-028 §5 — dream worker's deduction pass
         # emits these; LLM never sees the value as selectable).
         "Contradiction",
@@ -507,6 +512,27 @@ def test_okf_content_types_closed_set_membership() -> None:
         "becomes meaningless (every fallback would silently look like a valid "
         "LLM emission)."
     )
+
+
+def test_v6_variant_registered_and_advertises_process_types() -> None:
+    """V6 is a resolvable variant whose body adds the problem-solving process
+    track: it MUST enumerate the two new LLM-selectable types (Strategy,
+    Mistake), keep the anti-injection nonce guard, and — like V5 — NOT advertise
+    the worker-reserved `Contradiction`."""
+    from memeval.dreaming.prompts import (
+        EXTRACTION_SYSTEM_PROMPT_V6,
+        list_extraction_variants,
+        resolve_extraction_prompt,
+    )
+
+    assert "V6" in list_extraction_variants()
+    body = resolve_extraction_prompt("V6").text
+    assert body == EXTRACTION_SYSTEM_PROMPT_V6
+    assert "Strategy" in body and "Mistake" in body
+    assert "nonce" in body  # anti-injection boundary preserved
+    assert "Contradiction" not in body  # worker-reserved, never LLM-selectable
+    # Both new types must be accepted by the parser, not fall back to "Memory".
+    assert "Strategy" in OKF_CONTENT_TYPES and "Mistake" in OKF_CONTENT_TYPES
 
 
 def test_v5_prompt_body_does_not_advertise_contradiction() -> None:
