@@ -760,7 +760,12 @@ def _store_item_count(db_path: Path) -> int | None:
 
 
 def _iter_jsonl(path: Path):
-    """Iterate JSON objects from a JSONL file, skipping partial trailing lines silently."""
+    """Iterate JSON OBJECTS from a JSONL file, skipping partial trailing lines silently.
+
+    Only dict records are yielded — a valid-JSON-but-non-object line (e.g. a bare
+    string/number/list) is skipped, so every consumer (``_aggregate_harness`` /
+    ``_aggregate_recalls`` / ``_aggregate_diaries``) can safely ``ev.get(...)`` without
+    its own guard. This is the single fail-open boundary for malformed event lines."""
     if not path.is_file():
         return
     try:
@@ -770,9 +775,11 @@ def _iter_jsonl(path: Path):
                 if not line:
                     continue
                 try:
-                    yield json.loads(line)
+                    rec = json.loads(line)
                 except json.JSONDecodeError:
                     continue
+                if isinstance(rec, dict):
+                    yield rec
     except OSError:
         return
 

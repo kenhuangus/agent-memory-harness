@@ -406,3 +406,19 @@ def test_aggregate_recalls_fail_open_on_malformed_lines(tmp_path):
     assert "good one" in queries and "mixed" in queries
     mixed = next(r for r in agg["recalls"] if r["query"] == "mixed")
     assert len(mixed["hits"]) == 1 and mixed["hits"][0]["id"] == "m1"  # garbage hit dropped
+
+
+def test_snapshot_fail_open_on_malformed_event_line(tmp_path):
+    """snapshot() must not crash on a non-dict JSON event line — _aggregate_harness runs
+    first and also reads events.jsonl, so the fail-open guard must live in _iter_jsonl
+    (the single boundary), covering ALL aggregators, not just _aggregate_recalls."""
+    base = tmp_path / "_memory" / ".cookbook-memory"
+    base.mkdir(parents=True)
+    _write_events(base / "events.jsonl", [
+        "not-an-object",                                          # non-dict -> must skip
+        {"op": "recall", "query": "ok", "meta": {"n": 1, "k": 5,
+            "hits": [{"id": "m1", "score": 0.5, "rank": 0, "content": "x"}]}},
+    ])
+    snap = snapshot(tmp_path)  # must not raise
+    assert "error" not in snap
+    assert snap["recalls"]["count"] == 1
