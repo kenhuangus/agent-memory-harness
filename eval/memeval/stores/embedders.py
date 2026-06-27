@@ -33,6 +33,7 @@ import hashlib
 import json
 import math
 import os
+import random
 import socket
 import time
 import urllib.error
@@ -44,6 +45,31 @@ from typing import Any, Optional
 _VOYAGE_ENDPOINT = "https://api.voyageai.com/v1/embeddings"
 # HTTP statuses worth a retry: rate-limit + transient server errors.
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+# Cap any single backoff sleep so a hostile/huge ``Retry-After`` can't hang a run.
+_MAX_BACKOFF_SECONDS = 60.0
+
+
+def _retry_after_seconds(exc: "urllib.error.HTTPError") -> Optional[float]:
+    """Parse a ``Retry-After`` header (delta-seconds form) into a capped float, else None.
+
+    Voyage returns ``Retry-After`` on 429/503; honoring it backs off exactly as long
+    as the server asks instead of guessing. Only the integer/float delta-seconds form
+    is handled (the HTTP-date form is rare here and not worth the parser); anything
+    unparseable falls through to exponential backoff.
+    """
+    try:
+        raw = exc.headers.get("Retry-After") if exc.headers else None
+    except Exception:
+        return None
+    if not raw:
+        return None
+    try:
+        secs = float(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+    if secs < 0:
+        return None
+    return min(secs, _MAX_BACKOFF_SECONDS)
 _MINILM_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 _MINILM_DIM = 384
 _MINILM_CACHE_ENV = "MEMEVAL_EMBED_MODEL_CACHE"
@@ -215,9 +241,14 @@ class VoyageEmbedder:
                     return json.loads(resp.read().decode("utf-8"))
             except urllib.error.HTTPError as exc:
                 last_exc = exc
+                retry_after = _retry_after_seconds(exc)  # read header BEFORE close()
                 exc.close()  # we never read the error body; release the connection now
                 if exc.code in _RETRYABLE_STATUS and attempt < self.max_retries:
-                    self._sleeper(self.backoff * (2 ** attempt))
+                    # Honor the server's Retry-After when given (exact rate-limit wait);
+                    # otherwise exponential backoff. Add jitter either way so concurrent
+                    # embedders don't retry in lockstep and re-trigger the limit.
+                    base = retry_after if retry_after is not None else self.backoff * (2 ** attempt)
+                    self._sleeper(min(_MAX_BACKOFF_SECONDS, base) + random.uniform(0, self.backoff))
                     continue
                 # Non-retryable status (or retries exhausted): fail loud. The body is
                 # not surfaced to avoid leaking anything sensitive from the request.
