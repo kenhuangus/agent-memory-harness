@@ -1,0 +1,1 @@
+{"cursor": 337885, "last_summary": "When extending Django database function tests, add timezone-specific test methods in DateFunctionWithTimeZoneTests that test explicit tzinfo parameters to ensure the tzinfo parameter is not ignored.", "recent_memory_ids": ["mem_91b31546"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

@@ -1,0 +1,1 @@
+{"cursor": 327246, "last_summary": "When Django template auto-calls a callable class/object and it fails on required args, set do_not_call_in_templates = True on the object to prevent the call and allow normal attribute access.", "recent_memory_ids": ["mem_dfa590d9"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

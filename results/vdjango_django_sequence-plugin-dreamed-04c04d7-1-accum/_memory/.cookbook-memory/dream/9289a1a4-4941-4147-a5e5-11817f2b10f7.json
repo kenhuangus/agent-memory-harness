@@ -1,0 +1,1 @@
+{"cursor": 527541, "last_summary": "When splitting a dotted path like 'a.b.c.d' into module vs class components and inner classes are possible, iterate from the end checking sys.modules to find the longest valid module prefix.", "recent_memory_ids": ["mem_a81a4609", "mem_12b55a13"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

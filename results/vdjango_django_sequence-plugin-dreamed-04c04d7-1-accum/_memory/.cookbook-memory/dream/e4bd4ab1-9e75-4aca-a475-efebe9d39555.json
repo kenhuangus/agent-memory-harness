@@ -1,0 +1,1 @@
+{"cursor": 284638, "last_summary": "When using cursor.fetchone() directly in an index access, the query may return no rows (e.g., LIMIT/OFFSET beyond available rows); always store the result and check for None before subscripting.", "recent_memory_ids": ["mem_1116a090"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

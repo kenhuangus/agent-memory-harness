@@ -1,0 +1,1 @@
+{"cursor": 358726, "last_summary": "Python's decimal.Decimal() raises TypeError for non-convertible types (dict, list, object) and InvalidOperation for invalid strings \u2014 both must be caught when wrapping in validation logic.", "recent_memory_ids": ["mem_103b7e85"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

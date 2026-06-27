@@ -1,0 +1,1 @@
+{"cursor": 253955, "last_summary": "When a shared attrs dict is passed to widget.get_context(), widgets like CheckboxInput set attrs['checked'] = True, permanently altering the dict for subsequent calls in the same loop.", "recent_memory_ids": ["mem_c6573f92"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

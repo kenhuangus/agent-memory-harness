@@ -1,0 +1,1 @@
+{"cursor": 264359, "last_summary": "In Django's forms framework, CheckboxInput.get_context() is the only widget that mutates the attrs dict passed to it (sets 'checked': True); other widgets leave attrs unchanged.", "recent_memory_ids": ["mem_19c4a7be"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
