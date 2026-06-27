@@ -152,18 +152,23 @@ class SwebenchHostGrader:
         model_name: str = "memeval",
         timeout: int = 1800,
         python_exe: Optional[str] = None,
+        python_exes: Optional[dict[str, str]] = None,
+        allow_python_substitution: bool = False,
     ) -> None:
         self._runner = runner or _subprocess_cmd
         self._git_runner = git_runner  # forwarded to checkout (None -> its default)
         self.model_name = model_name
         self.timeout = timeout
         self._python_exe = python_exe
+        self._python_exes = dict(python_exes or {})
+        self.allow_python_substitution = allow_python_substitution
         #: Reason the MOST RECENT call returned ``None`` (UNGRADED), else ``None``.
         self.last_reason: Optional[str] = None
         #: Run-lifetime tally reason -> count (loud degradation, mirrors PR #124).
         self.ungraded_reasons: dict[str, int] = {}
-        #: task_id -> "pin->used" when the pinned python was unavailable and a nearest
-        #: uv-available python was substituted (host-substitution; not leaderboard-comparable).
+        #: task_id -> "pin->used" when explicitly enabled and the pinned python was
+        #: unavailable, so a nearest uv-available python was substituted
+        #: (host-substitution; not leaderboard-comparable).
         self.python_substitutions: dict[str, str] = {}
         #: cached sorted [(major, minor), ...] of uv-provisionable CPython versions.
         self._uv_minors_cache: Optional[list] = None
@@ -408,12 +413,12 @@ class SwebenchHostGrader:
             prewarmed = False
         if py is None:
             # Fall back to a configured interpreter ONLY if no pin was requested;
-            # if a pin was requested and neither uv NOR a nearest-available substitute
-            # could be provisioned, be honest.
+            # if a pin was requested and no exact interpreter could be provisioned,
+            # be honest.
             if spec.get("python") and self._python_exe is None:
                 return self._ungraded(
                     f"could not provision python {spec.get('python')} "
-                    f"(nor any uv-available fallback >= it)", task)
+                    f"(no exact interpreter fallback available)", task)
             py = self._python_exe or "python"
             prewarmed = False
 
@@ -559,16 +564,15 @@ class SwebenchHostGrader:
         ``None``.
 
         First tries the SWE-bench-pinned interpreter via ``uv venv --python <pin>``.
-        uv's managed CPython builds only go back to 3.8, so an old pin (3.6/3.7) can't
-        be fetched and there is no Docker/pyenv here. Rather than leave every such task
-        UNGRADED, fall back to the **nearest uv-available python >= the pin** (e.g. a
-        django 3.1 task pinned to 3.6 grades under 3.8, which django 3.1 supports). This
-        is strictly safe: a substitution that the repo can't actually run still fails at
-        build/collection -> UNGRADED there (no worse than before); a compatible one now
-        grades. Each substitution is logged + recorded (``python_substitutions``) and is
-        a documented host-substitution (NOT leaderboard-comparable). Offline (stub
-        runner) ``uv venv`` reports rc 0 but writes no interpreter -> ``None`` (caller
-        falls back), and no fallback search runs.
+        uv's managed CPython builds only go back to 3.8, so old pins (3.5/3.6/3.7) may
+        not be fetched. Before degrading, try exact external interpreters from the
+        constructor, ``MEMEVAL_SWEBENCH_PYTHON_3_6`` / ``..._3_5``,
+        ``MEMEVAL_SWEBENCH_PYTHONS=3.6=/path,3.5=/path``, or ``python3.6`` /
+        ``python3.5`` on PATH. Only when ``allow_python_substitution`` is set do we fall
+        back to the nearest uv-available python >= the pin; that is logged + recorded
+        as host-substitution and is NOT leaderboard-comparable. Offline (stub runner)
+        ``uv venv`` reports rc 0 but writes no interpreter -> ``None`` (caller falls
+        back), and no fallback search runs.
 
         ``seed`` adds ``--seed`` (pip/setuptools/wheel) — opt-in PER REPO via
         :meth:`_needs_seed`, so a repo that doesn't need it gets a venv byte-identical
@@ -605,6 +609,16 @@ class SwebenchHostGrader:
         # No interpreter on disk (offline stub), or no pin to substitute -> done.
         if status == "no-interpreter" or not python:
             return None
+        for cand in self._exact_python_candidates(python):
+            status, py = _try(cand)
+            if status == "ok":
+                log.info("SwebenchHostGrader: using exact external python %s for pin %s",
+                         cand, python)
+                return py
+            if status == "no-interpreter":
+                return None
+        if not self.allow_python_substitution:
+            return None
         # The pin itself couldn't be fetched: try the nearest uv-available python >= pin.
         for cand in self._fallback_pythons(dest, python):
             status, py = _try(cand)
@@ -615,14 +629,50 @@ class SwebenchHostGrader:
                 return None
         return None
 
+    def _exact_python_candidates(self, pin: str) -> list:
+        """Exact external interpreters for ``pin`` (e.g. ``3.6``), in preference order."""
+        import os
+        import shutil
+
+        norm = self._python_minor(pin)
+        if norm is None:
+            return []
+        env_key = f"MEMEVAL_SWEBENCH_PYTHON_{norm.replace('.', '_')}"
+        raw_map = os.environ.get("MEMEVAL_SWEBENCH_PYTHONS") or ""
+        mapped: dict[str, str] = {}
+        for part in raw_map.split(","):
+            key, sep, val = part.strip().partition("=")
+            if sep and key.strip() and val.strip():
+                mapped[key.strip()] = val.strip()
+
+        candidates = [
+            self._python_exes.get(norm),
+            os.environ.get(env_key),
+            mapped.get(norm),
+            shutil.which(f"python{norm}"),
+        ]
+        out: list = []
+        for cand in candidates:
+            if cand and cand not in out:
+                out.append(cand)
+        return out
+
+    @staticmethod
+    def _python_minor(pin: str) -> Optional[str]:
+        """Normalize a Python pin to ``major.minor``."""
+        try:
+            parts = (str(pin).split(".") + ["0"])[:2]
+            return f"{int(parts[0])}.{int(parts[1])}"
+        except (ValueError, AttributeError):
+            return None
+
     def _fallback_pythons(self, dest: Any, pin: str) -> list:
         """uv-available ``"major.minor"`` strings strictly newer than ``pin`` (ascending),
         so we substitute the SMALLEST compatible interpreter uv can actually provision."""
-        try:
-            parts = (str(pin).split(".") + ["0"])[:2]
-            pin_mm = (int(parts[0]), int(parts[1]))
-        except (ValueError, AttributeError):
+        norm = self._python_minor(pin)
+        if norm is None:
             return []
+        pin_mm = tuple(int(p) for p in norm.split("."))
         out: list = []
         for mm in self._uv_minors(dest):
             if mm > pin_mm:

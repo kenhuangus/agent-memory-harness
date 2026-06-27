@@ -151,9 +151,48 @@ def result_record(
     native = native_metrics_block(rr.metadata.get("native_report"))
     if native:
         rec["native"] = native
+    tasks = _task_records(rr.trajectories)
+    if tasks:
+        rec["tasks"] = tasks
     if extra:
         rec.update(extra)
     return rec
+
+
+def _task_records(trajectories: list[Any]) -> list[dict[str, Any]]:
+    """Return the per-task grading ledger rows for a run.
+
+    These rows intentionally duplicate a small amount of trajectory information in
+    the run JSON so downstream dashboards and audits do not have to join against
+    trajectory JSONL just to answer "which task was solved, graded, or skipped?".
+    """
+    rows: list[dict[str, Any]] = []
+    for traj in trajectories:
+        meta = getattr(traj, "metadata", None) or {}
+        prediction = getattr(traj, "prediction", None) or ""
+        success = getattr(traj, "success", None)
+        grade_reason = meta.get("grade_reason") or "unknown"
+        rows.append({
+            "task_id": getattr(traj, "task_id", ""),
+            "stage": meta.get("pipeline_stage"),
+            "patch_status": _patch_status(prediction, grade_reason),
+            "solve_error": meta.get("solve_error"),
+            "grade_status": "ungraded" if success is None else "graded",
+            "grade_reason": grade_reason,
+            "resolved": success is True,
+        })
+    return rows
+
+
+def _patch_status(prediction: str, grade_reason: str) -> str:
+    """Summarize the task's patch state without storing the patch body."""
+    if not prediction.strip():
+        return "empty"
+    if grade_reason == "patch_apply_failed":
+        return "apply_failed"
+    if grade_reason in {"graded", "forced", "gold_test_apply_failed"}:
+        return "applied"
+    return "present"
 
 
 def normalize_version(version: str) -> str:

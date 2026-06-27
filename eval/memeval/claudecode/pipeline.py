@@ -334,6 +334,15 @@ def _build_parser() -> argparse.ArgumentParser:
                          "(host test execution; the real resolve rate), 'overlap' (cheap "
                          "heuristic), or 'none'.")
     ap.add_argument("--grader-timeout", type=int, default=1800)
+    ap.add_argument("--grader-python", action="append", default=[],
+                    metavar="PIN=PYTHON",
+                    help="Exact interpreter for SWE-bench host grading, e.g. "
+                         "--grader-python 3.6=/opt/python/3.6/bin/python. "
+                         "Repeat for multiple pins.")
+    ap.add_argument("--allow-python-substitution", action="store_true",
+                    help="Allow the SWE-bench host grader to use the nearest newer "
+                         "uv-managed Python when the pinned Python is unavailable. "
+                         "This is host-substitution and is not leaderboard-comparable.")
     ap.add_argument("--budget-usd", type=float, default=DEFAULT_BUDGET_USD)
     ap.add_argument("--plugin-workers", type=int, default=1,
                     help="Concurrency for plugin stages (default 1; the plugin MCP "
@@ -631,6 +640,8 @@ def _resolve_config(args: argparse.Namespace) -> dict:
         "budget_usd": budget,
         "code_mode": args.code_mode,
         "grader_timeout": args.grader_timeout,
+        "grader_python": list(args.grader_python or []),
+        "allow_python_substitution": bool(args.allow_python_substitution),
         "plugin_workers": args.plugin_workers,
         "timeout": args.timeout,
         "path": args.path,
@@ -741,7 +752,12 @@ def _make_agent(stage: str, cfg: dict, substrate: Path):
 def _grader(cfg: dict):
     """Resolve the CODE grader, reusing run_bench's resolver via a tiny args shim."""
     from .run_bench import _make_grader
-    shim = types.SimpleNamespace(grader=cfg["grader"], grader_timeout=cfg["grader_timeout"])
+    shim = types.SimpleNamespace(
+        grader=cfg["grader"],
+        grader_timeout=cfg["grader_timeout"],
+        grader_python=cfg.get("grader_python") or [],
+        allow_python_substitution=bool(cfg.get("allow_python_substitution")),
+    )
     return _make_grader(cfg["benchmark"], shim)
 
 

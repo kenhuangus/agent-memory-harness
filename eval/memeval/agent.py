@@ -466,6 +466,7 @@ def run_agent(
                 except Exception as exc:  # noqa: BLE001 - one task must not abort the run
                     print(f"  task {task.task_id} failed ({type(exc).__name__}): "
                           f"{str(exc)[:160]}", flush=True)
+                    traj.metadata["solve_error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
                     err_note = {"task_id": task.task_id, "stage": "solve",
                                 "error": f"{type(exc).__name__}: {str(exc)[:200]}"}
                     result = ""

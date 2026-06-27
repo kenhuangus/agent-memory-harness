@@ -253,12 +253,70 @@ if __name__ == "__main__":
 
 
 # --------------------------------------------------------------------------- #
-# Python-pin fallback: uv can't fetch old pins (3.6/3.7); substitute nearest >= pin.
+# Python-pin fallback: uv can't fetch old pins (3.5/3.6/3.7); use exact external
+# interpreters when available, and substitute nearest >= pin only when explicitly
+# opted in.
 # --------------------------------------------------------------------------- #
-def test_make_venv_falls_back_to_nearest_uv_python(tmp_path) -> None:
-    """A pinned python uv cannot provision (3.6) must NOT leave the task ungraded when a
-    newer uv-available python (3.8) exists — the grader substitutes the nearest one and
-    records it, instead of failing with 'could not provision python 3.6'."""
+def test_make_venv_uses_exact_external_python_before_substitution(tmp_path) -> None:
+    """A pinned python uv cannot provision (3.6), but an exact external interpreter can
+    still make the task gradeable without host-substituting Python 3.8."""
+    calls: list = []
+
+    def fake_runner(args, cwd, env=None):
+        calls.append(list(args))
+        if args[:2] == ["uv", "venv"]:
+            ver = args[args.index("--python") + 1] if "--python" in args else ""
+            if ver == "3.6":
+                return CmdResult(returncode=1, stderr="No download found for 3.6")
+            if ver == "/opt/pythons/3.6/bin/python":
+                venv = Path(args[-1])
+                (venv / "bin").mkdir(parents=True, exist_ok=True)
+                (venv / "bin" / "python").write_text("#!stub\n", encoding="utf-8")
+                return CmdResult(returncode=0)
+        if args[:3] == ["uv", "python", "list"]:
+            raise AssertionError("nearest-version substitution should not run")
+        return CmdResult(returncode=0)
+
+    g = SwebenchHostGrader(
+        runner=fake_runner,
+        python_exes={"3.6": "/opt/pythons/3.6/bin/python"},
+        allow_python_substitution=True,
+    )
+    dest = tmp_path / "repo"
+    dest.mkdir()
+    py = g._make_venv(dest, python="3.6")
+
+    assert py is not None and py.replace("\\", "/").endswith("bin/python")
+    assert any(c[:2] == ["uv", "venv"] and "3.6" in c for c in calls)
+    assert any(c[:2] == ["uv", "venv"] and "/opt/pythons/3.6/bin/python" in c
+               for c in calls)
+    assert g.python_substitutions == {}
+
+
+def test_make_venv_does_not_substitute_python_by_default(tmp_path) -> None:
+    """Unsupported old pins are ungraded by default instead of silently grading under a
+    newer uv-managed interpreter."""
+    calls: list = []
+
+    def fake_runner(args, cwd, env=None):
+        calls.append(list(args))
+        if args[:2] == ["uv", "venv"]:
+            return CmdResult(returncode=1, stderr="No download found")
+        if args[:3] == ["uv", "python", "list"]:
+            raise AssertionError("nearest-version substitution should be opt-in")
+        return CmdResult(returncode=0)
+
+    g = SwebenchHostGrader(runner=fake_runner)
+    dest = tmp_path / "repo"
+    dest.mkdir()
+
+    assert g._make_venv(dest, python="3.6") is None
+    assert not any(c[:3] == ["uv", "python", "list"] for c in calls)
+
+
+def test_make_venv_can_substitute_nearest_uv_python_when_enabled(tmp_path) -> None:
+    """A pinned python uv cannot provision (3.6) can still be graded under a newer
+    uv-available python when the run explicitly opts into host-substitution."""
     calls: list = []
 
     def fake_runner(args, cwd, env=None):
@@ -277,7 +335,7 @@ def test_make_venv_falls_back_to_nearest_uv_python(tmp_path) -> None:
                 "cpython-3.8.20-linux-x86_64-gnu   <download available>\n"))
         return CmdResult(returncode=0)
 
-    g = SwebenchHostGrader(runner=fake_runner)
+    g = SwebenchHostGrader(runner=fake_runner, allow_python_substitution=True)
     dest = tmp_path / "repo"
     dest.mkdir()
     task = Task(task_id="django__django-9296", benchmark=Benchmark.SWE_BENCH_CL,

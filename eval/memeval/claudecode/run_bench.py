@@ -107,6 +107,19 @@ def _make_grader(benchmark: str, args: argparse.Namespace):
     """
     from ..grader import get_grader
 
+    def kwargs() -> dict:
+        out = {"timeout": args.grader_timeout}
+        pins = {}
+        for item in (getattr(args, "grader_python", None) or []):
+            pin, sep, exe = str(item).partition("=")
+            if sep and pin.strip() and exe.strip():
+                pins[pin.strip()] = exe.strip()
+        if pins:
+            out["python_exes"] = pins
+        if getattr(args, "allow_python_substitution", False):
+            out["allow_python_substitution"] = True
+        return out
+
     choice = (args.grader or "auto").strip().lower()
     if choice == "auto":
         if benchmark in _LOCAL_EXEC_BENCH:
@@ -115,6 +128,8 @@ def _make_grader(benchmark: str, args: argparse.Namespace):
             # back to the heuristic LocalExecGrader otherwise so grading never breaks
             # on a host that lacks the extra.
             name = "swebench" if _swebench_available() else "local"
+            if name == "swebench":
+                return get_grader(name, **kwargs())
             return get_grader(name, timeout=args.grader_timeout)
         return None  # QA benches + contextbench (retrieval-only): native metric
     if choice == "none":
@@ -124,7 +139,7 @@ def _make_grader(benchmark: str, args: argparse.Namespace):
     if choice in ("swebench", "swebench-host", "swebenchhost"):
         # The realistic Docker-free grader also honors --grader-timeout (it builds a
         # per-instance venv + runs the repo's tests, which can be slow on old pins).
-        return get_grader(choice, timeout=args.grader_timeout)
+        return get_grader(choice, **kwargs())
     return get_grader(choice)  # overlap (or any other registered name)
 
 
@@ -426,6 +441,15 @@ def main(argv: Optional[list[str]] = None) -> int:
                          "= leave CODE ungraded.")
     ap.add_argument("--grader-timeout", type=int, default=1800,
                     help="Per-task local test-execution timeout (seconds).")
+    ap.add_argument("--grader-python", action="append", default=[],
+                    metavar="PIN=PYTHON",
+                    help="Exact interpreter for SWE-bench host grading, e.g. "
+                         "--grader-python 3.6=/opt/python/3.6/bin/python. "
+                         "Repeat for multiple pins.")
+    ap.add_argument("--allow-python-substitution", action="store_true",
+                    help="Allow the SWE-bench host grader to use the nearest newer "
+                         "uv-managed Python when the pinned Python is unavailable. "
+                         "This is host-substitution and is not leaderboard-comparable.")
     ap.add_argument("--budget-usd", type=float, default=DEFAULT_BUDGET_USD)
     ap.add_argument("--results", default="results.json")
     ap.add_argument("--results-dir", default="results",
