@@ -415,6 +415,7 @@ def test_contradiction_top_level_keys_exact(monkeypatch: pytest.MonkeyPatch) -> 
     assert set(result.keys()) == {
         "schema", "version", "mode", "jobs_run", "skipped_jobs",
         "counts", "clusters", "pruned", "contradicted", "governance",
+        "synthesized",  # ADR-028 §3 induction block (additive)
     }
 
 
