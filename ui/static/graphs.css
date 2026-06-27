@@ -157,20 +157,37 @@
 #gx-p5 { font-size: 11px; }
 #gx-p5 th, #gx-p5 td { padding-right: 6px; }
 #gx-p5 .gx-num-c { padding-right: 8px !important; }
-#view-graphs th[data-sort-key] {
+#view-graphs th[data-sort-key] { padding: 0; }
+#view-graphs .gx-sort-btn {
+  font: inherit;
+  font-size: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  padding: 5px 8px 8px 0;
+  width: 100%;
+  text-align: inherit;
   cursor: pointer;
   user-select: none;
   transition: color 80ms;
 }
-#view-graphs th[data-sort-key]:hover { color: var(--gx-t100); }
-#view-graphs th[data-sort-key].gx-sort-active { color: var(--gx-amber); }
-#view-graphs th[data-sort-key].gx-sort-active::after {
-  content: " ▼";
-  font-size: 8px;
-  margin-left: 4px;
-  color: var(--gx-amber);
+#view-graphs th.gx-num-c .gx-sort-btn { text-align: right; padding-right: 12px; }
+#view-graphs .gx-sort-btn:hover { color: var(--gx-t100); }
+#view-graphs .gx-sort-btn:focus-visible {
+  outline: 1px dashed var(--gx-amber);
+  outline-offset: -2px;
+  color: var(--gx-t100);
 }
-#view-graphs th[data-sort-key].gx-sort-active.gx-sort-asc::after { content: " ▲"; }
+#view-graphs th[aria-sort="ascending"] .gx-sort-btn,
+#view-graphs th[aria-sort="descending"] .gx-sort-btn { color: var(--gx-amber); }
+#view-graphs th[aria-sort="descending"] .gx-sort-btn::after {
+  content: " ▼"; font-size: 8px; margin-left: 4px; color: var(--gx-amber);
+}
+#view-graphs th[aria-sort="ascending"] .gx-sort-btn::after {
+  content: " ▲"; font-size: 8px; margin-left: 4px; color: var(--gx-amber);
+}
 
 .gx-num-c { text-align: right !important; padding-right: 12px !important; }
 .gx-dim   { color: var(--gx-t60); }

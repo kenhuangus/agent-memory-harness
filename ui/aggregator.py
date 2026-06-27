@@ -849,12 +849,18 @@ def _format_label(run_id: str) -> str:
 # writer would let us drop the override map.
 # --------------------------------------------------------------------------- #
 
-#: SHA -> daydream variant, inferred from .env state at run time. See note above.
+#: SHA -> daydream variant, inferred from .env state at run time. Only SHAs
+#: with explicit evidence are populated; an unmapped SHA yields ``None`` so the
+#: UI can render an honest "unknown" marker instead of guessing.
 _DJANGO_DD_VARIANT_BY_SHA: dict[str, str] = {
-    # V5 cohort: 2d80f9f (#238 merge) onward
+    # V5 cohort: PR #239 evidence body + every run on or after the merge SHA
     "d68878c": "V5", "1763e51": "V5", "04c04d7": "V5", "2d80f9f": "V5",
-    # V4 cohort: 81378e9 only (#235 merge)
+    # V4 cohort: PR #238 evidence body, that SHA only
     "81378e9": "V4",
+    # V2 cohort: KB-dreaming entry 14 documented V2 as the live variant on
+    # 2026-06-25, covering every pre-PR-#238 SHA in the Django sequence.
+    "a1677d1": "V2", "a4538fc": "V2", "818ccff": "V2", "8681435": "V2",
+    "a6e4126": "V2", "4f03018": "V2", "c84be94": "V2",
 }
 
 
@@ -914,12 +920,18 @@ def django_manifest(results_root: Path) -> list[dict[str, Any]]:
                 data = json.load(f)
         except Exception:
             continue
-        p = data.get("pipeline", {}) or {}
+        # A valid JSON file with the wrong shape (anything but a dict at the
+        # top level) would crash later .get() calls and 500 the whole
+        # /api/graphs/django request — skip those the same way we skip
+        # malformed JSON, so one bad file never blanks the Graphs tab.
+        if not isinstance(data, dict):
+            continue
+        p = data.get("pipeline") if isinstance(data.get("pipeline"), dict) else {}
         dream_cfg = p.get("dream", {}) if isinstance(p.get("dream"), dict) else {}
         dream_block = data.get("dream", {}) if isinstance(data.get("dream"), dict) else {}
-        runs = data.get("runs", []) or []
-        r0 = runs[0] if runs else {}
-        tasks = r0.get("tasks", []) or []
+        runs = data.get("runs") if isinstance(data.get("runs"), list) else []
+        r0 = runs[0] if runs and isinstance(runs[0], dict) else {}
+        tasks = r0.get("tasks") if isinstance(r0.get("tasks"), list) else []
         solved = sum(1 for t in tasks if t.get("resolved")) if tasks else None
         attempted = r0.get("n_tasks") or len(tasks)
         started = p.get("started_at")
@@ -951,7 +963,10 @@ def django_manifest(results_root: Path) -> list[dict[str, Any]]:
             "stage": p.get("stage"),
             "harness": p.get("harness", "claude-code"),
             "agent": p.get("model"),
-            "ddVariant": _DJANGO_DD_VARIANT_BY_SHA.get(sha, "V2"),
+            # None when the SHA isn't in the inferred map — the UI renders an
+            # explicit unknown marker rather than guessing V2 for every SHA
+            # that hasn't been pinned by KB history.
+            "ddVariant": _DJANGO_DD_VARIANT_BY_SHA.get(sha),
             "ddModel": (dream_cfg.get("model") or "deepseek/deepseek-v4-flash").replace("deepseek/", ""),
             "mem": n_mem,
             "dream": dream_outcome,
