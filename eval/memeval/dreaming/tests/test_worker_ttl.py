@@ -1741,3 +1741,151 @@ def test_dedup_neighborhood_fails_open_on_llm_exception(memory_store_dir: Path) 
     )
     assert result.pairs == []
     assert result.llm_calls == 2, "fail-open still burns a call (Pushback H parity)"
+
+
+# --------------------------------------------------------------------------- #
+# §Q — ADR-dreaming-028 §2 PR #2f dedup-neighborhood feature-flag wiring
+# --------------------------------------------------------------------------- #
+
+def test_use_neighborhood_dedup_default_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ADR-028 §2 PR #2f — default unset → False (lexical-dedup-only)."""
+    from memeval.dreaming.worker import _read_use_neighborhood_dedup
+    monkeypatch.delenv("DREAM_DEDUP_NEIGHBORHOOD", raising=False)
+    assert _read_use_neighborhood_dedup() is False
+
+
+def test_use_neighborhood_dedup_flag_one_enables(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ADR-028 §2 PR #2f — exactly `"1"` enables the dedup pass."""
+    from memeval.dreaming.worker import _read_use_neighborhood_dedup
+    monkeypatch.setenv("DREAM_DEDUP_NEIGHBORHOOD", "1")
+    assert _read_use_neighborhood_dedup() is True
+
+
+def test_use_neighborhood_dedup_other_values_read_as_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ADR-028 §2 PR #2f — strict equality with `"1"` only (parallel to the
+    contradiction flag). Wrong spellings read as off — operator typos don't
+    silently flip dedup behavior."""
+    from memeval.dreaming.worker import _read_use_neighborhood_dedup
+    for val in ("0", "", "true", "True", "yes", "on", "TRUE", " 1 ", "1 "):
+        monkeypatch.setenv("DREAM_DEDUP_NEIGHBORHOOD", val)
+        assert _read_use_neighborhood_dedup() is False, (
+            f"DREAM_DEDUP_NEIGHBORHOOD={val!r} must read as off"
+        )
+
+
+def test_dream_skips_dedup_neighborhood_when_flag_off(
+    memory_store_dir: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR-028 §2 PR #2f — when flag is off (default), `dream()` does NOT
+    invoke `_detect_duplicates_neighborhood`."""
+    from memeval.dreaming import worker as worker_mod
+
+    monkeypatch.delenv("DREAM_DEDUP_NEIGHBORHOOD", raising=False)
+
+    dedup_called = [0]
+    orig = worker_mod._detect_duplicates_neighborhood
+
+    def spy(*args, **kwargs):
+        dedup_called[0] += 1
+        return orig(*args, **kwargs)
+
+    monkeypatch.setattr(worker_mod, "_detect_duplicates_neighborhood", spy)
+
+    store = _seed(_FIXED_NOW, ("a", "x", 1), ("b", "y", 1))
+    worker_mod.DreamingWorker(store).run()
+
+    assert dedup_called[0] == 0, (
+        "_detect_duplicates_neighborhood must NOT be called when flag is off"
+    )
+
+
+def test_dream_invokes_dedup_neighborhood_when_flag_on(
+    memory_store_dir: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR-028 §2 PR #2f — `DREAM_DEDUP_NEIGHBORHOOD=1` causes `dream()` to
+    invoke the LLM dedup pre-pass exactly once per run."""
+    from memeval.dreaming import worker as worker_mod
+    from memeval.dreaming.worker import DedupResult
+
+    monkeypatch.setenv("DREAM_DEDUP_NEIGHBORHOOD", "1")
+    monkeypatch.setenv("DREAM_CONTRADICTION_MAX_CALLS", "1")
+
+    dedup_called = [0]
+
+    def stub_dedup(*args, **kwargs):
+        dedup_called[0] += 1
+        # Return empty result so the dream flow continues cleanly.
+        return DedupResult(
+            pairs=[], llm_calls=0, tokens_in=0, tokens_out=0,
+            cost_usd=0.0, pairs_examined_estimate=0,
+        )
+
+    monkeypatch.setattr(worker_mod, "_detect_duplicates_neighborhood", stub_dedup)
+    # Fake LLM client. Returns an empty-pairs JSON so the contradiction
+    # path (which still runs after dedup) doesn't crash on a None response.
+    monkeypatch.setattr(
+        worker_mod, "_make_llm_client",
+        lambda: type("_FakeClient", (), {
+            "model": "fake",
+            "complete": lambda self, *a, **k: _StubCompletion('{"pairs": []}'),
+        })(),
+    )
+
+    store = _seed(_FIXED_NOW, ("a", "x", 1), ("b", "y", 1))
+    worker_mod.DreamingWorker(store).run()
+
+    assert dedup_called[0] == 1, (
+        f"_detect_duplicates_neighborhood expected once; got {dedup_called[0]}"
+    )
+
+
+def test_dream_dedup_neighborhood_losers_excluded_from_contradiction_pass(
+    memory_store_dir: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR-028 §2 PR #2f — items the LLM dedup pass retired are added to
+    `retired_ids_set` so the contradiction pass's working set EXCLUDES them.
+    Prevents re-judging an already-deleted item as a contradiction candidate.
+    """
+    from memeval.dreaming import worker as worker_mod
+    from memeval.dreaming.worker import DedupPair, DedupResult
+
+    monkeypatch.setenv("DREAM_DEDUP_NEIGHBORHOOD", "1")
+    monkeypatch.setenv("DREAM_CONTRADICTION_MAX_CALLS", "1")
+
+    contradiction_seen_ids: list[set[str]] = []
+
+    def stub_dedup(*args, **kwargs):
+        # Pretend the LLM found one duplicate pair: "b" loses to "a".
+        return DedupResult(
+            pairs=[DedupPair(loser_id="b", winner_id="a", rationale="dup")],
+            llm_calls=1, tokens_in=10, tokens_out=10, cost_usd=0.0,
+            pairs_examined_estimate=1,
+        )
+
+    def stub_contradiction(items, client, **kwargs):
+        contradiction_seen_ids.append({it.item_id for it in items})
+        from memeval.dreaming.worker import ContradictionResult
+        return ContradictionResult(
+            pairs=[], llm_calls=0, tokens_in=0, tokens_out=0,
+            cost_usd=0.0, pairs_examined_estimate=0,
+        )
+
+    monkeypatch.setattr(worker_mod, "_detect_duplicates_neighborhood", stub_dedup)
+    monkeypatch.setattr(worker_mod, "_detect_contradictions", stub_contradiction)
+    monkeypatch.setattr(
+        worker_mod, "_make_llm_client",
+        lambda: type("_FakeClient", (), {
+            "model": "fake",
+            "complete": lambda self, *a, **k: _StubCompletion('{"pairs": []}'),
+        })(),
+    )
+
+    store = _seed(_FIXED_NOW, ("a", "x", 1), ("b", "y", 1))
+    worker_mod.DreamingWorker(store).run()
+
+    assert contradiction_seen_ids, "contradiction pass should run after dedup"
+    assert "b" not in contradiction_seen_ids[0], (
+        "b was retired by dedup-neighborhood; it MUST NOT appear in the "
+        "contradiction working set"
+    )
+    assert "a" in contradiction_seen_ids[0]
