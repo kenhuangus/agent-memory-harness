@@ -82,6 +82,50 @@
 }
 .gx-meta b { color: var(--gx-t100); font-weight: 500; font-variant-numeric: tabular-nums; }
 
+/* --- benchmark sub-tabs --- */
+.gx-subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+  border: 1px solid var(--gx-border);
+  background: var(--gx-card);
+  padding: 6px;
+}
+.gx-subtab {
+  font: inherit;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--gx-t60);
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: color 80ms, background 80ms, border-color 80ms;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.gx-subtab:hover { color: var(--gx-t100); border-color: var(--gx-border); }
+.gx-subtab:focus-visible {
+  outline: 1px dashed var(--gx-amber);
+  outline-offset: -2px;
+  color: var(--gx-t100);
+}
+.gx-subtab[aria-selected="true"] {
+  background: var(--gx-amber);
+  color: var(--gx-bg);
+  border-color: var(--gx-amber);
+  font-weight: 600;
+}
+.gx-subtab .gx-subtab-count {
+  font-size: 10px;
+  color: inherit;
+  opacity: 0.6;
+}
+.gx-subtab[aria-selected="true"] .gx-subtab-count { opacity: 0.85; }
+
 /* --- panel grid --- */
 .gx-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
 .gx-panel { border: 1px solid var(--gx-border); background: var(--gx-card); padding: 16px 20px 18px; }

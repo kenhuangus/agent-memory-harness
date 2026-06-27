@@ -875,11 +875,12 @@ def _safe_count(db_path: Path) -> int | None:
         return None
 
 
-def _django_dir_suffix(name: str) -> str | None:
+def _seed_suffix_from_dirname(name: str) -> str | None:
     """`-accum` / `-blank` / `-2` etc. for the few results dirs that have one,
-    used to distinguish plugin-dreamed seed runs at the same SHA."""
-    # vdjango_django_sequence-plugin-dreamed-04c04d7-1-accum -> accum
-    # vdjango_django_sequence-plugin-dreamed-1763e51-2       -> run2
+    used to distinguish plugin-dreamed seed runs at the same SHA. Naming
+    convention is shared across benchmarks (django + sympy + xarray)."""
+    # v<bench>-plugin-dreamed-<sha>-1-accum -> accum
+    # v<bench>-plugin-dreamed-<sha>-2       -> run2
     tail = name.rsplit("-", 2)
     if len(tail) < 2:
         return None
@@ -896,17 +897,69 @@ def _django_dir_suffix(name: str) -> str | None:
     return None
 
 
-def django_manifest(results_root: Path) -> list[dict[str, Any]]:
-    """Return one manifest row per `results/vdjango_django_sequence-*/` directory.
+#: Per-benchmark daydream variant maps. Only Django has KB-pinned evidence
+#: for which DREAM_EXTRACTION_VARIANT was live at run time; other sequences
+#: have no recorded evidence so their rows surface dd-prompt as None.
+_DD_VARIANT_BY_SHA: dict[str, dict[str, str]] = {
+    "django_django_sequence": _DJANGO_DD_VARIANT_BY_SHA,
+}
+
+
+def discover_benchmarks(results_root: Path) -> list[dict[str, Any]]:
+    """Scan results/ for v<benchmark>-* directories and return one entry per
+    distinct benchmark sequence found, with a count of result dirs.
+
+    Sorted by descending count (most-populated benchmarks first) so the UI
+    can default to the one with the most evidence.
+    """
+    counts: dict[str, int] = {}
+    if not results_root.is_dir():
+        return []
+    for d in sorted(results_root.iterdir()):
+        if not d.is_dir() or not d.name.startswith("v"):
+            continue
+        # Strip leading "v" then split on "-" to find the sequence prefix:
+        # v<benchmark>-<stage>-<sha>-<n>[-<suffix>]
+        # Examples:
+        #   vdjango_django_sequence-plugin-blank-1763e51-1
+        #   vsympy_sympy_sequence-plugin-dreamed-8c48b84-1
+        name = d.name[1:]  # drop the leading "v"
+        # The benchmark prefix is everything up to the first stage segment
+        # (base / builtin / plugin-...). Search for the first match.
+        idx = -1
+        for marker in ("-base-", "-builtin-", "-plugin-"):
+            i = name.find(marker)
+            if i > 0 and (idx == -1 or i < idx):
+                idx = i
+        if idx == -1:
+            continue
+        prefix = name[:idx]
+        # Skip off-pattern junk dirs (no benchmark JSON anywhere)
+        if not any(d.glob("swe_bench_cl-*.json")):
+            continue
+        counts[prefix] = counts.get(prefix, 0) + 1
+    return sorted(
+        [{"prefix": p, "count": n} for p, n in counts.items()],
+        key=lambda x: (-x["count"], x["prefix"]),
+    )
+
+
+def benchmark_manifest(results_root: Path, prefix: str) -> list[dict[str, Any]]:
+    """Return one manifest row per `results/v<prefix>-*/` directory.
 
     Re-scans the filesystem on each call — adding a new result directory + JSON
     is the only "regen" step. Rows are returned in newest-timestamp-first order.
+    ``prefix`` is the bare benchmark sequence name (e.g.
+    ``"django_django_sequence"``). Use :func:`discover_benchmarks` to enumerate
+    available prefixes.
     """
     rows: list[dict[str, Any]] = []
     if not results_root.is_dir():
         return rows
+    dir_prefix = f"v{prefix}-"
+    variant_map = _DD_VARIANT_BY_SHA.get(prefix, {})
     for d in sorted(results_root.iterdir()):
-        if not d.is_dir() or not d.name.startswith("vdjango_django_sequence-"):
+        if not d.is_dir() or not d.name.startswith(dir_prefix):
             continue
         db = d / "_memory" / ".cookbook-memory" / "memory.db"
         n_mem = _safe_count(db) if db.exists() else 0
@@ -954,32 +1007,36 @@ def django_manifest(results_root: Path) -> list[dict[str, Any]]:
             dream_outcome = "notrun"
             dream_counts = None
         sha = p.get("git_sha") or ""
-        seed = _django_dir_suffix(d.name)
+        seed = _seed_suffix_from_dirname(d.name)
+        n_tasks = p.get("n_tasks") or 50
         rows.append({
             "name": d.name,
             "ts": p.get("timestamp"),
             "sha": sha,
             "benchmark": p.get("benchmark") or "—",
+            "sequence": p.get("sequence") or prefix,
             "stage": p.get("stage"),
             "harness": p.get("harness", "claude-code"),
             "agent": p.get("model"),
-            # None when the SHA isn't in the inferred map — the UI renders an
-            # explicit unknown marker rather than guessing V2 for every SHA
-            # that hasn't been pinned by KB history.
-            "ddVariant": _DJANGO_DD_VARIANT_BY_SHA.get(sha),
+            # None when the SHA isn't in this benchmark's inferred-variant map.
+            # Per-benchmark maps live in _DD_VARIANT_BY_SHA; only Django has
+            # one. Non-Django benchmarks show — for every row, which is
+            # honest about the absent evidence.
+            "ddVariant": variant_map.get(sha),
             "ddModel": (dream_cfg.get("model") or "deepseek/deepseek-v4-flash").replace("deepseek/", ""),
             "mem": n_mem,
             "dream": dream_outcome,
             "dreamCounts": dream_counts,
             "solved": solved,
             "attempted": attempted,
+            "nTasks": n_tasks,  # per-row denominator — sympy/xarray may use a different N
             "cost": r0.get("cost_usd"),
             "tokIn": r0.get("tokens_in"),
             "tokOut": r0.get("tokens_out"),
             "dur": dur,
             "budget": p.get("budget_usd") or 10.0,
             "seed": seed,
-            "partial": (attempted or 0) < (p.get("n_tasks") or 50),
+            "partial": (attempted or 0) < n_tasks,
         })
     # Multi-runs at the same SHA + stage (e.g. plugin-dreamed-1763e51-1 and -2)
     # need explicit seed labels when neither dir name carries -accum/-blank.
@@ -992,3 +1049,10 @@ def django_manifest(results_root: Path) -> list[dict[str, Any]]:
                 r["seed"] = f"run{i}"
     rows.sort(key=lambda r: r["ts"] or "", reverse=True)
     return rows
+
+
+def django_manifest(results_root: Path) -> list[dict[str, Any]]:
+    """Back-compat shim — predates :func:`benchmark_manifest`. Returns the
+    Django manifest. New callers should use ``benchmark_manifest(root,
+    "django_django_sequence")`` directly."""
+    return benchmark_manifest(results_root, "django_django_sequence")

@@ -110,11 +110,24 @@ class UIHandler(BaseHTTPRequestHandler):
         if path in _STATIC:
             return self._serve_static(path)
 
-        # Graphs route — Django benchmark results manifest. Re-scans the
-        # results dir on every call so freshly merged result directories
-        # appear next refresh (no regen step). Independent of the loaded
-        # substrate; degrades to an empty manifest when results_root is unset.
+        # Graphs routes — re-scan the results dir on every call so freshly
+        # merged result directories appear next refresh (no regen step).
+        # Independent of the loaded substrate; degrades to empty when
+        # results_root is unset.
+        if path == "/api/graphs/benchmarks":
+            root = self.state.results_root
+            from . import aggregator as _agg
+            benchmarks = _agg.discover_benchmarks(root) if root else []
+            return self._json({"benchmarks": benchmarks})
+        if path == "/api/graphs/manifest":
+            root = self.state.results_root
+            from . import aggregator as _agg
+            qs = parse_qs(parsed.query)
+            prefix = (qs.get("bench") or ["django_django_sequence"])[0]
+            manifest = _agg.benchmark_manifest(root, prefix) if root else []
+            return self._json({"manifest": manifest, "bench": prefix})
         if path == "/api/graphs/django":
+            # Back-compat for the pre-multi-benchmark client.
             root = self.state.results_root
             from . import aggregator as _agg
             manifest = _agg.django_manifest(root) if root else []

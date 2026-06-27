@@ -6,14 +6,30 @@
  */
 (function () {
   let manifest = [];
+  let benchmarks = [];
+  let currentBench = "django_django_sequence";  // default; overridden by URL hash or first available
   let sortKey = "ts";
   let sortAsc = false;
 
   // ---- helpers ----------------------------------------------------------
   // A row is "complete" only when it ran to the full pipeline.n_tasks slate
   // AND yielded a solved count. Partial runs would otherwise show up as
-  // X/50 in the charts and misstate the benchmark — gate on partial here.
+  // X/N in the charts and misstate the benchmark — gate on partial here.
   const isComplete = r => r && r.solved != null && r.partial !== true;
+  // Per-row task denominator — sympy/xarray may use a different N than django.
+  // Falls back to 50 for any row written before the aggregator added the field.
+  const tasksFor = r => (r && r.nTasks) || 50;
+  // Format a sequence prefix for human display ("django_django_sequence" → "django · sequence").
+  function formatBenchLabel(prefix) {
+    if (!prefix) return "—";
+    const parts = prefix.split("_");
+    if (parts.length === 1) return parts[0];
+    // Common shape: <project>_<project>_<kind> — collapse the repeat
+    if (parts.length >= 3 && parts[0] === parts[1]) {
+      return `${parts[0]} · ${parts.slice(2).join(" ")}`;
+    }
+    return parts.join(" · ");
+  }
   // Plain-text DOM helper: avoids innerHTML on data-derived strings.
   // Pass an array of child specs: a string becomes a text node, an object
   // {tag, text, attrs, html, children} becomes an element. `html` is opt-in
@@ -37,10 +53,34 @@
 
   // ---- main entry --------------------------------------------------------
   function loadAndRender() {
-    fetch("/api/graphs/django", { cache: "no-store" })
+    // First fetch the benchmark list so the sub-tabs are up to date, then
+    // fetch the active benchmark's manifest. Sequential, not parallel, so a
+    // newly discovered benchmark can become the active selection if the
+    // previous one is missing.
+    fetch("/api/graphs/benchmarks", { cache: "no-store" })
+      .then(r => r.ok ? r.json() : { benchmarks: [] })
+      .then(d => {
+        benchmarks = Array.isArray(d.benchmarks) ? d.benchmarks : [];
+        // Pick a sensible default: keep current if still present, else most-populated.
+        if (!benchmarks.find(b => b.prefix === currentBench)) {
+          currentBench = benchmarks[0]?.prefix || currentBench;
+        }
+        renderSubtabs();
+        return fetchManifest(currentBench);
+      })
+      .catch(err => {
+        console.warn("graphs: benchmark fetch failed", err);
+        // Fallback to direct manifest fetch — old server, single bench.
+        return fetchManifest(currentBench);
+      });
+  }
+
+  function fetchManifest(bench) {
+    return fetch(`/api/graphs/manifest?bench=${encodeURIComponent(bench)}`, { cache: "no-store" })
       .then(r => r.ok ? r.json() : { manifest: [] })
       .then(d => {
         manifest = Array.isArray(d.manifest) ? d.manifest : [];
+        renderHeader();
         setRefreshTimestamp();
         renderPeaksPanel();
         renderTimelinePanel();
@@ -50,10 +90,55 @@
         attachSortHandlers();
       })
       .catch(err => {
-        console.warn("graphs: fetch failed", err);
+        console.warn("graphs: manifest fetch failed", err);
         manifest = [];
+        renderHeader();
         renderManifestTable();
       });
+  }
+
+  function renderSubtabs() {
+    const nav = document.getElementById("gx-subtabs");
+    if (!nav) return;
+    nav.replaceChildren();
+    for (const b of benchmarks) {
+      const active = b.prefix === currentBench;
+      const btn = el("button", {
+        type: "button",
+        class: "gx-subtab",
+        role: "tab",
+        "aria-selected": active ? "true" : "false",
+        "data-bench": b.prefix,
+      }, [
+        formatBenchLabel(b.prefix),
+        el("span", { class: "gx-subtab-count" }, `(${b.count})`),
+      ]);
+      btn.onclick = () => {
+        if (b.prefix === currentBench) return;
+        currentBench = b.prefix;
+        renderSubtabs();
+        fetchManifest(currentBench);
+      };
+      nav.appendChild(btn);
+    }
+  }
+
+  function renderHeader() {
+    const title = document.getElementById("gx-title");
+    if (title) title.replaceChildren(
+      document.createTextNode(`${formatBenchLabel(currentBench)} · `),
+      el("span", { class: "gx-accent" }, "results overview"),
+    );
+    const benchDisp = document.getElementById("gx-bench-display");
+    if (benchDisp) {
+      const benchmarkField = manifest.find(r => r.benchmark)?.benchmark || "—";
+      benchDisp.textContent = `${benchmarkField} ${currentBench}`;
+    }
+    const tasksDisp = document.getElementById("gx-tasks-display");
+    if (tasksDisp) {
+      const seen = new Set(manifest.map(r => r.nTasks).filter(Boolean));
+      tasksDisp.textContent = seen.size === 1 ? String([...seen][0]) : seen.size > 1 ? "varies" : "—";
+    }
   }
   // Re-fetch each time the user activates the graphs tab.
   document.querySelectorAll('.ui-shell-tab[data-view="graphs"]').forEach(btn => {
@@ -114,14 +199,18 @@
     const W = 640, H = 320, padL = 138, padR = 64, padT = 22, padB = 30;
     const innerW = W - padL - padR, innerH = H - padT - padB;
     const rowH = innerH / order.length;
-    const max = 50;
+    // x-axis ceiling is the benchmark's task count (e.g. 50 for django,
+    // potentially different for sympy / xarray). Derive from the manifest.
+    const max = Math.max(...manifest.map(tasksFor), 50);
+    // Round-friendly gridline step: ~5 lines across the axis.
+    const step = max <= 50 ? 10 : max <= 100 ? 20 : Math.ceil(max / 5 / 10) * 10;
 
-    for (let v = 0; v <= max; v += 10) {
+    for (let v = 0; v <= max; v += step) {
       const x = padL + (v / max) * innerW;
       svg.append(svgEl("line", { class: "gridline", x1: x, y1: padT, x2: x, y2: H - padB }));
       svg.append(svgEl("text", { class: "lbl-axis", x: x, y: H - padB + 14, "text-anchor": "middle" }, String(v)));
     }
-    svg.append(svgEl("text", { class: "lbl-axis", x: padL + innerW / 2, y: H - 4, "text-anchor": "middle" }, "tasks solved · 50 total"));
+    svg.append(svgEl("text", { class: "lbl-axis", x: padL + innerW / 2, y: H - 4, "text-anchor": "middle" }, `tasks solved · ${max} total`));
 
     order.forEach((mode, i) => {
       const r = peaks[mode];
@@ -132,7 +221,7 @@
       if (r) svg.append(svgEl("rect", { x: padL, y: y, width: fillW, height: h, fill: modeColor(mode), opacity: mode === "plugin-dreamed" ? 1 : 0.78 }));
       svg.append(svgEl("rect", { x: padL + 0.5, y: y + 0.5, width: innerW - 1, height: h - 1, fill: "none", stroke: token("--gx-border") }));
       svg.append(svgEl("text", { class: "lbl-major", x: padL - 12, y: y + h / 2 + 4, "text-anchor": "end" }, mode));
-      const label = r ? `${r.solved}/50` : "—";
+      const label = r ? `${r.solved}/${tasksFor(r)}` : "—";
       const valX = Math.max(padL + fillW + 8, padL + 36);
       svg.append(svgEl("text", { class: "lbl-major", x: valX, y: y + h / 2 + 4 }, label));
       if (r) svg.append(svgEl("text", { x: W - padR + 6, y: y + h / 2 + 4, fill: token("--gx-cyan"), "font-family": "Space Mono, monospace", "font-size": 10 }, r.sha));
@@ -144,11 +233,13 @@
     if (note && peakRow) {
       note.replaceChildren(
         document.createTextNode("Peak across all modes: "),
-        el("b", { style: { color: "var(--gx-amber)" } }, `${peakRow.solved}/50`),
+        el("b", { style: { color: "var(--gx-amber)" } }, `${peakRow.solved}/${tasksFor(peakRow)}`),
         document.createTextNode(" on SHA "),
         el("code", null, peakRow.sha),
         document.createTextNode(` (${peakRow.stage}). Each row shows the highest pass-rate any run of that mode achieved across all SHAs.`),
       );
+    } else if (note) {
+      note.textContent = "No complete benchmark runs yet for this sequence.";
     }
   }
 
@@ -190,7 +281,8 @@
       svg.append(svgEl("text", { x: x, y: padT + innerH + 14, "text-anchor": "middle", fill: token("--gx-cyan"), "font-family": "Space Mono, monospace", "font-size": 10 }, sha));
       svg.append(svgEl("text", { class: "lbl-axis", x: x, y: padT + innerH + 28, "text-anchor": "middle" }, shaToMaxTs[sha].slice(4, 8)));
     });
-    svg.append(svgEl("text", { class: "lbl-axis", x: 6, y: padT - 8 }, "solved / 50"));
+    const nTasksLabel = Math.max(...manifest.map(tasksFor), 50);
+    svg.append(svgEl("text", { class: "lbl-axis", x: 6, y: padT - 8 }, `solved / ${nTasksLabel}`));
 
     const modes = ["plugin-dreamed", "plugin-accum", "builtin", "base", "plugin-blank"];
     modes.forEach(mode => {
@@ -240,8 +332,9 @@
       svg.append(svgEl("line", { class: "gridline", x1: padL, y1: y, x2: padL + innerW, y2: y }));
       svg.append(svgEl("text", { class: "lbl-axis", x: padL - 8, y: y + 4, "text-anchor": "end" }, String(v)));
     }
+    const scatterTasksLabel = Math.max(...manifest.map(tasksFor), 50);
     svg.append(svgEl("text", { class: "lbl-axis", x: padL + innerW / 2, y: padT + innerH + 28, "text-anchor": "middle" }, "memory items in store"));
-    svg.append(svgEl("text", { class: "lbl-axis", x: 6, y: padT - 8 }, "solved / 50"));
+    svg.append(svgEl("text", { class: "lbl-axis", x: 6, y: padT - 8 }, `solved / ${scatterTasksLabel}`));
 
     const peakSolved = Math.max(...complete.map(r => r.solved), 0);
     complete.forEach(r => {
@@ -258,7 +351,7 @@
         svg.append(svgEl("text", {
           x: xOf(r.mem || 0) + 9, y: yOf(r.solved) + 4,
           fill: c, "font-size": 11, "font-weight": 600,
-        }, `peak ${r.solved}/50 @ ${r.mem || 0}mem`));
+        }, `peak ${r.solved}/${tasksFor(r)} @ ${r.mem || 0}mem`));
       }
     });
     const legX = padL + innerW - 130;
@@ -278,7 +371,7 @@
     if (!tbody) return;
     tbody.innerHTML = "";
     // Only complete runs where the dream cycle ran — partials would otherwise
-    // surface here as X/50 and misstate the dream pass's relationship to the
+    // surface here as X/N and misstate the dream pass's relationship to the
     // final benchmark grade.
     const dreamed = manifest.filter(r => r.dream === "ran" && r.dreamCounts && isComplete(r)).slice();
     dreamed.sort((a, b) => (b.solved ?? -1) - (a.solved ?? -1));
@@ -299,7 +392,7 @@
         el("td", {
           class: "gx-num-c",
           style: { color: isPeak ? "var(--gx-amber)" : "var(--gx-t100)", fontWeight: isPeak ? "600" : "500" },
-        }, `${r.solved ?? "—"}/50`),
+        }, `${r.solved ?? "—"}/${tasksFor(r)}`),
       ]);
       tbody.appendChild(tr);
     }
@@ -425,14 +518,14 @@
       ? [
           el("span", { style: { color: "var(--gx-coral)" } }, "partial"),
           document.createTextNode(" "),
-          el("span", { style: { color: "var(--gx-t40)" } }, `${r.attempted}/50`),
+          el("span", { style: { color: "var(--gx-t40)" } }, `${r.attempted}/${tasksFor(r)}`),
         ]
       : el("span", {
           style: {
             color: isPeak ? "var(--gx-amber)" : "var(--gx-t100)",
             fontWeight: isPeak ? "600" : "500",
           },
-        }, `${r.solved}/50`));
+        }, `${r.solved}/${tasksFor(r)}`));
     // Duration cell: number + tiny "m"
     const durCell = el("td", { class: "gx-num-c gx-dim" }, [
       r.dur != null ? String(r.dur) : "—",

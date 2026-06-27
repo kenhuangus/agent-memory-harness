@@ -342,16 +342,19 @@
       <header class="gx-header">
         <div>
           <div class="gx-id">▎ benchmark results overview</div>
-          <h1>Django sequence · <span class="gx-accent">results overview</span></h1>
-          <div class="gx-sub">Every <code>results/vdjango_django_sequence-*/</code> directory the harness has written, with stage / agent / cost / dream-cycle metrics. Sortable by every column; re-fetched from disk on every refresh.</div>
+          <h1 id="gx-title">Loading… · <span class="gx-accent">results overview</span></h1>
+          <div class="gx-sub" id="gx-subtitle">Every <code>results/v&lt;benchmark&gt;-*/</code> directory the harness has written, with stage / agent / cost / dream-cycle metrics. Sortable by every column; re-fetched from disk on every refresh.</div>
         </div>
         <div class="gx-meta">
-          <span>Benchmark</span><b>swe-bench-cl django</b>
-          <span>Tasks per run</span><b>50</b>
+          <span>Benchmark</span><b id="gx-bench-display">—</b>
+          <span>Tasks per run</span><b id="gx-tasks-display">—</b>
           <span>Last refresh</span><b id="gx-refresh">—</b>
           <span>Rows</span><b id="gx-rowcount">0</b>
         </div>
       </header>
+
+      <!-- Benchmark sub-tabs — populated from /api/graphs/benchmarks. -->
+      <nav class="gx-subtabs" id="gx-subtabs" role="tablist" aria-label="Benchmark sequence"></nav>
 
       <div class="gx-grid">
         <section class="gx-panel">
