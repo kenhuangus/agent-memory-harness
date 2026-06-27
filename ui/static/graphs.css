@@ -1,0 +1,250 @@
+/* ui · graphs — benchmark results overview tab.
+ *
+ * All class names are prefixed `gx-` so they don't collide with monitor/
+ * inspector styles. Reuses the same dark operator palette as the other views.
+ */
+
+#view-graphs {
+  --gx-bg:        #0b0d10;
+  --gx-card:      #14171c;
+  --gx-raise:     #1a1e25;
+  --gx-border:    #232830;
+  --gx-grid:      #1c2028;
+  --gx-t100:      #f0ebe5;
+  --gx-t60:       #8d9098;
+  --gx-t40:       #5a5e66;
+  --gx-t20:       #353a42;
+  --gx-amber:     #ffb37c;
+  --gx-jade:      #6dd0a4;
+  --gx-gold:      #ffd96b;
+  --gx-coral:     #ff8a8a;
+  --gx-plum:      #b9a0d9;
+  --gx-cyan:      #7cc7d0;
+
+  color: var(--gx-t100);
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 400;
+  font-size: 13px;
+  line-height: 1.5;
+  font-feature-settings: "tnum" 1, "zero" 1, "ss01" 1;
+
+  background-image:
+    linear-gradient(transparent 0, transparent calc(100% - 1px), var(--gx-grid) 100%),
+    linear-gradient(90deg, transparent 0, transparent calc(100% - 1px), var(--gx-grid) 100%);
+  background-size: 32px 32px;
+  min-height: calc(100vh - 56px);
+  padding: 22px 22px 56px;
+}
+
+/* Full-width: no centering, no max-width. The graphs view is operator-dense
+ * by design — let the panels and table fill whatever viewport is available
+ * so all 16 manifest columns stay visible without horizontal scroll. */
+.gx-frame { width: 100%; margin: 0; }
+
+/* --- header --- */
+.gx-header {
+  border: 1px solid var(--gx-border);
+  background: var(--gx-card);
+  padding: 22px 26px;
+  margin-bottom: 18px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 24px;
+  align-items: end;
+}
+.gx-id {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: var(--gx-t40);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.gx-header h1 {
+  font-family: 'Space Mono', monospace;
+  font-weight: 700;
+  font-size: 26px;
+  line-height: 1.1;
+  margin: 0 0 6px;
+  letter-spacing: -0.01em;
+  color: var(--gx-t100);
+}
+.gx-accent { color: var(--gx-amber); }
+.gx-sub { color: var(--gx-t60); font-size: 13px; max-width: 72ch; }
+.gx-meta {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 4px 22px;
+  font-size: 11px;
+  color: var(--gx-t60);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  text-align: right;
+}
+.gx-meta b { color: var(--gx-t100); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+/* --- panel grid --- */
+.gx-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+.gx-panel { border: 1px solid var(--gx-border); background: var(--gx-card); padding: 16px 20px 18px; }
+.gx-panel-full { grid-column: 1 / -1; }
+.gx-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-bottom: 11px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--gx-border);
+}
+.gx-panel-head h2 {
+  font-family: 'Space Mono', monospace;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin: 0;
+  color: var(--gx-t100);
+}
+.gx-num { color: var(--gx-amber); margin-right: 10px; }
+.gx-cap {
+  font-size: 10px;
+  color: var(--gx-t40);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+/* --- notes (per-panel commentary) --- */
+.gx-note {
+  font-size: 11px;
+  color: var(--gx-t60);
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--gx-t20);
+  max-width: 80ch;
+}
+.gx-note b { color: var(--gx-t100); font-weight: 500; }
+.gx-note code {
+  background: var(--gx-raise);
+  padding: 1px 5px;
+  font-size: 10.5px;
+  color: var(--gx-amber);
+}
+
+/* --- tables --- */
+#view-graphs table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  table-layout: auto;
+}
+#view-graphs th, #view-graphs td {
+  text-align: left;
+  padding: 5px 8px 5px 0;
+  border-bottom: 1px dashed var(--gx-t20);
+  white-space: nowrap;
+}
+#view-graphs th {
+  font-weight: 500;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gx-t40);
+  padding-bottom: 8px;
+}
+
+/* Manifest table — 16 columns. Override the auto-scroll wrapper so the
+ * table fills the panel and only shows a scrollbar if the viewport truly
+ * can't hold all columns. */
+#gx-p5 { font-size: 11px; }
+#gx-p5 th, #gx-p5 td { padding-right: 6px; }
+#gx-p5 .gx-num-c { padding-right: 8px !important; }
+#view-graphs th[data-sort-key] {
+  cursor: pointer;
+  user-select: none;
+  transition: color 80ms;
+}
+#view-graphs th[data-sort-key]:hover { color: var(--gx-t100); }
+#view-graphs th[data-sort-key].gx-sort-active { color: var(--gx-amber); }
+#view-graphs th[data-sort-key].gx-sort-active::after {
+  content: " ▼";
+  font-size: 8px;
+  margin-left: 4px;
+  color: var(--gx-amber);
+}
+#view-graphs th[data-sort-key].gx-sort-active.gx-sort-asc::after { content: " ▲"; }
+
+.gx-num-c { text-align: right !important; padding-right: 12px !important; }
+.gx-dim   { color: var(--gx-t60); }
+.gx-k     { color: var(--gx-t100); font-weight: 500; }
+.gx-sha   { color: var(--gx-cyan); font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: 0.02em; }
+
+.gx-table-scroll { overflow-x: auto; }
+
+/* --- tags --- */
+.gx-tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid var(--gx-t20);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--gx-t60);
+}
+.gx-tag.base    { color: var(--gx-t60);  border-color: var(--gx-t20); }
+.gx-tag.builtin { color: var(--gx-plum); border-color: var(--gx-plum); }
+.gx-tag.blank   { color: var(--gx-cyan); border-color: var(--gx-cyan); }
+.gx-tag.accum   { color: var(--gx-gold); border-color: var(--gx-gold); }
+.gx-tag.dreamed { color: var(--gx-amber); border-color: var(--gx-amber); }
+.gx-tag.dreamed-best {
+  background: var(--gx-amber);
+  color: var(--gx-bg);
+  border-color: var(--gx-amber);
+  font-weight: 600;
+}
+
+/* --- svg --- */
+#view-graphs svg { display: block; }
+#view-graphs svg text { fill: var(--gx-t60); font-family: 'IBM Plex Mono', monospace; font-size: 10px; }
+#view-graphs svg text.lbl-major { fill: var(--gx-t100); font-weight: 500; font-size: 11px; }
+#view-graphs svg text.lbl-axis  { fill: var(--gx-t40); letter-spacing: 0.1em; text-transform: uppercase; font-size: 9px; }
+#view-graphs svg .gridline { stroke: var(--gx-grid); stroke-width: 1; }
+#view-graphs svg .axis-line { stroke: var(--gx-border); stroke-width: 1; }
+#view-graphs svg .bar-track { fill: var(--gx-raise); }
+
+/* --- footer --- */
+.gx-footer {
+  margin-top: 22px;
+  padding: 18px 22px;
+  border: 1px solid var(--gx-border);
+  background: var(--gx-card);
+  font-size: 11px;
+  color: var(--gx-t60);
+  line-height: 1.7;
+}
+.gx-footer h3 {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--gx-t100);
+  margin: 0 0 8px;
+}
+.gx-footer p { margin: 6px 0 0; max-width: 90ch; }
+.gx-legend {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px 12px;
+  margin: 10px 0 4px;
+}
+.gx-footer code {
+  background: var(--gx-raise);
+  padding: 1px 5px;
+  font-size: 10.5px;
+  color: var(--gx-amber);
+}
+
+@media (max-width: 1000px) {
+  .gx-grid { grid-template-columns: 1fr; }
+  .gx-header { grid-template-columns: 1fr; }
+  .gx-meta { text-align: left; }
+  .gx-legend { grid-template-columns: 1fr; }
+}

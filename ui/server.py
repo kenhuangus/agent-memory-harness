@@ -76,6 +76,9 @@ _STATIC = {
     # Inspector view
     "/inspector.css":   ("inspector.css","text/css; charset=utf-8"),
     "/inspector.js":    ("inspector.js", "application/javascript; charset=utf-8"),
+    # Graphs view
+    "/graphs.css":      ("graphs.css",   "text/css; charset=utf-8"),
+    "/graphs.js":       ("graphs.js",    "application/javascript; charset=utf-8"),
 }
 
 
@@ -106,6 +109,16 @@ class UIHandler(BaseHTTPRequestHandler):
         path = parsed.path
         if path in _STATIC:
             return self._serve_static(path)
+
+        # Graphs route — Django benchmark results manifest. Re-scans the
+        # results dir on every call so freshly merged result directories
+        # appear next refresh (no regen step). Independent of the loaded
+        # substrate; degrades to an empty manifest when results_root is unset.
+        if path == "/api/graphs/django":
+            root = self.state.results_root
+            from . import aggregator as _agg
+            manifest = _agg.django_manifest(root) if root else []
+            return self._json({"manifest": manifest})
 
         # Monitor routes
         if path == "/api/runs":

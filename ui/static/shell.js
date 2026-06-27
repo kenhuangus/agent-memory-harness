@@ -12,7 +12,7 @@
 (() => {
   "use strict";
 
-  const VIEWS = ["monitor", "inspector"];
+  const VIEWS = ["monitor", "inspector", "graphs"];
   const STORAGE_KEY = "ui.view";
 
   const tabs = Array.from(document.querySelectorAll(".ui-shell-tab"));
@@ -30,7 +30,9 @@
     if (meta) {
       meta.textContent = view === "monitor"
         ? "live operator dashboard"
-        : "memory store inspector";
+        : view === "inspector"
+          ? "memory store inspector"
+          : "benchmark results overview";
     }
     try { localStorage.setItem(STORAGE_KEY, view); } catch (_) { /* private mode */ }
     if (window.location.hash !== `#${view}`) {

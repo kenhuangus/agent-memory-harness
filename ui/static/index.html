@@ -11,6 +11,7 @@
   <!-- Both views' stylesheets load up front; visibility toggles via body class. -->
   <link rel="stylesheet" href="/monitor.css" />
   <link rel="stylesheet" href="/inspector.css" />
+  <link rel="stylesheet" href="/graphs.css" />
   <link rel="stylesheet" href="/shell.css" />
 </head>
 <body class="ui-mode-monitor">
@@ -28,6 +29,7 @@
     <nav class="ui-shell-tabs" role="tablist">
       <button class="ui-shell-tab" data-view="monitor"   role="tab" aria-selected="true">Monitor</button>
       <button class="ui-shell-tab" data-view="inspector" role="tab" aria-selected="false">Inspector</button>
+      <button class="ui-shell-tab" data-view="graphs"    role="tab" aria-selected="false">Graphs</button>
     </nav>
     <div class="ui-shell-meta" id="ui-shell-meta">live operator dashboard</div>
   </header>
@@ -332,10 +334,100 @@
     <div id="toast" class="toast hidden"></div>
   </div>
 
+  <!-- ============================================================ -->
+  <!-- GRAPHS VIEW — benchmark results overview -->
+  <!-- ============================================================ -->
+  <div class="ui-view" id="view-graphs">
+    <div class="gx-frame">
+      <header class="gx-header">
+        <div>
+          <div class="gx-id">▎ benchmark results overview</div>
+          <h1>Django sequence · <span class="gx-accent">results overview</span></h1>
+          <div class="gx-sub">Every <code>results/vdjango_django_sequence-*/</code> directory the harness has written, with stage / agent / cost / dream-cycle metrics. Sortable by every column; re-fetched from disk on every refresh.</div>
+        </div>
+        <div class="gx-meta">
+          <span>Benchmark</span><b>swe-bench-cl django</b>
+          <span>Tasks per run</span><b>50</b>
+          <span>Last refresh</span><b id="gx-refresh">—</b>
+          <span>Rows</span><b id="gx-rowcount">0</b>
+        </div>
+      </header>
+
+      <div class="gx-grid">
+        <section class="gx-panel">
+          <div class="gx-panel-head"><h2><span class="gx-num">01</span> Peak pass-rate × mode</h2><span class="gx-cap">best-of cohort</span></div>
+          <svg id="gx-p1" viewBox="0 0 640 320" preserveAspectRatio="xMidYMid meet" width="100%" height="320"></svg>
+          <div class="gx-note" id="gx-p1-note"></div>
+        </section>
+        <section class="gx-panel">
+          <div class="gx-panel-head"><h2><span class="gx-num">02</span> Pass-rate across SHA timeline</h2><span class="gx-cap">date-ordered</span></div>
+          <svg id="gx-p2" viewBox="0 0 640 320" preserveAspectRatio="xMidYMid meet" width="100%" height="320"></svg>
+          <div class="gx-note" id="gx-p2-note"></div>
+        </section>
+        <section class="gx-panel">
+          <div class="gx-panel-head"><h2><span class="gx-num">03</span> Memory count × pass-rate</h2><span class="gx-cap">does more memory help?</span></div>
+          <svg id="gx-p3" viewBox="0 0 640 320" preserveAspectRatio="xMidYMid meet" width="100%" height="320"></svg>
+          <div class="gx-note" id="gx-p3-note"></div>
+        </section>
+        <section class="gx-panel">
+          <div class="gx-panel-head"><h2><span class="gx-num">04</span> Dream cycle metrics — when it ran</h2><span class="gx-cap">v2 paths default on, PR #229</span></div>
+          <table id="gx-p4"><thead><tr><th>sha</th><th>seed</th><th class="gx-num-c">in</th><th class="gx-num-c">retired</th><th class="gx-num-c">pruned</th><th class="gx-num-c">contr</th><th class="gx-num-c">calls</th><th class="gx-num-c">must_know</th><th class="gx-num-c">solved</th></tr></thead><tbody></tbody></table>
+          <div class="gx-note" id="gx-p4-note"></div>
+        </section>
+
+        <section class="gx-panel gx-panel-full">
+          <div class="gx-panel-head"><h2><span class="gx-num">05</span> Full run manifest — sortable</h2><span class="gx-cap">click any column header</span></div>
+          <div class="gx-table-scroll">
+          <table id="gx-p5">
+            <thead><tr>
+              <th data-sort-key="ts">when</th>
+              <th data-sort-key="sha">sha</th>
+              <th data-sort-key="benchmark">bench</th>
+              <th data-sort-key="stage">stage</th>
+              <th data-sort-key="harness">harness</th>
+              <th data-sort-key="agent">agent</th>
+              <th data-sort-key="ddVariant">dd-prompt</th>
+              <th data-sort-key="ddModel">dd-model</th>
+              <th class="gx-num-c" data-sort-key="attempted">tasks</th>
+              <th class="gx-num-c" data-sort-key="budget">budget</th>
+              <th class="gx-num-c" data-sort-key="cost">cost</th>
+              <th class="gx-num-c" data-sort-key="tokens">tok in/out</th>
+              <th class="gx-num-c" data-sort-key="dur">dur</th>
+              <th class="gx-num-c" data-sort-key="mem">mem</th>
+              <th data-sort-key="dream">dream</th>
+              <th class="gx-num-c" data-sort-key="solved">solved</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+          </div>
+          <div class="gx-note" id="gx-p5-note"></div>
+        </section>
+      </div>
+
+      <footer class="gx-footer">
+        <h3>▎ legend &amp; methodology</h3>
+        <div class="gx-legend">
+          <span><span class="gx-tag base">base</span> no recall surface</span>
+          <span><span class="gx-tag builtin">builtin</span> Claude Code built-in</span>
+          <span><span class="gx-tag blank">plugin-blank</span> fresh memory each run</span>
+          <span><span class="gx-tag accum">plugin-accum</span> memory carries forward</span>
+          <span><span class="gx-tag dreamed">plugin-dreamed</span> accum + dream consolidation</span>
+        </div>
+        <p>
+          Data extracted from every <code>results/vdjango_django_sequence-*/swe_bench_cl-*.json</code> on
+          disk via <code>ui.aggregator.django_manifest</code>. Refreshed on tab switch. <b>n = 1 per cell</b> —
+          single bench run each. Daydream extraction-variant is inferred from SHA history (the artifact does
+          not yet record it).
+        </p>
+      </footer>
+    </div>
+  </div>
+
   <!-- Shell view-switcher logic comes first so the body class is set before
        monitor.js's Chart.js initialization measures any canvas dimensions. -->
   <script src="/shell.js"></script>
   <script src="/monitor.js"></script>
   <script src="/inspector.js"></script>
+  <script src="/graphs.js"></script>
 </body>
 </html>

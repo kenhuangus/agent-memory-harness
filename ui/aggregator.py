@@ -834,3 +834,146 @@ def _format_label(run_id: str) -> str:
         rest = "-".join(parts[1:])
         return f"{seq} · {rest}"
     return name
+
+
+# --------------------------------------------------------------------------- #
+# Django results manifest (graphs view) — added 2026-06-27
+#
+# Scans `results/vdjango_django_sequence-*/` and returns one row per result
+# directory with everything the graphs view needs. Re-scanned on every API
+# call, so freshly-merged result dirs appear next refresh — no regen step.
+#
+# The daydream extraction-variant (V0..V5) is NOT recorded in pipeline output
+# today; we infer it from SHA history. The mapping below mirrors KB-dreaming
+# entry 14 + PR #238/#239 bodies. Folding the live variant into the pipeline
+# writer would let us drop the override map.
+# --------------------------------------------------------------------------- #
+
+#: SHA -> daydream variant, inferred from .env state at run time. See note above.
+_DJANGO_DD_VARIANT_BY_SHA: dict[str, str] = {
+    # V5 cohort: 2d80f9f (#238 merge) onward
+    "d68878c": "V5", "1763e51": "V5", "04c04d7": "V5", "2d80f9f": "V5",
+    # V4 cohort: 81378e9 only (#235 merge)
+    "81378e9": "V4",
+}
+
+
+def _safe_count(db_path: Path) -> int | None:
+    try:
+        import sqlite3
+        con = sqlite3.connect(str(db_path)); con.row_factory = None
+        n = con.execute("SELECT COUNT(*) FROM items").fetchone()[0]
+        con.close()
+        return int(n)
+    except Exception:
+        return None
+
+
+def _django_dir_suffix(name: str) -> str | None:
+    """`-accum` / `-blank` / `-2` etc. for the few results dirs that have one,
+    used to distinguish plugin-dreamed seed runs at the same SHA."""
+    # vdjango_django_sequence-plugin-dreamed-04c04d7-1-accum -> accum
+    # vdjango_django_sequence-plugin-dreamed-1763e51-2       -> run2
+    tail = name.rsplit("-", 2)
+    if len(tail) < 2:
+        return None
+    suffix = tail[-1]
+    if suffix in ("accum", "blank"):
+        return suffix
+    if suffix.isdigit() and suffix != "1":
+        return f"run{suffix}"
+    if suffix == "1":
+        # Only label "run1" if there's also a "-2" sibling at the same SHA;
+        # caller dedupes — leaving the disambiguation to render-time keeps
+        # the schema simple.
+        return None
+    return None
+
+
+def django_manifest(results_root: Path) -> list[dict[str, Any]]:
+    """Return one manifest row per `results/vdjango_django_sequence-*/` directory.
+
+    Re-scans the filesystem on each call — adding a new result directory + JSON
+    is the only "regen" step. Rows are returned in newest-timestamp-first order.
+    """
+    rows: list[dict[str, Any]] = []
+    if not results_root.is_dir():
+        return rows
+    for d in sorted(results_root.iterdir()):
+        if not d.is_dir() or not d.name.startswith("vdjango_django_sequence-"):
+            continue
+        db = d / "_memory" / ".cookbook-memory" / "memory.db"
+        n_mem = _safe_count(db) if db.exists() else 0
+        jsons = sorted(d.glob("swe_bench_cl-*.json"))
+        if not jsons:
+            # incomplete dir (no benchmark output); skip — manifest is for results
+            continue
+        swe = jsons[-1]
+        try:
+            with swe.open() as f:
+                data = json.load(f)
+        except Exception:
+            continue
+        p = data.get("pipeline", {}) or {}
+        dream_cfg = p.get("dream", {}) if isinstance(p.get("dream"), dict) else {}
+        dream_block = data.get("dream", {}) if isinstance(data.get("dream"), dict) else {}
+        runs = data.get("runs", []) or []
+        r0 = runs[0] if runs else {}
+        tasks = r0.get("tasks", []) or []
+        solved = sum(1 for t in tasks if t.get("resolved")) if tasks else None
+        attempted = r0.get("n_tasks") or len(tasks)
+        started = p.get("started_at")
+        ended = p.get("ended_at")
+        dur = round((ended - started) / 60, 1) if (started and ended) else None
+        if "status" in dream_block:
+            dream_outcome = "notrun"
+            dream_counts = None
+        elif "counts" in dream_block:
+            c = dream_block["counts"]
+            dream_outcome = "ran"
+            dream_counts = {
+                "retired": c.get("items_retired", 0),
+                "pruned": c.get("items_pruned", 0),
+                "contradicted": c.get("items_contradicted", 0),
+                "calls": c.get("contradiction_llm_calls", 0),
+                "must_known": c.get("items_must_known", 0),
+            }
+        else:
+            dream_outcome = "notrun"
+            dream_counts = None
+        sha = p.get("git_sha") or ""
+        seed = _django_dir_suffix(d.name)
+        rows.append({
+            "name": d.name,
+            "ts": p.get("timestamp"),
+            "sha": sha,
+            "benchmark": p.get("benchmark") or "—",
+            "stage": p.get("stage"),
+            "harness": p.get("harness", "claude-code"),
+            "agent": p.get("model"),
+            "ddVariant": _DJANGO_DD_VARIANT_BY_SHA.get(sha, "V2"),
+            "ddModel": (dream_cfg.get("model") or "deepseek/deepseek-v4-flash").replace("deepseek/", ""),
+            "mem": n_mem,
+            "dream": dream_outcome,
+            "dreamCounts": dream_counts,
+            "solved": solved,
+            "attempted": attempted,
+            "cost": r0.get("cost_usd"),
+            "tokIn": r0.get("tokens_in"),
+            "tokOut": r0.get("tokens_out"),
+            "dur": dur,
+            "budget": p.get("budget_usd") or 10.0,
+            "seed": seed,
+            "partial": (attempted or 0) < (p.get("n_tasks") or 50),
+        })
+    # Multi-runs at the same SHA + stage (e.g. plugin-dreamed-1763e51-1 and -2)
+    # need explicit seed labels when neither dir name carries -accum/-blank.
+    by_key: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for r in rows:
+        by_key.setdefault((r["sha"], r["stage"]), []).append(r)
+    for (_sha, _stage), group in by_key.items():
+        if len(group) > 1 and all(r["seed"] is None for r in group):
+            for i, r in enumerate(sorted(group, key=lambda x: x["ts"] or ""), start=1):
+                r["seed"] = f"run{i}"
+    rows.sort(key=lambda r: r["ts"] or "", reverse=True)
+    return rows
