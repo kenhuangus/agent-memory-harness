@@ -525,7 +525,7 @@ def test_v5_prompt_body_does_not_advertise_contradiction() -> None:
 # --------------------------------------------------------------------------- #
 
 _DEDUP_SYSTEM_PROMPT_SHA256 = (
-    "09ce839fb8a5e6c5468789dabe07fc084b62c2c0ad9f3438b304933403fd1e4d"
+    "572ac7dee1b288bc28af22a37b0c15ba0736c427982247d58aeeb4c64f9d1ffb"
 )
 
 
@@ -568,13 +568,26 @@ def test_dedup_prompt_distinguishes_duplicates_from_contradictions() -> None:
     """ADR-028 §2 PR #2e — the prompt MUST explicitly tell the LLM that
     contradicting pairs are NOT duplicates, so a flat disagreement doesn't
     get silently merged (which would delete one side and bypass the
-    contradiction-as-data preservation in ADR-028 §4)."""
-    text = DEDUP_SYSTEM_PROMPT.lower()
-    # Specific phrasing isn't pinned — only that the prompt explicitly
-    # excludes contradictions from the dedup criterion.
-    assert "contradict" in text, (
-        "DEDUP_SYSTEM_PROMPT must explicitly distinguish duplicates from "
-        "contradictions or it'll silently merge disagreements."
+    contradiction-as-data preservation in ADR-028 §4).
+
+    The test enforces both directions of the distinction to catch the
+    inverted-wording bug class CodeRabbit flagged on PR #223:
+      - prompt must mention `contradict` (the concept appears at all)
+      - prompt must assert the proper direction (a contradiction is NOT
+        a duplicate). The presence of `"NOT a duplicate"` (case sensitive
+        on `NOT`) ensures we don't accidentally inverted-word the
+        constraint into "contradictions are not contradictions" which
+        would silently mislead the LLM.
+    """
+    text = DEDUP_SYSTEM_PROMPT
+    assert "contradict" in text.lower(), (
+        "DEDUP_SYSTEM_PROMPT must explicitly mention contradictions."
+    )
+    assert "NOT a duplicate" in text, (
+        "DEDUP_SYSTEM_PROMPT must explicitly assert that a disagreement "
+        "is NOT a duplicate. Without this, an inverted phrasing could "
+        "silently mislead the LLM into merging contradictions as dupes "
+        "and bypassing ADR-028 §4 contradiction-as-data preservation."
     )
 
 
