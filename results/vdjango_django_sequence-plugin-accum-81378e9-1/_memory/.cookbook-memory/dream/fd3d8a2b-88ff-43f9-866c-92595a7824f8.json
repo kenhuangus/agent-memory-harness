@@ -1,0 +1,1 @@
+{"cursor": 542175, "last_summary": "Using __qualname__ is backward-compatible because for non-nested classes __qualname__ equals __name__; for nested classes it includes the outer class qualifiers.", "recent_memory_ids": ["mem_ea3f0f53", "mem_4b3585e4"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

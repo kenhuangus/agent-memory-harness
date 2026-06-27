@@ -1,0 +1,1 @@
+{"cursor": 712674, "last_summary": "The test model UUIDPKModel (UUIDField primary_key=True, default=uuid.uuid4) and PrimaryKeyUUIDModel in the test suite can be used to reproduce the explicit pk save regression.", "recent_memory_ids": ["mem_54243a7a", "mem_7b1ee8a3", "mem_6959e834"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

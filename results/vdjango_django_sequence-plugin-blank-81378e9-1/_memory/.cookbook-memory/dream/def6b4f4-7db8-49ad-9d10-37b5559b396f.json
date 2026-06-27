@@ -1,0 +1,1 @@
+{"cursor": 451381, "last_summary": "The `use_required_attribute` documentation in `docs/ref/forms/widgets.txt` now lists both `FileInput` and `ClearableFileInput` as returning `False` when `initial` is set.", "recent_memory_ids": ["mem_f819f409", "mem_874931f1", "mem_7f89b4b5"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

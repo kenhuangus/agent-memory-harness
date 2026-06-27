@@ -1,0 +1,1 @@
+{"cursor": 889876, "last_summary": "Options.contribute_to_class applies app_label from a model's Meta class via setattr; app_label must be lowercased after application to match the normalized registry key.", "recent_memory_ids": ["mem_eafde96a", "mem_378aa732", "mem_24338454"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

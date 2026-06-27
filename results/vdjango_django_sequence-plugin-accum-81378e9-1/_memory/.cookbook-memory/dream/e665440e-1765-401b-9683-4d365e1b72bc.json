@@ -1,0 +1,1 @@
+{"cursor": 692160, "last_summary": "Test models for enum field fix: Article (CharField with TextChoices) and Task (IntegerField with IntegerChoices) in tests/model_enums/models.py.", "recent_memory_ids": ["mem_8adc6c0d", "mem_70e83f7f"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
