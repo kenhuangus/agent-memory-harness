@@ -1,0 +1,1 @@
+{"cursor": 227135, "last_summary": "`subprocess.run(env=None)` inherits the parent process environment, while `subprocess.run(env={})` uses an empty environment, discarding all `os.environ` variables like PATH.", "recent_memory_ids": ["mem_9176f336", "mem_a87dec71"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

@@ -1,0 +1,1 @@
+{"cursor": 319609, "last_summary": "A new test `test_memoryview_content` was added to `tests/httpwrappers/tests.py` covering memoryview passed via constructor and via the `content` property setter.", "recent_memory_ids": ["mem_a12b6b7b", "mem_b60424b2"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

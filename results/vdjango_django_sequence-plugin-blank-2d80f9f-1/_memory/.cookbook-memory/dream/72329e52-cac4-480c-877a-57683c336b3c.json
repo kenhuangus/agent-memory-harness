@@ -1,0 +1,1 @@
+{"cursor": 206598, "last_summary": "The fix for the runshell os.environ bug is a one-line change in `django/db/backends/base/client.py` line 24: change `if env:` to `if env is not None:`.", "recent_memory_ids": ["mem_ba7268cc"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

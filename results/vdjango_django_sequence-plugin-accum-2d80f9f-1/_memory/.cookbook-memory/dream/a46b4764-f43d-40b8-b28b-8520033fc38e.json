@@ -1,0 +1,1 @@
+{"cursor": 385682, "last_summary": "The affected file is `django/db/backends/sqlite3/base.py`, method `check_constraints` in class `DatabaseWrapper`, which is called by `loaddata` after inserting fixture data.", "recent_memory_ids": ["mem_1972e42b", "mem_0daa5e0b", "mem_ba76cd6c"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

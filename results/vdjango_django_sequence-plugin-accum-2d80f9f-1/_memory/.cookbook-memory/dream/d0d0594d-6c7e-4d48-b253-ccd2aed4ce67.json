@@ -1,0 +1,1 @@
+{"cursor": 274215, "last_summary": "The `model._meta.pk.attname` convention is used in Django's deletion code to refer to the PK field attribute name when clearing it with `setattr`.", "recent_memory_ids": ["mem_88e7eed9", "mem_ef18478e"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

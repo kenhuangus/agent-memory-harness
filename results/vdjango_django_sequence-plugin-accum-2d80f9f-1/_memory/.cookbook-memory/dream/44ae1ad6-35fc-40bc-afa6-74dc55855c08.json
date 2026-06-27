@@ -1,0 +1,1 @@
+{"cursor": 259016, "last_summary": "Django forms._clean_fields uses get_initial_for_field(field, name) when field.disabled is True, ignoring submitted data for disabled fields.", "recent_memory_ids": ["mem_1a082d8c", "mem_feff33b6", "mem_05f4614c"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

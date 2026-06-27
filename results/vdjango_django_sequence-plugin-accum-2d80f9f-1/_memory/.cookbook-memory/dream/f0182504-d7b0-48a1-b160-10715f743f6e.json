@@ -1,0 +1,1 @@
+{"cursor": 306896, "last_summary": "AbstractBaseUser provides get_email_field_name() which returns cls.EMAIL_FIELD if defined, otherwise 'email'. This method is used to safely retrieve the email attribute from any user model.", "recent_memory_ids": ["mem_52a6a6f2"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

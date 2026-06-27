@@ -1,0 +1,1 @@
+{"cursor": 274574, "last_summary": "The default cull_frequency for Django's database cache backend is 3, and the default max_entries is 300, configured in BaseCache.__init__.", "recent_memory_ids": ["mem_9847a93c"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
