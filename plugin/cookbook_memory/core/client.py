@@ -75,6 +75,11 @@ class _Engine:
 
         self._store = build_store(store_path)
         self._n = 0
+        # Observability: the contract seam stamps the effective profile + recall score floor on the store
+        # so a run's retrieval config is unambiguous on disk (surfaced in the recall event meta). Read
+        # defensively (a fake store in a test won't carry them) — the plugin still treats the store as a box.
+        self.profile = getattr(self._store, "profile_name", None)
+        self.recall_min_score = getattr(self._store, "recall_min_score", None)
 
     def recall(self, query: str, *, k: int, as_of: Optional[float]) -> list[Hit]:
         items = self._store.search(query, k=k, as_of=as_of)
@@ -181,7 +186,9 @@ class MemoryClient:
         # second store lookup. Additive: does not change the event's top-level shape.
         self.events.emit("recall", session_id=self.session_id, query=query, ts=ts,
                          ids=[h.id for h in hits], k=kk, n=len(hits),
-                         hits=[h.to_dict() for h in hits])
+                         hits=[h.to_dict() for h in hits],
+                         profile=getattr(engine, "profile", None),
+                         min_score=getattr(engine, "recall_min_score", None))
         return hits
 
     def remember(
