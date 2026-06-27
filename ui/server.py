@@ -76,6 +76,9 @@ _STATIC = {
     # Inspector view
     "/inspector.css":   ("inspector.css","text/css; charset=utf-8"),
     "/inspector.js":    ("inspector.js", "application/javascript; charset=utf-8"),
+    # Graphs view
+    "/graphs.css":      ("graphs.css",   "text/css; charset=utf-8"),
+    "/graphs.js":       ("graphs.js",    "application/javascript; charset=utf-8"),
 }
 
 
@@ -106,6 +109,29 @@ class UIHandler(BaseHTTPRequestHandler):
         path = parsed.path
         if path in _STATIC:
             return self._serve_static(path)
+
+        # Graphs routes — re-scan the results dir on every call so freshly
+        # merged result directories appear next refresh (no regen step).
+        # Independent of the loaded substrate; degrades to empty when
+        # results_root is unset.
+        if path == "/api/graphs/benchmarks":
+            root = self.state.results_root
+            from . import aggregator as _agg
+            benchmarks = _agg.discover_benchmarks(root) if root else []
+            return self._json({"benchmarks": benchmarks})
+        if path == "/api/graphs/manifest":
+            root = self.state.results_root
+            from . import aggregator as _agg
+            qs = parse_qs(parsed.query)
+            prefix = (qs.get("bench") or ["django_django_sequence"])[0]
+            manifest = _agg.benchmark_manifest(root, prefix) if root else []
+            return self._json({"manifest": manifest, "bench": prefix})
+        if path == "/api/graphs/django":
+            # Back-compat for the pre-multi-benchmark client.
+            root = self.state.results_root
+            from . import aggregator as _agg
+            manifest = _agg.django_manifest(root) if root else []
+            return self._json({"manifest": manifest})
 
         # Monitor routes
         if path == "/api/runs":

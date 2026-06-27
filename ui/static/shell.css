@@ -67,11 +67,12 @@
 .ui-view { display: none; }
 body.ui-mode-monitor   #view-monitor   { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 body.ui-mode-inspector #view-inspector { display: block; }
+body.ui-mode-graphs    #view-graphs    { display: block; }
 
-/* Both views share monitor.css's dark operator palette + scanlines + radial
-   gradients. No per-view background override needed — only display toggles. */
+/* All views share the dark operator palette. No per-view background override. */
 body.ui-mode-monitor,
-body.ui-mode-inspector {
+body.ui-mode-inspector,
+body.ui-mode-graphs {
   background: #0a0d10;
 }
 

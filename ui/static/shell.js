@@ -12,7 +12,7 @@
 (() => {
   "use strict";
 
-  const VIEWS = ["monitor", "inspector"];
+  const VIEWS = ["monitor", "inspector", "graphs"];
   const STORAGE_KEY = "ui.view";
 
   const tabs = Array.from(document.querySelectorAll(".ui-shell-tab"));
@@ -20,7 +20,9 @@
 
   function setView(view) {
     if (!VIEWS.includes(view)) view = "monitor";
-    document.body.classList.remove("ui-mode-monitor", "ui-mode-inspector");
+    // Clear every view's body-class so adding a new VIEWS entry doesn't
+    // leave stale ui-mode-X on body when switching away from it.
+    VIEWS.forEach(v => document.body.classList.remove(`ui-mode-${v}`));
     document.body.classList.add(`ui-mode-${view}`);
     tabs.forEach(t => {
       const active = t.dataset.view === view;
@@ -30,7 +32,9 @@
     if (meta) {
       meta.textContent = view === "monitor"
         ? "live operator dashboard"
-        : "memory store inspector";
+        : view === "inspector"
+          ? "memory store inspector"
+          : "benchmark results overview";
     }
     try { localStorage.setItem(STORAGE_KEY, view); } catch (_) { /* private mode */ }
     if (window.location.hash !== `#${view}`) {
