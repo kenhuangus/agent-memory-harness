@@ -1496,37 +1496,42 @@ def test_neighborhood_contradiction_fails_open_on_llm_exception(memory_store_dir
 # §O — ADR-dreaming-028 §2 PR #2d feature-flag routing
 # --------------------------------------------------------------------------- #
 
-def test_use_neighborhood_contradiction_default_off(monkeypatch: pytest.MonkeyPatch) -> None:
-    """ADR-028 §2 PR #2d — default unset → False (v1 batch path)."""
+def test_use_neighborhood_contradiction_default_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ADR-028 §2 PR #2h (flip-on-trust) — default unset → True (v2 path).
+    Replaces the pre-#2h `_default_off` test; v2 is now the default."""
     from memeval.dreaming.worker import _read_use_neighborhood_contradiction
     monkeypatch.delenv("DREAM_CONTRADICTION_NEIGHBORHOOD", raising=False)
-    assert _read_use_neighborhood_contradiction() is False
-
-
-def test_use_neighborhood_contradiction_flag_one_enables(monkeypatch: pytest.MonkeyPatch) -> None:
-    """ADR-028 §2 PR #2d — exactly `"1"` enables the v2 neighborhood path."""
-    from memeval.dreaming.worker import _read_use_neighborhood_contradiction
-    monkeypatch.setenv("DREAM_CONTRADICTION_NEIGHBORHOOD", "1")
     assert _read_use_neighborhood_contradiction() is True
 
 
-def test_use_neighborhood_contradiction_other_values_read_as_off(monkeypatch: pytest.MonkeyPatch) -> None:
-    """ADR-028 §2 PR #2d — strict equality with `"1"` only. "true", "yes",
-    misspellings, "0" etc. all read as False. Keeps the flag deliberate;
-    an operator typing the wrong word doesn't silently flip consolidation."""
+def test_use_neighborhood_contradiction_zero_disables(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ADR-028 §2 PR #2h — exactly ``"0"`` is the kill switch back to v1.
+    Same shape as `DREAM_ITEM_RETENTION_DAYS=0` (the only operationally
+    meaningful disabled value)."""
     from memeval.dreaming.worker import _read_use_neighborhood_contradiction
-    for val in ("0", "", "true", "True", "yes", "on", "TRUE", " 1 ", "1 "):
+    monkeypatch.setenv("DREAM_CONTRADICTION_NEIGHBORHOOD", "0")
+    assert _read_use_neighborhood_contradiction() is False
+
+
+def test_use_neighborhood_contradiction_other_values_read_as_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ADR-028 §2 PR #2h — only ``"0"`` falls back to v1. Any other value
+    (including the historical `"1"` enable token + wrong-word misspellings)
+    keeps v2. Replaces the pre-#2h `_other_values_read_as_off` test."""
+    from memeval.dreaming.worker import _read_use_neighborhood_contradiction
+    for val in ("1", "", "true", "True", "yes", "on", "TRUE", " 0 ", "0 ", "00"):
         monkeypatch.setenv("DREAM_CONTRADICTION_NEIGHBORHOOD", val)
-        assert _read_use_neighborhood_contradiction() is False, (
-            f"DREAM_CONTRADICTION_NEIGHBORHOOD={val!r} must read as off"
+        assert _read_use_neighborhood_contradiction() is True, (
+            f"DREAM_CONTRADICTION_NEIGHBORHOOD={val!r} must read as v2-on; "
+            "only the literal kill string \"0\" disables"
         )
 
 
-def test_dream_routes_to_v1_path_when_flag_off(
+def test_dream_routes_to_v2_path_by_default(
     memory_store_dir: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """ADR-028 §2 PR #2d — when flag is off (default), `dream()` calls
-    `_detect_contradictions` (v1) NOT `_detect_contradictions_neighborhood`."""
+    """ADR-028 §2 PR #2h (flip-on-trust) — when env is unset, `dream()` calls
+    `_detect_contradictions_neighborhood` (v2). Replaces the pre-#2h
+    `_routes_to_v1_path_when_flag_off` test: v2 is now the default."""
     from memeval.dreaming import worker as worker_mod
 
     monkeypatch.delenv("DREAM_CONTRADICTION_NEIGHBORHOOD", raising=False)
@@ -1545,23 +1550,24 @@ def test_dream_routes_to_v1_path_when_flag_off(
 
     monkeypatch.setattr(worker_mod, "_detect_contradictions", spy_v1)
     monkeypatch.setattr(worker_mod, "_detect_contradictions_neighborhood", spy_v2)
-    monkeypatch.setenv("DREAM_CONTRADICTION_MAX_CALLS", "1")  # ensure pass is exercised
+    monkeypatch.setenv("DREAM_CONTRADICTION_MAX_CALLS", "1")
 
     store = _seed(_FIXED_NOW, ("a", "x", 1), ("b", "y", 1))
     worker_mod.DreamingWorker(store).run()
 
-    assert v1_called[0] == 1, "v1 contradiction path should be called once"
-    assert v2_called[0] == 0, "v2 path must NOT be called when flag is off"
+    assert v2_called[0] == 1, "v2 neighborhood path should be the default"
+    assert v1_called[0] == 0, "v1 path must NOT be called when env is unset"
 
 
-def test_dream_routes_to_v2_path_when_flag_on(
+def test_dream_routes_to_v1_path_when_env_explicitly_zero(
     memory_store_dir: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """ADR-028 §2 PR #2d — when `DREAM_CONTRADICTION_NEIGHBORHOOD=1`, `dream()`
-    calls `_detect_contradictions_neighborhood` (v2) NOT the v1 path."""
+    """ADR-028 §2 PR #2h — `DREAM_CONTRADICTION_NEIGHBORHOOD=0` is the kill
+    switch back to v1. Mirrors the pre-#2h `_routes_to_v2_path_when_flag_on`
+    test, inverted: the env value, not its presence, gates routing."""
     from memeval.dreaming import worker as worker_mod
 
-    monkeypatch.setenv("DREAM_CONTRADICTION_NEIGHBORHOOD", "1")
+    monkeypatch.setenv("DREAM_CONTRADICTION_NEIGHBORHOOD", "0")
     monkeypatch.setenv("DREAM_CONTRADICTION_MAX_CALLS", "1")
 
     v1_called = [0]
@@ -1582,8 +1588,8 @@ def test_dream_routes_to_v2_path_when_flag_on(
     store = _seed(_FIXED_NOW, ("a", "x", 1), ("b", "y", 1))
     worker_mod.DreamingWorker(store).run()
 
-    assert v2_called[0] == 1, "v2 neighborhood path should be called once"
-    assert v1_called[0] == 0, "v1 path must NOT be called when flag is on"
+    assert v1_called[0] == 1, "v1 kill-switch path should be called"
+    assert v2_called[0] == 0, "v2 path must NOT be called when env is \"0\""
 
 
 # --------------------------------------------------------------------------- #
@@ -1747,40 +1753,44 @@ def test_dedup_neighborhood_fails_open_on_llm_exception(memory_store_dir: Path) 
 # §Q — ADR-dreaming-028 §2 PR #2f dedup-neighborhood feature-flag wiring
 # --------------------------------------------------------------------------- #
 
-def test_use_neighborhood_dedup_default_off(monkeypatch: pytest.MonkeyPatch) -> None:
-    """ADR-028 §2 PR #2f — default unset → False (lexical-dedup-only)."""
+def test_use_neighborhood_dedup_default_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ADR-028 §2 PR #2h (flip-on-trust) — default unset → True. Replaces
+    the pre-#2h `_default_off` test; the LLM dedup pre-pass is now default."""
     from memeval.dreaming.worker import _read_use_neighborhood_dedup
     monkeypatch.delenv("DREAM_DEDUP_NEIGHBORHOOD", raising=False)
-    assert _read_use_neighborhood_dedup() is False
-
-
-def test_use_neighborhood_dedup_flag_one_enables(monkeypatch: pytest.MonkeyPatch) -> None:
-    """ADR-028 §2 PR #2f — exactly `"1"` enables the dedup pass."""
-    from memeval.dreaming.worker import _read_use_neighborhood_dedup
-    monkeypatch.setenv("DREAM_DEDUP_NEIGHBORHOOD", "1")
     assert _read_use_neighborhood_dedup() is True
 
 
-def test_use_neighborhood_dedup_other_values_read_as_off(monkeypatch: pytest.MonkeyPatch) -> None:
-    """ADR-028 §2 PR #2f — strict equality with `"1"` only (parallel to the
-    contradiction flag). Wrong spellings read as off — operator typos don't
-    silently flip dedup behavior."""
+def test_use_neighborhood_dedup_zero_disables(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ADR-028 §2 PR #2h — ``"0"`` is the kill switch to lexical-only dedup."""
     from memeval.dreaming.worker import _read_use_neighborhood_dedup
-    for val in ("0", "", "true", "True", "yes", "on", "TRUE", " 1 ", "1 "):
+    monkeypatch.setenv("DREAM_DEDUP_NEIGHBORHOOD", "0")
+    assert _read_use_neighborhood_dedup() is False
+
+
+def test_use_neighborhood_dedup_other_values_read_as_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ADR-028 §2 PR #2h — only ``"0"`` disables; any other value keeps the
+    LLM dedup pass on. Replaces the pre-#2h `_other_values_read_as_off`
+    test, inverted to match the new kill-switch contract."""
+    from memeval.dreaming.worker import _read_use_neighborhood_dedup
+    for val in ("1", "", "true", "True", "yes", "on", "TRUE", " 0 ", "0 ", "00"):
         monkeypatch.setenv("DREAM_DEDUP_NEIGHBORHOOD", val)
-        assert _read_use_neighborhood_dedup() is False, (
-            f"DREAM_DEDUP_NEIGHBORHOOD={val!r} must read as off"
+        assert _read_use_neighborhood_dedup() is True, (
+            f"DREAM_DEDUP_NEIGHBORHOOD={val!r} must read as v2-on; "
+            "only the literal kill string \"0\" disables"
         )
 
 
-def test_dream_skips_dedup_neighborhood_when_flag_off(
+def test_dream_skips_dedup_neighborhood_when_env_explicitly_zero(
     memory_store_dir: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """ADR-028 §2 PR #2f — when flag is off (default), `dream()` does NOT
-    invoke `_detect_duplicates_neighborhood`."""
+    """ADR-028 §2 PR #2h — `DREAM_DEDUP_NEIGHBORHOOD=0` falls back to
+    lexical-only dedup; `_detect_duplicates_neighborhood` is NOT called.
+    Replaces the pre-#2h `_skips_dedup_when_flag_off`, inverted: it's
+    the explicit kill string, not the default, that suppresses the pass."""
     from memeval.dreaming import worker as worker_mod
 
-    monkeypatch.delenv("DREAM_DEDUP_NEIGHBORHOOD", raising=False)
+    monkeypatch.setenv("DREAM_DEDUP_NEIGHBORHOOD", "0")
 
     dedup_called = [0]
     orig = worker_mod._detect_duplicates_neighborhood
@@ -1795,19 +1805,19 @@ def test_dream_skips_dedup_neighborhood_when_flag_off(
     worker_mod.DreamingWorker(store).run()
 
     assert dedup_called[0] == 0, (
-        "_detect_duplicates_neighborhood must NOT be called when flag is off"
+        "_detect_duplicates_neighborhood must NOT be called when env=\"0\""
     )
 
 
-def test_dream_invokes_dedup_neighborhood_when_flag_on(
+def test_dream_invokes_dedup_neighborhood_by_default(
     memory_store_dir: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """ADR-028 §2 PR #2f — `DREAM_DEDUP_NEIGHBORHOOD=1` causes `dream()` to
-    invoke the LLM dedup pre-pass exactly once per run."""
+    """ADR-028 §2 PR #2h — when env is unset, `dream()` invokes the LLM
+    dedup pre-pass exactly once per run (v2 default)."""
     from memeval.dreaming import worker as worker_mod
     from memeval.dreaming.worker import DedupResult
 
-    monkeypatch.setenv("DREAM_DEDUP_NEIGHBORHOOD", "1")
+    monkeypatch.delenv("DREAM_DEDUP_NEIGHBORHOOD", raising=False)
     monkeypatch.setenv("DREAM_CONTRADICTION_MAX_CALLS", "1")
 
     dedup_called = [0]
@@ -1849,7 +1859,12 @@ def test_dream_dedup_neighborhood_losers_excluded_from_contradiction_pass(
     from memeval.dreaming import worker as worker_mod
     from memeval.dreaming.worker import DedupPair, DedupResult
 
+    # Default ON (PR #2h) makes both env-vars unnecessary, but pin them
+    # explicitly for clarity. Force v1 contradiction so we can spy on the
+    # v1 entry point — the invariant under test (dedup losers don't reach
+    # contradiction) holds regardless of which contradiction path runs.
     monkeypatch.setenv("DREAM_DEDUP_NEIGHBORHOOD", "1")
+    monkeypatch.setenv("DREAM_CONTRADICTION_NEIGHBORHOOD", "0")
     monkeypatch.setenv("DREAM_CONTRADICTION_MAX_CALLS", "1")
 
     contradiction_seen_ids: list[set[str]] = []

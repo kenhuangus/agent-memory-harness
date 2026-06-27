@@ -204,6 +204,18 @@ def _disable_contradiction_for_governance_tests(monkeypatch: pytest.MonkeyPatch)
 
 
 @pytest.fixture(autouse=True)
+def _pin_v1_paths_for_governance_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ADR-028 §2 PR #2h (flip-on-trust) — Job 3 tests stub LLM responses
+    sized for v1 contradiction + governance shape. With v2 default ON, the
+    LLM dedup pre-pass would consume queued responses out of order and the
+    neighborhood contradiction would also change shape on tests that
+    override `DREAM_CONTRADICTION_MAX_CALLS` upward. Kill both v2 paths
+    here so this suite continues to exercise the v1 behavior it pins."""
+    monkeypatch.setenv("DREAM_DEDUP_NEIGHBORHOOD", "0")
+    monkeypatch.setenv("DREAM_CONTRADICTION_NEIGHBORHOOD", "0")
+
+
+@pytest.fixture(autouse=True)
 def _isolate_basedir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Every test gets its own basedir."""
     base = tmp_path / "memory-store"
