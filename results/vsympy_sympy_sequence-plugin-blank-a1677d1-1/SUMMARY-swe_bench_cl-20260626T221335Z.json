@@ -1,0 +1,85 @@
+{
+  "benchmark": "swe_bench_cl",
+  "pipeline": {
+    "version": "vsympy_sympy_sequence-plugin-blank-a1677d1-1",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "a1677d1",
+    "harness": "cursor",
+    "benchmark": "swe_bench_cl",
+    "sequence": "sympy_sympy_sequence",
+    "stage": "plugin-blank",
+    "limit": null,
+    "n_tasks": 50,
+    "model": "composer-2.5",
+    "code_mode": "agentic",
+    "grader": "swebench",
+    "plugin_workers": 1,
+    "budget_usd": 10.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash"
+    },
+    "memory_store": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsympy_sympy_sequence-plugin-blank-a1677d1-1/_memory",
+    "source_memory": null,
+    "source_memory_health": null,
+    "n_stages": 1,
+    "n_eval_stages": 1,
+    "stages": [
+      "plugin-blank"
+    ],
+    "timestamp": "20260626T221335Z",
+    "started_at": 1782512015.335664,
+    "ended_at": 1782521082.203539,
+    "stages_run": [
+      "plugin-blank"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": {
+        "ok": true,
+        "code": "ok",
+        "remembered": true,
+        "hits": 1
+      }
+    }
+  },
+  "dream": {
+    "status": "not-run"
+  },
+  "stages": [
+    {
+      "stage": "plugin-blank",
+      "stage_index": 3,
+      "metrics": {
+        "accuracy": 0.9183673469387755,
+        "relevancy": 0.0,
+        "recency": 0.0,
+        "efficiency": 0.11166103791818525
+      },
+      "n_tasks": 50,
+      "cost_usd": 0.0,
+      "graded_n": 49,
+      "resolved": 45,
+      "ungraded": 1,
+      "grade_reasons": {
+        "checkout_failed": 1,
+        "graded": 49
+      },
+      "memory_reached": 50,
+      "memory_hit": 48,
+      "recall_attempted": 50,
+      "recall_with_hits": 48,
+      "memory_health": {
+        "recall_events": 50,
+        "recall_with_hits": 47,
+        "recall_zero_hits": 3,
+        "daydream_completed": 44,
+        "daydream_memory_written": 24,
+        "durable_items_after": 24
+      },
+      "warnings": []
+    }
+  ],
+  "deltas": {}
+}

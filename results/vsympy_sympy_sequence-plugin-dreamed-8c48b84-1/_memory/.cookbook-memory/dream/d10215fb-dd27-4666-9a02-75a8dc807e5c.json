@@ -1,0 +1,1 @@
+{"cursor": 30661, "last_summary": "Test addition: in sympy/core/tests/test_arit.py, add `assert Mod(3*i, 2) == Mod(i, 2)` inside test_Mod() after `assert Mod(4*i, 4) == 0`", "recent_memory_ids": ["mem_d2fab173", "mem_6dde6180"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

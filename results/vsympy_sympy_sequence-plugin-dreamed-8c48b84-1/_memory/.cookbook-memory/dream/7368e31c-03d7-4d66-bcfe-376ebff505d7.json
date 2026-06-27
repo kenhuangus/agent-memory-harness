@@ -1,0 +1,1 @@
+{"cursor": 27696, "last_summary": "The fix was applied in `sympy/core/function.py` lines around 1421-1431, changing the `_eval_evalf` method to evaluate `_imp_(*args)` and recurse with `.evalf()` on the result.", "recent_memory_ids": ["mem_1f3f2f71", "mem_d9800390"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

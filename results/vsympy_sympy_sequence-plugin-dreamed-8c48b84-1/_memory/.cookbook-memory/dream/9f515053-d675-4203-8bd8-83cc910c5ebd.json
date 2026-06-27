@@ -1,0 +1,1 @@
+{"cursor": 388816, "last_summary": "`PRECEDENCE` values: Add=40, Mul=50, Pow=60, Atom=1000. `PRECEDENCE_TRADITIONAL` is a copy of `PRECEDENCE` with entries for Integral/Sum/Product/Limit/Derivative set to Mul (50).", "recent_memory_ids": ["mem_3eedbee6", "mem_9444cbe2", "mem_93b0f3fa"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

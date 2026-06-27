@@ -1,0 +1,1 @@
+{"cursor": 629211, "last_summary": "`Eq(n*cos(n) - 3*sin(n), 0).as_set()` now returns `ConditionSet(n, Eq(n*cos(n) - 3*sin(n), 0), Reals)` instead of raising `NotImplementedError`.", "recent_memory_ids": ["mem_f34997fb", "mem_23ff18a4"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

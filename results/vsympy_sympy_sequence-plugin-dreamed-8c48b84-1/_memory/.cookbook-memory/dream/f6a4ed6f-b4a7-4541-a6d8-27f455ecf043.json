@@ -1,0 +1,1 @@
+{"cursor": 153798, "last_summary": "The regression test for SymPy issue #18895 is: assert factor(x*y - x - y + 1, extension=[I]) == (x - 1)*(y - 1), added to sympy/polys/tests/test_polytools.py in test_factor.", "recent_memory_ids": ["mem_7ebf60ba"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

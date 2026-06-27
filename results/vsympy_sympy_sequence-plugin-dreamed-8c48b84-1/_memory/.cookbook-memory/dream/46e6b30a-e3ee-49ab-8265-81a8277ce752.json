@@ -1,0 +1,1 @@
+{"cursor": 634191, "last_summary": "Test `test_ccode_unused_matrixsymbol` was added in `sympy/utilities/tests/test_codegen.py` to verify that unused MatrixSymbol arguments get pointer type in generated C code.", "recent_memory_ids": ["mem_8e9d15a5", "mem_9ec0e9d8"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

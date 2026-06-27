@@ -1,0 +1,1 @@
+{"cursor": 489302, "last_summary": "The ImageSet class in sympy/sets/fancysets.py does not have its own _eval_subs method; it inherits from Set which inherits from Basic.", "recent_memory_ids": ["mem_9bca026a", "mem_922b4aca", "mem_4d72b5d6"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

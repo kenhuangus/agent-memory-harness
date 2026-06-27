@@ -1,0 +1,1 @@
+{"cursor": 223166, "last_summary": "encode_morse and decode_morse in sympy.crypto.crypto accept an optional custom mapping parameter; otherwise they default to `char_morse` and `morse_char` respectively.", "recent_memory_ids": ["mem_d7e13cab", "mem_904fa76e"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

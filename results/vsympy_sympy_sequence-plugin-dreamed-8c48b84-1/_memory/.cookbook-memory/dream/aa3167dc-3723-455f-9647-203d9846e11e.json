@@ -1,0 +1,1 @@
+{"cursor": 536996, "last_summary": "In MathML, numeric content in subscripts must use `<mn>` (number) tags, not `<mi>` (identifier) tags, per the MathML specification. Browsers may render `<mi>` elements containing digits as invisible.", "recent_memory_ids": ["mem_fabad53a", "mem_41e577a1"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
