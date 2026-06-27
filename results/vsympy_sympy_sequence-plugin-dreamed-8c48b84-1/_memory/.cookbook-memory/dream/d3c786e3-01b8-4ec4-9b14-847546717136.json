@@ -1,0 +1,1 @@
+{"cursor": 452739, "last_summary": "Issue: `Product(n + 1/2**k, [k, 0, n-1]).doit()` incorrectly returned `9/2` for n=2 instead of `15/2`. The correct expression involves the q-Pochhammer symbol.", "recent_memory_ids": ["mem_d3d7c5f7"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

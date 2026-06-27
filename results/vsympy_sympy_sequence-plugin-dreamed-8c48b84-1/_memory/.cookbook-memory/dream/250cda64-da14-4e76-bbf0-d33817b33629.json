@@ -1,0 +1,1 @@
+{"cursor": 732953, "last_summary": "Issue #12938 reported the hstack/vstack regression with empty matrices. There is already a test case for it in sympy/matrices/tests/test_commonmatrix.py in the test_hstack function.", "recent_memory_ids": ["mem_d8521faf", "mem_d7e17f00", "mem_28a7bd83"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

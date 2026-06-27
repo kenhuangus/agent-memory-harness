@@ -1,0 +1,1 @@
+{"cursor": 464137, "last_summary": "Point2D.__new__ delegates coordinate validation to Point.__new__: it calls `Point(*args, **kwargs)` and passes `_nocheck=True` to skip re-validation after Point validates the coordinates.", "recent_memory_ids": ["mem_651f8ceb", "mem_e2bde52c"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

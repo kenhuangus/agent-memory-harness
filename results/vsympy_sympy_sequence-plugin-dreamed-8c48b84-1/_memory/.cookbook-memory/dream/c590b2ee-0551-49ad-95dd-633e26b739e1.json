@@ -1,0 +1,1 @@
+{"cursor": 327634, "last_summary": "The `__lt__` method in `sympy/core/expr.py` raises `TypeError(\"Invalid NaN comparison\")` at line 335-336 when `me is S.NaN`, which is the exact exception caught by the fix in exprtools.py.", "recent_memory_ids": ["mem_87b0ea4e"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

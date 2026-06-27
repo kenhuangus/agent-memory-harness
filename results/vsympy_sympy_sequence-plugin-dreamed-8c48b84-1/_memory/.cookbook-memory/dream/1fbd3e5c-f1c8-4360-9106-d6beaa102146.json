@@ -1,0 +1,1 @@
+{"cursor": 36933, "last_summary": "A specific reproducing example: `det(Matrix([[i + a*j for i in range(n)] for j in range(n)]))` with n=6 triggers the NaN comparison bug; n=5 returns `nan`.", "recent_memory_ids": ["mem_ac7430f1", "mem_7c562436"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

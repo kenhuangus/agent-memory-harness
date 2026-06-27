@@ -1,0 +1,1 @@
+{"cursor": 575526, "last_summary": "ConditionSet._eval_subs at line 245-247 now checks for `cond is S.false` (returns EmptySet) and otherwise returns `self.func(self.sym, cond, base)`, preserving the original bound variable `sym`.", "recent_memory_ids": ["mem_e41c11f3", "mem_11606f47"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

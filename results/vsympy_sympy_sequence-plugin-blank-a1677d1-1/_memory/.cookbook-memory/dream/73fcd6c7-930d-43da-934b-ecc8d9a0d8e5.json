@@ -1,0 +1,1 @@
+{"cursor": 7284, "last_summary": "When printing Subs with LaTeX, always wrap the substituted expression in \\left(...\\right) to avoid ambiguous parenthesizing when the Subs is multiplied or contains an Add.", "recent_memory_ids": ["mem_faf1ce4d"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}
