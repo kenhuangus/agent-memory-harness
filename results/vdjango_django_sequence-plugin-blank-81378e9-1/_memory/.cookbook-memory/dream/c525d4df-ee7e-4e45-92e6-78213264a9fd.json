@@ -1,0 +1,1 @@
+{"cursor": 306019, "last_summary": "The fix for the composed query values_list mutation bug is to clone the compiler's query before calling set_values() in get_combinator_sql() in django/db/models/sql/compiler.py, around lines 428-433.", "recent_memory_ids": ["mem_9b8839be"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

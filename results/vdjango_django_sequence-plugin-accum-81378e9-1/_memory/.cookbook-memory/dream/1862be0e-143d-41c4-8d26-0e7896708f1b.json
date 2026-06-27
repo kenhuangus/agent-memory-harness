@@ -1,0 +1,1 @@
+{"cursor": 432248, "last_summary": "A new test `test_allow_distinct_general_aggregates` in `tests/aggregation_regress/tests.py` verifies that `Avg`, `Sum`, `Min`, and `Max` accept `distinct=True`.", "recent_memory_ids": ["mem_374dd5c7", "mem_b5804921", "mem_4e80f032", "mem_9b4b7df8"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

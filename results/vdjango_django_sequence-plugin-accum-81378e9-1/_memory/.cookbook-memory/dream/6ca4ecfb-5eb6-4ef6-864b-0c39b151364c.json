@@ -1,0 +1,1 @@
+{"cursor": 628269, "last_summary": "ValuesIterable uses query.extra_select, query.values_select, and query.annotation_select to yield dicts. It does not rely on QuerySet._fields.", "recent_memory_ids": ["mem_864a01a0", "mem_7592959a"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

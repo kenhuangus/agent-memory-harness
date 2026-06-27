@@ -1,0 +1,19 @@
+---
+type: Memory
+title: mem_95bdc29e
+description: 'ModelMultipleChoiceField already included the invalid value in its error message via params={''value'': val} in _check_values() and had %(value)s in its default invalid_choice message.'
+resource: 'memeval://memory/mem_95bdc29e'
+tags:
+- django
+- forms
+- validation
+timestamp: '2026-06-27T07:36:29.371044+00:00'
+x_item_id: mem_95bdc29e
+x_relevancy: 1.0
+x_version: 1
+x_session_id: 12e213d3-2dfc-4710-a531-6a0e23aa8040
+x_source: daydream
+x_tokens: 45
+---
+
+ModelMultipleChoiceField already included the invalid value in its error message via params={'value': val} in _check_values() and had %(value)s in its default invalid_choice message.

@@ -1,0 +1,1 @@
+{"cursor": 549179, "last_summary": "ChoiceField.validate() also passes params={'value': value} when raising ValidationError for 'invalid_choice', with the default message including %(value)s.", "recent_memory_ids": ["mem_95bdc29e", "mem_484811ab"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

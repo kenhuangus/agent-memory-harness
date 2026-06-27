@@ -1,0 +1,1 @@
+{"cursor": 234598, "last_summary": "The test file tests/template_tests/test_engine.py contains RenderToStringTest with test_autoescape_false and test_autoescape_true that verify Engine.render_to_string() honors the autoescape setting.", "recent_memory_ids": ["mem_a23b34e2", "mem_513f577a"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

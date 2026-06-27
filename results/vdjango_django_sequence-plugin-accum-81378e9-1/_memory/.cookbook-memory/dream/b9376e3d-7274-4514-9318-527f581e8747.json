@@ -1,0 +1,1 @@
+{"cursor": 309851, "last_summary": "The `do_not_call_in_templates` attribute belongs on the `Choices` class in `django/db/models/enums.py`; `IntegerChoices` and `TextChoices` inherit it automatically.", "recent_memory_ids": ["mem_29a75f5d"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

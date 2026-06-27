@@ -1,0 +1,1 @@
+{"cursor": 212678, "last_summary": "When a user provides an explicit batch_size, _batched_insert (bulk_create's helper) now takes min(batch_size, max_batch_size) to stay within database limits, matching bulk_update's logic.", "recent_memory_ids": ["mem_4586af62"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

@@ -1,0 +1,1 @@
+{"cursor": 249227, "last_summary": "Changing a user's email after a password reset token is generated invalidates the token because the email address is part of the token hash computed by _make_hash_value().", "recent_memory_ids": ["mem_140ffba9"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

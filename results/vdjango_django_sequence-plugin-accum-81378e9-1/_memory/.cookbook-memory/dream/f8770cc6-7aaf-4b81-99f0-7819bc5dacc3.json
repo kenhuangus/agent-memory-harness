@@ -1,0 +1,1 @@
+{"cursor": 232354, "last_summary": "A test for the dict-to-DecimalField fix was added to tests/model_fields/test_decimalfield.py in test_to_python, asserting that f.to_python({'a': 1}) raises ValidationError.", "recent_memory_ids": ["mem_d670d7aa", "mem_0d21645b"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

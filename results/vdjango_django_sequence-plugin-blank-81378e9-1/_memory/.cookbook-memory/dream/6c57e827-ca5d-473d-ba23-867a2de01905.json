@@ -1,0 +1,1 @@
+{"cursor": 390089, "last_summary": "SQLite's `quote_name()` in `django/db/backends/sqlite3/operations.py` wraps identifiers in double quotes: `'\"%s\"' % name`, and avoids double-quoting if the name is already quoted.", "recent_memory_ids": ["mem_7b2303fb"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
