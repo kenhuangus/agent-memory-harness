@@ -23,6 +23,8 @@ Shell + assets
 Monitor
   ``GET  /api/runs``              every run descriptor (newest first)
   ``GET  /api/run/<id>``          full snapshot for one run
+  ``GET  /api/run/<id>/report.json``  snapshot dict verbatim, as a download
+  ``GET  /api/run/<id>/report.md``    Markdown report of the snapshot, as a download
 Inspector
   ``GET  /api/summary``           store path, profile, counts, fan-out histogram, flags
   ``GET  /api/memories``          the de-duped memory list (browse + routing)
@@ -46,11 +48,11 @@ from urllib.parse import parse_qs, urlparse
 try:  # dual import: package (``-m ui``) and standalone (run-dir self-test)
     from .substrate import open_substrate
     from .picker import pick_directory, PickerUnavailable
-    from .aggregator import discover_runs, snapshot
+    from .aggregator import discover_runs, snapshot, report_markdown
 except ImportError:  # pragma: no cover - import shim
     from substrate import open_substrate                # type: ignore
     from picker import pick_directory, PickerUnavailable  # type: ignore
-    from aggregator import discover_runs, snapshot     # type: ignore
+    from aggregator import discover_runs, snapshot, report_markdown  # type: ignore
 
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -103,8 +105,14 @@ class UIHandler(BaseHTTPRequestHandler):
         if path == "/api/runs":
             return self._monitor_runs()
         if path.startswith("/api/run/"):
-            run_id = path[len("/api/run/"):]
-            return self._monitor_run(run_id)
+            rest = path[len("/api/run/"):]
+            # Per-run report exports — same run-resolution as /api/run/<id>, but
+            # served as downloadable attachments (JSON verbatim snapshot / MD report).
+            if rest.endswith("/report.json"):
+                return self._monitor_report(rest[: -len("/report.json")], fmt="json")
+            if rest.endswith("/report.md"):
+                return self._monitor_report(rest[: -len("/report.md")], fmt="md")
+            return self._monitor_run(rest)
 
         # Inspector routes — require a loaded substrate.
         if path in ("/api/summary", "/api/memories", "/api/probe", "/api/backend-artifact"):
@@ -156,16 +164,42 @@ class UIHandler(BaseHTTPRequestHandler):
             return self._json({"runs": []})
         return self._json({"runs": discover_runs(root)})
 
-    def _monitor_run(self, run_id: str) -> None:
+    def _resolve_run_dir(self, run_id: str):
+        """Shared run-id resolution for /api/run/<id> and its report exports.
+
+        Sends the matching error response and returns ``None`` on failure;
+        returns the validated run ``Path`` on success."""
         root = self.state.results_root
         if root is None or not root.is_dir():
-            return self._json({"error": "results root not configured"}, code=404)
+            self._json({"error": "results root not configured"}, code=404)
+            return None
         if "/" in run_id or run_id in ("", ".", ".."):
-            return self._json({"error": "bad run id"}, code=400)
+            self._json({"error": "bad run id"}, code=400)
+            return None
         run_dir = root / run_id
         if not run_dir.is_dir():
-            return self._json({"error": f"unknown run: {run_id}"}, code=404)
+            self._json({"error": f"unknown run: {run_id}"}, code=404)
+            return None
+        return run_dir
+
+    def _monitor_run(self, run_id: str) -> None:
+        run_dir = self._resolve_run_dir(run_id)
+        if run_dir is None:
+            return
         return self._json(snapshot(run_dir))
+
+    def _monitor_report(self, run_id: str, *, fmt: str) -> None:
+        """Download the selected run's report: the snapshot dict as JSON verbatim,
+        or its Markdown rendering. Both are sent as ``attachment`` downloads."""
+        run_dir = self._resolve_run_dir(run_id)
+        if run_dir is None:
+            return
+        snap = snapshot(run_dir)
+        if fmt == "json":
+            body = json.dumps(snap, default=str, indent=2).encode("utf-8")
+            return self._download(body, "application/json; charset=utf-8", f"{run_id}-report.json")
+        body = report_markdown(snap).encode("utf-8")
+        return self._download(body, "text/markdown; charset=utf-8", f"{run_id}-report.md")
 
     # -- inspector surface --------------------------------------------------
     def _capture(self, payload: dict) -> None:
@@ -223,6 +257,21 @@ class UIHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        try:
+            self.wfile.write(data)
+        except BrokenPipeError:
+            pass
+
+    def _download(self, data: bytes, ctype: str, filename: str, code: int = 200) -> None:
+        """Like ``_raw`` but adds a Content-Disposition attachment header so the
+        browser saves the body as ``filename``. ``filename`` is derived from an
+        already-validated run id (no ``/`` or dot-segments), so it is safe."""
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.end_headers()
         try:
             self.wfile.write(data)

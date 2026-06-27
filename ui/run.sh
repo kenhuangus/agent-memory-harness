@@ -17,4 +17,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"     # repo root (parent of ui/)
 PY="$ROOT/.venv/bin/python"
 [ -x "$PY" ] || PY="$(command -v python3)"   # fall back to python3 if the repo venv is absent
 cd "$ROOT"
-exec env PYTHONPATH="$ROOT" "$PY" -m ui "$@"
+# Stale-bytecode guard: a retired nested-store warning once resurfaced from a stale
+# .pyc even though the source was already fixed (#203). Clear any cached bytecode
+# under ui/ and run with bytecode writing disabled (-B + PYTHONDONTWRITEBYTECODE)
+# so a stale cache can't resurrect removed behavior. Does NOT change app behavior.
+find ui -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
+exec env PYTHONPATH="$ROOT" PYTHONDONTWRITEBYTECODE=1 "$PY" -B -m ui "$@"

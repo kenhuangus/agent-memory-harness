@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import statistics
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -20,6 +21,20 @@ from typing import Any
 
 VOYAGE_429_MARK = "Voyage API error (HTTP 429)"
 ACTIVE_WINDOW_S = 30  # last_activity younger than this -> "running"
+
+# ---- recall telemetry (Monitor "Recalls" sub-tab) ----------------------------
+# Pure visualization of already-emitted ``op=="recall"`` events; these constants
+# change nothing about retrieval behavior or the event schema (ADR-harness-007).
+RECALL_LIST_CAP = 200          # newest-first cap on the per-recall list in a snapshot
+RECALL_SNIPPET_CHARS = 120     # per-hit content truncation; keeps the payload bounded
+SCORE_HISTOGRAM_BUCKETS = 8    # fixed bucket count for the score-distribution sparkline
+# DISPLAY-ONLY soft threshold: a recall whose BEST hit scores below this is given a
+# ⚠ flag in the UI so the "low-score-but-still-returned" pattern is visible. This is
+# observability ONLY — ``recall`` is pure top-k with NO score cutoff, and the score
+# scale is backend-dependent (FTS5/BM25 vs vector cosine), so this absolute value is
+# a coarse visual hint, NOT the retrieval threshold. Wiring a real retrieval
+# threshold is a separate follow-up; do not couple recall behavior to this constant.
+LOW_CONFIDENCE_TOP_SCORE = 0.30
 
 
 def discover_runs(results_root: Path) -> list[dict[str, Any]]:
@@ -135,8 +150,259 @@ def snapshot(run_dir: Path) -> dict[str, Any]:
         "recent_memories": diary["recent_memories"] or _recent_from_store(base / "memory.db"),
         "reject_top": diary["reject_top"],
         "reject_distinct": diary["reject_distinct"],
+        # Read side: what got recalled. Same events.jsonl the harness already reads.
+        # Additive — does not alter any existing snapshot key.
+        "recalls": _aggregate_recalls(base / "events.jsonl"),
         "pipeline": run_json.get("pipeline_meta") or {},
     }
+
+
+# ---- report export (Monitor "Print Report") ---------------------------------
+# One-click export of a single run. The JSON report is the ``snapshot`` dict
+# verbatim; ``report_markdown`` is its human-readable view. Pure formatter — it
+# reads only the snapshot dict, adds no data source, and changes no behavior.
+
+
+def report_markdown(snap: dict[str, Any]) -> str:
+    """Render a ``snapshot(run_dir)`` dict as a readable Markdown report.
+
+    Covers run/pipeline meta, memory health, sessions, cost, the recall summary
+    (count, avg hits, score median/histogram, low-confidence count, and a table
+    of recalls with query/n/top-score), failures, top reject reasons, and recent
+    memories. Defensive against missing keys so a partial/early snapshot still
+    renders. An error snapshot renders a one-line error report."""
+    if snap.get("error"):
+        return f"# Report — error\n\n`{snap.get('id', '?')}`: {snap['error']}\n"
+
+    m = snap.get("metrics") or {}
+    mem = m.get("memory") or {}
+    sess = m.get("sessions") or {}
+    cost = m.get("cost") or {}
+    fail = m.get("failures") or {}
+    pipe = snap.get("pipeline") or {}
+    recalls = snap.get("recalls") or {}
+
+    out: list[str] = []
+    out.append(f"# Memory run report — {snap.get('label') or snap.get('id', '?')}")
+    out.append("")
+    out.append(f"- **run id:** `{snap.get('id', '—')}`")
+    out.append(f"- **basedir:** `{snap.get('basedir', '—')}`")
+    out.append(f"- **generated:** {_fmt_ts(snap.get('as_of'))}")
+    la = snap.get("last_activity") or {}
+    activity = _fmt_ts(la.get("ts"))
+    if la.get("age_s") is not None:
+        activity += f" ({_fmt_age(la.get('age_s'))})"
+    if la.get("is_active"):
+        activity += " · active"
+    out.append(f"- **last activity:** {activity}")
+
+    # Pipeline ----------------------------------------------------------------
+    out.append("")
+    out.append("## Pipeline")
+    out.append("")
+    pipe_rows = [(k, pipe.get(k)) for k in
+                 ("benchmark", "sequence", "stage", "model", "version", "git_sha", "n_tasks")
+                 if pipe.get(k) is not None]
+    if pipe_rows:
+        for k, v in pipe_rows:
+            out.append(f"- **{k}:** {v}")
+    else:
+        out.append("_no pipeline metadata_")
+
+    # Memory health -----------------------------------------------------------
+    out.append("")
+    out.append("## Memory health")
+    out.append("")
+    out.append(f"- **memories written:** {_num(mem.get('memories_written'))}")
+    out.append(f"- **candidates:** {_num(mem.get('candidates_total'))} "
+               f"({_num(mem.get('candidates_rejected'))} rejected)")
+    out.append(f"- **keep rate:** {_pct(mem.get('keep_rate'))}")
+    out.append(f"- **noise filter:** {'engaged' if mem.get('noise_filter_engaged') else 'off'}")
+    if mem.get("emit_drift"):
+        out.append(f"- **⚠ emit drift:** store={_num(mem.get('memories_from_store'))} "
+                   f"vs diary={_num(mem.get('memories_from_diary'))}")
+
+    # Sessions ----------------------------------------------------------------
+    out.append("")
+    out.append("## Sessions")
+    out.append("")
+    diaries = f"- **diaries:** {_num(sess.get('diaries'))}"
+    if sess.get("tasks_n") is not None:
+        diaries += f" of {_num(sess.get('tasks_n'))} tasks"
+    out.append(diaries)
+    out.append(f"- **resolved:** {_num(sess.get('tasks_resolved'))}")
+    out.append(f"- **graded:** {_num(sess.get('tasks_graded'))} "
+               f"(ungraded {_num(sess.get('tasks_ungraded'))})")
+    out.append(f"- **sidecars:** {_num(sess.get('sidecars'))} · "
+               f"**locks:** {_num(sess.get('locks'))}")
+
+    # Cost --------------------------------------------------------------------
+    out.append("")
+    out.append("## Cost")
+    out.append("")
+    spend = f"- **spend:** {_usd(cost.get('cost_usd'))}"
+    if cost.get("budget_usd"):
+        spend += f" of {_usd(cost.get('budget_usd'))} budget"
+    out.append(spend)
+    out.append(f"- **tokens:** in {_num(cost.get('tokens_in'))} · "
+               f"out {_num(cost.get('tokens_out'))}")
+
+    # Recall summary ----------------------------------------------------------
+    out.append("")
+    out.append("## Recall summary")
+    out.append("")
+    stats = recalls.get("score_stats") or {}
+    out.append(f"- **recalls:** {_num(recalls.get('count'))} "
+               f"({_num(recalls.get('empty_count'))} empty)")
+    avg = recalls.get("avg_hits")
+    avg_line = f"- **avg hits:** {('%.1f' % avg) if isinstance(avg, (int, float)) else '—'}"
+    if recalls.get("k"):
+        avg_line += f" / k={recalls.get('k')}"
+    out.append(avg_line)
+    out.append(f"- **score median:** {_score(stats.get('median'))} "
+               f"(min {_score(stats.get('min'))} · max {_score(stats.get('max'))})")
+    thr = recalls.get("low_confidence_threshold")
+    out.append(f"- **low-confidence recalls:** {_num(recalls.get('low_confidence_count'))}"
+               + (f" (top score < {thr}, display-only)" if thr is not None else ""))
+    hist = stats.get("histogram") or []
+    if hist:
+        out.append(f"- **score histogram:** `{_histogram_ascii(hist)}`")
+
+    rlist = recalls.get("recalls") or []
+    if rlist:
+        out.append("")
+        out.append("| query | n | top score | ⚠ |")
+        out.append("| --- | ---: | ---: | :-: |")
+        for r in rlist:
+            q = _cell(r.get("query"))
+            warn = "⚠" if r.get("low_confidence") else ""
+            out.append(f"| {q} | {_num(r.get('n'))} | {_score(r.get('top_score'))} | {warn} |")
+        if recalls.get("truncated"):
+            out.append("")
+            out.append(f"_table capped at {len(rlist)} of "
+                       f"{_num(recalls.get('count'))} recalls (newest first)._")
+    else:
+        out.append("")
+        out.append("_no recalls recorded this run._")
+
+    # Failures ----------------------------------------------------------------
+    out.append("")
+    out.append("## Failures")
+    out.append("")
+    out.append(f"- **voyage 429:** {_num(fail.get('voyage_429'))}")
+    out.append(f"- **chunk errors:** {_num(fail.get('chunk_errors'))}")
+    out.append(f"- **hook subprocess failed:** {_num(fail.get('hook_subprocess_failed'))}")
+    out.append(f"- **claude timeouts:** {_num(fail.get('claude_timeouts'))}")
+    for label, key in (("preflight warnings", "preflight_warnings"),
+                       ("run warnings", "run_warnings")):
+        warns = fail.get(key) or []
+        if warns:
+            out.append(f"- **{label} ({len(warns)}):**")
+            for w in warns:
+                out.append(f"  - {w}")
+
+    # Top reject reasons ------------------------------------------------------
+    out.append("")
+    out.append("## Top reject reasons")
+    out.append("")
+    rejects = snap.get("reject_top") or []
+    if rejects:
+        out.append("| count | rationale |")
+        out.append("| ---: | --- |")
+        for r in rejects:
+            out.append(f"| {_num(r.get('count'))} | {_cell(r.get('rationale'))} |")
+        if snap.get("reject_distinct"):
+            out.append("")
+            out.append(f"_{snap['reject_distinct']} distinct rationales total._")
+    else:
+        out.append("_no rejected candidates this run._")
+
+    # Recent memories ---------------------------------------------------------
+    recent = snap.get("recent_memories") or []
+    if recent:
+        out.append("")
+        out.append("## Recent memories")
+        out.append("")
+        out.append("| ts | session | tags | content |")
+        out.append("| --- | --- | --- | --- |")
+        for r in recent:
+            tags = ", ".join(r.get("tags") or [])
+            out.append(f"| {_fmt_ts(r.get('ts'))} | {_cell(r.get('session_short'))} | "
+                       f"{_cell(tags)} | {_cell(r.get('content'))} |")
+
+    out.append("")
+    return "\n".join(out)
+
+
+def _num(v: Any) -> str:
+    """Thousands-separated int, or em-dash for None."""
+    if v is None:
+        return "—"
+    try:
+        return f"{int(round(float(v))):,}"
+    except (TypeError, ValueError):
+        return str(v)
+
+
+def _pct(r: Any) -> str:
+    if not isinstance(r, (int, float)):
+        return "—"
+    return f"{r * 100:.1f}%"
+
+
+def _usd(v: Any) -> str:
+    if not isinstance(v, (int, float)):
+        return "—"
+    return f"${v:.4f}" if v < 10 else f"${v:.2f}"
+
+
+def _score(v: Any) -> str:
+    """Recall scores are backend-dependent (BM25 vs cosine); show 2dp, no scaling."""
+    if not isinstance(v, (int, float)):
+        return "—"
+    return f"{v:.2f}"
+
+
+def _cell(s: Any) -> str:
+    """One Markdown table cell: collapse newlines, escape pipes, fall back to em-dash."""
+    text = "" if s is None else str(s)
+    text = text.replace("\n", " ").replace("\r", " ").replace("|", "\\|").strip()
+    return text or "—"
+
+
+def _histogram_ascii(hist: list[int]) -> str:
+    """Unicode sparkline over the score histogram (mirrors the monitor's spark)."""
+    blocks = "▁▂▃▄▅▆▇█"
+    mx = max(hist) if hist else 0
+    if not mx:
+        return " ".join("0" for _ in hist) or "—"
+    return "".join(
+        blocks[min(len(blocks) - 1, int(round((c / mx) * (len(blocks) - 1))))] if c else "·"
+        for c in hist
+    )
+
+
+def _fmt_ts(ts: Any) -> str:
+    if not ts:
+        return "—"
+    try:
+        return time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(float(ts))) + " UTC"
+    except (TypeError, ValueError, OSError):
+        return "—"
+
+
+def _fmt_age(s: Any) -> str:
+    if s is None:
+        return "—"
+    try:
+        s = int(s)
+    except (TypeError, ValueError):
+        return "—"
+    if s < 60:
+        return f"{s}s ago"
+    if s < 3600:
+        return f"{s // 60}m ago"
+    return f"{s // 3600}h {(s % 3600) // 60}m ago"
 
 
 # ---- internals -----------------------------------------------------------
@@ -247,6 +513,133 @@ def _aggregate_harness(events_path: Path) -> dict[str, Any]:
         "hook_subprocess_failed": failed,
         "voyage_429": voyage,
         "hooks": dict(hooks),
+    }
+
+
+def _aggregate_recalls(events_path: Path) -> dict[str, Any]:
+    """Aggregate ``op=="recall"`` events for the monitor's Recalls sub-tab.
+
+    Mirrors ``_aggregate_harness``: iterate the same ``events.jsonl``, match the op,
+    fold matches into a render-ready dict. Read-only visualization of telemetry the
+    plugin already emits — it does NOT change recall/retrieval behavior or the event
+    schema (ADR-harness-007).
+
+    Wire shape note: the events emitter folds extra kwargs into ``meta`` (see
+    ``core/events.py``), so a recall line is
+    ``{"ts", "op":"recall", "ids":[...], "query":..., "meta":{"k", "n", "hits":[...]}}``
+    where each hit is ``{"id", "content", "score", "tokens", "rank", "timestamp"}``.
+    An empty/failed recall emits ``meta.n == 0`` with no hits.
+    """
+    recalls: list[dict[str, Any]] = []   # file order (oldest first); reversed below
+    all_scores: list[float] = []
+    k_values: set[int] = set()
+    hits_total = 0
+    nonempty = 0
+    empty = 0
+
+    for ev in _iter_jsonl(events_path):
+        if ev.get("op") != "recall":
+            continue
+        meta = ev.get("meta") or {}
+        hits_raw = meta.get("hits") or []
+        n = meta.get("n")
+        if not isinstance(n, int):
+            n = len(hits_raw)  # tolerate odd/legacy lines missing meta.n
+        k = meta.get("k")
+        if isinstance(k, int):
+            k_values.add(k)
+
+        hit_scores = [h.get("score") for h in hits_raw
+                      if isinstance(h.get("score"), (int, float))]
+        all_scores.extend(hit_scores)
+        if n > 0:
+            nonempty += 1
+            hits_total += n
+        else:
+            empty += 1
+
+        top_score = max(hit_scores) if hit_scores else None
+        min_score = min(hit_scores) if hit_scores else None
+        # Display-only ⚠ flag; never a retrieval decision. See LOW_CONFIDENCE_TOP_SCORE.
+        low_confidence = top_score is not None and top_score < LOW_CONFIDENCE_TOP_SCORE
+
+        recalls.append({
+            "query": ev.get("query"),
+            "ts": ev.get("ts"),
+            "n": n,
+            "k": k,
+            "top_score": top_score,
+            "min_score": min_score,
+            "low_confidence": low_confidence,
+            "ids": list(ev.get("ids") or []),
+            "hits": [
+                {
+                    "id": h.get("id"),
+                    "score": h.get("score"),
+                    "rank": h.get("rank"),
+                    "snippet": _snippet(h.get("content")),
+                }
+                for h in hits_raw
+            ],
+        })
+
+    recalls.reverse()  # newest first (ts is often unstamped, so use append order)
+    total = len(recalls)
+    truncated = total > RECALL_LIST_CAP
+    capped = recalls[:RECALL_LIST_CAP]
+
+    return {
+        "count": total,
+        "empty_count": empty,
+        "avg_hits": (hits_total / nonempty) if nonempty else None,
+        "k": next(iter(k_values)) if len(k_values) == 1 else None,
+        "low_confidence_count": sum(1 for r in recalls if r["low_confidence"]),
+        # Surfaced so the UI can label the ⚠ threshold honestly as display-only.
+        "low_confidence_threshold": LOW_CONFIDENCE_TOP_SCORE,
+        "score_stats": _score_stats(all_scores),
+        "recalls": capped,
+        "truncated": truncated,
+    }
+
+
+def _snippet(content: Any, limit: int = RECALL_SNIPPET_CHARS) -> str:
+    """Truncate hit content for the expand-row preview so the payload stays bounded."""
+    s = ("" if content is None else str(content)).strip()
+    return s if len(s) <= limit else s[:limit].rstrip() + "…"
+
+
+def _score_stats(scores: list[float]) -> dict[str, Any]:
+    """min/median/max/mean + a fixed-bucket histogram (sparkline) over all hit scores.
+
+    Buckets span the observed [min, max] so the sparkline adapts to whatever scale a
+    backend's scores happen to be on (BM25 vs cosine), rather than assuming [0, 1]."""
+    if not scores:
+        return {
+            "count": 0, "min": None, "median": None, "max": None, "mean": None,
+            "histogram": [], "bucket_edges": [],
+        }
+    lo = min(scores)
+    hi = max(scores)
+    buckets = [0] * SCORE_HISTOGRAM_BUCKETS
+    if hi > lo:
+        span = hi - lo
+        for s in scores:
+            idx = int((s - lo) / span * SCORE_HISTOGRAM_BUCKETS)
+            buckets[min(idx, SCORE_HISTOGRAM_BUCKETS - 1)] += 1
+        edges = [lo + span * i / SCORE_HISTOGRAM_BUCKETS
+                 for i in range(SCORE_HISTOGRAM_BUCKETS + 1)]
+    else:
+        # All scores identical -> one populated bucket, degenerate edges.
+        buckets[0] = len(scores)
+        edges = [lo, hi]
+    return {
+        "count": len(scores),
+        "min": lo,
+        "median": statistics.median(scores),
+        "max": hi,
+        "mean": statistics.fmean(scores),
+        "histogram": buckets,
+        "bucket_edges": edges,
     }
 
 

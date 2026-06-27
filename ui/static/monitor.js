@@ -62,6 +62,9 @@
     countdownMs: REFRESH_MS,
     lastSnapshot: null,
     charts: {},
+    // Recalls sub-tab: keys of expanded per-recall rows, preserved across the
+    // 3s refresh so a row you opened stays open when the snapshot re-renders.
+    recallsExpanded: new Set(),
   };
 
   // --- elements -----------------------------------------------------------
@@ -73,6 +76,8 @@
   const statusAge = $("status-age");
   const refreshToggle = $("refresh-toggle");
   const refreshCountdown = $("refresh-countdown");
+  const reportJsonBtn = $("report-json");
+  const reportMdBtn = $("report-md");
 
   // --- chart.js defaults --------------------------------------------------
 
@@ -112,6 +117,9 @@
     const d = new Date(ts * 1000);
     return d.toLocaleTimeString("en-GB", { hour12: false });
   };
+  // Recall scores are NOT normalized to [0,1] — the scale is backend-dependent
+  // (FTS5/BM25 vs vector cosine). Show 2dp and let the histogram convey shape.
+  const fmtScore = (v) => (v == null ? "—" : Number(v).toFixed(2));
 
   // --- KPI rendering ------------------------------------------------------
 
@@ -488,6 +496,108 @@
       .replace(/"/g, "&quot;");
   }
 
+  // --- recalls (read side: what got recalled) -----------------------------
+
+  // Stable-ish key so an expanded row survives a refresh. ts is often unstamped
+  // (0.0), so fold in query + n + scores to disambiguate same-query recalls.
+  function recallKey(r) {
+    return [r.query || "", r.ts || 0, r.n || 0, r.top_score, r.min_score].join("|");
+  }
+
+  function renderSpark(stats) {
+    const el = $("recalls-spark");
+    const range = $("recalls-spark-range");
+    if (!el) return;
+    const hist = (stats && stats.histogram) || [];
+    if (!hist.length) {
+      el.innerHTML = "";
+      if (range) range.textContent = "—";
+      return;
+    }
+    const max = Math.max(...hist, 1);
+    el.innerHTML = hist.map((c) => {
+      const h = c ? Math.max(Math.round((c / max) * 100), 8) : 0;
+      return `<span class="spark-bar" style="height:${h}%" title="${c} hit${c === 1 ? "" : "s"}"></span>`;
+    }).join("");
+    if (range) range.textContent = `${fmtScore(stats.min)} – ${fmtScore(stats.max)}`;
+  }
+
+  function renderRecalls(snap) {
+    const rc = (snap && snap.recalls) || {};
+    const list = rc.recalls || [];
+    const stats = rc.score_stats || {};
+    const lowThresh = rc.low_confidence_threshold;
+
+    // aggregate header --------------------------------------------------
+    setText("recalls-count", fmtInt(rc.count || 0));
+    setText("recalls-avg-hits",
+      rc.avg_hits == null ? "—" : rc.avg_hits.toFixed(1) + (rc.k ? "/" + rc.k : ""));
+    setText("recalls-median", stats.median == null ? "—" : fmtScore(stats.median));
+    setText("recalls-empty", fmtInt(rc.empty_count || 0));
+    setText("recalls-lowconf", fmtInt(rc.low_confidence_count || 0));
+    const lowKpi = $("recalls-lowconf-kpi");
+    if (lowKpi) lowKpi.classList.toggle("active", (rc.low_confidence_count || 0) > 0);
+    renderSpark(stats);
+
+    // per-recall table --------------------------------------------------
+    const tbl = $("recalls-table");
+    if (!tbl) return;
+    setText("recalls-table-tag",
+      list.length
+        ? (rc.truncated ? `newest ${list.length} of ${rc.count}` : `${list.length} total`)
+        : "none yet");
+    if (!list.length) {
+      tbl.innerHTML = '<div class="recalls-empty">no recalls yet this run</div>';
+      return;
+    }
+
+    const rows = [
+      `<div class="recall-row recall-head">
+        <span class="rc-exp"></span>
+        <span class="rc-query">query</span>
+        <span class="rc-n">n</span>
+        <span class="rc-score">top score</span>
+        <span class="rc-ids">ids</span>
+      </div>`,
+    ];
+    list.forEach((r) => {
+      const key = recallKey(r);
+      const expandable = (r.hits || []).length > 0;
+      const expanded = expandable && state.recallsExpanded.has(key);
+      const empty = !r.n;
+      const cls = ["recall-row"];
+      if (empty) cls.push("recall-empty-row");
+      if (r.low_confidence) cls.push("recall-low");
+      if (expanded) cls.push("expanded");
+      const caret = expandable ? (expanded ? "▾" : "▸") : "·";
+      const warn = r.low_confidence ? ' <span class="rc-warn">⚠</span>' : "";
+      const nCell = empty
+        ? '<span class="rc-zero">0</span>'
+        : fmtInt(r.n);
+      rows.push(
+        `<div class="${cls.join(" ")}" data-key="${escapeHtml(key)}">
+          <span class="rc-exp">${caret}</span>
+          <span class="rc-query" title="${escapeHtml(r.query || "")}">${escapeHtml(r.query || "—")}</span>
+          <span class="rc-n">${nCell}</span>
+          <span class="rc-score">${fmtScore(r.top_score)}${warn}</span>
+          <span class="rc-ids">${(r.ids || []).length}</span>
+        </div>`);
+      if (expanded) {
+        const hits = (r.hits || []).map((h) => {
+          const hitLow = h.score != null && lowThresh != null && h.score < lowThresh;
+          return `<div class="recall-hit${hitLow ? " hit-low" : ""}">
+            <span class="hit-rank">#${h.rank == null ? "?" : h.rank}</span>
+            <span class="hit-id">${escapeHtml(h.id || "—")}</span>
+            <span class="hit-score">${fmtScore(h.score)}</span>
+            <span class="hit-snippet">${escapeHtml(h.snippet || "")}</span>
+          </div>`;
+        }).join("");
+        rows.push(`<div class="recall-detail">${hits}</div>`);
+      }
+    });
+    tbl.innerHTML = rows.join("");
+  }
+
   // --- status + footer ----------------------------------------------------
 
   function renderStatus(snap) {
@@ -552,6 +662,29 @@
       runSelect.value = pick.id;
     }
     state.activeRunId = runSelect.value || null;
+    updateReportButtons();
+  }
+
+  // --- print report (export the selected run) -----------------------------
+  // Anchor download to /api/run/<id>/report.{json,md}; the server sets a
+  // Content-Disposition attachment header so the click saves rather than
+  // navigates. Disabled whenever no run is selected.
+
+  function updateReportButtons() {
+    const enabled = !!state.activeRunId;
+    if (reportJsonBtn) reportJsonBtn.disabled = !enabled;
+    if (reportMdBtn) reportMdBtn.disabled = !enabled;
+  }
+
+  function downloadReport(kind) {
+    const id = state.activeRunId;
+    if (!id) return;
+    const a = document.createElement("a");
+    a.href = "/api/run/" + encodeURIComponent(id) + "/report." + kind;
+    a.download = id + "-report." + kind;   // hint; server also names it via Content-Disposition
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   }
 
   // --- main poll loop -----------------------------------------------------
@@ -574,6 +707,7 @@
       renderCharts(snap);
       renderRecent(snap);
       renderRejects(snap);
+      renderRecalls(snap);
       renderStatus(snap);
     } catch (err) {
       console.error(err);
@@ -602,8 +736,12 @@
   runSelect.addEventListener("change", () => {
     state.activeRunId = runSelect.value || null;
     state.countdownMs = REFRESH_MS;
+    updateReportButtons();
     pollOnce();
   });
+
+  if (reportJsonBtn) reportJsonBtn.addEventListener("click", () => downloadReport("json"));
+  if (reportMdBtn) reportMdBtn.addEventListener("click", () => downloadReport("md"));
 
   refreshToggle.addEventListener("click", () => {
     state.refreshOn = !state.refreshOn;
@@ -611,6 +749,41 @@
     refreshToggle.textContent = state.refreshOn ? "refresh on" : "refresh off";
     state.countdownMs = REFRESH_MS;
   });
+
+  // --- monitor sub-tabs (Overview | Recalls) ------------------------------
+  // Pure visibility toggle of two monitor sections. Does NOT touch the run
+  // dropdown, the refresh loop, or the top-level Monitor/Inspector tab — same
+  // class-toggle pattern the shell tabs use, scoped to #view-monitor.
+  const subtabs = Array.from(document.querySelectorAll(".mon-subtab"));
+  function setSubtab(name) {
+    subtabs.forEach((b) => {
+      const on = b.dataset.subtab === name;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    document.querySelectorAll("#view-monitor .mon-panel").forEach((p) => {
+      p.classList.toggle("active", p.dataset.subpanel === name);
+    });
+    // Returning to Overview reveals canvases that were display:none; nudge
+    // Chart.js to re-measure (same trick shell.js uses on a view switch).
+    if (name === "overview") window.dispatchEvent(new Event("resize"));
+  }
+  subtabs.forEach((b) => b.addEventListener("click", () => setSubtab(b.dataset.subtab)));
+
+  // Expand/collapse a recall row to reveal its per-hit list. Event delegation so
+  // it survives the table being re-rendered every refresh.
+  const recallsTable = $("recalls-table");
+  if (recallsTable) {
+    recallsTable.addEventListener("click", (e) => {
+      const row = e.target.closest(".recall-row");
+      if (!row || row.classList.contains("recall-head")) return;
+      const key = row.getAttribute("data-key");
+      if (!key) return;
+      if (state.recallsExpanded.has(key)) state.recallsExpanded.delete(key);
+      else state.recallsExpanded.add(key);
+      if (state.lastSnapshot) renderRecalls(state.lastSnapshot);
+    });
+  }
 
   // Window resize: Chart.js's built-in ResizeObserver catches most cases, but
   // when the CSS grid reflows via auto-fit (kpi-row + chart-grid) the parent

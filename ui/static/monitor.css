@@ -250,6 +250,36 @@ body {
   text-align: right;
 }
 
+/* Print Report cluster — same chrome idiom as the refresh toggle. */
+.report-cluster {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 14px;
+  border-right: 1px solid var(--line-2);
+}
+.report-label {
+  font-family: var(--font-label);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 10px;
+  color: var(--text-3);
+}
+.report-btn {
+  background: transparent;
+  border: 1px solid var(--line-2);
+  color: var(--text-2);
+  font-family: var(--font-label);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 10px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+.report-btn:hover { border-color: var(--amber); color: var(--text); }
+.report-btn:disabled { opacity: 0.4; cursor: not-allowed; border-color: var(--line); color: var(--text-3); }
+
 /* ---- dashboard layout --------------------------------------------------- */
 
 .dash {
@@ -652,4 +682,198 @@ body {
 @keyframes cell-flash {
   0%   { background: var(--amber-dim); }
   100% { background: transparent; }
+}
+
+/* ---- monitor sub-tabs (Overview | Recalls) ------------------------------ */
+
+.mon-subtabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 18px;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+.mon-subtab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-3);
+  font-family: var(--font-label);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 9px 14px 7px;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+.mon-subtab:hover { color: var(--text); }
+.mon-subtab.active {
+  color: var(--amber);
+  border-bottom-color: var(--amber);
+}
+
+/* Only the active monitor sub-panel is shown. Overrides .dash display:flex. */
+.mon-panel { display: none; }
+.mon-panel.active { display: flex; }
+
+/* ---- recalls: aggregate header ------------------------------------------ */
+
+.recalls-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--gutter);
+  flex: 0 0 auto;
+}
+.recalls-kpi, .recalls-spark-cell {
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--text-3);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.recalls-kpi-num {
+  font-family: var(--font-data);
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--text);
+}
+.recalls-kpi-lab {
+  font-family: var(--font-label);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 9px;
+  color: var(--text-3);
+}
+.recalls-kpi-warn { border-left-color: var(--line-2); }
+.recalls-kpi-warn.active { border-left-color: var(--terra); }
+.recalls-kpi-warn.active .recalls-kpi-num { color: var(--terra); }
+.recalls-warn-mark { color: var(--terra); }
+
+/* score-distribution sparkline (fixed-bucket histogram of hit scores) */
+.recalls-spark-cell { border-left-color: var(--steel); }
+.recalls-spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 26px;
+  margin-top: auto;
+}
+.spark-bar {
+  flex: 1 1 0;
+  min-height: 1px;
+  background: var(--steel);
+  opacity: 0.85;
+}
+.recalls-spark-range {
+  font-family: var(--font-data);
+  font-size: 9px;
+  color: var(--text-3);
+}
+
+/* ---- recalls: per-recall table ------------------------------------------ */
+
+.recalls-table-wrap {
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-height: 200px;
+}
+.recalls-table {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
+}
+.recalls-table::-webkit-scrollbar { width: 6px; }
+.recalls-table::-webkit-scrollbar-thumb { background: var(--line-3); }
+
+.recall-row {
+  display: grid;
+  grid-template-columns: 20px 1fr 48px 110px 44px;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 4px;
+  border-bottom: 1px dotted var(--text-4);
+  font-size: 12px;
+  cursor: pointer;
+}
+.recall-row:hover:not(.recall-head) { background: var(--bg-2); }
+.recall-head {
+  cursor: default;
+  font-family: var(--font-label);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 9px;
+  color: var(--text-3);
+  position: sticky;
+  top: 0;
+  background: var(--bg-1);
+}
+.rc-exp { color: var(--text-3); text-align: center; }
+.recall-row.expanded .rc-exp { color: var(--amber); }
+.rc-query {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rc-n     { color: var(--text-2); text-align: right; }
+.rc-score { color: var(--text-2); text-align: right; font-variant-numeric: tabular-nums; }
+.rc-ids   { color: var(--text-3); text-align: right; }
+.rc-zero  { color: var(--text-3); }
+.rc-warn  { color: var(--terra); }
+
+/* a recall whose best hit is below the DISPLAY-ONLY low-score threshold */
+.recall-low .rc-score { color: var(--terra); }
+.recall-empty-row .rc-query { color: var(--text-3); font-style: italic; }
+
+/* expanded per-hit detail */
+.recall-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 4px 8px 30px;
+  border-bottom: 1px dotted var(--text-4);
+  background: var(--bg);
+}
+.recall-hit {
+  display: grid;
+  grid-template-columns: 34px 110px 56px 1fr;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 11px;
+  padding: 2px 0;
+}
+.hit-rank   { color: var(--text-3); text-align: right; }
+.hit-id     { color: var(--steel); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hit-score  { color: var(--text-2); text-align: right; font-variant-numeric: tabular-nums; }
+.hit-snippet {
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recall-hit.hit-low .hit-score { color: var(--terra); }
+
+.recalls-empty {
+  color: var(--text-3);
+  font-style: italic;
+  padding: 16px 0;
+  text-align: center;
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .recall-row  { grid-template-columns: 18px 1fr 36px 80px 34px; gap: 6px; }
+  .recall-hit  { grid-template-columns: 28px 90px 48px 1fr; gap: 6px; }
 }
