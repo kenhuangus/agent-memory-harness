@@ -37,6 +37,7 @@ from memeval.schema import Benchmark, Task, TaskKind  # noqa: E402
 from memeval.claudecode.checkout import GitResult  # noqa: E402
 from memeval.grader import CmdResult, get_grader  # noqa: E402
 from memeval.grader_swebench import (  # noqa: E402
+    SwebenchDockerGrader,
     SwebenchHostGrader,
     _scm_env,
     _split_env_prefix,
@@ -219,6 +220,11 @@ class SwebenchHostGraderTests(unittest.TestCase):
         for key in ("swebench", "swebench-host", "swebenchhost"):
             self.assertIsInstance(get_grader(key), SwebenchHostGrader)
 
+    def test_registry_resolves_swebench_docker_keys(self):
+        """get_grader routes docker aliases to the opt-in Docker grader."""
+        for key in ("swebench-docker", "swebenchdocker", "docker"):
+            self.assertIsInstance(get_grader(key), SwebenchDockerGrader)
+
 
     def test_with_python_routes_each_test_cmd_head(self):
         """``_with_python`` maps a spec ``test_cmd``'s argv onto the venv interpreter.
@@ -250,6 +256,108 @@ class SwebenchHostGraderTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# --------------------------------------------------------------------------- #
+# Opt-in Docker grader adapter. These tests fake the Docker/SWE-bench callables:
+# no daemon, no network, no real images.
+# --------------------------------------------------------------------------- #
+class _FakeDockerClient:
+    def ping(self):
+        return True
+
+
+class _FakeTestSpec:
+    instance_id = "django__django-11000"
+
+
+def test_swebench_docker_grader_delegates_to_official_run_instance_shape():
+    calls = {}
+
+    def fake_make_test_spec(instance, namespace=None):
+        calls["instance"] = instance
+        calls["namespace"] = namespace
+        return _FakeTestSpec()
+
+    def fake_build_env_images(*args, **kwargs):  # pragma: no cover - should not run
+        raise AssertionError("remote namespace should not build env images locally")
+
+    def fake_run_instance(test_spec, pred, rm_image, force_rebuild, client, run_id, timeout):
+        calls["run"] = {
+            "test_spec": test_spec,
+            "pred": pred,
+            "rm_image": rm_image,
+            "force_rebuild": force_rebuild,
+            "client": client,
+            "run_id": run_id,
+            "timeout": timeout,
+        }
+        return {"completed": True, "resolved": True}
+
+    g = SwebenchDockerGrader(
+        timeout=123,
+        docker_client=_FakeDockerClient(),
+        make_test_spec=fake_make_test_spec,
+        build_env_images=fake_build_env_images,
+        run_instance=fake_run_instance,
+    )
+
+    assert g(_make_task(), _PREDICTION) is True
+    assert g.last_reason is None
+    assert calls["namespace"] == "swebench"
+    assert calls["instance"]["repo"] == _REPO
+    assert calls["instance"]["version"] == _VERSION
+    assert calls["instance"]["FAIL_TO_PASS"] == _F2P
+    assert calls["run"]["pred"]["instance_id"] == "django__django-11000"
+    assert calls["run"]["pred"]["model_patch"] == _PREDICTION
+    assert calls["run"]["timeout"] == 123
+    assert calls["run"]["run_id"].startswith("memeval-swe-docker-")
+
+
+def test_swebench_docker_grader_local_namespace_builds_env_first():
+    calls = {"builds": 0}
+
+    def fake_make_test_spec(instance, namespace=None):
+        calls["namespace"] = namespace
+        return _FakeTestSpec()
+
+    def fake_build_env_images(client, dataset, **kwargs):
+        calls["builds"] += 1
+        calls["build_dataset"] = dataset
+        calls["build_kwargs"] = kwargs
+        return [], []
+
+    def fake_run_instance(*args, **kwargs):
+        return {"completed": True, "resolved": False}
+
+    g = SwebenchDockerGrader(
+        namespace="none",
+        force_rebuild=True,
+        docker_client=_FakeDockerClient(),
+        make_test_spec=fake_make_test_spec,
+        build_env_images=fake_build_env_images,
+        run_instance=fake_run_instance,
+    )
+
+    assert g(_make_task(), _PREDICTION) is False
+    assert calls["namespace"] is None
+    assert calls["builds"] == 1
+    assert calls["build_dataset"][0]["repo"] == _REPO
+    assert calls["build_kwargs"]["force_rebuild"] is True
+    assert calls["build_kwargs"]["namespace"] is None
+
+
+def test_swebench_docker_grader_incomplete_run_is_ungraded():
+    g = SwebenchDockerGrader(
+        docker_client=_FakeDockerClient(),
+        make_test_spec=lambda instance, namespace=None: _FakeTestSpec(),
+        build_env_images=lambda *a, **kw: ([], []),
+        run_instance=lambda *a, **kw: {"completed": False, "resolved": False},
+    )
+
+    assert g(_make_task(), _PREDICTION) is None
+    assert g.last_reason == "swebench Docker run did not complete"
+    assert g.ungraded_reasons[g.last_reason] == 1
 
 
 # --------------------------------------------------------------------------- #

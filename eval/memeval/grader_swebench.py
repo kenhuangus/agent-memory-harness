@@ -1,6 +1,11 @@
-"""Realistic, Docker-free CODE grader that reuses SWE-bench's OWN env specs +
-official log parsers — owner: Ken. Opt-in; complements (never replaces) the
-``local`` (:class:`memeval.grader.LocalExecGrader`) and ``overlap`` graders.
+"""SWE-bench-spec CODE graders — owner: Ken.
+
+The default :class:`SwebenchHostGrader` is Docker-free and reuses SWE-bench's OWN
+env specs + official log parsers in a host ``uv`` venv. The opt-in
+:class:`SwebenchDockerGrader` delegates to SWE-bench's official Docker harness for
+historical environments the host grader cannot honestly run. Both complement
+(never replace) the ``local`` (:class:`memeval.grader.LocalExecGrader`) and
+``overlap`` graders.
 
 Why this exists
 ---------------
@@ -39,12 +44,14 @@ requires it.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Callable, Optional
 
 from .grader import (
     CmdResult,
     CmdRunner,
     _subprocess_cmd,
+    build_prediction,
     django_label,
     instance_id_of,
     is_django_selector,
@@ -817,7 +824,163 @@ class SwebenchHostGrader:
         return parts
 
 
-__all__ = ["SwebenchHostGrader"]
+class SwebenchDockerGrader:
+    """Grade CODE tasks with SWE-bench's official Docker harness.
+
+    This is deliberately opt-in. The host grader above remains the default because
+    Docker pulls/builds large images and depends on a live daemon, but some historical
+    repos (notably old Django tasks) need the containerized environment to grade at all.
+
+    Callable contract matches the other graders: ``True`` resolved, ``False`` not
+    resolved, ``None`` ungraded because Docker/SWE-bench infrastructure could not run.
+    The injected callables keep unit tests offline and daemon-free.
+    """
+
+    def __init__(
+        self,
+        *,
+        timeout: int = 1800,
+        model_name: str = "memeval",
+        namespace: Optional[str] = None,
+        force_rebuild: bool = False,
+        run_id_prefix: str = "memeval-swe-docker",
+        docker_client: Any = None,
+        make_test_spec: Any = None,
+        build_env_images: Any = None,
+        run_instance: Any = None,
+    ) -> None:
+        self.timeout = timeout
+        self.model_name = model_name
+        self.namespace = self._normalize_namespace(namespace)
+        self.force_rebuild = force_rebuild
+        self.run_id_prefix = run_id_prefix
+        self._docker_client = docker_client
+        self._make_test_spec = make_test_spec
+        self._build_env_images = build_env_images
+        self._run_instance = run_instance
+        self.last_reason: Optional[str] = None
+        self.ungraded_reasons: dict[str, int] = {}
+        self._counter = 0
+
+    @staticmethod
+    def _normalize_namespace(namespace: Optional[str]) -> Optional[str]:
+        raw = namespace
+        if raw is None:
+            raw = os.environ.get("MEMEVAL_SWEBENCH_DOCKER_NAMESPACE", "swebench")
+        val = str(raw).strip()
+        if val.lower() in {"", "none", "local"}:
+            return None
+        return val
+
+    def _ungraded(self, reason: str, task: Optional[Task] = None) -> None:
+        self.last_reason = reason
+        self.ungraded_reasons[reason] = self.ungraded_reasons.get(reason, 0) + 1
+        tid = getattr(task, "task_id", None) or "?"
+        log.warning("SwebenchDockerGrader UNGRADED [task=%s]: %s", tid, reason)
+        return None
+
+    def __call__(self, task: Task, prediction: str) -> Optional[bool]:
+        self.last_reason = None
+        if task.kind is not TaskKind.CODE:
+            return None
+        if not (prediction or "").strip():
+            return False
+        try:
+            return self._grade(task, prediction)
+        except Exception as exc:  # noqa: BLE001 - Docker infra failure -> UNGRADED
+            return self._ungraded(f"exception: {type(exc).__name__}: {exc}", task)
+
+    def _grade(self, task: Task, prediction: str) -> Optional[bool]:
+        try:
+            from swebench.harness.constants import FAIL_TO_PASS, PASS_TO_PASS
+            from swebench.harness.docker_build import build_env_images as _build_env_images
+            from swebench.harness.run_evaluation import run_instance as _run_instance
+            from swebench.harness.test_spec.test_spec import make_test_spec as _make_test_spec
+        except Exception as exc:  # noqa: BLE001 - optional dependency path
+            return self._ungraded(
+                f"swebench docker harness not available ({exc}); install the 'swebench' extra",
+                task,
+            )
+
+        repo = (task.repo or "").strip()
+        version = str((task.metadata or {}).get("version") or "").strip()
+        if not repo or not version:
+            return self._ungraded(
+                f"missing repo/version (repo={repo!r} version={version!r})", task)
+
+        instance_id = instance_id_of(task)
+        instance: dict[str, Any] = {
+            "instance_id": instance_id,
+            "repo": repo,
+            "version": version,
+            "base_commit": task.base_commit or "",
+            "problem_statement": task.question or "",
+            "patch": task.patch or "",
+            "test_patch": task.test_patch or "",
+            FAIL_TO_PASS: list(task.fail_to_pass or []),
+            PASS_TO_PASS: list(task.pass_to_pass or []),
+        }
+        pred = build_prediction(task, prediction, model_name=self.model_name)
+
+        make_test_spec = self._make_test_spec or _make_test_spec
+        build_env_images = self._build_env_images or _build_env_images
+        run_instance = self._run_instance or _run_instance
+        try:
+            test_spec = make_test_spec(instance, namespace=self.namespace)
+        except Exception as exc:  # noqa: BLE001 - bad/missing SWE-bench spec
+            return self._ungraded(f"could not create swebench Docker test spec: {exc}", task)
+
+        client = self._docker_client
+        if client is None:
+            try:
+                import docker  # type: ignore
+
+                client = docker.from_env()
+                ping = getattr(client, "ping", None)
+                if callable(ping):
+                    ping()
+            except Exception as exc:  # noqa: BLE001 - daemon/module unavailable
+                return self._ungraded(f"docker unavailable: {exc}", task)
+
+        if self.namespace is None:
+            try:
+                _successful, failed = build_env_images(
+                    client,
+                    [instance],
+                    force_rebuild=self.force_rebuild,
+                    max_workers=1,
+                    namespace=None,
+                )
+            except Exception as exc:  # noqa: BLE001 - image build infra failure
+                return self._ungraded(f"docker environment image build failed: {exc}", task)
+            if failed:
+                return self._ungraded("docker environment image build failed", task)
+
+        result = run_instance(
+            test_spec,
+            pred,
+            False,
+            self.force_rebuild,
+            client,
+            self._next_run_id(instance_id, prediction),
+            self.timeout,
+        )
+        if not isinstance(result, dict):
+            return self._ungraded("swebench Docker run returned no result", task)
+        if result.get("completed"):
+            return bool(result.get("resolved"))
+        return self._ungraded("swebench Docker run did not complete", task)
+
+    def _next_run_id(self, instance_id: str, prediction: str) -> str:
+        self._counter += 1
+        import hashlib
+
+        digest = hashlib.sha1((prediction or "").encode("utf-8")).hexdigest()[:10]
+        safe_iid = "".join(c if c.isalnum() or c in "._-" else "-" for c in instance_id)
+        return f"{self.run_id_prefix}-{os.getpid()}-{self._counter}-{safe_iid}-{digest}"
+
+
+__all__ = ["SwebenchHostGrader", "SwebenchDockerGrader"]
 
 
 def _django_directives_from_patch_or_selectors(task: Task) -> list[str]:

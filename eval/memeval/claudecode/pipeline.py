@@ -330,7 +330,8 @@ def _build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--grader", default="swebench",
                     help="CODE grader: 'swebench' (default: Docker-free grader reusing "
                          "SWE-bench's own specs + log parsers; needs the 'swebench' "
-                         "extra), 'auto' (local test execution for SWE tasks), 'local' "
+                         "extra), 'swebench-docker' (opt-in official SWE-bench Docker "
+                         "harness), 'auto' (local test execution for SWE tasks), 'local' "
                          "(host test execution; the real resolve rate), 'overlap' (cheap "
                          "heuristic), or 'none'.")
     ap.add_argument("--grader-timeout", type=int, default=1800)
@@ -343,6 +344,12 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="Allow the SWE-bench host grader to use the nearest newer "
                          "uv-managed Python when the pinned Python is unavailable. "
                          "This is host-substitution and is not leaderboard-comparable.")
+    ap.add_argument("--grader-docker-namespace", default="swebench",
+                    help="Docker image namespace for --grader swebench-docker. Default "
+                         "'swebench' uses upstream prebuilt images; use 'none' to build "
+                         "images locally.")
+    ap.add_argument("--grader-docker-force-rebuild", action="store_true",
+                    help="Force rebuild/pull behavior for --grader swebench-docker.")
     ap.add_argument("--budget-usd", type=float, default=DEFAULT_BUDGET_USD)
     ap.add_argument("--plugin-workers", type=int, default=1,
                     help="Concurrency for plugin stages (default 1; the plugin MCP "
@@ -566,7 +573,8 @@ def _resolve_config(args: argparse.Namespace) -> dict:
             model = _DEFAULT_CURSOR_MODEL
         model = _ask_model(model, harness=harness)
         grader = _ask("grader", grader,
-                      choices=["auto", "local", "swebench", "overlap", "none"])
+                      choices=["auto", "local", "swebench", "swebench-docker",
+                               "overlap", "none"])
         budget = _ask("budget (USD, 0 = no cap)", budget, cast=float)
     elif harness == "cursor" and model_is_default:
         # Non-interactive (--yes / no TTY): still swap the default model for cursor.
@@ -642,6 +650,8 @@ def _resolve_config(args: argparse.Namespace) -> dict:
         "grader_timeout": args.grader_timeout,
         "grader_python": list(args.grader_python or []),
         "allow_python_substitution": bool(args.allow_python_substitution),
+        "grader_docker_namespace": args.grader_docker_namespace,
+        "grader_docker_force_rebuild": bool(args.grader_docker_force_rebuild),
         "plugin_workers": args.plugin_workers,
         "timeout": args.timeout,
         "path": args.path,
@@ -765,6 +775,8 @@ def _grader(cfg: dict):
         grader_timeout=cfg["grader_timeout"],
         grader_python=cfg.get("grader_python") or [],
         allow_python_substitution=bool(cfg.get("allow_python_substitution")),
+        grader_docker_namespace=cfg.get("grader_docker_namespace", "swebench"),
+        grader_docker_force_rebuild=bool(cfg.get("grader_docker_force_rebuild")),
     )
     return _make_grader(cfg["benchmark"], shim)
 

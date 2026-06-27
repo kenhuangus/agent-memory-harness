@@ -920,7 +920,9 @@ def get_grader(name: str, **kwargs: Any) -> Grader:
     (kwargs forwarded); ``"swebench"`` / ``"swebench-host"`` / ``"swebenchhost"``
     -> :class:`memeval.grader_swebench.SwebenchHostGrader` (reuses SWE-bench's own
     env specs + official log parsers in a host ``uv`` venv; needs the optional
-    ``swebench`` extra — imported lazily so it stays optional); ``"overlap"`` ->
+    ``swebench`` extra — imported lazily so it stays optional);
+    ``"swebench-docker"`` -> :class:`memeval.grader_swebench.SwebenchDockerGrader`
+    (opt-in official Docker harness); ``"overlap"`` ->
     :func:`overlap_grader`; ``"none"`` -> a grader that always returns ``None``
     (leave CODE ungraded).
     """
@@ -933,12 +935,16 @@ def get_grader(name: str, **kwargs: Any) -> Grader:
         from .grader_swebench import SwebenchHostGrader
 
         return SwebenchHostGrader(**kwargs)
+    if key in ("swebench-docker", "swebenchdocker", "docker"):
+        from .grader_swebench import SwebenchDockerGrader
+
+        return SwebenchDockerGrader(**kwargs)
     if key == "overlap":
         return lambda task, pred: overlap_grader(task, pred, **kwargs)
     if key in ("none", "", "off"):
         return lambda task, pred: None
     raise ValueError(
-        f"unknown grader {name!r} (use local / swebench / overlap / none)")
+        f"unknown grader {name!r} (use local / swebench / swebench-docker / overlap / none)")
 
 
 __all__ = [

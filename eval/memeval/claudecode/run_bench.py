@@ -120,6 +120,13 @@ def _make_grader(benchmark: str, args: argparse.Namespace):
             out["allow_python_substitution"] = True
         return out
 
+    def docker_kwargs() -> dict:
+        return {
+            "timeout": args.grader_timeout,
+            "namespace": getattr(args, "grader_docker_namespace", "swebench"),
+            "force_rebuild": bool(getattr(args, "grader_docker_force_rebuild", False)),
+        }
+
     choice = (args.grader or "auto").strip().lower()
     if choice == "auto":
         if benchmark in _LOCAL_EXEC_BENCH:
@@ -140,6 +147,8 @@ def _make_grader(benchmark: str, args: argparse.Namespace):
         # The realistic Docker-free grader also honors --grader-timeout (it builds a
         # per-instance venv + runs the repo's tests, which can be slow on old pins).
         return get_grader(choice, **kwargs())
+    if choice in ("swebench-docker", "swebenchdocker", "docker"):
+        return get_grader(choice, **docker_kwargs())
     return get_grader(choice)  # overlap (or any other registered name)
 
 
@@ -436,7 +445,8 @@ def main(argv: Optional[list[str]] = None) -> int:
                          "host-local per-task venv exec (best-effort; ungraded None "
                          "when the env can't be built); 'swebench' = Docker-free grader "
                          "reusing SWE-bench's own specs + log parsers (needs the "
-                         "'swebench' extra; honors --grader-timeout); 'overlap' = cheap "
+                         "'swebench' extra; honors --grader-timeout); 'swebench-docker' "
+                         "= opt-in official SWE-bench Docker harness; 'overlap' = cheap "
                          "gold-patch token-overlap heuristic (NOT real accuracy); 'none' "
                          "= leave CODE ungraded.")
     ap.add_argument("--grader-timeout", type=int, default=1800,
@@ -450,6 +460,12 @@ def main(argv: Optional[list[str]] = None) -> int:
                     help="Allow the SWE-bench host grader to use the nearest newer "
                          "uv-managed Python when the pinned Python is unavailable. "
                          "This is host-substitution and is not leaderboard-comparable.")
+    ap.add_argument("--grader-docker-namespace", default="swebench",
+                    help="Docker image namespace for --grader swebench-docker. Default "
+                         "'swebench' uses upstream prebuilt images; use 'none' to build "
+                         "images locally.")
+    ap.add_argument("--grader-docker-force-rebuild", action="store_true",
+                    help="Force rebuild/pull behavior for --grader swebench-docker.")
     ap.add_argument("--budget-usd", type=float, default=DEFAULT_BUDGET_USD)
     ap.add_argument("--results", default="results.json")
     ap.add_argument("--results-dir", default="results",

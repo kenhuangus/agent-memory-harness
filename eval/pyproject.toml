@@ -68,11 +68,15 @@ local-ann = ["sentence-transformers>=3.0", "sqlite-vec>=0.1.9,<0.2"]
 # ungraded when the env can't be built). No containers, no extra grading package
 # — see ADR-eval-002.
 
-# Realistic Docker-free CODE grading that reuses SWE-bench's OWN per-instance env
+# Realistic host CODE grading that reuses SWE-bench's OWN per-instance env
 # specs + official log parsers in a host `uv` venv (memeval.grader_swebench.
 # SwebenchHostGrader, selected via `--grader swebench`). Opt-in and lazily
 # imported, so swebench stays optional — the default `local`/`overlap` graders need
 # nothing extra. NOT leaderboard-comparable (host venv != container); see ADR-eval-002.
+#
+# The same optional dependency also enables `--grader swebench-docker`, an explicit
+# Docker-backed grader for historical environments the host grader cannot run. It is
+# never selected unless requested; see ADR-eval-008.
 swebench = ["swebench>=4.0"]
 
 # Langfuse Cloud tracing (memeval.tracing). Lazy + no-op unless keys are set, so
