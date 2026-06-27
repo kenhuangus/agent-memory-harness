@@ -1,0 +1,1 @@
+{"cursor": 18734, "last_summary": "When nsolve uses lambdify with modules='mpmath', any SymPy Rational in the expression must be printed as mpmath.mpf(p)/mpmath.mpf(q); otherwise nsolve's high-precision mode is silently degraded.", "recent_memory_ids": ["mem_8c47b7f4"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

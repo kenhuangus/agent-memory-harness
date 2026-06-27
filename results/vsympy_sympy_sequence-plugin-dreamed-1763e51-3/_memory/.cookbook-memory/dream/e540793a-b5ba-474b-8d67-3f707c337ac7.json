@@ -1,0 +1,1 @@
+{"cursor": 20428, "last_summary": "When importing SymPy functions inside matrix expression `_entry` methods, use a local import (e.g., `from sympy import KroneckerDelta`) to avoid circular import issues at module load time.", "recent_memory_ids": ["mem_c66859d5", "mem_cef2a720"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

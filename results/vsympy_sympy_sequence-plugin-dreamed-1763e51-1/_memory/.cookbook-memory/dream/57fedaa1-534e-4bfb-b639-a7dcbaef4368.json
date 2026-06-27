@@ -1,0 +1,1 @@
+{"cursor": 23111, "last_summary": "When implementing `_entry` for SymPy matrix expressions, use `Eq(i, j)` (not `==`) and fall back to `KroneckerDelta(i, j)` for unresolved symbolic indices.", "recent_memory_ids": ["mem_99667dda"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

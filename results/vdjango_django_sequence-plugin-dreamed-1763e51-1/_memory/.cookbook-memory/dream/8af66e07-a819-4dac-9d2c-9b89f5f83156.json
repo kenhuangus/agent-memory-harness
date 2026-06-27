@@ -1,0 +1,1 @@
+{"cursor": 9024, "last_summary": "When extending or optimizing Django's Collector.delete() fast-delete path, ensure the instance's primary key is set to None after the SQL delete, matching the normal delete path's post-conditions.", "recent_memory_ids": ["mem_06407d00"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

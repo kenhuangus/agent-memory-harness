@@ -1,0 +1,1 @@
+{"cursor": 13990, "last_summary": "When Meta.ordering contains an F() or other expression (not an OrderBy), get_order_dir() crashes because it expects a string; expression objects are not subscriptable.", "recent_memory_ids": ["mem_5baf8c36"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

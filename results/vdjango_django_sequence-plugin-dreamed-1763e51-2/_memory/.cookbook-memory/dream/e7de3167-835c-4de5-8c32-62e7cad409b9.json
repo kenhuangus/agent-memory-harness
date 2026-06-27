@@ -1,0 +1,1 @@
+{"cursor": 11208, "last_summary": "When writing tests in Django's model_forms test suite, use runtests.py with PYTHONPATH set to the repo root and the test label format is 'model_forms.tests.<TestClassName>.<test_method_name>'.", "recent_memory_ids": ["mem_a20d1d2e"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

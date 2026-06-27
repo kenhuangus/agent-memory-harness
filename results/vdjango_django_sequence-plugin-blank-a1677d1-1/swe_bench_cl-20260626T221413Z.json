@@ -1,0 +1,151 @@
+{
+  "schema": 1,
+  "memory_version": "vdjango_django_sequence-plugin-blank-a1677d1-1",
+  "benchmark": "swe_bench_cl",
+  "timestamp": "20260626T221413Z",
+  "pipeline": {
+    "version": "vdjango_django_sequence-plugin-blank-a1677d1-1",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "a1677d1",
+    "harness": "cursor",
+    "benchmark": "swe_bench_cl",
+    "sequence": "django_django_sequence",
+    "stage": "plugin-blank",
+    "limit": null,
+    "n_tasks": 50,
+    "model": "composer-2.5",
+    "code_mode": "agentic",
+    "grader": "swebench",
+    "plugin_workers": 1,
+    "budget_usd": 10.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash"
+    },
+    "memory_store": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vdjango_django_sequence-plugin-blank-a1677d1-1/_memory",
+    "source_memory": null,
+    "source_memory_health": null,
+    "n_stages": 1,
+    "n_eval_stages": 1,
+    "stages": [
+      "plugin-blank"
+    ],
+    "timestamp": "20260626T221413Z",
+    "started_at": 1782512053.688854,
+    "ended_at": 1782520078.3148868,
+    "stages_run": [
+      "plugin-blank"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": {
+        "ok": true,
+        "code": "ok",
+        "remembered": true,
+        "hits": 1
+      }
+    }
+  },
+  "dream": {
+    "status": "not-run"
+  },
+  "runs": [
+    {
+      "run_id": "pipeline-plugin-blank",
+      "timestamp": "2026-06-27T00:27:58+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "cursor-cli:composer-2.5:plugin-real",
+      "memory": true,
+      "label": "cursor-cli:composer-2.5:plugin-real+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.1588555842131435,
+        "relevancy": 0.0,
+        "accuracy": 0.24489795918367346,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 50,
+        "extra": {}
+      },
+      "n_tasks": 50,
+      "entries_used": 50,
+      "entries_available": 50,
+      "limit": null,
+      "selection": "flat",
+      "cost_usd": 0.0,
+      "tokens_in": 1441590,
+      "tokens_out": 199134,
+      "partial": false,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 0,
+        "memory_reached": 50,
+        "memory_hit": 48,
+        "recall_attempted": 50,
+        "recall_with_hits": 48,
+        "graded_n": 49,
+        "resolved": 12,
+        "ungraded": 1,
+        "grade_reasons": {
+          "get_test_directives yielded no test files from test_patch": 1,
+          "graded": 49
+        },
+        "errors": []
+      },
+      "notes": "single-stage pipeline \u00b7 swe_bench_cl \u00b7 stage plugin-blank",
+      "pipeline_stage": "plugin-blank",
+      "stage_index": 3,
+      "git_sha": "a1677d1",
+      "git_tag": "vdjango_django_sequence-plugin-blank-a1677d1-1",
+      "memory_health": {
+        "before": {
+          "store_dir": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vdjango_django_sequence-plugin-blank-a1677d1-1/_memory/.cookbook-memory",
+          "events": 0,
+          "daydream_events": 0,
+          "recall_events": 0,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 0,
+          "daydream_memory_written": 0,
+          "memory_items": null,
+          "graph_nodes": null,
+          "markdown_items": 0,
+          "durable_items": 0
+        },
+        "after": {
+          "store_dir": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vdjango_django_sequence-plugin-blank-a1677d1-1/_memory/.cookbook-memory",
+          "events": 1492,
+          "daydream_events": 569,
+          "recall_events": 50,
+          "recall_with_hits": 48,
+          "recall_zero_hits": 2,
+          "recall_errors": 0,
+          "daydream_completed": 43,
+          "daydream_memory_written": 31,
+          "memory_items": 31,
+          "graph_nodes": 31,
+          "markdown_items": 31,
+          "durable_items": 31
+        },
+        "delta": {
+          "events": 1492,
+          "daydream_events": 569,
+          "recall_events": 50,
+          "recall_with_hits": 48,
+          "recall_zero_hits": 2,
+          "recall_errors": 0,
+          "daydream_completed": 43,
+          "daydream_memory_written": 31,
+          "markdown_items": 31,
+          "durable_items": 31
+        }
+      },
+      "warnings": []
+    }
+  ]
+}

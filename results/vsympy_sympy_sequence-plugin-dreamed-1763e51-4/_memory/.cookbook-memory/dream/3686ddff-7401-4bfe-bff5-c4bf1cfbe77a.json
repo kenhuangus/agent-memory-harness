@@ -1,0 +1,1 @@
+{"cursor": 19902, "last_summary": "In SymPy's Permutation class, overlapping cycles should compose left-to-right via Cycle rather than being rejected; only array-form arguments need duplicate-element validation.", "recent_memory_ids": ["mem_76eedc1a", "mem_fc80c631"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

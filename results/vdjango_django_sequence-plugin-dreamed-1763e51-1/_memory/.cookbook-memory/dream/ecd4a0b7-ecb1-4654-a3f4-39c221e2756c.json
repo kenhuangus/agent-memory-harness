@@ -1,0 +1,1 @@
+{"cursor": 21371, "last_summary": "When serializing a nested class reference in a migration, use __qualname__ instead of __name__ to preserve the full dotted path including enclosing classes.", "recent_memory_ids": ["mem_ee3957e1"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

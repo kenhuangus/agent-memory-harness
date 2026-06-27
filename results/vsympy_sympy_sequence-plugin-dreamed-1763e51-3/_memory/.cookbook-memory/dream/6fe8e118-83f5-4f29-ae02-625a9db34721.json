@@ -1,0 +1,1 @@
+{"cursor": 7302, "last_summary": "When printing a wrapped expression (Subs, Derivative) in LaTeX, use `self.parenthesize(expr, PRECEDENCE['Mul'], strict=True)` instead of `self._print(expr)` for correct parentheses.", "recent_memory_ids": ["mem_8ecfbdd2"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

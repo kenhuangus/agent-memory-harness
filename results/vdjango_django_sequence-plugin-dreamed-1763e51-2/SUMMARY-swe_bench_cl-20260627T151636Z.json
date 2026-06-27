@@ -1,0 +1,761 @@
+{
+  "benchmark": "swe_bench_cl",
+  "pipeline": {
+    "version": "vdjango_django_sequence-plugin-dreamed-1763e51-2",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "1763e51",
+    "harness": "cursor",
+    "benchmark": "swe_bench_cl",
+    "sequence": "django_django_sequence",
+    "stage": "plugin-dreamed",
+    "limit": null,
+    "n_tasks": 50,
+    "model": "composer-2.5",
+    "code_mode": "agentic",
+    "grader": "swebench",
+    "plugin_workers": 1,
+    "budget_usd": 10.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash",
+      "extraction_prompt": {
+        "variant": "V5",
+        "sha256": "44d664a993227521f1caca9bfb8672706916cbe43cc00c7c56a54868d31eae37",
+        "char_count": 6726
+      }
+    },
+    "memory_store": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vdjango_django_sequence-plugin-dreamed-1763e51-2/_memory",
+    "source_memory": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vdjango_django_sequence-plugin-dreamed-1763e51-1/_memory",
+    "source_memory_health": {
+      "store_dir": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vdjango_django_sequence-plugin-dreamed-1763e51-1/_memory/.cookbook-memory",
+      "events": 4574,
+      "daydream_events": 1748,
+      "recall_events": 150,
+      "recall_with_hits": 147,
+      "recall_zero_hits": 3,
+      "recall_errors": 0,
+      "daydream_completed": 132,
+      "daydream_memory_written": 94,
+      "memory_items": 84,
+      "graph_nodes": 84,
+      "markdown_items": 84,
+      "durable_items": 84
+    },
+    "n_stages": 2,
+    "n_eval_stages": 1,
+    "stages": [
+      "dream",
+      "plugin-dreamed"
+    ],
+    "timestamp": "20260627T151636Z",
+    "started_at": 1782573396.806762,
+    "ended_at": 1782581678.0309591,
+    "source_memory_copied_to": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vdjango_django_sequence-plugin-dreamed-1763e51-2/_memory",
+    "stages_run": [
+      "plugin-dreamed"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": {
+        "ok": true,
+        "code": "ok",
+        "remembered": true,
+        "hits": 1
+      }
+    }
+  },
+  "dream": {
+    "schema": "dream.summary",
+    "version": 1,
+    "mode": "detection_and_mutation_and_pruning_and_contradiction_and_governance",
+    "jobs_run": [
+      "dedup_detection",
+      "dedup_merge",
+      "ttl_pruning",
+      "contradiction_resolution",
+      "governance"
+    ],
+    "skipped_jobs": [],
+    "counts": {
+      "total_items": 84,
+      "duplicate_clusters": 0,
+      "items_in_duplicates": 0,
+      "items_retired": 0,
+      "items_pruned": 0,
+      "retention_seconds_effective": 2592000,
+      "items_contradicted": 0,
+      "contradiction_llm_calls": 20,
+      "contradiction_input_tokens": 25082,
+      "contradiction_output_tokens": 7135,
+      "contradiction_cost_usd_estimate": 0.0035416799999999997,
+      "contradiction_pairs_examined_estimate": 171,
+      "items_blacklisted": 0,
+      "items_must_known": 39,
+      "items_must_done": 0,
+      "governance_llm_calls": 8,
+      "governance_input_tokens": 9711,
+      "governance_output_tokens": 5007,
+      "governance_cost_usd_estimate": 0.00177525,
+      "governance_items_examined_estimate": 65
+    },
+    "clusters": [],
+    "pruned": {
+      "item_ids": [],
+      "retention_seconds_effective": 2592000
+    },
+    "contradicted": {
+      "pairs": [],
+      "model": "deepseek/deepseek-v4-flash"
+    },
+    "governance": {
+      "must_know": [
+        {
+          "item_id": "mem_04cea9b8",
+          "rationale": "Important MRO nuance for Django Choices enum types."
+        },
+        {
+          "item_id": "mem_0c8007fc",
+          "rationale": "Project convention for documenting breaking changes."
+        },
+        {
+          "item_id": "mem_10ce92b6",
+          "rationale": "Template/operator fix for lazy proxy objects; prevents TypeError in concat operations."
+        },
+        {
+          "item_id": "mem_12e8e6b4",
+          "rationale": "Recommended pattern for custom Django form field initialization."
+        },
+        {
+          "item_id": "mem_28f5497b",
+          "rationale": "Critical Django pattern the agent must not forget; missing this causes silent data corruption."
+        },
+        {
+          "item_id": "mem_294e7af2",
+          "rationale": "Critical autoescape handling in Django template engine."
+        },
+        {
+          "item_id": "mem_347cd4f1",
+          "rationale": "Deep-copy pitfall for Django Form fields that must be remembered to avoid shared mutation bugs."
+        },
+        {
+          "item_id": "mem_3e6e9244",
+          "rationale": "Concise mechanism to enable DISTINCT on aggregates; otherwise undocumented and easily missed."
+        },
+        {
+          "item_id": "mem_4d8cb991",
+          "rationale": "Specific implementation pattern for ordering-preserving collections that avoids repeated rediscovery."
+        },
+        {
+          "item_id": "mem_51c78592",
+          "rationale": "Important JSON serialization detail for Unicode preservation."
+        },
+        {
+          "item_id": "mem_5320a0d0",
+          "rationale": "Important environmental handling pattern that prevents accidental subprocess misconfiguration."
+        },
+        {
+          "item_id": "mem_56a9d717",
+          "rationale": "Critical project convention for Django contributions; updating settings defaults requires documentation and test updates."
+        },
+        {
+          "item_id": "mem_58384383",
+          "rationale": "ORM ordering nuance: expression objects vs strings; prevents crashes in compiler."
+        },
+        {
+          "item_id": "mem_5baf8c36",
+          "rationale": "Known Django ORM bug with ordering expressions, must be aware."
+        },
+        {
+          "item_id": "mem_6a681672",
+          "rationale": "Essential technique for Django admin custom field display."
+        },
+        {
+          "item_id": "mem_6bd5c94d",
+          "rationale": "Subtle Django model validation rule that is easy to miss."
+        },
+        {
+          "item_id": "mem_6eff3393",
+          "rationale": "Essential setup instruction for local Django test suite usage; prevents confusion."
+        },
+        {
+          "item_id": "mem_722e11bf",
+          "rationale": "Correct timezone lookup pattern for custom SQL functions; hardcoding breaks tzinfo support."
+        },
+        {
+          "item_id": "mem_7a386b06",
+          "rationale": "Regex anchor nuance in Python to avoid security bypass; high-priority validation rule."
+        },
+        {
+          "item_id": "mem_7aeeefd0",
+          "rationale": "fcntl.flock() behavior doc: exception-based, not return-value; avoids bugs."
+        },
+        {
+          "item_id": "mem_7b2b1af9",
+          "rationale": "Establishes the Python version guarantee that makes reversed(dict) safe, a prerequisite for prior patterns."
+        },
+        {
+          "item_id": "mem_7b5db363",
+          "rationale": "Specific URL regex rule for RFC 1738 credentials; important for validator correctness."
+        },
+        {
+          "item_id": "mem_8a1331e5",
+          "rationale": "Deprecation best practice for config keys; helps maintain backward compatibility."
+        },
+        {
+          "item_id": "mem_904c7ca8",
+          "rationale": "Design pattern for reversible ordered collections in Python."
+        },
+        {
+          "item_id": "mem_99e51e5b",
+          "rationale": "Core Django internal knowledge needed to fix aggregate DISTINCT issues."
+        },
+        {
+          "item_id": "mem_9c10045e",
+          "rationale": "Complete checklist for backend version bumps; recall saves rework."
+        },
+        {
+          "item_id": "mem_9ed6a8f1",
+          "rationale": "Describes an established convention in Django's DateFormat that an agent should remember to apply correctly."
+        },
+        {
+          "item_id": "mem_a20d1d2e",
+          "rationale": "Specific testing convention for Django model_forms tests."
+        },
+        {
+          "item_id": "mem_a3da6ae0",
+          "rationale": "Mandatory test update step when changing messages; essential for maintenance consistency."
+        },
+        {
+          "item_id": "mem_a8da75ed",
+          "rationale": "Easy-to-miss Django template engine behavior affecting security."
+        },
+        {
+          "item_id": "mem_bc8544af",
+          "rationale": "Key Django development guideline for maintaining backwards compatibility."
+        },
+        {
+          "item_id": "mem_be0d9813",
+          "rationale": "Key Python reflection detail for constructing import paths."
+        },
+        {
+          "item_id": "mem_bf726dfd",
+          "rationale": "Essential testing setup tip to avoid picking wrong Django version."
+        },
+        {
+          "item_id": "mem_cd15822c",
+          "rationale": "Common subprocess pitfall the agent must remember to avoid silent bugs."
+        },
+        {
+          "item_id": "mem_d43cccba",
+          "rationale": "Critical validation pattern for Django model fields; ignoring leads to silent errors."
+        },
+        {
+          "item_id": "mem_d6ec8a42",
+          "rationale": "Correct way to display JSON fields in admin; wrong approach corrupts data."
+        },
+        {
+          "item_id": "mem_e2cbc1c3",
+          "rationale": "Defensive coding pattern essential for SQL cursor safety; recurring best practice."
+        },
+        {
+          "item_id": "mem_e374d015",
+          "rationale": "Form validation pattern for user-friendly error message with rejected value context."
+        },
+        {
+          "item_id": "mem_ee3957e1",
+          "rationale": "Important serialization detail for migration code."
+        }
+      ],
+      "must_do": [],
+      "blacklisted": [],
+      "model": "deepseek/deepseek-v4-flash"
+    }
+  },
+  "stages": [
+    {
+      "stage": "plugin-dreamed",
+      "stage_index": 5,
+      "metrics": {
+        "accuracy": 0.24,
+        "relevancy": 0.0,
+        "recency": 0.0,
+        "efficiency": 1.4027165927618483
+      },
+      "n_tasks": 50,
+      "cost_usd": 0.0,
+      "graded_n": 50,
+      "resolved": 12,
+      "ungraded": 0,
+      "grade_reasons": {
+        "graded": 50
+      },
+      "tasks": [
+        {
+          "task_id": "django__django-9296",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-10097",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-10880",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-10914",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-10999",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-11066",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "django__django-11099",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "django__django-11119",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-11133",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-11163",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-11179",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-11239",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "django__django-11299",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-11433",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-11451",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-11490",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "django__django-11555",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-11603",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-11820",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "django__django-11880",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-11951",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-11964",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "django__django-12125",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-12193",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-12209",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "django__django-12276",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-12304",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "django__django-12308",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-12419",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-12741",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13023",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13089",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13109",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13112",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13297",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13363",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13406",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13410",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13417",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13512",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13551",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13741",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13794",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13807",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13821",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13933",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "django__django-14089",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "django__django-14315",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-14373",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "django__django-14376",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        }
+      ],
+      "memory_reached": 50,
+      "memory_hit": 50,
+      "recall_attempted": 50,
+      "recall_with_hits": 50,
+      "memory_health": {
+        "recall_events": 50,
+        "recall_with_hits": 50,
+        "recall_zero_hits": 0,
+        "daydream_completed": 45,
+        "daydream_memory_written": 27,
+        "durable_items_after": 102
+      },
+      "warnings": []
+    }
+  ],
+  "deltas": {}
+}

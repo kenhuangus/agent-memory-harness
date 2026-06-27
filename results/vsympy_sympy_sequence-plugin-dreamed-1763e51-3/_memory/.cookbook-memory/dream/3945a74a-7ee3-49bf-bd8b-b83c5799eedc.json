@@ -1,0 +1,1 @@
+{"cursor": 15899, "last_summary": "In SymPy core modules (like relational.py), avoid top-level imports from sympy.sets to prevent circular imports; import ConditionSet locally inside the method.", "recent_memory_ids": ["mem_656e2e91", "mem_3de964bd"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

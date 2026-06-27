@@ -1,0 +1,1 @@
+{"cursor": 174424, "last_summary": "When a SymPy _eval_evalf / evalf fallback path hits symbolic (non-numeric) args from as_real_imag, reprec/imprec can stay unbound -> guard every branch with an explicit NotImplementedError.", "recent_memory_ids": ["mem_0e5849b3"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

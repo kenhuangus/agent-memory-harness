@@ -1,0 +1,602 @@
+{
+  "schema": 1,
+  "memory_version": "vsympy_sympy_sequence-builtin-1763e51-1",
+  "benchmark": "swe_bench_cl",
+  "timestamp": "20260627T043741Z",
+  "pipeline": {
+    "version": "vsympy_sympy_sequence-builtin-1763e51-1",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "1763e51",
+    "harness": "cursor",
+    "benchmark": "swe_bench_cl",
+    "sequence": "sympy_sympy_sequence",
+    "stage": "builtin",
+    "limit": null,
+    "n_tasks": 50,
+    "model": "composer-2.5",
+    "code_mode": "agentic",
+    "grader": "swebench",
+    "plugin_workers": 1,
+    "budget_usd": 10.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash",
+      "extraction_prompt": {
+        "variant": "V5",
+        "sha256": "44d664a993227521f1caca9bfb8672706916cbe43cc00c7c56a54868d31eae37",
+        "char_count": 6726
+      }
+    },
+    "memory_store": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsympy_sympy_sequence-builtin-1763e51-1/_memory",
+    "source_memory": null,
+    "source_memory_health": null,
+    "n_stages": 1,
+    "n_eval_stages": 1,
+    "stages": [
+      "builtin"
+    ],
+    "timestamp": "20260627T043741Z",
+    "started_at": 1782535061.775531,
+    "ended_at": 1782541785.106246,
+    "stages_run": [
+      "builtin"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": null
+    }
+  },
+  "dream": {
+    "status": "not-run"
+  },
+  "runs": [
+    {
+      "run_id": "pipeline-builtin",
+      "timestamp": "2026-06-27T06:29:45+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "cursor-cli:composer-2.5:builtin",
+      "memory": true,
+      "label": "cursor-cli:composer-2.5:builtin+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.0,
+        "relevancy": 0.0,
+        "accuracy": 0.9,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 50,
+        "extra": {}
+      },
+      "n_tasks": 50,
+      "entries_used": 50,
+      "entries_available": 50,
+      "limit": null,
+      "selection": "flat",
+      "cost_usd": 0.0,
+      "tokens_in": 1627295,
+      "tokens_out": 287982,
+      "partial": false,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 0,
+        "memory_reached": 0,
+        "memory_hit": 0,
+        "recall_attempted": 0,
+        "recall_with_hits": 0,
+        "graded_n": 50,
+        "resolved": 45,
+        "ungraded": 0,
+        "grade_reasons": {
+          "graded": 50
+        },
+        "errors": []
+      },
+      "notes": "single-stage pipeline \u00b7 swe_bench_cl \u00b7 stage builtin",
+      "tasks": [
+        {
+          "task_id": "sympy__sympy-12096",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-12481",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-13372",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-13480",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-14711",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-15017",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sympy__sympy-15345",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-15809",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sympy__sympy-15875",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-16450",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-16766",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-16886",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-17139",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-17655",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-18189",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-18763",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sympy__sympy-19495",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-19637",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-19954",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-20916",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sympy__sympy-21847",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-22714",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-23534",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-24539",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-24562",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-11618",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-12419",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-13031",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-13091",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-13551",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-13615",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-13647",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-13757",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-13798",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sympy__sympy-13877",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-13974",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-14531",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-14976",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-15349",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-15599",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-15976",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-16792",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-17318",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-18211",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-18698",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-19040",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-19346",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-19783",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-20154",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-20428",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        }
+      ],
+      "pipeline_stage": "builtin",
+      "stage_index": 2,
+      "git_sha": "1763e51",
+      "git_tag": "vsympy_sympy_sequence-builtin-1763e51-1",
+      "memory_health": {
+        "before": {
+          "store_dir": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsympy_sympy_sequence-builtin-1763e51-1/_memory/.cookbook-memory",
+          "events": 0,
+          "daydream_events": 0,
+          "recall_events": 0,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 0,
+          "daydream_memory_written": 0,
+          "memory_items": null,
+          "graph_nodes": null,
+          "markdown_items": 0,
+          "durable_items": 0
+        },
+        "after": {
+          "store_dir": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsympy_sympy_sequence-builtin-1763e51-1/_memory/.cookbook-memory",
+          "events": 0,
+          "daydream_events": 0,
+          "recall_events": 0,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 0,
+          "daydream_memory_written": 0,
+          "memory_items": null,
+          "graph_nodes": null,
+          "markdown_items": 0,
+          "durable_items": 0
+        },
+        "delta": {
+          "events": 0,
+          "daydream_events": 0,
+          "recall_events": 0,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 0,
+          "daydream_memory_written": 0,
+          "markdown_items": 0,
+          "durable_items": 0
+        }
+      },
+      "warnings": []
+    }
+  ]
+}

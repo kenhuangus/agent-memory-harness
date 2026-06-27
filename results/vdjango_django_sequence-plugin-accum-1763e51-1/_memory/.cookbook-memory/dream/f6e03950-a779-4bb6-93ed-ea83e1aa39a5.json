@@ -1,0 +1,1 @@
+{"cursor": 6636, "last_summary": "When wrapping `Model.save()` inside `transaction.atomic(using=db)` in Django, you must also pass `using=db` to `save()` \u2014 the atomic context does not propagate the database alias to the save.", "recent_memory_ids": ["mem_28f5497b"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

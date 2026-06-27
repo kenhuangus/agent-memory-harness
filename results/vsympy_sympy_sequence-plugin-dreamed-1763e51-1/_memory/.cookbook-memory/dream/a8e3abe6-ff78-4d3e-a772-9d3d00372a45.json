@@ -1,0 +1,1 @@
+{"cursor": 27439, "last_summary": "When implementing `__eq__`, `__lt__`, etc., return `NotImplemented` (not `False`) for unrecognised types so Python delegates to the other object's reflected method, preserving symmetric comparison.", "recent_memory_ids": ["mem_44d09b86"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

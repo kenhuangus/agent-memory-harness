@@ -1,0 +1,1 @@
+{"cursor": 11258, "last_summary": "When matching symbol name bases in SymPy's split_super_sub or similar name-parsing utilities, a regex limited to [a-zA-Z] will omit Unicode letters (Greek, etc.) \u2014 use [^\\\\W\\\\d_]+ to match any letter.", "recent_memory_ids": ["mem_bc2bcafb"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

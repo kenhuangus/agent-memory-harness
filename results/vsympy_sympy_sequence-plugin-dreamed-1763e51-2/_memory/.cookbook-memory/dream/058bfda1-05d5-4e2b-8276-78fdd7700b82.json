@@ -1,0 +1,1 @@
+{"cursor": 468144, "last_summary": "In SymPy code printers, define `_print_Indexed` using `expr.base.label` for the base symbol and `expr.indices` for the index list, formatting as `base[index1, index2]` for Python syntax.", "recent_memory_ids": ["mem_a8349102"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

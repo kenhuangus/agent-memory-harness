@@ -1,0 +1,1 @@
+{"cursor": 15877, "last_summary": "In Django, Choices (TextChoices/IntegerChoices) inherit from both str/int and Enum; the str/int MRO is before Enum, so __str__ from the mixed-in type is used unless explicitly overridden.", "recent_memory_ids": ["mem_04cea9b8"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

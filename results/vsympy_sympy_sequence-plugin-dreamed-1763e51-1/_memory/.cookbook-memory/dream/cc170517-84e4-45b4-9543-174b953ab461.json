@@ -1,0 +1,1 @@
+{"cursor": 183247, "last_summary": "When a variable is conditionally defined inside an `if` block and later referenced outside it, ensure the reference is also inside the block or the variable is initialized before the block.", "recent_memory_ids": ["mem_b5c73374"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

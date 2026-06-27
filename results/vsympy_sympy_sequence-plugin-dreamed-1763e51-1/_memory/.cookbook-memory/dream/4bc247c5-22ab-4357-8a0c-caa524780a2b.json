@@ -1,0 +1,1 @@
+{"cursor": 133778, "last_summary": "In `sympy.physics.vector.vector.py`, `Vector.__radd__` is aliased to `Vector.__add__`, so fixes to `__add__` that handle non-Vector operands also affect right-side addition via `__radd__`.", "recent_memory_ids": ["mem_a2711a9a"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

@@ -1,0 +1,1 @@
+{"cursor": 11602, "last_summary": "When adding a regression test for a SymPy issue, name the test function `test_issue_<number>` and add it to the corresponding test module in the same subpackage directory.", "recent_memory_ids": ["mem_a524afef"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

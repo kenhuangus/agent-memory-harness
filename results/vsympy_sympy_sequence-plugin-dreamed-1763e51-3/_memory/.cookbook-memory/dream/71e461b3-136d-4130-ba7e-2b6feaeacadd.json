@@ -1,0 +1,1 @@
+{"cursor": 24970, "last_summary": "When dmp_ext_factor calls dmp_sqf_norm, use the original polynomial F, not the square-free part f, or the norm calculation drops distinct factors from the original.", "recent_memory_ids": ["mem_300e1afa"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

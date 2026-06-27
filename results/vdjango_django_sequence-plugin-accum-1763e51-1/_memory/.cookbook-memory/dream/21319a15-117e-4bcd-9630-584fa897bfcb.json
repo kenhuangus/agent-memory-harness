@@ -1,0 +1,1 @@
+{"cursor": 20449, "last_summary": "When writing test cases for Django migration serializers, define mock classes at module level because the serialize() method requires importable paths to resolve class references.", "recent_memory_ids": ["mem_cd6b9533"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

@@ -1,0 +1,1 @@
+{"cursor": 13526, "last_summary": "When a SymPy class needs to win operator dispatch over ordinary expressions (especially __mul__/__rmul__), set _op_priority > 10.0 so Expr's call_highest_priority delegates correctly.", "recent_memory_ids": ["mem_de254028"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

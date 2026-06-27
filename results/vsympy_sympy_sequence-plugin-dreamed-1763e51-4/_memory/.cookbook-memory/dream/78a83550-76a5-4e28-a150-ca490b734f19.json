@@ -1,0 +1,1 @@
+{"cursor": 292327, "last_summary": "In SymPy, `Symbol.assumptions0` returns only explicitly-set non-None assumptions \u2014 this is the canonical property for extracting user-intended assumptions, not `_assumptions` directly.", "recent_memory_ids": ["mem_2d0e26dd"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

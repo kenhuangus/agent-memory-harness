@@ -1,0 +1,1 @@
+{"cursor": 19462, "last_summary": "When a set's _complement handles symbolic elements with unknown membership, use sift with fuzzy_bool instead of a simple list comprehension to preserve unknowns in a Complement node.", "recent_memory_ids": ["mem_6c58cfb4"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

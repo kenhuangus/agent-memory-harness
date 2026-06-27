@@ -1,0 +1,1 @@
+{"cursor": 13330, "last_summary": "When geometry points have different dimensions, zip drops extra coordinates -> pad shorter arg with zeros before computing distance or any coordinate-wise operation.", "recent_memory_ids": ["mem_a0fa19b8"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

@@ -1,0 +1,1 @@
+{"cursor": 17595, "last_summary": "When `PythonCodePrinter` is fixed, all its subclasses (NumPyPrinter, SciPyPrinter, MpmathPrinter) inherit the new method automatically. Fix the base class to cover all.", "recent_memory_ids": ["mem_bb37c69f", "mem_5d00a08d", "mem_578312f0"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

@@ -1,0 +1,1 @@
+{"cursor": 13874, "last_summary": "When allowing an arbitrary LaTeX string for a multiplication symbol in SymPy's printer, preserve the use of \\cdot for number-number multiplications by checking if the custom symbol is whitespace-like.", "recent_memory_ids": ["mem_c9ec7fb5", "mem_e39afb3b"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

@@ -1,0 +1,1 @@
+{"cursor": 10025, "last_summary": "When using sum() on a sequence of custom objects, the initial 0 triggers __radd__/__add__ with a scalar argument; guard __add__ against non-vector scalars by checking for other == 0 early.", "recent_memory_ids": ["mem_471402e0"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

@@ -1,0 +1,1 @@
+{"cursor": 8267, "last_summary": "When deleting items from parallel lists during iteration, collect indices first then delete in reverse order to avoid index invalidation.", "recent_memory_ids": ["mem_eb9859cb"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

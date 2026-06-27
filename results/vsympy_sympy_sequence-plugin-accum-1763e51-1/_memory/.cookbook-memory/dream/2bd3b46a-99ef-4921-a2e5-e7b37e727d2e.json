@@ -1,0 +1,1 @@
+{"cursor": 509248, "last_summary": "When an equation cannot be solved algorithmically in SymPy, the convention is to return a ConditionSet (preserving the equation symbolically) rather than raising NotImplementedError.", "recent_memory_ids": ["mem_efaaa818"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

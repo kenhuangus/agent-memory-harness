@@ -1,0 +1,1 @@
+{"cursor": 15156, "last_summary": "When splitting symbol names into base + subscript digits for pretty printing, use a regex like `[^\\W\\d_]+` (with `re.U`) instead of `[a-zA-Z]+` to handle Greek and other non-ASCII letters.", "recent_memory_ids": ["mem_7e30b1c9"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

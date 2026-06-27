@@ -1,0 +1,1 @@
+{"cursor": 396346, "last_summary": "When adding _print_* for a SymPy type in a code printer, check other printer backends (ccode, jscode, rust, etc.) for existing implementations to use as templates for the pattern.", "recent_memory_ids": ["mem_20783082", "mem_723fd73f", "mem_76438f42"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

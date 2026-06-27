@@ -1,0 +1,624 @@
+{
+  "schema": 1,
+  "memory_version": "vdjango_django_sequence-plugin-accum-1763e51-1",
+  "benchmark": "swe_bench_cl",
+  "timestamp": "20260627T043654Z",
+  "pipeline": {
+    "version": "vdjango_django_sequence-plugin-accum-1763e51-1",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "1763e51",
+    "harness": "cursor",
+    "benchmark": "swe_bench_cl",
+    "sequence": "django_django_sequence",
+    "stage": "plugin-accum",
+    "limit": null,
+    "n_tasks": 50,
+    "model": "composer-2.5",
+    "code_mode": "agentic",
+    "grader": "swebench",
+    "plugin_workers": 1,
+    "budget_usd": 10.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash",
+      "extraction_prompt": {
+        "variant": "V5",
+        "sha256": "44d664a993227521f1caca9bfb8672706916cbe43cc00c7c56a54868d31eae37",
+        "char_count": 6726
+      }
+    },
+    "memory_store": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vdjango_django_sequence-plugin-accum-1763e51-1/_memory",
+    "source_memory": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vdjango_django_sequence-plugin-blank-a1677d1-1/_memory",
+    "source_memory_health": {
+      "store_dir": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vdjango_django_sequence-plugin-blank-a1677d1-1/_memory/.cookbook-memory",
+      "events": 1492,
+      "daydream_events": 569,
+      "recall_events": 50,
+      "recall_with_hits": 48,
+      "recall_zero_hits": 2,
+      "recall_errors": 0,
+      "daydream_completed": 43,
+      "daydream_memory_written": 31,
+      "memory_items": 31,
+      "graph_nodes": 31,
+      "markdown_items": 31,
+      "durable_items": 31
+    },
+    "n_stages": 1,
+    "n_eval_stages": 1,
+    "stages": [
+      "plugin-accum"
+    ],
+    "timestamp": "20260627T043654Z",
+    "started_at": 1782535014.202407,
+    "ended_at": 1782543229.0797272,
+    "source_memory_copied_to": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vdjango_django_sequence-plugin-accum-1763e51-1/_memory",
+    "stages_run": [
+      "plugin-accum"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": {
+        "ok": true,
+        "code": "ok",
+        "remembered": true,
+        "hits": 1
+      }
+    }
+  },
+  "dream": {
+    "status": "not-run"
+  },
+  "runs": [
+    {
+      "run_id": "pipeline-plugin-accum",
+      "timestamp": "2026-06-27T06:53:49+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "cursor-cli:composer-2.5:plugin-real",
+      "memory": true,
+      "label": "cursor-cli:composer-2.5:plugin-real+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.48922001533265586,
+        "relevancy": 0.0,
+        "accuracy": 0.24,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 50,
+        "extra": {}
+      },
+      "n_tasks": 50,
+      "entries_used": 50,
+      "entries_available": 50,
+      "limit": null,
+      "selection": "flat",
+      "cost_usd": 0.0,
+      "tokens_in": 1604306,
+      "tokens_out": 204376,
+      "partial": false,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 0,
+        "memory_reached": 50,
+        "memory_hit": 50,
+        "recall_attempted": 50,
+        "recall_with_hits": 50,
+        "graded_n": 50,
+        "resolved": 12,
+        "ungraded": 0,
+        "grade_reasons": {
+          "graded": 50
+        },
+        "errors": []
+      },
+      "notes": "single-stage pipeline \u00b7 swe_bench_cl \u00b7 stage plugin-accum",
+      "tasks": [
+        {
+          "task_id": "django__django-9296",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-10097",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-10880",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-10914",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-10999",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-11066",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "django__django-11099",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "django__django-11119",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-11133",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-11163",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-11179",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-11239",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "django__django-11299",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-11433",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-11451",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-11490",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "django__django-11555",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-11603",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-11820",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "django__django-11880",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-11951",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-11964",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "django__django-12125",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-12193",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-12209",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "django__django-12276",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-12304",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "django__django-12308",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-12419",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-12741",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13023",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13089",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13109",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13112",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13297",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13363",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13406",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13410",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13417",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13512",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13551",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13741",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13794",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13807",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13821",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-13933",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "django__django-14089",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "django__django-14315",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "django__django-14373",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "django__django-14376",
+          "stage": "plugin-accum",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        }
+      ],
+      "pipeline_stage": "plugin-accum",
+      "stage_index": 4,
+      "git_sha": "1763e51",
+      "git_tag": "vdjango_django_sequence-plugin-accum-1763e51-1",
+      "memory_health": {
+        "before": {
+          "store_dir": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vdjango_django_sequence-plugin-accum-1763e51-1/_memory/.cookbook-memory",
+          "events": 1492,
+          "daydream_events": 569,
+          "recall_events": 50,
+          "recall_with_hits": 48,
+          "recall_zero_hits": 2,
+          "recall_errors": 0,
+          "daydream_completed": 43,
+          "daydream_memory_written": 31,
+          "memory_items": 31,
+          "graph_nodes": 31,
+          "markdown_items": 31,
+          "durable_items": 31
+        },
+        "after": {
+          "store_dir": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vdjango_django_sequence-plugin-accum-1763e51-1/_memory/.cookbook-memory",
+          "events": 3121,
+          "daydream_events": 1139,
+          "recall_events": 100,
+          "recall_with_hits": 97,
+          "recall_zero_hits": 3,
+          "recall_errors": 0,
+          "daydream_completed": 86,
+          "daydream_memory_written": 59,
+          "memory_items": 59,
+          "graph_nodes": 59,
+          "markdown_items": 59,
+          "durable_items": 59
+        },
+        "delta": {
+          "events": 1629,
+          "daydream_events": 570,
+          "recall_events": 50,
+          "recall_with_hits": 49,
+          "recall_zero_hits": 1,
+          "recall_errors": 0,
+          "daydream_completed": 43,
+          "daydream_memory_written": 28,
+          "memory_items": 28,
+          "graph_nodes": 28,
+          "markdown_items": 28,
+          "durable_items": 28
+        }
+      },
+      "warnings": []
+    }
+  ]
+}

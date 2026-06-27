@@ -1,0 +1,1 @@
+{"cursor": 13825, "last_summary": "When implementing a proxy class that delegates to a base type, implement all operator dunder methods the base type supports; omission causes TypeError on operations that work on the base type.", "recent_memory_ids": ["mem_e67bd788", "mem_4e3c7f81"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

@@ -1,0 +1,1 @@
+{"cursor": 21847, "last_summary": "When factoring multivariate polys over algebraic extensions via dmp_ext_factor, pass the full polynomial (F) to dmp_sqf_norm, not the square-free part (f), or some factors may drop.", "recent_memory_ids": ["mem_a7f7562e"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

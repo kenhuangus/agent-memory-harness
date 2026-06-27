@@ -1,0 +1,1 @@
+{"cursor": 15409, "last_summary": "When `_eval_as_set` calls `solve_univariate_inequality`, catch `NotImplementedError` and return a `ConditionSet` because that solver raises for unsolvable equations.", "recent_memory_ids": ["mem_d7e804e4"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

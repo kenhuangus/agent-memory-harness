@@ -1,0 +1,1 @@
+{"cursor": 12802, "last_summary": "When implementing or reviewing quaternion-to-rotation-matrix code, the element m12 (M[0][1]) uses 2*s*(c*d - b*a) not 2*s*(c*d + b*a). The standard formula from Wikipedia must be consulted.", "recent_memory_ids": ["mem_0869d4ed"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

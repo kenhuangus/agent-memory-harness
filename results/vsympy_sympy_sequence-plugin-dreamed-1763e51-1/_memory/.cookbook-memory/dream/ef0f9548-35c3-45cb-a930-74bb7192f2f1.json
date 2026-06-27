@@ -1,0 +1,1 @@
+{"cursor": 208350, "last_summary": "When comparing a SymPy expression with <, >, <=, >=, always guard with a prior check that the expression is real (expr.is_real), because complex values cannot be ordered and raise TypeError.", "recent_memory_ids": ["mem_46d05820"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

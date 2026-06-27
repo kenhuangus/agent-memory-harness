@@ -1,0 +1,1 @@
+{"cursor": 23899, "last_summary": "When serializing a type in Django migration serialization (TypeSerializer), use __qualname__ instead of __name__ to correctly resolve nested/inner class paths. Matches Enum/FunctionType serializers.", "recent_memory_ids": ["mem_f124b9e8"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

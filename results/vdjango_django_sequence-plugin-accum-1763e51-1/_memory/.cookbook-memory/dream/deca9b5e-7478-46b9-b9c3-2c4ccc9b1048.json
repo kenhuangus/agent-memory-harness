@@ -1,0 +1,1 @@
+{"cursor": 6126, "last_summary": "When running Django's test suite from a source checkout, set PYTHONPATH to the repo root to ensure the test runner uses the local code instead of an installed Django package.", "recent_memory_ids": ["mem_904c7ca8", "mem_6eff3393"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

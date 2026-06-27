@@ -1,0 +1,1 @@
+{"cursor": 7324, "last_summary": "When a solver's behavior depends on symbol ordering but the result should be symmetric under permutation, a recursive reordering step that drops optional parameters causes incomplete results.", "recent_memory_ids": ["mem_839809e5"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

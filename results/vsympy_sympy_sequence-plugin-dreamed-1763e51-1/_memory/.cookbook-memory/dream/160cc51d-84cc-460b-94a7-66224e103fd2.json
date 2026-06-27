@@ -1,0 +1,1 @@
+{"cursor": 485693, "last_summary": "When adding regression tests for SymPy factorization bugs, test via the public factor() function at the expression level rather than only the internal dmp_* function to exercise the full code path.", "recent_memory_ids": ["mem_cb28f76b", "mem_b42f98e1"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
