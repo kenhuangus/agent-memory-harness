@@ -1,0 +1,1 @@
+{"cursor": 13337, "last_summary": "When computing the product of elements in an iterable that may be empty, use reduce with initializer=1 so the empty product yields 1 instead of 0.", "recent_memory_ids": ["mem_8cd55e28"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

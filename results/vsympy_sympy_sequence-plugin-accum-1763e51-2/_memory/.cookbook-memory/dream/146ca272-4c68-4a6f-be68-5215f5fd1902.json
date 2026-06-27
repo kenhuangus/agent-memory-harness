@@ -1,0 +1,1 @@
+{"cursor": 21016, "last_summary": "When a bug fix exists in sympy/matrices/common.py for dense matrix methods, it must be replicated in sympy/matrices/sparse.py for the same methods because SparseMatrix overrides them independently.", "recent_memory_ids": ["mem_1a504d07"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

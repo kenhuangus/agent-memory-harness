@@ -1,0 +1,1 @@
+{"cursor": 15313, "last_summary": "When running SymPy on Python 3.11+, `collections.Mapping` etc. may be missing; shim them from `collections.abc` in test/script entry points before importing SymPy.", "recent_memory_ids": ["mem_81a9206f"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

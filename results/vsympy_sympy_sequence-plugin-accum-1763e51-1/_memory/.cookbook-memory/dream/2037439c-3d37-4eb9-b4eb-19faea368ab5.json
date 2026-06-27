@@ -1,0 +1,1 @@
+{"cursor": 659012, "last_summary": "When MathML output renders symbols as invisible in browsers, check if `<mi>` elements contain block-level children like `msub`/`msup` \u2014 invalid nesting causes browsers to suppress rendering.", "recent_memory_ids": ["mem_a03badcb", "mem_0e1c19e5"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

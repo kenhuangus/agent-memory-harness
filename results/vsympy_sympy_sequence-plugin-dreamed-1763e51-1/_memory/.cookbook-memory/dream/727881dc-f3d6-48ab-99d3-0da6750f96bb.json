@@ -1,0 +1,1 @@
+{"cursor": 12792, "last_summary": "In SymPy, to avoid circular imports in __mul__ implementations that need classes from other modules (e.g., IdentityOperator), import them inside the method body rather than at module top level.", "recent_memory_ids": ["mem_6722bef0"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

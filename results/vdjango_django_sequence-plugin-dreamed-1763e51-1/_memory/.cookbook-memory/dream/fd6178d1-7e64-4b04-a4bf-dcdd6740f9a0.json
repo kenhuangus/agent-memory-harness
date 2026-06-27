@@ -1,0 +1,1 @@
+{"cursor": 9564, "last_summary": "To reliably set a model instance's primary key field without hitting descriptor/property complexities, use setattr(instance, model._meta.pk.attname, value) instead of instance.pk = value.", "recent_memory_ids": ["mem_a5aa6f69", "mem_2263d0a9"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

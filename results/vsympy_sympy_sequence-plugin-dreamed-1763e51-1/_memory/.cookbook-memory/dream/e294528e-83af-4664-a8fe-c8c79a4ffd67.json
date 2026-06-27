@@ -1,0 +1,1 @@
+{"cursor": 593583, "last_summary": "When simplifying `TensorProduct(A,B)**n` in `tensor_product_simp`, apply the exponent to each argument: `TensorProduct(A**n, B**n)`.", "recent_memory_ids": ["mem_e5dd7f06"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

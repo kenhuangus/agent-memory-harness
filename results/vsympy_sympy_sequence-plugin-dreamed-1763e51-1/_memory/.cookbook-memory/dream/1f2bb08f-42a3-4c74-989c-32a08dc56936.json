@@ -1,0 +1,1 @@
+{"cursor": 450304, "last_summary": "When split_surds encounters an expression with no power terms (surds empty), return (S.One, S.Zero, expr) early to prevent downstream IndexError.", "recent_memory_ids": ["mem_b1572fc3", "mem_1b63c82b"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

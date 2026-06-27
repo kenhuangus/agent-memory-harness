@@ -1,0 +1,1 @@
+{"cursor": 8342, "last_summary": "When iterating over parallel lists to remove elements, do not delete during the loop because indices shift; collect indices to remove and delete after the loop.", "recent_memory_ids": ["mem_47ba860c"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

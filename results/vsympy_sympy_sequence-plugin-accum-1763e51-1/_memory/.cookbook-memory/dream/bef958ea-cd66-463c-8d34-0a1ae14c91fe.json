@@ -1,0 +1,1 @@
+{"cursor": 476568, "last_summary": "When adding arithmetic overrides in SymPy quantum classes that would cause circular imports, check class name with other.__class__.__name__ instead of isinstance to avoid circular import errors.", "recent_memory_ids": ["mem_f5213bbe"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

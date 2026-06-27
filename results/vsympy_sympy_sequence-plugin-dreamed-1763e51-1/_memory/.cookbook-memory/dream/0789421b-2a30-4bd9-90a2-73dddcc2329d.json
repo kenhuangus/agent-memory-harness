@@ -1,0 +1,1 @@
+{"cursor": 21643, "last_summary": "When testing the MathML presentation printer, verify DOM structure by checking `nodeName` of child elements and `nodeValue` of text nodes on the top-level element, not on nested `<mi>` wrappers.", "recent_memory_ids": ["mem_712af158", "mem_850ec2db"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

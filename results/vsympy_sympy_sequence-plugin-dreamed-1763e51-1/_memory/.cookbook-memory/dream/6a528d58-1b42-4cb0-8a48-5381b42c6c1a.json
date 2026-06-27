@@ -1,0 +1,1 @@
+{"cursor": 9718, "last_summary": "In SymPy, every Basic object has `assumptions0` returning a dict of all known assumptions; use it to capture or propagate the full assumption set without losing unknown flags.", "recent_memory_ids": ["mem_3e79d528", "mem_ffb8b0cb"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

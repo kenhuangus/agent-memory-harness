@@ -1,0 +1,1 @@
+{"cursor": 11281, "last_summary": "When adding an else clause for safety in SymPy's evalf code path, the correct explicit exception is NotImplementedError (not RuntimeError or ValueError) to match the surrounding pattern.", "recent_memory_ids": ["mem_fe9dcf6a"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

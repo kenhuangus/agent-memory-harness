@@ -1,0 +1,1 @@
+{"cursor": 378213, "last_summary": "When fixing LaTeX parenthesization in one SymPy printer class, check the pretty printer and other printers for analogous issues \u2014 the pretty printer for Subs already used parens() but LaTeX did not.", "recent_memory_ids": ["mem_e89b4eba"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

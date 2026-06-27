@@ -1,0 +1,1 @@
+{"cursor": 14064, "last_summary": "When Django model fields with TextChoices/IntegerChoices are assigned an enum member, str() returns the enum name, not the value. Fix: override __str__ on Choices base class to return str(self.value).", "recent_memory_ids": ["mem_f4570f02"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

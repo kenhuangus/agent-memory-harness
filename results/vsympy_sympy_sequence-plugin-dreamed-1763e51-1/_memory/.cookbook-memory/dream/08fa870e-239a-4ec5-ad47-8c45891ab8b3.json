@@ -1,0 +1,1 @@
+{"cursor": 15262, "last_summary": "In `_symbolic_factor_list`, after splitting Mul args into coeff and factor list, group factors with the same exponent and replace them by a single `(Mul(*bases), k)` when `method == 'sqf'`.", "recent_memory_ids": ["mem_7d66c9d0"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

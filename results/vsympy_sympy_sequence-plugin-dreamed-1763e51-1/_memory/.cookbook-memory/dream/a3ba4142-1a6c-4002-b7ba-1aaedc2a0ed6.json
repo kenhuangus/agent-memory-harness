@@ -1,0 +1,1 @@
+{"cursor": 223929, "last_summary": "When minimal_blocks() deletes entries from parallel lists while iterating, collect indices to delete and remove them in reverse order to avoid index shifting that causes IndexError.", "recent_memory_ids": ["mem_5b29b7cd"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

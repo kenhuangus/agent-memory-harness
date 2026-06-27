@@ -1,0 +1,1 @@
+{"cursor": 30596, "last_summary": "When modifying a user-facing error message string in Django, search the entire codebase (tests, docs, etc.) for the old message text and update all assertions and references to match the new format.", "recent_memory_ids": ["mem_79f08d07"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

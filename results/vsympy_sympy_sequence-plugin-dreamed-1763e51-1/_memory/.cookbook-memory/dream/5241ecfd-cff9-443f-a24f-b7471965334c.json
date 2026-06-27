@@ -1,0 +1,1 @@
+{"cursor": 92992, "last_summary": "When a SymPy Mod.doit() handler for Mul checks whether non-mod args change after wrapping in Mod(x, q), it must compare before/after to detect reductions like 3*i -> i (mod 2).", "recent_memory_ids": ["mem_0eaeead3"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

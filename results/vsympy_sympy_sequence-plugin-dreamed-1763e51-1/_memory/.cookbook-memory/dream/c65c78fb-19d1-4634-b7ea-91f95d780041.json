@@ -1,0 +1,1 @@
+{"cursor": 11436, "last_summary": "When a generator yields a mutable dict/list that it mutates between iterations, yield a copy each time to prevent list(gen) from showing all entries as the same final object.", "recent_memory_ids": ["mem_b2b64e5b"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

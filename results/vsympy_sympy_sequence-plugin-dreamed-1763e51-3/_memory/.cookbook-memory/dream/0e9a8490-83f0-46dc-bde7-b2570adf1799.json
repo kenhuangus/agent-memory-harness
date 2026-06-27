@@ -1,0 +1,1 @@
+{"cursor": 5795, "last_summary": "When validating variable-length arguments with a fallback default, put the fallback in an explicit 'if not args:' branch, not in the else of a condition that also tests validity.", "recent_memory_ids": ["mem_9752acdf"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

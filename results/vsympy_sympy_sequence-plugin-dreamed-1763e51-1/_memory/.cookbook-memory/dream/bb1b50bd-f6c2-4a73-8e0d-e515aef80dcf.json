@@ -1,0 +1,1 @@
+{"cursor": 429131, "last_summary": "When a monomial generator short-circuits on `max_degree == 0` and unconditionally yields `S.One`, it must guard with `if min_degree <= 0:` to respect non-zero lower bounds.", "recent_memory_ids": ["mem_237d9c5b"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

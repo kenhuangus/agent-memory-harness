@@ -1,0 +1,1 @@
+{"cursor": 18945, "last_summary": "When a symbolic matrix class overrides _entry(i, j) using Python == (i == j), it silently returns 0 for symbolic indices. Use Eq(i, j) and fall back to KroneckerDelta(i, j) when Eq is unresolved.", "recent_memory_ids": ["mem_3dd997d1"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

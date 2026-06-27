@@ -1,0 +1,1 @@
+{"cursor": 332617, "last_summary": "When a SymPy LatticeOp subclass defines `identity` and `zero` attributes, `cls.identity` is the neutral element returned for zero-argument calls, not an error.", "recent_memory_ids": ["mem_d7a4577c"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

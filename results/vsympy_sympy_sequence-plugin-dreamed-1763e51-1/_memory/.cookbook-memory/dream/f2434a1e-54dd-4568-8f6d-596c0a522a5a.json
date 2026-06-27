@@ -1,0 +1,1 @@
+{"cursor": 19752, "last_summary": "When stacking null matrices (0 rows or 0 cols), they can always be concatenated by reshaping to the matching dimension's size \u2014 a null matrix effectively imposes no constraint on the result shape.", "recent_memory_ids": ["mem_e3dced8e"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

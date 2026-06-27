@@ -1,0 +1,1 @@
+{"cursor": 479497, "last_summary": "When `symbols()` is called with a non-string iterable (tuple/list) of names and a `cls` parameter, the recursive call must pass `cls=cls` explicitly or it defaults to `Symbol`.", "recent_memory_ids": ["mem_c106f276"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

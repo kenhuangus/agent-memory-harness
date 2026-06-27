@@ -1,0 +1,1 @@
+{"cursor": 11024, "last_summary": "When using subprocess.run with an env argument, pass None (not an empty dict) to inherit the parent process environment; an empty dict clears the environment, causing silent bugs.", "recent_memory_ids": ["mem_cd15822c"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

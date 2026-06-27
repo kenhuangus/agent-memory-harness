@@ -1,0 +1,1 @@
+{"cursor": 8567, "last_summary": "When writing SymPy simplification rules that compare exponent values with `<` or `>`, guard against non-real exponents by checking `rv.exp.is_real is False` before the comparison to avoid `TypeError`.", "recent_memory_ids": ["mem_57f91aa8"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

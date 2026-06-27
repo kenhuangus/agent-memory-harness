@@ -1,0 +1,1 @@
+{"cursor": 15044, "last_summary": "When Django TextChoices/IntegerChoices misses a __str__, enum.Enum.__str__ returns qualified name instead of the .value. Fix: add __str__ to the Choices base class returning str(self.value).", "recent_memory_ids": ["mem_e7caaa7a"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}
