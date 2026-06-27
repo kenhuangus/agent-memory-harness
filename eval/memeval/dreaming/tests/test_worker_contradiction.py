@@ -169,6 +169,19 @@ def _disable_ttl_for_contradiction_tests(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 @pytest.fixture(autouse=True)
+def _pin_v1_paths_for_contradiction_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ADR-028 §2 PR #2h (flip-on-trust) — these tests pin v1 contradiction
+    batch behavior (batch_size, batch_complete events, call_cap_reached,
+    LLM-call counting) and feed stub responses sized for the v1 shape. With
+    v2 paths defaulted ON in production code (PR #2h), the dedup pre-pass
+    and neighborhood contradiction would consume those stub responses out
+    of order. Kill both v2 paths via the env-var escape hatch so this
+    suite continues to exercise the v1 behavior it actually pins."""
+    monkeypatch.setenv("DREAM_DEDUP_NEIGHBORHOOD", "0")
+    monkeypatch.setenv("DREAM_CONTRADICTION_NEIGHBORHOOD", "0")
+
+
+@pytest.fixture(autouse=True)
 def _isolate_basedir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Every test gets its own basedir so the basedir flock + NFS check don't collide."""
     base = tmp_path / "memory-store"

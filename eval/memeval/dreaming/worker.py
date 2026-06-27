@@ -172,40 +172,36 @@ def _read_item_retention_days() -> int:
 
 
 def _read_use_neighborhood_dedup() -> bool:
-    """ADR-dreaming-028 §2 PR #2f — opt-in flag enabling the
-    neighborhood-scoped LLM dedup pre-pass (PR #2e's
-    ``_detect_duplicates_neighborhood``).
+    """ADR-dreaming-028 §2 — kill switch for the neighborhood-scoped LLM
+    dedup pre-pass (PR #2e's ``_detect_duplicates_neighborhood``).
 
-    Defaults to ``False`` — today's behavior (lexical-dedup only) is
-    preserved. Set ``DREAM_DEDUP_NEIGHBORHOOD=1`` to opt in. Strict
-    equality with ``"1"`` (any other value reads as off) keeps the
-    flag deliberate, matching the contradiction flag in
-    :func:`_read_use_neighborhood_contradiction`.
+    **Default ON.** As of the flip-on-trust decision (PR #2h, post-#2g),
+    v2 is the default consolidation behavior. Only ``"0"`` explicitly
+    disables the pass; any other value (unset, empty, "1", "true",
+    misspellings) reads as ON. This shape — "only the literal kill
+    string disables" — mirrors the kill-switch contract
+    ``DREAM_ITEM_RETENTION_DAYS=0`` from ADR-028 §1 PR #1.
 
-    When enabled, the dedup pass runs AFTER lexical dedup and BEFORE
-    contradiction, so it catches paraphrase clusters that lexical
-    normalize missed without re-judging items the lexical pass already
-    retired. Its retired ids feed into the contradiction pass's
+    Operationally, the pass runs AFTER lexical dedup and BEFORE
+    contradiction. Its retired ids feed into the contradiction pass's
     ``protected_ids`` so a contradiction loser doesn't also get marked
     as a duplicate-loser of the same pair.
     """
-    return os.environ.get("DREAM_DEDUP_NEIGHBORHOOD") == "1"
+    return os.environ.get("DREAM_DEDUP_NEIGHBORHOOD") != "0"
 
 
 def _read_use_neighborhood_contradiction() -> bool:
-    """ADR-dreaming-028 §2 PR #2d — opt-in flag selecting the
-    neighborhood-scoped contradiction path (PR #2c's
-    ``_detect_contradictions_neighborhood``) over today's v1 path
-    (``_detect_contradictions``).
+    """ADR-dreaming-028 §2 — kill switch for the neighborhood-scoped
+    contradiction path (PR #2c's ``_detect_contradictions_neighborhood``)
+    over the v1 batch-and-shuffle path (``_detect_contradictions``).
 
-    Defaults to ``False`` — today's v1 batch-and-shuffle behavior is
-    preserved. Set ``DREAM_CONTRADICTION_NEIGHBORHOOD=1`` to opt in.
-    Any other value (including unset, empty, "0", "true", "yes",
-    misspellings) reads as v1. Strict equality with ``"1"`` keeps the
-    flag deliberate; an operator typing "true" wouldn't accidentally
-    flip the consolidation behavior without realizing it.
+    **Default ON.** As of the flip-on-trust decision (PR #2h, post-#2g),
+    v2 is the default. Only ``"0"`` falls back to the v1 path; any other
+    value (unset, empty, "1", "true", misspellings) keeps v2. Matches the
+    kill-switch shape of :func:`_read_use_neighborhood_dedup` and the
+    ``DREAM_ITEM_RETENTION_DAYS=0`` kill switch from PR #1.
     """
-    return os.environ.get("DREAM_CONTRADICTION_NEIGHBORHOOD") == "1"
+    return os.environ.get("DREAM_CONTRADICTION_NEIGHBORHOOD") != "0"
 
 
 def _read_contradiction_max_calls() -> int:
@@ -1708,18 +1704,22 @@ class DreamingWorker:
                     self.store.delete(retired_id)
                     retired_ids_set.add(retired_id)
 
-            # ── JOB 1.5 LLM dedup pre-pass (ADR-028 §2 PR #2f) ──────────────
-            # Opt-in via `DREAM_DEDUP_NEIGHBORHOOD=1`. Default off preserves
-            # today's behavior. Runs AFTER lexical dedup (so it never re-
-            # judges items already retired) and BEFORE contradiction (so its
-            # retired ids flow into `cluster_winners_set ∪ dedup_loser_set`
-            # protected from contradiction-loser-collision). Catches
-            # paraphrase clusters lexical normalize misses; semantically
-            # additive to today's pass, not a replacement for it.
+            # Construct the LLM client once and reuse across dedup +
+            # contradiction + governance (test_make_llm_client_called_once_and_
+            # reused_across_both_passes is the existing pin on this
+            # optimization; the flip-on-trip default for the dedup pass means
+            # the construction now feeds three consumers instead of two).
+            llm_client = _make_llm_client()
+
+            # ── JOB 1.5 LLM dedup pre-pass (ADR-028 §2 PR #2f, default ON #2h) ──
+            # Kill switch: `DREAM_DEDUP_NEIGHBORHOOD=0` falls back to lexical-
+            # only dedup. Runs AFTER lexical dedup (so it never re-judges
+            # items already retired) and BEFORE contradiction (so its retired
+            # ids flow into `cluster_winners_set ∪ dedup_loser_set` protected
+            # from contradiction-loser-collision). Catches paraphrase clusters
+            # lexical normalize misses; semantically additive to lexical dedup,
+            # not a replacement.
             if _read_use_neighborhood_dedup():
-                # Lazy client construction here (not hoisted) so the
-                # default-off path is byte-identical to today.
-                _llm_client_for_dedup = _make_llm_client()
                 _lexical_dedup_survivors = [
                     it for it in items
                     if it.item_id not in pruned_set and it.item_id not in retired_ids_set
@@ -1731,9 +1731,9 @@ class DreamingWorker:
                 _dedup_result = _detect_duplicates_neighborhood(
                     _lexical_dedup_survivors,
                     self.store,
-                    _llm_client_for_dedup,
+                    llm_client,
                     max_calls=_dedup_max_calls,
-                    model=getattr(_llm_client_for_dedup, "model", "unknown"),
+                    model=getattr(llm_client, "model", "unknown"),
                     session_id=_session_id_for_dream(basedir),
                     now=now_cached,
                     protected_ids={c["winner_id"] for c in cluster_specs},
@@ -1756,12 +1756,12 @@ class DreamingWorker:
             # representative of its normalized content. The conservative posture
             # (halliday B5) defers to the dedup pass's recency judgment.
             cluster_winners_set: set[str] = {c["winner_id"] for c in cluster_specs}
-            llm_client = _make_llm_client()
-            # ADR-028 §2 PR #2d — opt-in switch between the v1 shuffle-batch
-            # contradiction path and the v2 per-pivot neighborhood path. Flag
-            # is `DREAM_CONTRADICTION_NEIGHBORHOOD=1`; default off preserves
-            # today's behavior. Promotion to default is gated on real-bench
-            # A/B measurement (separate future PR).
+            # ADR-028 §2 PR #2d — switch between the v1 shuffle-batch
+            # contradiction path and the v2 per-pivot neighborhood path.
+            # Default ON as of the flip-on-trust decision (PR #2h, post-#2g);
+            # `DREAM_CONTRADICTION_NEIGHBORHOOD=0` falls back to v1 as a
+            # kill switch. The two v2 paths shipped without an A/B; if a
+            # regression surfaces, flip this env to "0" while we measure.
             if _read_use_neighborhood_contradiction():
                 contradiction_result = _detect_contradictions_neighborhood(
                     contradiction_survivors,
