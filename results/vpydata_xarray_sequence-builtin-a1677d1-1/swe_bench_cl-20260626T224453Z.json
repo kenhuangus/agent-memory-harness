@@ -1,0 +1,145 @@
+{
+  "schema": 1,
+  "memory_version": "vpydata_xarray_sequence-builtin-a1677d1-1",
+  "benchmark": "swe_bench_cl",
+  "timestamp": "20260626T224453Z",
+  "pipeline": {
+    "version": "vpydata_xarray_sequence-builtin-a1677d1-1",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "a1677d1",
+    "harness": "claude",
+    "benchmark": "swe_bench_cl",
+    "sequence": "pydata_xarray_sequence",
+    "stage": "builtin",
+    "limit": null,
+    "n_tasks": 22,
+    "model": "claude-haiku-4-5",
+    "code_mode": "agentic",
+    "grader": "swebench",
+    "plugin_workers": 1,
+    "budget_usd": 10.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "inclusionai/ling-2.6-flash"
+    },
+    "memory_store": "results/vpydata_xarray_sequence-builtin-a1677d1-1/_memory",
+    "source_memory": null,
+    "source_memory_health": null,
+    "n_stages": 1,
+    "n_eval_stages": 1,
+    "stages": [
+      "builtin"
+    ],
+    "timestamp": "20260626T224453Z",
+    "started_at": 1782513893.1367202,
+    "ended_at": 1782519340.8535707,
+    "stages_run": [
+      "builtin"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": null
+    }
+  },
+  "dream": {
+    "status": "not-run"
+  },
+  "runs": [
+    {
+      "run_id": "pipeline-builtin",
+      "timestamp": "2026-06-27T00:15:40+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "claude-code:claude-haiku-4-5:builtin",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:builtin+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.0,
+        "relevancy": 0.0,
+        "accuracy": 0.22727272727272727,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 22,
+        "extra": {}
+      },
+      "n_tasks": 22,
+      "entries_used": 22,
+      "entries_available": 22,
+      "limit": null,
+      "selection": "flat",
+      "cost_usd": 2.082462,
+      "tokens_in": 1962,
+      "tokens_out": 416100,
+      "partial": false,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 0,
+        "memory_reached": 0,
+        "memory_hit": 0,
+        "recall_attempted": 0,
+        "recall_with_hits": 0,
+        "graded_n": 22,
+        "resolved": 5,
+        "ungraded": 0,
+        "grade_reasons": {
+          "graded": 22
+        },
+        "errors": []
+      },
+      "notes": "single-stage pipeline \u00b7 swe_bench_cl \u00b7 stage builtin",
+      "pipeline_stage": "builtin",
+      "stage_index": 2,
+      "git_sha": "a1677d1",
+      "git_tag": "vpydata_xarray_sequence-builtin-a1677d1-1",
+      "memory_health": {
+        "before": {
+          "store_dir": "results/vpydata_xarray_sequence-builtin-a1677d1-1/_memory/.cookbook-memory",
+          "events": 0,
+          "daydream_events": 0,
+          "recall_events": 0,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 0,
+          "daydream_memory_written": 0,
+          "memory_items": null,
+          "graph_nodes": null,
+          "markdown_items": 0,
+          "durable_items": 0
+        },
+        "after": {
+          "store_dir": "results/vpydata_xarray_sequence-builtin-a1677d1-1/_memory/.cookbook-memory",
+          "events": 0,
+          "daydream_events": 0,
+          "recall_events": 0,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 0,
+          "daydream_memory_written": 0,
+          "memory_items": null,
+          "graph_nodes": null,
+          "markdown_items": 0,
+          "durable_items": 0
+        },
+        "delta": {
+          "events": 0,
+          "daydream_events": 0,
+          "recall_events": 0,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 0,
+          "daydream_memory_written": 0,
+          "markdown_items": 0,
+          "durable_items": 0
+        }
+      },
+      "warnings": []
+    }
+  ]
+}

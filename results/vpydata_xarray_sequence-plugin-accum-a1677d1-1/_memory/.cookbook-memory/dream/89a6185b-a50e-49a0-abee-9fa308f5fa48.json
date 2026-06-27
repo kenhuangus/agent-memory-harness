@@ -1,0 +1,1 @@
+{"cursor": 208297, "last_summary": "When boolean arrays are used as weights with xarray's .weighted().mean(), convert the mask to float before dot product to ensure numeric arithmetic results instead of boolean values.", "recent_memory_ids": ["mem_14078556"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
