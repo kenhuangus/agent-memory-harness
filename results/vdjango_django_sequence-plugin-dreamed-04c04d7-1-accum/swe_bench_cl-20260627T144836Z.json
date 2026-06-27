@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "memory_version": "vdjango_django_sequence-plugin-dreamed-04c04d7-1-accum",
+  "benchmark": "swe_bench_cl",
+  "timestamp": "20260627T144836Z",
+  "pipeline": {
+    "version": "vdjango_django_sequence-plugin-dreamed-04c04d7-1-accum",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "04c04d7",
+    "harness": "claude",
+    "benchmark": "swe_bench_cl",
+    "sequence": "django_django_sequence",
+    "stage": "plugin-dreamed",
+    "limit": null,
+    "n_tasks": 50,
+    "model": "claude-haiku-4-5",
+    "code_mode": "agentic",
+    "grader": "swebench",
+    "plugin_workers": 1,
+    "budget_usd": 10.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash",
+      "extraction_prompt": {
+        "variant": "V5",
+        "sha256": "44d664a993227521f1caca9bfb8672706916cbe43cc00c7c56a54868d31eae37",
+        "char_count": 6726
+      }
+    },
+    "memory_store": "/Users/nerd/Git/agent-memory-harness/results/vdjango_django_sequence-plugin-dreamed-04c04d7-1-accum/_memory",
+    "source_memory": "/Users/nerd/Git/agent-memory-harness/results/vdjango_django_sequence-plugin-accum-2d80f9f-1/_memory",
+    "source_memory_health": {
+      "store_dir": "/Users/nerd/Git/agent-memory-harness/results/vdjango_django_sequence-plugin-accum-2d80f9f-1/_memory/.cookbook-memory",
+      "events": 302,
+      "daydream_events": 2542,
+      "recall_events": 2,
+      "recall_with_hits": 2,
+      "recall_zero_hits": 0,
+      "recall_errors": 0,
+      "daydream_completed": 95,
+      "daydream_memory_written": 218,
+      "memory_items": 218,
+      "graph_nodes": 218,
+      "markdown_items": 218,
+      "durable_items": 218
+    },
+    "n_stages": 2,
+    "n_eval_stages": 1,
+    "stages": [
+      "dream",
+      "plugin-dreamed"
+    ],
+    "timestamp": "20260627T144836Z",
+    "started_at": 1782571716.782718,
+    "ended_at": null,
+    "source_memory_copied_to": "/Users/nerd/Git/agent-memory-harness/results/vdjango_django_sequence-plugin-dreamed-04c04d7-1-accum/_memory",
+    "stages_run": [
+      "plugin-dreamed"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": {
+        "ok": true,
+        "code": "ok",
+        "remembered": true,
+        "hits": 1
+      }
+    }
+  },
+  "dream": {
+    "status": "not-run"
+  },
+  "runs": []
+}

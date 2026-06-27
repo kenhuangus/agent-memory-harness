@@ -1,0 +1,1 @@
+{"cursor": 577580, "last_summary": "`field.formfield()` on a model JSONField returns a `forms.JSONField` instance with the same `encoder` and `decoder` kwargs as the model field, preserving custom serialization.", "recent_memory_ids": ["mem_be5024d8"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

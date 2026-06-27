@@ -1,0 +1,1 @@
+{"cursor": 578187, "last_summary": "The models.JSONField from django/db/models/fields/json.py has an encoder and decoder attribute that can be set via __init__, and its formfield() method passes these to forms.JSONField.", "recent_memory_ids": ["mem_aacb55ee", "mem_945d2b39", "mem_e2f691e1"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

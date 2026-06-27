@@ -1,0 +1,1 @@
+{"cursor": 190712, "last_summary": "The deprecated 'db' and 'passwd' kwargs were used only in Django's MySQL backend get_connection_params() method in django/db/backends/mysql/base.py, and have been replaced.", "recent_memory_ids": ["mem_29340bcf", "mem_bd21b605", "mem_1c89e579"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

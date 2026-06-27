@@ -1,0 +1,1 @@
+{"cursor": 517799, "last_summary": "The imports needed for the `find_ordering_name` expression fix (`OrderBy`, `Value`, `Cast`) are already present at the top of `django/db/models/sql/compiler.py`.", "recent_memory_ids": ["mem_97bf308b"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

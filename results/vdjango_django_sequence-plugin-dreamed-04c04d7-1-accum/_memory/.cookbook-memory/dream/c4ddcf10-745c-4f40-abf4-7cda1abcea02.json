@@ -1,0 +1,1 @@
+{"cursor": 425344, "last_summary": "Existing tests for referrer policy all use explicit @override_settings(SECURE_REFERRER_POLICY=...) so they pass without modification after the default change.", "recent_memory_ids": ["mem_0cd31685", "mem_60f403c8", "mem_d3633806", "mem_74c8cabd"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

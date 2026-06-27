@@ -1,0 +1,1 @@
+{"cursor": 139351, "last_summary": "When adding __iter__ to a Paginator-like class, yield self.page(page_num) for page_num in self.page_range to provide Pythonic iteration over all pages.", "recent_memory_ids": ["mem_c6a68ea7"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

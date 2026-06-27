@@ -1,0 +1,1 @@
+{"cursor": 434217, "last_summary": "Backward compatibility is maintained because exact case matches take precedence; the case-insensitive fallback only activates when the exact match fails.", "recent_memory_ids": ["mem_fc6c646d", "mem_2f600b9d", "mem_ee726786", "mem_0f3c0df0"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
