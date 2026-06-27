@@ -462,6 +462,36 @@ class VoyageEmbedderGuardTests(_VoyageEnvTestCase):
                 emb("rate limited")
         self.assertEqual(attempts["n"], 3)        # initial try + 2 retries
 
+    def test_retry_after_header_is_honored(self) -> None:
+        # A 429 carrying Retry-After should back off by EXACTLY that many seconds
+        # (plus jitter < backoff), not the exponential default — so we wait as long
+        # as the server asks instead of guessing.
+        import email.message
+
+        self.set_key()
+        attempts = {"n": 0}
+        slept: list = []
+
+        def handler(request, timeout=None):
+            attempts["n"] += 1
+            if attempts["n"] < 2:
+                hdrs = email.message.Message()
+                hdrs["Retry-After"] = "7"
+                raise urllib.error.HTTPError(
+                    request.full_url, 429, "Too Many Requests",
+                    hdrs=hdrs, fp=BytesIO(b"{}"))
+            return _FakeResponse(_voyage_response([[0.1, 0.2]]))
+
+        emb = VoyageEmbedder(dim=2, max_retries=3, backoff=0.5,
+                             sleeper=lambda s: slept.append(s))
+        with _UrlopenPatch(handler):
+            vec = emb("rate limited with header")
+        self.assertEqual(vec, [0.1, 0.2])
+        self.assertEqual(len(slept), 1)
+        # 7s honored; jitter adds [0, backoff). Exponential default would be ~0.5.
+        self.assertGreaterEqual(slept[0], 7.0)
+        self.assertLess(slept[0], 7.0 + 0.5)
+
     def test_timeout_is_retried_then_wrapped(self) -> None:
         # REGRESSION: socket.timeout IS TimeoutError on 3.10+ and is NOT a URLError
         # subclass, so a request timeout (the exact transient the 30s timeout bounds)
