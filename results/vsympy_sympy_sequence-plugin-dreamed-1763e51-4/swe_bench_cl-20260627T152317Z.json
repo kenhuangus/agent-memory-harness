@@ -318,7 +318,7 @@
   "runs": [
     {
       "run_id": "pipeline-plugin-dreamed",
-      "timestamp": "2026-06-27T19:08:26+00:00",
+      "timestamp": "2026-06-27T19:36:11+00:00",
       "benchmark": "swe_bench_cl",
       "model": "claude-code:claude-haiku-4-5:plugin-real",
       "memory": true,
@@ -326,37 +326,37 @@
       "mode": "agent",
       "metrics": {
         "recency": 0.0,
-        "efficiency": 1.897816994767522,
+        "efficiency": 1.8659591058010405,
         "relevancy": 0.0,
-        "accuracy": 0.6190476190476191,
+        "accuracy": 0.5909090909090909,
         "recency_decayed": 0.0,
         "precision_at_k": 0.0,
         "accuracy_memory_off": null,
-        "n": 43,
+        "n": 45,
         "extra": {}
       },
-      "n_tasks": 43,
-      "entries_used": 43,
+      "n_tasks": 45,
+      "entries_used": 45,
       "entries_available": 50,
       "limit": null,
       "selection": "flat",
-      "cost_usd": 3.747023,
-      "tokens_in": 3193,
-      "tokens_out": 748766,
+      "cost_usd": 3.924847,
+      "tokens_in": 3292,
+      "tokens_out": 784311,
       "partial": true,
       "budget_exceeded": false,
       "source": "thomasjoshi/swe-bench-cl",
       "reliability": {
-        "n_errors": 2,
-        "memory_reached": 41,
-        "memory_hit": 41,
-        "recall_attempted": 41,
-        "recall_with_hits": 41,
-        "graded_n": 42,
+        "n_errors": 3,
+        "memory_reached": 42,
+        "memory_hit": 42,
+        "recall_attempted": 42,
+        "recall_with_hits": 42,
+        "graded_n": 44,
         "resolved": 26,
         "ungraded": 1,
         "grade_reasons": {
-          "graded": 42,
+          "graded": 44,
           "official parser produced no statuses": 1
         },
         "errors": [
@@ -369,6 +369,11 @@
             "task_id": "sympy__sympy-18189",
             "stage": "solve",
             "error": "RuntimeError: claude exited 1: {\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true,\"api_error_status\":null,\"duration_ms\":157651,\"duration_api_ms\":155819,\"num_turns\":33,\"result\":\"API Error: Connection closed mid-re"
+          },
+          {
+            "task_id": "sympy__sympy-18698",
+            "stage": "solve",
+            "error": "TimeoutExpired: Command '['/Users/keith/.local/bin/claude', '-p', 'Persistent memory is available through recall if prior fixes would help. Edit the source files in this checkout directly to fix the issue, then run t"
           }
         ]
       },
@@ -757,6 +762,24 @@
           "stage": "plugin-dreamed",
           "patch_status": "applied",
           "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sympy__sympy-18211",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sympy__sympy-18698",
+          "stage": "plugin-dreamed",
+          "patch_status": "empty",
+          "solve_error": "TimeoutExpired: Command '['/Users/keith/.local/bin/claude', '-p', 'Persistent memory is available through recall if prior fixes would help. Edit the source files in this checkout directly to fix the issue, then run t",
           "grade_status": "graded",
           "grade_reason": "graded",
           "resolved": false
