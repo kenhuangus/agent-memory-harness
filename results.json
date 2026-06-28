@@ -1,7 +1,295 @@
 {
   "schema": 1,
-  "updated": "2026-06-17T20:32:23+00:00",
+  "updated": "2026-06-27T15:23:17+00:00",
   "runs": [
+    {
+      "run_id": "vsympy_sympy_sequence-base-1763e51-1",
+      "timestamp": "2026-06-27T04:37:20+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "composer-2.5",
+      "memory": false,
+      "label": "SymPy base (Cursor)",
+      "mode": "sequence",
+      "metrics": {
+        "accuracy": 0.9,
+        "efficiency": 0.0,
+        "recency": 0.0,
+        "relevancy": 0.0,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 50,
+        "extra": {}
+      },
+      "native": {
+        "metrics": {
+          "accuracy": {
+            "value": 0.9,
+            "label": "Accuracy"
+          }
+        }
+      },
+      "n_tasks": 50,
+      "cost_usd": 0.0,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "partial": false,
+      "budget_exceeded": false,
+      "source": "C:\\Users\\kenhu\\agent-memory-harness\\results\\vsympy_sympy_sequence-base-1763e51-1\\SUMMARY-20260627T043720Z.json",
+      "notes": "SymPy swe_bench_cl sequence, stage=base, harness=cursor, git_sha=1763e51, resolved=45/50 graded; Cursor composer-2.5 same-commit comparison"
+    },
+    {
+      "run_id": "vsympy_sympy_sequence-builtin-1763e51-1",
+      "timestamp": "2026-06-27T04:37:41+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "composer-2.5",
+      "memory": true,
+      "label": "SymPy builtin (Cursor)",
+      "mode": "sequence",
+      "metrics": {
+        "accuracy": 0.9,
+        "efficiency": 0.0,
+        "recency": 0.0,
+        "relevancy": 0.0,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 50,
+        "extra": {}
+      },
+      "native": {
+        "metrics": {
+          "accuracy": {
+            "value": 0.9,
+            "label": "Accuracy"
+          }
+        }
+      },
+      "n_tasks": 50,
+      "cost_usd": 0.0,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "partial": false,
+      "budget_exceeded": false,
+      "source": "C:\\Users\\kenhu\\agent-memory-harness\\results\\vsympy_sympy_sequence-builtin-1763e51-1\\SUMMARY-20260627T043741Z.json",
+      "notes": "SymPy swe_bench_cl sequence, stage=builtin, harness=cursor, git_sha=1763e51, resolved=45/50 graded; Cursor composer-2.5 same-commit comparison"
+    },
+    {
+      "run_id": "vsympy_sympy_sequence-plugin-accum-1763e51-2",
+      "timestamp": "2026-06-27T04:39:02+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "composer-2.5",
+      "memory": true,
+      "label": "SymPy plugin-accum (Cursor)",
+      "mode": "sequence",
+      "metrics": {
+        "accuracy": 0.96,
+        "efficiency": 0.44158206923259413,
+        "recency": 0.0,
+        "relevancy": 0.0,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 50,
+        "extra": {}
+      },
+      "native": {
+        "metrics": {
+          "accuracy": {
+            "value": 0.96,
+            "label": "Accuracy"
+          }
+        }
+      },
+      "n_tasks": 50,
+      "cost_usd": 0.0,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "partial": false,
+      "budget_exceeded": false,
+      "source": "C:\\Users\\kenhu\\agent-memory-harness\\results\\vsympy_sympy_sequence-plugin-accum-1763e51-2\\SUMMARY-20260627T043902Z.json",
+      "notes": "SymPy swe_bench_cl sequence, stage=plugin-accum, harness=cursor, git_sha=1763e51, resolved=48/50 graded; Cursor composer-2.5 same-commit comparison"
+    },
+    {
+      "run_id": "vsympy_sympy_sequence-plugin-dreamed-1763e51-1",
+      "timestamp": "2026-06-27T08:14:29+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "composer-2.5",
+      "memory": true,
+      "label": "SymPy plugin-dreamed (Cursor)",
+      "mode": "sequence",
+      "metrics": {
+        "accuracy": 0.9,
+        "efficiency": 0.4745209864154167,
+        "recency": 0.0,
+        "relevancy": 0.0,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 50,
+        "extra": {}
+      },
+      "native": {
+        "metrics": {
+          "accuracy": {
+            "value": 0.9,
+            "label": "Accuracy"
+          }
+        }
+      },
+      "n_tasks": 50,
+      "cost_usd": 0.0,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "partial": false,
+      "budget_exceeded": false,
+      "source": "C:\\Users\\kenhu\\agent-memory-harness\\results\\vsympy_sympy_sequence-plugin-dreamed-1763e51-1\\SUMMARY-20260627T081429Z.json",
+      "notes": "SymPy swe_bench_cl sequence, stage=plugin-dreamed, harness=cursor, git_sha=1763e51, resolved=45/50 graded; Cursor composer-2.5 same-commit comparison"
+    },
+    {
+      "run_id": "vdjango_django_sequence-base-1763e51-1",
+      "timestamp": "2026-06-27T04:35:40+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "composer-2.5",
+      "memory": false,
+      "label": "Django base (Cursor)",
+      "mode": "sequence",
+      "metrics": {
+        "accuracy": 0.2,
+        "efficiency": 0.0,
+        "recency": 0.0,
+        "relevancy": 0.0,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 50,
+        "extra": {}
+      },
+      "native": {
+        "metrics": {
+          "accuracy": {
+            "value": 0.2,
+            "label": "Accuracy"
+          }
+        }
+      },
+      "n_tasks": 50,
+      "cost_usd": 0.0,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "partial": false,
+      "budget_exceeded": false,
+      "source": "C:\\Users\\kenhu\\agent-memory-harness\\results\\vdjango_django_sequence-base-1763e51-1\\SUMMARY-20260627T043540Z.json",
+      "notes": "Django swe_bench_cl sequence, stage=base, harness=cursor, git_sha=1763e51, resolved=10/50 graded; Cursor composer-2.5 same-commit comparison"
+    },
+    {
+      "run_id": "vdjango_django_sequence-builtin-1763e51-1",
+      "timestamp": "2026-06-27T04:36:03+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "composer-2.5",
+      "memory": true,
+      "label": "Django builtin (Cursor)",
+      "mode": "sequence",
+      "metrics": {
+        "accuracy": 0.22,
+        "efficiency": 0.0,
+        "recency": 0.0,
+        "relevancy": 0.0,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 50,
+        "extra": {}
+      },
+      "native": {
+        "metrics": {
+          "accuracy": {
+            "value": 0.22,
+            "label": "Accuracy"
+          }
+        }
+      },
+      "n_tasks": 50,
+      "cost_usd": 0.0,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "partial": false,
+      "budget_exceeded": false,
+      "source": "C:\\Users\\kenhu\\agent-memory-harness\\results\\vdjango_django_sequence-builtin-1763e51-1\\SUMMARY-20260627T043603Z.json",
+      "notes": "Django swe_bench_cl sequence, stage=builtin, harness=cursor, git_sha=1763e51, resolved=11/50 graded; Cursor composer-2.5 same-commit comparison"
+    },
+    {
+      "run_id": "vdjango_django_sequence-plugin-accum-1763e51-1",
+      "timestamp": "2026-06-27T04:36:54+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "composer-2.5",
+      "memory": true,
+      "label": "Django plugin-accum (Cursor)",
+      "mode": "sequence",
+      "metrics": {
+        "accuracy": 0.24,
+        "efficiency": 0.48922001533265586,
+        "recency": 0.0,
+        "relevancy": 0.0,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 50,
+        "extra": {}
+      },
+      "native": {
+        "metrics": {
+          "accuracy": {
+            "value": 0.24,
+            "label": "Accuracy"
+          }
+        }
+      },
+      "n_tasks": 50,
+      "cost_usd": 0.0,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "partial": false,
+      "budget_exceeded": false,
+      "source": "C:\\Users\\kenhu\\agent-memory-harness\\results\\vdjango_django_sequence-plugin-accum-1763e51-1\\SUMMARY-20260627T043654Z.json",
+      "notes": "Django swe_bench_cl sequence, stage=plugin-accum, harness=cursor, git_sha=1763e51, resolved=12/50 graded; Cursor composer-2.5 same-commit comparison"
+    },
+    {
+      "run_id": "vdjango_django_sequence-plugin-dreamed-1763e51-1",
+      "timestamp": "2026-06-27T07:49:18+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "composer-2.5",
+      "memory": true,
+      "label": "Django plugin-dreamed (Cursor)",
+      "mode": "sequence",
+      "metrics": {
+        "accuracy": 0.26,
+        "efficiency": 0.8866362305611559,
+        "recency": 0.0,
+        "relevancy": 0.0,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 50,
+        "extra": {}
+      },
+      "native": {
+        "metrics": {
+          "accuracy": {
+            "value": 0.26,
+            "label": "Accuracy"
+          }
+        }
+      },
+      "n_tasks": 50,
+      "cost_usd": 0.0,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "partial": false,
+      "budget_exceeded": false,
+      "source": "C:\\Users\\kenhu\\agent-memory-harness\\results\\vdjango_django_sequence-plugin-dreamed-1763e51-1\\SUMMARY-20260627T074918Z.json",
+      "notes": "Django swe_bench_cl sequence, stage=plugin-dreamed, harness=cursor, git_sha=1763e51, resolved=13/50 graded; Cursor composer-2.5 same-commit comparison"
+    },
     {
       "run_id": "real-claude-haiku-4-5",
       "timestamp": "2026-06-17T20:28:50+00:00",
