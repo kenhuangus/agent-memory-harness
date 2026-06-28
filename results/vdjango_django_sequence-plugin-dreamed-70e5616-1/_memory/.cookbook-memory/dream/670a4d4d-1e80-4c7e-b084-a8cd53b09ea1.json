@@ -1,0 +1,1 @@
+{"cursor": 380814, "last_summary": "When fixing a regression like this, first find and read the SQL compiler logic (compiler.py) where ORDER BY is suppressed due to GROUP BY \u2014 the fix must match that existing rule.", "recent_memory_ids": ["mem_8a942427", "mem_078f5bae", "mem_03545e93"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

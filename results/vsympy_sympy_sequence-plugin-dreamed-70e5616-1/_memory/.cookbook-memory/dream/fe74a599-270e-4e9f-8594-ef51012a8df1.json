@@ -1,0 +1,1 @@
+{"cursor": 419350, "last_summary": "When simplifying powers of TensorProduct in tensor_product_simp, apply (A\u2297B)^n = A^n\u2297B^n by distributing the exponent to each argument, returning a new TensorProduct of the raised args.", "recent_memory_ids": ["mem_4f0b6eae"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

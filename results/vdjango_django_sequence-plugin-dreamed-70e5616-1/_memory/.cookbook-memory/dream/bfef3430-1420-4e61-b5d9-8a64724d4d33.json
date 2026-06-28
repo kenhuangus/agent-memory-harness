@@ -1,0 +1,1 @@
+{"cursor": 292048, "last_summary": "When passing PostgreSQL SSL configuration to psql via Django's dbshell, use environment variables (PGSSLMODE, PGSSLCERT, PGSSLKEY, PGSSLROOTCERT) mapped from the corresponding connection params.", "recent_memory_ids": ["mem_87441e2a", "mem_2de3099d"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

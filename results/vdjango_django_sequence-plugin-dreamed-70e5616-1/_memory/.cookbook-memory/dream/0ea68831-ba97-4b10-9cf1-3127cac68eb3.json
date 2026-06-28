@@ -1,0 +1,1 @@
+{"cursor": 18950, "last_summary": "When building dynamic SQL with string formatting (%s), quote all identifiers that come from user/model data to prevent syntax errors with reserved words.", "recent_memory_ids": ["mem_0a214fae", "mem_fc72d8a4"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

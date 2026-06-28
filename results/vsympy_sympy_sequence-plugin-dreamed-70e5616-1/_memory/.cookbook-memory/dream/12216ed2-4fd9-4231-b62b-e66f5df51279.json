@@ -1,0 +1,1 @@
+{"cursor": 648163, "last_summary": "When fixing a bug in factorization code, always check BOTH the univariate (dup_) and multivariate (dmp_) variants for the same bug pattern, since they share the same algorithm structure.", "recent_memory_ids": ["mem_892b86c8"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

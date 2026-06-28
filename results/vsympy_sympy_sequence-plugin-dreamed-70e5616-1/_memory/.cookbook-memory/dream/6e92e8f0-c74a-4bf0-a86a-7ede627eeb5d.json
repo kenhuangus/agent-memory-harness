@@ -1,0 +1,1 @@
+{"cursor": 7655, "last_summary": "When filtering monomials by total degree in polynomial monomial generators, use sum of exponents (sum(powers.values())) not max of individual exponents to correctly compute total degree.", "recent_memory_ids": ["mem_83e03f00"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

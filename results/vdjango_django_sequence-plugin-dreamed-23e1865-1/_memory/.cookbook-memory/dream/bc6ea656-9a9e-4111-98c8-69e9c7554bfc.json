@@ -1,0 +1,1 @@
+{"cursor": 13434, "last_summary": "When making Django model enums (Choices subclasses) usable in templates, set do_not_call_in_templates as a @property on the base Choices class to prevent auto-calling by the template engine.", "recent_memory_ids": ["mem_df7dfd04", "mem_42ec21ca"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

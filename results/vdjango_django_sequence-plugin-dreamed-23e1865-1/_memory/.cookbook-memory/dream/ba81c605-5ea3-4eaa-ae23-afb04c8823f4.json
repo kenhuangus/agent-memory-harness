@@ -1,0 +1,1 @@
+{"cursor": 12505, "last_summary": "When implementing or editing a URL regex that supports user:password authentication (RFC 1738), replace `\\S+(?::\\S*)?` with `[^\\s:@/]+(?::[^\\s:@/]*)?` to reject unencoded `:`, `@`, `/` in credentials.", "recent_memory_ids": ["mem_7b5db363"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

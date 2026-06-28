@@ -1,0 +1,1 @@
+{"cursor": 286544, "last_summary": "When implementing a Django authentication backend, return None early when required credentials (username or password) are None to avoid unnecessary database queries and expensive password hashing.", "recent_memory_ids": ["mem_5008a54e", "mem_a0dd9573"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

@@ -1,0 +1,1 @@
+{"cursor": 16876, "last_summary": "In Django's SQLite backend, use self.ops.quote_name() to quote identifiers in raw SQL and PRAGMA statements, consistent with how introspection.py handles identifiers.", "recent_memory_ids": ["mem_1cdaac1f", "mem_008babee", "mem_c53ab17e"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

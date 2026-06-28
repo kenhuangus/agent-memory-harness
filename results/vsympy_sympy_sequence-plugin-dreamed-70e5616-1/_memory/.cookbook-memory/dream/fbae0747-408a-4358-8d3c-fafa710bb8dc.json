@@ -1,0 +1,1 @@
+{"cursor": 143090, "last_summary": "When a NameError traceback pinpoints an undefined variable in a conditional, inspect the surrounding lines for a similarly-named variable that was assigned \u2014 the bug is often a one-character typo.", "recent_memory_ids": ["mem_35b0b52c", "mem_4f3cb53c"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

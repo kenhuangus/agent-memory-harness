@@ -1,0 +1,1 @@
+{"cursor": 34221, "last_summary": "Django's ModelState can be extended with a `pk_explicit` boolean to track user-provided primary keys; this flag must be set in Model.__init__ and _set_pk_val.", "recent_memory_ids": ["mem_e386cb64", "mem_137c1508", "mem_79096cd9"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

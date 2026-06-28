@@ -1,0 +1,1 @@
+{"cursor": 345792, "last_summary": "When version comparisons fail due to string comparison, test the behavior with packaging.version.Version to confirm lexical vs semantic ordering is the root cause.", "recent_memory_ids": ["mem_21f85dae", "mem_a0bc1fb5"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

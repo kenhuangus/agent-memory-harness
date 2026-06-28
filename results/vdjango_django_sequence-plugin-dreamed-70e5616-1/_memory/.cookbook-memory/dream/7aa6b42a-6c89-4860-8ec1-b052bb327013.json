@@ -1,0 +1,1 @@
+{"cursor": 6310, "last_summary": "When using Python regex for string validation (e.g., username, email), prefer \\A and \\Z over ^ and $ because $ matches a trailing newline, allowing invalid input to pass validation.", "recent_memory_ids": ["mem_782fb28d"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

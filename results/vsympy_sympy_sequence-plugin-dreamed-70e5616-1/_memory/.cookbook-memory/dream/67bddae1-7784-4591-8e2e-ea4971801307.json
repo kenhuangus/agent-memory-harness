@@ -1,0 +1,1 @@
+{"cursor": 13225, "last_summary": "When Add._eval_is_zero finds len(nz)==0 (all imaginary terms, no real non-zero ones), return None instead of False because imaginary parts can cancel to zero.", "recent_memory_ids": ["mem_dd83486d"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

@@ -1,0 +1,1 @@
+{"cursor": 11354, "last_summary": "When overriding as_sql() in Django datetime function subclasses (TruncDate/TruncTime), use self.get_tzname() instead of hardcoding timezone.get_current_timezone_name() to respect the tzinfo parameter.", "recent_memory_ids": ["mem_722e11bf"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

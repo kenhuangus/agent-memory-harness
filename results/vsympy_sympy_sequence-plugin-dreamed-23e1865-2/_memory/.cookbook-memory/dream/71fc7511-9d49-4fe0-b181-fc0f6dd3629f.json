@@ -1,0 +1,1 @@
+{"cursor": 219722, "last_summary": "When a function uses variable-length unpacking `*args` and then indexes `args[0]`, the empty-call case raises IndexError; guard with an early return for the empty argument list.", "recent_memory_ids": ["mem_ff1f80d4"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

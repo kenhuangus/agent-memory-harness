@@ -1,0 +1,1 @@
+{"cursor": 604885, "last_summary": "When a query's values_select is non-empty, the query was produced by values() or values_list() and cannot be safely consumed by ModelIterable.", "recent_memory_ids": ["mem_472ffca9", "mem_fc7ab126", "mem_87a42f09", "mem_e98fd9e4"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

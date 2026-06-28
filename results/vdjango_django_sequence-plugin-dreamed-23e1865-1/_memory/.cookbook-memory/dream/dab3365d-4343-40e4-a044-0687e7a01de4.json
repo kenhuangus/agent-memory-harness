@@ -1,0 +1,1 @@
+{"cursor": 15984, "last_summary": "When a QuerySet uses GROUP BY (e.g. after annotate()), default Meta.ordering is stripped from the SQL but QuerySet.ordered stays True \u2014 guard ordered with a check for group_by.", "recent_memory_ids": ["mem_dc42c267"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

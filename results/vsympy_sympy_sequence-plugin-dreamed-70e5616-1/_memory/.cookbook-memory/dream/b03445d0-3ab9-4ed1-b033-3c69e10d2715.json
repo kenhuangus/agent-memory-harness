@@ -1,0 +1,1 @@
+{"cursor": 8390, "last_summary": "When implementing quaternion-to-rotation-matrix conversion, sign errors in cross-product terms can cause reflection instead of rotation; validate against a standard reference.", "recent_memory_ids": ["mem_d6d63fea"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

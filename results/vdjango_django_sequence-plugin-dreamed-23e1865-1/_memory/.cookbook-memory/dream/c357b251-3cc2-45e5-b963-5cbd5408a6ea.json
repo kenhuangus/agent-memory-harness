@@ -1,0 +1,1 @@
+{"cursor": 18709, "last_summary": "When a Django database backend builds raw SQL with table/column names (e.g., PRAGMA statements), always wrap identifiers with self.ops.quote_name() to avoid syntax errors from SQL reserved words.", "recent_memory_ids": ["mem_e384e961"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

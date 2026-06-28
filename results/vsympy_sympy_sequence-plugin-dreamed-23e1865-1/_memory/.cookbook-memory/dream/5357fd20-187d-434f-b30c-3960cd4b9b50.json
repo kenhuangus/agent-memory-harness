@@ -1,0 +1,1 @@
+{"cursor": 15101, "last_summary": "When SymPy conditions rely on `im()` for imaginary checks under `evaluate(False)`, use `.is_zero is False` instead of boolean evaluation because `im(x)` may remain unevaluated and always truthy.", "recent_memory_ids": ["mem_321a07a1"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

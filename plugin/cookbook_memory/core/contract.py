@@ -204,7 +204,10 @@ def build_store(store_path: str) -> MemoryStore:
     # additive attributes, read defensively there (the plugin still treats the store as an opaque box).
     store.profile_name = config.profile_name
     store.recall_min_score = config.recall_min_score
-    return _maybe_wrap_query_expand(store)
+    # Compose the opt-in retrieval wrappers (all default-off, so production is byte-identical
+    # unless a flag is set): query-expansion innermost (it fans the query out and merges base
+    # candidates), then reranking over the merged set.
+    return _maybe_wrap_reranker(_maybe_wrap_query_expand(store))
 
 
 def _maybe_wrap_query_expand(store: MemoryStore) -> MemoryStore:
@@ -241,6 +244,40 @@ def _maybe_wrap_query_expand(store: MemoryStore) -> MemoryStore:
             max_variants=n,
         )
     wrapped = ExpandedQueryStore(store, expander)
+    for attr in ("profile_name", "recall_min_score"):
+        if hasattr(store, attr):
+            setattr(wrapped, attr, getattr(store, attr))
+    return wrapped
+
+
+def _maybe_wrap_reranker(store: MemoryStore) -> MemoryStore:
+    """Optionally wrap the routed store in a two-stage retrieve->rerank facade.
+
+    A retriever returns cheap top-N candidates; a reranker re-scores them with a stronger
+    cross-encoder and keeps the best k (PRD §7.1). This is OFF by default — the offline
+    lexical reranker only demonstrates the mechanism; the retrieval-quality lift is a paid
+    Voyage cross-encoder, so it is opt-in:
+
+    * ``$MEMORY_RERANK=voyage`` — real Voyage rerank endpoint (needs ``$VOYAGE_API_KEY``).
+    * ``$MEMORY_RERANK=mock``   — offline lexical reranker (mechanism only; CI/tests).
+    * unset / ``none`` / ``off`` — no rerank (default).
+    * ``$MEMORY_RERANK_TOP_N`` — candidates over-fetched before reranking (default 50).
+
+    Preserves the observability attrs the plugin reads off the store. Kept lazy so the
+    offline default never imports the reranker module.
+    """
+    choice = (os.environ.get("MEMORY_RERANK") or "").strip().lower()
+    if choice in ("", "none", "0", "off", "false"):
+        return store
+    from memeval.stores.rerankers import MockReranker, RerankedStore, VoyageReranker
+
+    try:
+        top_n = int(os.environ.get("MEMORY_RERANK_TOP_N", "50"))
+    except ValueError:
+        top_n = 50
+    reranker = VoyageReranker() if choice == "voyage" else MockReranker()
+    wrapped = RerankedStore(store, reranker, rerank_top_n=top_n)
+    # carry the observability attrs forward (the plugin reads these off the returned store)
     for attr in ("profile_name", "recall_min_score"):
         if hasattr(store, attr):
             setattr(wrapped, attr, getattr(store, attr))

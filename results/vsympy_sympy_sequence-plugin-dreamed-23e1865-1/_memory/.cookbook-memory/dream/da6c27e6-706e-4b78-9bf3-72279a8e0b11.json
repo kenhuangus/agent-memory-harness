@@ -1,0 +1,1 @@
+{"cursor": 396558, "last_summary": "In SymPy sets, `self._complement(other)` returns `other - self`. Return None when symbolic elements prevent full simplification so `Complement.reduce` preserves an unevaluated Complement.", "recent_memory_ids": ["mem_9bebd821"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

@@ -1,0 +1,1 @@
+{"cursor": 13655, "last_summary": "When adding a new test model for auth tests, import it in tests/auth_tests/models/__init__.py and add it to __all__ so it is discoverable by test imports.", "recent_memory_ids": ["mem_b2aa85f6", "mem_6ac1daac", "mem_f38c2c8f"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

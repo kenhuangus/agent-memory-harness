@@ -1,0 +1,1 @@
+{"cursor": 8288, "last_summary": "When modifying the early-return fast path in Collector.delete() for models with no dependencies, ensure the instance's PK is set to None because the normal cleanup loop is bypassed.", "recent_memory_ids": ["mem_dbeb6d1b"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

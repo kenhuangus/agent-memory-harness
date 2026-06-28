@@ -1,0 +1,1 @@
+{"cursor": 668898, "last_summary": "When using split_super_sub in SymPy, trailing digits in symbol names are automatically parsed as subscripts (e.g., 'x2' becomes name='x', subs=['2']), which affects how printers render them.", "recent_memory_ids": ["mem_b16d7640", "mem_3abc69c5"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
