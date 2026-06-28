@@ -40,8 +40,16 @@
 .dg-card.dg-sm{flex:0 0 auto;padding:1vh 1.1vw;text-align:center}
 .dg-card.dg-sm h4{margin:0}
 
-.dg-arrow{align-self:center;flex:0 0 auto;color:var(--accent);
-  font-size:clamp(1.2rem,2.6vh,1.7rem);font-weight:700;line-height:1}
+/* animated data-flow connector: marching dashes toward an arrowhead.
+   (the ➜ glyph in markup is hidden; the flow is drawn with pseudo-elements) */
+.dg-arrow{position:relative;align-self:center;flex:0 0 clamp(30px,4vw,68px);height:16px;
+  font-size:0;color:transparent;overflow:visible}
+.dg-arrow::before{content:"";position:absolute;top:50%;left:0;right:8px;height:3px;transform:translateY(-50%);
+  border-radius:2px;background:repeating-linear-gradient(90deg,var(--accent) 0 8px,transparent 8px 16px);
+  background-size:16px 100%;animation:dgMarch .7s linear infinite}
+.dg-arrow::after{content:"";position:absolute;top:50%;right:0;transform:translateY(-50%);
+  width:0;height:0;border-left:9px solid var(--accent);border-top:6px solid transparent;border-bottom:6px solid transparent}
+@keyframes dgMarch{to{background-position:16px 0}}
 
 /* big-number stat */
 .dg-score{--c:var(--green);flex:1 1 0;min-width:170px;border:2.5px solid var(--c);border-radius:18px;
@@ -125,5 +133,6 @@
 
 @media(prefers-reduced-motion:reduce){
   .dg *{animation:none!important;opacity:1!important;transform:none!important}
+  .dg-arrow::before,.dg-arrow::after{animation:none!important}
   .dg-bar{height:var(--h,60%)!important}
 }
