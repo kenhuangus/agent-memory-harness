@@ -206,8 +206,41 @@ def build_store(store_path: str) -> MemoryStore:
     store.recall_min_score = config.recall_min_score
     # Compose the opt-in retrieval wrappers (all default-off, so production is byte-identical
     # unless a flag is set): query-expansion innermost (it fans the query out and merges base
-    # candidates), then reranking over the merged set.
-    return _maybe_wrap_reranker(_maybe_wrap_query_expand(store))
+    # candidates), then deterministic coverage re-rank, then the cross-encoder reranker over the
+    # merged/ranked set.
+    return _maybe_wrap_reranker(_maybe_wrap_coverage(_maybe_wrap_query_expand(store)))
+
+
+def _maybe_wrap_coverage(store: MemoryStore) -> MemoryStore:
+    """Optionally wrap the routed store in deterministic coverage re-ranking (no LLM).
+
+    Re-ranks the inner top-N by ``alpha*similarity + (1-alpha)*key-coverage`` (fraction of the
+    query's salient key tokens present in the candidate). Off by default:
+
+    * ``$MEMORY_COVERAGE_RERANK=1`` (or ``on``/``true``) — enable.
+    * ``$MEMORY_COVERAGE_ALPHA`` — similarity weight in the blend (default 0.5).
+    * ``$MEMORY_COVERAGE_FETCH`` — candidates over-fetched before re-rank (default 30).
+
+    Preserves the observability attrs; lazy import.
+    """
+    choice = (os.environ.get("MEMORY_COVERAGE_RERANK") or "").strip().lower()
+    if choice in ("", "0", "off", "false", "none"):
+        return store
+    from memeval.stores.coverage_rank import CoverageRerankStore
+
+    try:
+        alpha = float(os.environ.get("MEMORY_COVERAGE_ALPHA", "0.5"))
+    except ValueError:
+        alpha = 0.5
+    try:
+        fetch = int(os.environ.get("MEMORY_COVERAGE_FETCH", "30"))
+    except ValueError:
+        fetch = 30
+    wrapped = CoverageRerankStore(store, fetch=fetch, alpha=alpha)
+    for attr in ("profile_name", "recall_min_score"):
+        if hasattr(store, attr):
+            setattr(wrapped, attr, getattr(store, attr))
+    return wrapped
 
 
 def _maybe_wrap_query_expand(store: MemoryStore) -> MemoryStore:
