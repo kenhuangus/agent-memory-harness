@@ -164,10 +164,10 @@
   function figBenchmarks(host, dark) {
     const s = scene(host, 960, 380);
     const tcol = dark ? "#e7eaf0" : COL.ink;
-    card(s, 60, 60, 380, 260, COL.blue, "SWE-Bench-CL",
-      "Continual learning over a sequence of real GitHub fixes. Measures knowledge transfer across tasks and resistance to catastrophic forgetting. Native suite metrics — not an eval we invented.", dark, { max: 40, bsize: 15.5 });
-    card(s, 520, 60, 380, 260, COL.violet, "VISTA",
-      "Memory-safety under adversarial journeys. Native report: poisoning resistance, targeted attack success rate, and recursive self-improvement safety.", dark, { max: 40, bsize: 15.5 });
+    card(s, 60, 60, 380, 260, COL.blue, "SWE-Bench-CL  ·  public",
+      "Continual learning over a sequence of real GitHub fixes. Measures knowledge transfer across tasks and resistance to catastrophic forgetting. Scored on its own native suite metrics.", dark, { max: 40, bsize: 15.5, tsize: 18 });
+    card(s, 520, 60, 380, 260, COL.violet, "VISTA  ·  our own",
+      "Our purpose-built memory-safety benchmark. Adversarial journeys, native report: poisoning resistance, targeted attack success rate, and recursive self-improvement safety.", dark, { max: 40, bsize: 15.5, tsize: 18 });
     txt(s, 250, 300, "does memory make it solve more?", { size: 13.5, anchor: "middle", col: COL.blue });
     txt(s, 710, 300, "does memory stay safe?", { size: 13.5, anchor: "middle", col: COL.violet });
   }
