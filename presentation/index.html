@@ -47,7 +47,7 @@
 
 <main class="deck" id="deck">
 
-  <!-- 1 · title -->
+  <!-- 0 · opening -->
   <section class="slide slide--title" data-title="Cookbook Memory">
     <div class="slide__in center">
       <div class="hero__grid"></div>
@@ -58,7 +58,7 @@
     </div>
   </section>
 
-  <!-- 2 · team -->
+  <!-- 1 · us -->
   <section class="slide slide--alt" data-title="Team">
     <div class="slide__in">
       <span class="kicker">Who built it</span>
@@ -95,7 +95,7 @@
     </div>
   </section>
 
-  <!-- 3 · the recipe -->
+  <!-- 2 · cookbook -->
   <section class="slide" data-title="The recipe">
     <div class="slide__in">
       <span class="kicker">The original idea</span>
@@ -113,7 +113,7 @@
     </div>
   </section>
 
-  <!-- 3 · architecture -->
+  <!-- 3 · arch1 -->
   <section class="slide slide--alt" data-title="Architecture">
     <div class="slide__in">
       <span class="kicker">How it works</span>
@@ -141,29 +141,14 @@
     </div>
   </section>
 
-  <!-- 4 · dreaming -->
-  <section class="slide" data-title="Dreaming">
+  <!-- 4 · arch2 — PLACEHOLDER, fill in later -->
+  <section class="slide" data-title="Architecture II">
     <div class="slide__in">
-      <span class="kicker">When &amp; how it's remembered</span>
-      <h2 class="h2">Daydream extracts. Dream consolidates.</h2>
-      <p class="lead">A <code>Stop</code> hook fires the Daydream pass at session end; the deeper night Dream dedups, resolves contradictions, and sets governance across the whole store.</p>
-      <div class="dg">
-        <div class="dg-row dg-stagger">
-          <div class="dg-card" style="--c:var(--slate,#495057)"><h4>Session work</h4><p>agent solves tasks</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--green)"><h4>Stop hook</h4><p>session ends</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--blue)"><h4>Daydream</h4><p>mine logs → extract</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--violet)"><h4>Dream (night)</h4><p>dedup · contradiction · governance</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--accent)"><h4>Clean store</h4><p>ranked, must-know tagged</p></div>
-        </div>
-      </div>
+      <h2 class="h2">Architecture II</h2>
     </div>
   </section>
 
-  <!-- 4a · daydream deep-dive -->
+  <!-- 5 · daydream -->
   <section class="slide slide--alt" data-title="Daydream">
     <div class="slide__in">
       <span class="kicker">What it captures</span>
@@ -186,7 +171,7 @@
     </div>
   </section>
 
-  <!-- 4b · dream deep-dive -->
+  <!-- 6 · dream -->
   <section class="slide" data-title="Dream">
     <div class="slide__in">
       <span class="kicker">What it consolidates</span>
@@ -209,45 +194,21 @@
     </div>
   </section>
 
-  <!-- 5 · benchmarks -->
-  <section class="slide slide--dark" data-title="Two benchmarks">
+  <!-- 7 · router — PLACEHOLDER, fill in later -->
+  <section class="slide slide--alt" data-title="Router">
     <div class="slide__in">
-      <span class="kicker kicker--light">How we test it</span>
-      <h2 class="h2 h2--light">Two benchmarks: one public, one our own</h2>
-      <p class="lead lead--light">One measures whether memory makes the agent solve more; the other, whether it stays aligned and safe over the long run.</p>
-      <div class="dg">
-        <div class="dg-row dg-stagger">
-          <div class="dg-card" style="--c:var(--blue)"><h4>SWE-Bench-CL · public</h4><p>Continual learning over a sequence of real GitHub fixes. Measures knowledge transfer across tasks and resistance to catastrophic forgetting — scored on its own native suite metrics.</p></div>
-          <div class="dg-card" style="--c:var(--violet)"><h4>VISTA · our own</h4><p>Our purpose-built benchmark for <strong>long-term intent alignment &amp; agent safety</strong>, evaluated against the <strong>OWASP Agentic AI Top&nbsp;10</strong> risks — memory poisoning, tool misuse, privilege compromise, intent-breaking &amp; goal manipulation.</p></div>
-        </div>
-      </div>
+      <h2 class="h2">Router</h2>
     </div>
   </section>
 
-  <!-- 6 · the loop -->
-  <section class="slide slide--alt" data-title="Improvement loop">
+  <!-- 8 · memory stores — PLACEHOLDER, fill in later -->
+  <section class="slide" data-title="Memory stores">
     <div class="slide__in">
-      <span class="kicker">The 4-tier gated loop</span>
-      <h2 class="h2">Cheap gates first, expensive proof last</h2>
-      <p class="lead">A full solve-rate run is hours and money. Every change is screened by two fast offline gates before it earns a Tier-3 measurement. Fail a gate → rejected, no spend.</p>
-      <div class="dg">
-        <div class="dg-row dg-stagger">
-          <div class="dg-card" style="--c:var(--slate,#495057)"><h4>Propose</h4><p>a real code diff</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--blue)"><h4>Tier 1</h4><p>retrieval-precision gate</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--teal)"><h4>Tier 2</h4><p>consolidation-quality gate</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--green)"><h4>Tier 3</h4><p>solve-rate ≥30% lift</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--accent)"><h4>Land</h4><p>ADR + PR</p></div>
-        </div>
-        <div class="dg-note">↩ Fail Tier 1 or Tier 2 → reject the change, never spend Tier 3.</div>
-      </div>
+      <h2 class="h2">Memory stores</h2>
     </div>
   </section>
 
-  <!-- 7 · memory inspector -->
+  <!-- 9 · memory inspector -->
   <section class="slide" data-title="Memory Inspector">
     <div class="slide__in">
       <span class="kicker">See the memory live</span>
@@ -272,7 +233,7 @@
     </div>
   </section>
 
-  <!-- 8 · results SWE-Bench-CL -->
+  <!-- 10 · eval results (SWE-Bench-CL) -->
   <section class="slide slide--alt" data-title="Results · SWE-Bench-CL">
     <div class="slide__in">
       <span class="kicker">Results</span>
@@ -302,7 +263,45 @@
     </div>
   </section>
 
-  <!-- 9 · objective analysis -->
+  <!-- 11 · self improvement (4-tier improvement loop) -->
+  <section class="slide slide--alt" data-title="Improvement loop">
+    <div class="slide__in">
+      <span class="kicker">The 4-tier gated loop</span>
+      <h2 class="h2">Cheap gates first, expensive proof last</h2>
+      <p class="lead">A full solve-rate run is hours and money. Every change is screened by two fast offline gates before it earns a Tier-3 measurement. Fail a gate → rejected, no spend.</p>
+      <div class="dg">
+        <div class="dg-row dg-stagger">
+          <div class="dg-card" style="--c:var(--slate,#495057)"><h4>Propose</h4><p>a real code diff</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--blue)"><h4>Tier 1</h4><p>retrieval-precision gate</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--teal)"><h4>Tier 2</h4><p>consolidation-quality gate</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--green)"><h4>Tier 3</h4><p>solve-rate ≥30% lift</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--accent)"><h4>Land</h4><p>ADR + PR</p></div>
+        </div>
+        <div class="dg-note">↩ Fail Tier 1 or Tier 2 → reject the change, never spend Tier 3.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 12 · two benchmarks (appended) -->
+  <section class="slide slide--dark" data-title="Two benchmarks">
+    <div class="slide__in">
+      <span class="kicker kicker--light">How we test it</span>
+      <h2 class="h2 h2--light">Two benchmarks: one public, one our own</h2>
+      <p class="lead lead--light">One measures whether memory makes the agent solve more; the other, whether it stays aligned and safe over the long run.</p>
+      <div class="dg">
+        <div class="dg-row dg-stagger">
+          <div class="dg-card" style="--c:var(--blue)"><h4>SWE-Bench-CL · public</h4><p>Continual learning over a sequence of real GitHub fixes. Measures knowledge transfer across tasks and resistance to catastrophic forgetting — scored on its own native suite metrics.</p></div>
+          <div class="dg-card" style="--c:var(--violet)"><h4>VISTA · our own</h4><p>Our purpose-built benchmark for <strong>long-term intent alignment &amp; agent safety</strong>, evaluated against the <strong>OWASP Agentic AI Top&nbsp;10</strong> risks — memory poisoning, tool misuse, privilege compromise, intent-breaking &amp; goal manipulation.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 13 · objective analysis (appended) -->
   <section class="slide slide--dark" data-title="Objective analysis">
     <div class="slide__in">
       <span class="kicker kicker--light">The honest read</span>
@@ -317,7 +316,7 @@
     </div>
   </section>
 
-  <!-- 11 · closing -->
+  <!-- 14 · closing (appended) -->
   <section class="slide slide--title" data-title="Explore">
     <div class="slide__in center">
       <div class="hero__grid"></div>
