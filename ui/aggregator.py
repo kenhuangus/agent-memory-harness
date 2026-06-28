@@ -768,20 +768,57 @@ def _recent_from_store(db_path: Path) -> list[dict[str, Any]]:
     return out
 
 
+# Cache of item counts keyed by db path -> (signature, count). discover_runs()
+# re-opens every run's memory.db on each poll; on drvfs a single ro-open+COUNT is
+# ~0.25s, so 40+ finished runs made /api/runs ~12s and the 3s poll stacked those
+# calls, saturating the browser's connection pool and stalling run-select. A
+# finished store's file never changes, so we read it once and serve from cache.
+_STORE_COUNT_CACHE: dict[str, tuple] = {}
+
+
+def _store_signature(db_path: Path) -> tuple | None:
+    """Freshness key: (db mtime_ns, db size, wal mtime_ns, wal size). The -wal file
+    captures in-flight WAL writes that don't bump the main db's mtime, so an active
+    writer always invalidates the cache while a finalized (checkpointed) db is stable."""
+    try:
+        st = db_path.stat()
+    except OSError:
+        return None
+    sig = [st.st_mtime_ns, st.st_size, 0, 0]
+    try:
+        wal = db_path.with_name(db_path.name + "-wal").stat()
+        sig[2], sig[3] = wal.st_mtime_ns, wal.st_size
+    except OSError:
+        pass
+    return tuple(sig)
+
+
 def _store_item_count(db_path: Path) -> int | None:
     """Read-only count of rows in memory.db's ``items`` table. Returns None when the
-    db is missing, locked by an in-flight writer, or has no ``items`` table."""
+    db is missing, locked by an in-flight writer, or has no ``items`` table.
+
+    Cached by on-disk signature: a static store is read once, so discover_runs()
+    over many finished runs stays sub-second instead of re-opening every sqlite
+    file on each poll. Only successful reads are cached; a locked db (returns None)
+    is retried next poll."""
     if not db_path.is_file():
         return None
+    sig = _store_signature(db_path)
+    key = str(db_path)
+    cached = _STORE_COUNT_CACHE.get(key)
+    if cached is not None and cached[0] == sig:
+        return cached[1]
     try:
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=0.25)
         try:
             row = conn.execute("SELECT COUNT(*) FROM items").fetchone()
-            return int(row[0]) if row else 0
+            count = int(row[0]) if row else 0
         finally:
             conn.close()
     except sqlite3.Error:
         return None
+    _STORE_COUNT_CACHE[key] = (sig, count)
+    return count
 
 
 def _iter_jsonl(path: Path):
@@ -809,25 +846,54 @@ def _iter_jsonl(path: Path):
         return
 
 
+# Cache of last-activity timestamps keyed by basedir. The iterdir()+stat() over
+# every diary file dominated discover_runs() (~14s across 40 runs on drvfs); a
+# finished run's dream/ dir is static, so we recompute only when events.jsonl or
+# the dream/ dir itself changes (a new/removed diary file bumps the dir mtime).
+_ACTIVITY_CACHE: dict[str, tuple] = {}
+
+
 def _last_activity_ts(base: Path) -> float | None:
-    """Return the mtime of whichever of events.jsonl or any diary file was most recently written."""
-    candidates: list[float] = []
+    """Return the mtime of whichever of events.jsonl or any diary file was most recently
+    written. Cached by (events.jsonl stat, dream/ dir mtime) so a static run skips the
+    per-file stat walk."""
     ev = base / "events.jsonl"
-    if ev.is_file():
-        candidates.append(ev.stat().st_mtime)
     diary_dir = base / "dream"
+    try:
+        es = ev.stat()
+        ev_key: tuple | None = (es.st_mtime_ns, es.st_size)
+    except OSError:
+        ev_key = None
+    try:
+        dir_key: int | None = diary_dir.stat().st_mtime_ns
+    except OSError:
+        dir_key = None
+    key = (ev_key, dir_key)
+    ck = str(base)
+    cached = _ACTIVITY_CACHE.get(ck)
+    if cached is not None and cached[0] == key:
+        return cached[1]
+
+    candidates: list[float] = []
+    if ev_key is not None:
+        candidates.append(es.st_mtime)
     if diary_dir.is_dir():
         try:
             candidates.append(max((p.stat().st_mtime for p in diary_dir.iterdir()), default=0))
         except OSError:
             pass
-    return max(candidates) if candidates else None
+    ts = max(candidates) if candidates else None
+    _ACTIVITY_CACHE[ck] = (key, ts)
+    return ts
 
 
 def _format_label(run_id: str) -> str:
     """Compact human label: ``django · 8681435 · plugin-blank`` etc."""
     # vdjango_django_sequence-plugin-blank-8681435-1 -> django · 8681435 · plugin-blank
-    name = run_id.lstrip("v")
+    # Strip a SINGLE leading "v" version-prefix (run dirs are named "v<bench>_…");
+    # lstrip("v") removed ALL leading v's, mangling benchmarks that start with v
+    # (e.g. "vvista_…" -> "ista", "vista_…" -> "ista").
+    name = run_id[1:] if run_id.startswith("v") else run_id
     parts = name.split("-")
     if "_" in parts[0]:
         seq = parts[0].split("_")[0]

@@ -58,6 +58,7 @@
   const state = {
     runs: [],
     activeRunId: null,
+    runsInflight: false,
     refreshOn: true,
     countdownMs: REFRESH_MS,
     lastSnapshot: null,
@@ -634,6 +635,55 @@
     return res.json();
   }
 
+  // Apply a snapshot to every panel. Shared by the 3s poll and the snappy
+  // select path so they can't drift.
+  function applySnapshot(snap) {
+    state.lastSnapshot = snap;
+    renderKpis(snap);
+    renderCharts(snap);
+    renderRecent(snap);
+    renderRejects(snap);
+    renderRecalls(snap);
+    renderStatus(snap);
+  }
+
+  // Blocking "loading" cue on the monitor view while a fetch is in flight.
+  function setMonitorLoading(on, label) {
+    const view = document.getElementById("view-monitor");
+    if (view) view.classList.toggle("is-loading", on);
+    if (on) {
+      statusLed.dataset.state = "loading";
+      statusLabel.textContent = "loading";
+      statusAge.textContent = label ? "· " + label : "";
+    }
+  }
+
+  // Selecting a run must reflect THAT run's memory status as fast as possible:
+  // fetch only /api/run/<id> (one store) — never the slow /api/runs all-runs
+  // scan, which blocks on every locked memory.db. Shows a blocking loading
+  // state immediately, then renders.
+  async function loadSelectedRun() {
+    const id = state.activeRunId;
+    if (!id) return;
+    const opt = state.runs.find((r) => r.id === id);
+    setMonitorLoading(true, opt ? opt.label : id);
+    try {
+      const snap = await fetchRun(id);
+      if (snap.error) {
+        statusLabel.textContent = "error";
+        statusLed.dataset.state = "error";
+        return;
+      }
+      applySnapshot(snap);
+    } catch (err) {
+      console.error(err);
+      statusLabel.textContent = "fetch err";
+      statusLed.dataset.state = "error";
+    } finally {
+      setMonitorLoading(false);
+    }
+  }
+
   // --- dropdown -----------------------------------------------------------
 
   function rebuildRunPicker(runs, preserveId) {
@@ -689,12 +739,26 @@
 
   // --- main poll loop -----------------------------------------------------
 
-  async function pollOnce() {
+  // Refresh the run list, but never let the (potentially slow) /api/runs scan
+  // stack: if one is already in flight, skip — a piled-up queue of list scans
+  // saturates the browser's per-origin connection pool and stalls run-select.
+  async function refreshRunList() {
+    if (state.runsInflight) return;
+    state.runsInflight = true;
     try {
-      // refresh the run list every poll too so newly-started runs appear without reload.
       const list = await fetchRuns();
       state.runs = list.runs || [];
       rebuildRunPicker(state.runs, state.activeRunId);
+    } finally {
+      state.runsInflight = false;
+    }
+  }
+
+  async function pollOnce() {
+    try {
+      // refresh the run list so newly-started runs appear without reload (guarded
+      // against stacking); the selected run's snapshot is the fast path below.
+      await refreshRunList();
       if (!state.activeRunId) return;
       const snap = await fetchRun(state.activeRunId);
       if (snap.error) {
@@ -702,13 +766,7 @@
         statusLed.dataset.state = "error";
         return;
       }
-      state.lastSnapshot = snap;
-      renderKpis(snap);
-      renderCharts(snap);
-      renderRecent(snap);
-      renderRejects(snap);
-      renderRecalls(snap);
-      renderStatus(snap);
+      applySnapshot(snap);
     } catch (err) {
       console.error(err);
       statusLabel.textContent = "fetch err";
@@ -737,7 +795,7 @@
     state.activeRunId = runSelect.value || null;
     state.countdownMs = REFRESH_MS;
     updateReportButtons();
-    pollOnce();
+    loadSelectedRun();   // snappy: fetch only the selected run, skip the all-runs scan
   });
 
   if (reportJsonBtn) reportJsonBtn.addEventListener("click", () => downloadReport("json"));
