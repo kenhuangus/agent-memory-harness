@@ -1,0 +1,1 @@
+{"cursor": 53501, "last_summary": "When working with fcntl.flock() or other POSIX system-call wrappers, use try/except OSError for success detection since these functions return None (not 0) on success and raise OSError on failure.", "recent_memory_ids": ["mem_2167aff1"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

@@ -1,0 +1,1 @@
+{"cursor": 227228, "last_summary": "When adding a test for nested class serialization in Django's test_writer, define the nested class on the test class itself (not at module level) so __qualname__ produces the expected dotted path.", "recent_memory_ids": ["mem_e89a7096", "mem_7ce2c07e"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

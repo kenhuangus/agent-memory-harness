@@ -1,0 +1,1 @@
+{"cursor": 105446, "last_summary": "When extending a Django Collector.delete() fast-path that bypasses the main PK-clearing loop, the PK must be explicitly set to None on the deleted instance before the early return.", "recent_memory_ids": ["mem_457c99f9"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

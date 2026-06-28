@@ -1,0 +1,1 @@
+{"cursor": 96655, "last_summary": "When using Python regex to validate string boundaries, `$` matches before a trailing newline, not just at the string end \u2014 use `\\A` and `\\Z` instead of `^` and `$` for strict string anchoring.", "recent_memory_ids": ["mem_647723d4"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

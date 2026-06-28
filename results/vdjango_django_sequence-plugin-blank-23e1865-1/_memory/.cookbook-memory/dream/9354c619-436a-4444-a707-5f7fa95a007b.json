@@ -1,0 +1,1 @@
+{"cursor": 137690, "last_summary": "When adding DISTINCT support to a Django aggregate subclass, set `allow_distinct = True` on the class; the base `Aggregate.__init__` and `as_sql` already handle the rest.", "recent_memory_ids": ["mem_afe3f43a"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

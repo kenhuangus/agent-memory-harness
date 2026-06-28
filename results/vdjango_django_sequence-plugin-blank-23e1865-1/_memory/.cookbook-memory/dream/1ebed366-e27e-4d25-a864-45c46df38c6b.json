@@ -1,0 +1,1 @@
+{"cursor": 105652, "last_summary": "When a function parameter defaults to None and an empty list is a valid input, use `is not None` instead of truthiness check to distinguish 'not provided' from 'explicitly empty'.", "recent_memory_ids": ["mem_13f32c29"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
