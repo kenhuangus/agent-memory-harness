@@ -1053,6 +1053,17 @@ def benchmark_manifest(results_root: Path, prefix: str) -> list[dict[str, Any]]:
         tasks = r0.get("tasks") if isinstance(r0.get("tasks"), list) else []
         solved = sum(1 for t in tasks if t.get("resolved")) if tasks else None
         attempted = r0.get("n_tasks") or len(tasks)
+        # Some graders emit only per-run aggregates (`runs[0].metrics.accuracy`)
+        # and leave `tasks: []` — e.g. every pydata_xarray run and roughly half
+        # of the older django/sympy runs. Without a fallback, every chart panel
+        # (which gates on `solved != None`) renders blank for those benchmarks.
+        # `metrics.accuracy = resolved / n_tasks` is what the SUMMARY.md already
+        # uses to print "7/22", so the same derivation is safe here.
+        if solved is None and attempted:
+            metrics = r0.get("metrics") if isinstance(r0.get("metrics"), dict) else {}
+            accuracy = metrics.get("accuracy")
+            if isinstance(accuracy, (int, float)):
+                solved = round(accuracy * attempted)
         started = p.get("started_at")
         ended = p.get("ended_at")
         dur = round((ended - started) / 60, 1) if (started and ended) else None
