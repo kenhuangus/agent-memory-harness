@@ -204,7 +204,50 @@ def build_store(store_path: str) -> MemoryStore:
     # additive attributes, read defensively there (the plugin still treats the store as an opaque box).
     store.profile_name = config.profile_name
     store.recall_min_score = config.recall_min_score
-    return _maybe_wrap_reranker(store)
+    # Compose the opt-in retrieval wrappers (all default-off, so production is byte-identical
+    # unless a flag is set): query-expansion innermost (it fans the query out and merges base
+    # candidates), then reranking over the merged set.
+    return _maybe_wrap_reranker(_maybe_wrap_query_expand(store))
+
+
+def _maybe_wrap_query_expand(store: MemoryStore) -> MemoryStore:
+    """Optionally wrap the routed store in multi-query expansion (retrieve for the query +
+    LLM-generated alternative phrasings, merge by max score). Off by default:
+
+    * ``$MEMORY_QUERY_EXPAND=llm``  — generate alternatives with the dream model (paid).
+    * ``$MEMORY_QUERY_EXPAND=mock`` — offline morphological variants (mechanism only; tests).
+    * unset / ``none`` / ``off`` — no expansion (default).
+    * ``$MEMORY_QUERY_EXPAND_N`` — max alternatives (default 4).
+
+    Preserves the observability attrs; lazy import so the offline default never touches it.
+    """
+    choice = (os.environ.get("MEMORY_QUERY_EXPAND") or "").strip().lower()
+    if choice in ("", "none", "0", "off", "false"):
+        return store
+    from memeval.stores.query_expand import (
+        ExpandedQueryStore,
+        LLMQueryExpander,
+        MockQueryExpander,
+    )
+
+    try:
+        n = int(os.environ.get("MEMORY_QUERY_EXPAND_N", "4"))
+    except ValueError:
+        n = 4
+    if choice == "mock":
+        expander: Any = MockQueryExpander(max_variants=n)
+    else:
+        from memeval.dreaming.llm import make_client
+
+        expander = LLMQueryExpander(
+            make_client(model=os.environ.get("DREAM_MODEL", "openrouter/auto")),
+            max_variants=n,
+        )
+    wrapped = ExpandedQueryStore(store, expander)
+    for attr in ("profile_name", "recall_min_score"):
+        if hasattr(store, attr):
+            setattr(wrapped, attr, getattr(store, attr))
+    return wrapped
 
 
 def _maybe_wrap_reranker(store: MemoryStore) -> MemoryStore:
