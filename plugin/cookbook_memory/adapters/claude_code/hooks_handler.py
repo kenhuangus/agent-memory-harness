@@ -206,19 +206,28 @@ def _query_max() -> int:
 
 
 def _clean_query(prompt: str) -> str:
-    """Derive a short, prefix-free recall query from the raw agent prompt. The prompt
-    is the full multi-KB task (a boilerplate recall/edit prefix block + the issue text
-    + code); embedding it verbatim dilutes retrieval and is noisy in telemetry. Drop a
-    leading prefix block (one paragraph, ending at a blank line, that looks like our
-    prefix) and cap to the query-relevant issue head. Fail-safe: never returns empty
-    when the input was non-empty."""
+    """Derive a short, high-signal recall query from the raw agent prompt. The prompt
+    is the full multi-KB task: a boilerplate recall/edit PREFIX block + the issue text,
+    and the issue text itself carries GitHub-issue-TEMPLATE noise (HTML comments,
+    ``#### MCVE`` headers, maintainer instructions, URLs) that is near-identical across
+    every issue and dilutes retrieval. So: (1) drop a leading prefix block that looks
+    like our prefix, (2) strip HTML comments + markdown header markers, (3) use the
+    issue TITLE — the first substantial line — as the query. Fail-safe: falls back to
+    the cleaned body and never returns empty when the input was non-empty."""
+    import re
+
     t = (prompt or "").strip()
     head, sep, rest = t.partition("\n\n")
     if sep and any(h in head.lower() for h in _PREFIX_HINTS):
         stripped = rest.strip()
         if stripped:
             t = stripped
-    return t[: _query_max()].strip()
+    t = re.sub(r"<!--.*?-->", " ", t, flags=re.S)  # GitHub issue-template HTML comments
+    for line in t.splitlines():
+        line = line.strip().lstrip("#").strip()  # drop md header markers
+        if len(line) >= 12:                      # the issue title
+            return line[: _query_max()].strip()
+    return " ".join(t.split())[: _query_max()].strip()
 
 
 def _recall_injection(
