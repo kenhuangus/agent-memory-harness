@@ -58,6 +58,7 @@
   const state = {
     runs: [],
     activeRunId: null,
+    runsInflight: false,
     refreshOn: true,
     countdownMs: REFRESH_MS,
     lastSnapshot: null,
@@ -738,12 +739,26 @@
 
   // --- main poll loop -----------------------------------------------------
 
-  async function pollOnce() {
+  // Refresh the run list, but never let the (potentially slow) /api/runs scan
+  // stack: if one is already in flight, skip — a piled-up queue of list scans
+  // saturates the browser's per-origin connection pool and stalls run-select.
+  async function refreshRunList() {
+    if (state.runsInflight) return;
+    state.runsInflight = true;
     try {
-      // refresh the run list every poll too so newly-started runs appear without reload.
       const list = await fetchRuns();
       state.runs = list.runs || [];
       rebuildRunPicker(state.runs, state.activeRunId);
+    } finally {
+      state.runsInflight = false;
+    }
+  }
+
+  async function pollOnce() {
+    try {
+      // refresh the run list so newly-started runs appear without reload (guarded
+      // against stacking); the selected run's snapshot is the fast path below.
+      await refreshRunList();
       if (!state.activeRunId) return;
       const snap = await fetchRun(state.activeRunId);
       if (snap.error) {
