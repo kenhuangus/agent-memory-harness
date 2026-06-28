@@ -1,0 +1,1 @@
+{"cursor": 13091, "last_summary": "When raising the minimum version of a Django database backend, update the version tuple in base.py, the mock in tests.py, documentation in databases.txt and GIS install, and the release notes.", "recent_memory_ids": ["mem_9c10045e"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

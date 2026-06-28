@@ -1,0 +1,1 @@
+{"cursor": 15159, "last_summary": "When Django _check_ordering() traverses related-field ordering chains, set the current model to None after a non-relation field to reject invalid multi-hop lookups like parent__field1__field2.", "recent_memory_ids": ["mem_6bd5c94d", "mem_0ea3ee7a"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

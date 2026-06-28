@@ -1,0 +1,1 @@
+{"cursor": 10755, "last_summary": "When writing tests for composed querysets with values()/values_list(), evaluate the same queryset multiple times with different column lists to verify mutability of column selection.", "recent_memory_ids": ["mem_2e69f581", "mem_ab706a6a"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

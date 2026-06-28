@@ -1,0 +1,1 @@
+{"cursor": 185354, "last_summary": "When calling cursor.fetchone() after a SQL query that may return zero rows, always guard with an if-check before subscripting the result.", "recent_memory_ids": ["mem_a1a88535"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

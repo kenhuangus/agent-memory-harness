@@ -1,0 +1,1 @@
+{"cursor": 519699, "last_summary": "When creating a Sphinx test root directory, include at least `conf.py` and `index.rst`; other RST files are optional. The test marker picks up the directory by name via `testroot=...`.", "recent_memory_ids": ["mem_fff653c7", "mem_1540d196"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

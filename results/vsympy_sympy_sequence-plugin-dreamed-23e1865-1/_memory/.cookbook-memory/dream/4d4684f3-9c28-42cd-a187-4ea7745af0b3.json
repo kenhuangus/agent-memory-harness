@@ -1,0 +1,1 @@
+{"cursor": 16731, "last_summary": "When a SymPy constructor accepts both array and cycle forms, duplicate detection must apply only to array form; cycle form with overlapping elements composes via Cycle and should not be rejected.", "recent_memory_ids": ["mem_bf8690cb"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

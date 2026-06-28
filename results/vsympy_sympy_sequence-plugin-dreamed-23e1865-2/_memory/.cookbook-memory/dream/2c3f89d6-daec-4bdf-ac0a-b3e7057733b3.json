@@ -1,0 +1,1 @@
+{"cursor": 199137, "last_summary": "When deleting from multiple parallel lists that must stay in sync, collect indices during a read-only pass, then delete from all lists in reverse order to prevent index shift errors.", "recent_memory_ids": ["mem_8bb00bee"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

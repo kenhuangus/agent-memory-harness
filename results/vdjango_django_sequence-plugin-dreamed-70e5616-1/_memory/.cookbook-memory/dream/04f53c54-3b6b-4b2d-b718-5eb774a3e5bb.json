@@ -1,0 +1,1 @@
+{"cursor": 124368, "last_summary": "When writing Python regex validators for user input strings, use \\A and \\Z anchors instead of ^ and $ to prevent trailing newline bypass.", "recent_memory_ids": ["mem_00533f45"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

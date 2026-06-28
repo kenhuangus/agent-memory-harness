@@ -1,0 +1,1 @@
+{"cursor": 163368, "last_summary": "When `Add._eval_is_zero` processes expressions with only imaginary args, it must collect them and check whether their sum cancels to zero instead of unconditionally returning `False`.", "recent_memory_ids": ["mem_9910f9f7"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

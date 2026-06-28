@@ -1,0 +1,1 @@
+{"cursor": 28945, "last_summary": "When a pk field has a callable default (e.g. uuid.uuid4), `self._meta.pk.default is not NOT_PROVIDED` is True; guard the force-insert logic with `raw=False` so loaddata can still update existing rows.", "recent_memory_ids": ["mem_06d7a7e4", "mem_f8ffec70"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

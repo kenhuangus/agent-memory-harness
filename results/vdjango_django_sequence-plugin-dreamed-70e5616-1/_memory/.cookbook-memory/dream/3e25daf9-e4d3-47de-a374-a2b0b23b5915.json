@@ -1,0 +1,1 @@
+{"cursor": 9961, "last_summary": "When a DatabaseOperations method takes a `using` parameter that always equals `self.connection.alias`, you can drop the parameter and use `self.connection.alias` directly.", "recent_memory_ids": ["mem_87676443"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

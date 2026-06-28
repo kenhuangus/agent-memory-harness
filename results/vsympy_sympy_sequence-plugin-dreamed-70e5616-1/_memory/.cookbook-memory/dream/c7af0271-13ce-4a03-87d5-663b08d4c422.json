@@ -1,0 +1,1 @@
+{"cursor": 212110, "last_summary": "When a recursive function forwards the same parameter implicitly and the default changes semantics, drop it \u2014 always forward all relevant parameters explicitly.", "recent_memory_ids": ["mem_699230e4", "mem_72c83760", "mem_6d16c67f"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

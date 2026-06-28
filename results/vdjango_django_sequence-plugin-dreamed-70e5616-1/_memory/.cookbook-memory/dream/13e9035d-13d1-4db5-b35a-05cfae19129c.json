@@ -1,0 +1,1 @@
+{"cursor": 15214, "last_summary": "When using getattr(user, field, '') for an optional email field, always chain 'or \"\"' to handle NULL database values that getattr returns as None.", "recent_memory_ids": ["mem_d37f4601"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

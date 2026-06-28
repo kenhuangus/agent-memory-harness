@@ -1,0 +1,1 @@
+{"cursor": 10551, "last_summary": "When checking for imaginary components in coordinates with SymPy, use `im(a).is_zero is False` instead of `bool(im(a))` to avoid false positives under `evaluate(False)` where `im` remains unevaluated.", "recent_memory_ids": ["mem_82990881"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

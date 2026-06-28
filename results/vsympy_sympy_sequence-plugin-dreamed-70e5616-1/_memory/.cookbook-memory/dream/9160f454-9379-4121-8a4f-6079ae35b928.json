@@ -1,0 +1,1 @@
+{"cursor": 417777, "last_summary": "When using Mul(base, base) to expand Pow(TensorProduct, 2), always pass evaluate=False to prevent SymPy from re-converting the product back to a Pow, which would cause infinite recursion.", "recent_memory_ids": ["mem_f40d8931", "mem_321d92ad"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

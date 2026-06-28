@@ -1,0 +1,560 @@
+{
+  "schema": 1,
+  "memory_version": "vsphinx-doc_sphinx_sequence-builtin-70e5616-1",
+  "benchmark": "swe_bench_cl",
+  "timestamp": "20260627T231957Z",
+  "pipeline": {
+    "version": "vsphinx-doc_sphinx_sequence-builtin-70e5616-1",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "70e5616",
+    "harness": "claude",
+    "benchmark": "swe_bench_cl",
+    "sequence": "sphinx-doc_sphinx_sequence",
+    "stage": "builtin",
+    "limit": null,
+    "n_tasks": 44,
+    "model": "claude-haiku-4-5",
+    "code_mode": "agentic",
+    "grader": "swebench-docker",
+    "plugin_workers": 1,
+    "budget_usd": 10.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash",
+      "extraction_prompt": {
+        "variant": "V6",
+        "sha256": "3ce43ecc04d16f81db3d43d2ae46d6cc913e8aa7789f923ef9c5ccaf0708c1ac",
+        "char_count": 7745
+      }
+    },
+    "memory_store": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsphinx-doc_sphinx_sequence-builtin-70e5616-1/_memory",
+    "source_memory": null,
+    "source_memory_health": null,
+    "n_stages": 1,
+    "n_eval_stages": 1,
+    "stages": [
+      "builtin"
+    ],
+    "timestamp": "20260627T231957Z",
+    "started_at": 1782602397.2161632,
+    "ended_at": 1782615164.212824,
+    "stages_run": [
+      "builtin"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": null
+    }
+  },
+  "dream": {
+    "status": "not-run"
+  },
+  "runs": [
+    {
+      "run_id": "pipeline-builtin",
+      "timestamp": "2026-06-28T02:52:44+00:00",
+      "benchmark": "swe_bench_cl",
+      "model": "claude-code:claude-haiku-4-5:builtin",
+      "memory": true,
+      "label": "claude-code:claude-haiku-4-5:builtin+mem",
+      "mode": "agent",
+      "metrics": {
+        "recency": 0.0,
+        "efficiency": 0.0,
+        "relevancy": 0.0,
+        "accuracy": 0.5,
+        "recency_decayed": 0.0,
+        "precision_at_k": 0.0,
+        "accuracy_memory_off": null,
+        "n": 44,
+        "extra": {}
+      },
+      "n_tasks": 44,
+      "entries_used": 44,
+      "entries_available": 44,
+      "limit": null,
+      "selection": "flat",
+      "cost_usd": 4.334068,
+      "tokens_in": 3408,
+      "tokens_out": 866132,
+      "partial": false,
+      "budget_exceeded": false,
+      "source": "thomasjoshi/swe-bench-cl",
+      "reliability": {
+        "n_errors": 1,
+        "memory_reached": 0,
+        "memory_hit": 0,
+        "recall_attempted": 0,
+        "recall_with_hits": 0,
+        "graded_n": 40,
+        "resolved": 20,
+        "ungraded": 4,
+        "grade_reasons": {
+          "graded": 40,
+          "swebench Docker run did not complete": 4
+        },
+        "errors": [
+          {
+            "task_id": "sphinx-doc__sphinx-8548",
+            "stage": "solve",
+            "error": "TimeoutExpired: Command '['/Users/keith/.local/bin/claude', '-p', \"Earlier conversation history is in files under the sessions/ directory. Search/read them (grep for keywords from the question) to find what you need,"
+          }
+        ]
+      },
+      "notes": "single-stage pipeline \u00b7 swe_bench_cl \u00b7 stage builtin",
+      "tasks": [
+        {
+          "task_id": "sphinx-doc__sphinx-7440",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-7454",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-7462",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-7889",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-7910",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-8269",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-8459",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-8475",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-8595",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-8621",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-8721",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-9230",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-9258",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-9281",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-9320",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-9367",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-9591",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-9698",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-9711",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-10323",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-10435",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-10449",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-7748",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-7757",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-7985",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-8035",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-8056",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-8120",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-8265",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-8551",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-8593",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-8638",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-9602",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-9658",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-9673",
+          "stage": "builtin",
+          "patch_status": "present",
+          "solve_error": null,
+          "grade_status": "ungraded",
+          "grade_reason": "swebench Docker run did not complete",
+          "resolved": false
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-10466",
+          "stage": "builtin",
+          "patch_status": "present",
+          "solve_error": null,
+          "grade_status": "ungraded",
+          "grade_reason": "swebench Docker run did not complete",
+          "resolved": false
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-10614",
+          "stage": "builtin",
+          "patch_status": "present",
+          "solve_error": null,
+          "grade_status": "ungraded",
+          "grade_reason": "swebench Docker run did not complete",
+          "resolved": false
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-10673",
+          "stage": "builtin",
+          "patch_status": "present",
+          "solve_error": null,
+          "grade_status": "ungraded",
+          "grade_reason": "swebench Docker run did not complete",
+          "resolved": false
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-11445",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-8548",
+          "stage": "builtin",
+          "patch_status": "empty",
+          "solve_error": "TimeoutExpired: Command '['/Users/keith/.local/bin/claude', '-p', \"Earlier conversation history is in files under the sessions/ directory. Search/read them (grep for keywords from the question) to find what you need,",
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-9229",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-9461",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-11510",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sphinx-doc__sphinx-7590",
+          "stage": "builtin",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        }
+      ],
+      "pipeline_stage": "builtin",
+      "stage_index": 2,
+      "git_sha": "70e5616",
+      "git_tag": "vsphinx-doc_sphinx_sequence-builtin-70e5616-1",
+      "memory_health": {
+        "before": {
+          "store_dir": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsphinx-doc_sphinx_sequence-builtin-70e5616-1/_memory/.cookbook-memory",
+          "events": 0,
+          "daydream_events": 0,
+          "recall_events": 0,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 0,
+          "daydream_memory_written": 0,
+          "memory_items": null,
+          "graph_nodes": null,
+          "markdown_items": 0,
+          "durable_items": 0
+        },
+        "after": {
+          "store_dir": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsphinx-doc_sphinx_sequence-builtin-70e5616-1/_memory/.cookbook-memory",
+          "events": 0,
+          "daydream_events": 0,
+          "recall_events": 0,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 0,
+          "daydream_memory_written": 0,
+          "memory_items": null,
+          "graph_nodes": null,
+          "markdown_items": 0,
+          "durable_items": 0
+        },
+        "delta": {
+          "events": 0,
+          "daydream_events": 0,
+          "recall_events": 0,
+          "recall_with_hits": 0,
+          "recall_zero_hits": 0,
+          "recall_errors": 0,
+          "daydream_completed": 0,
+          "daydream_memory_written": 0,
+          "markdown_items": 0,
+          "durable_items": 0
+        }
+      },
+      "warnings": [
+        {
+          "code": "partial_grading",
+          "message": "4 of 44 tasks were ungraded; accuracy denominator is graded tasks only"
+        }
+      ]
+    }
+  ]
+}

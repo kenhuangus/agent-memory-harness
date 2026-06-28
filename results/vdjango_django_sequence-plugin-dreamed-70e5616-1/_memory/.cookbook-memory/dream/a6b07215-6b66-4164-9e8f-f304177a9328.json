@@ -1,0 +1,1 @@
+{"cursor": 32753, "last_summary": "In Django forms, `ModelChoiceField` must match `ChoiceField` and `ModelMultipleChoiceField` conventions: the `invalid_choice` error message should use `%(value)s` and pass the value as a parameter.", "recent_memory_ids": ["mem_e06303b3"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

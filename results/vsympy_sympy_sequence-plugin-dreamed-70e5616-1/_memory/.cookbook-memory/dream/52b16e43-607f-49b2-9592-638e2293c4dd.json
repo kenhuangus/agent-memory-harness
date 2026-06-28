@@ -1,0 +1,1 @@
+{"cursor": 16087, "last_summary": "When a ConditionSet condition becomes S.true after substitution, __new__ already handles simplification to the base set, so _eval_subs should never short-circuit with a synthetic  Contain-s node.", "recent_memory_ids": ["mem_5428712b"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

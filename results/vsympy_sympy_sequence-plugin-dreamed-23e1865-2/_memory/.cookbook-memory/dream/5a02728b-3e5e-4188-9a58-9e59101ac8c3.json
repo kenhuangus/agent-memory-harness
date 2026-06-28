@@ -1,0 +1,1 @@
+{"cursor": 494145, "last_summary": "When importing `ConditionSet` from `sympy.sets` inside a `sympy.core` module, import it locally inside the method body to avoid circular imports.", "recent_memory_ids": ["mem_f29c780d"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

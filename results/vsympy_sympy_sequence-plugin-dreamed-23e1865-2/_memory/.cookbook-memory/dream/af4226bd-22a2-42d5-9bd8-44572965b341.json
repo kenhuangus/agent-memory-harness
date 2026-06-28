@@ -1,0 +1,1 @@
+{"cursor": 639897, "last_summary": "In SymPy, `ConditionSet` is the canonical return type for equations that `solveset` cannot solve analytically \u2014 it should never raise `NotImplementedError` from `as_set()` or `solveset()`.", "recent_memory_ids": ["mem_3f7269b0"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

@@ -1,0 +1,1 @@
+{"cursor": 13488, "last_summary": "Django's _base_manager returns all model instances without custom query filters, while _default_manager may apply custom get_queryset() overrides.", "recent_memory_ids": ["mem_c1551c8f", "mem_718cea98"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

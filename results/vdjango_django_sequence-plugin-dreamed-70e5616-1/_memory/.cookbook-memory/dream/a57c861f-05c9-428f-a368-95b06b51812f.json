@@ -1,0 +1,1 @@
+{"cursor": 195767, "last_summary": "Before moving a method between classes in the widget hierarchy, read the parent class, the current class, and the inheritance chain to verify the method logic has no subclass-specific dependencies.", "recent_memory_ids": ["mem_3a84fa6a", "mem_ce3c01a1"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

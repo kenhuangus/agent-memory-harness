@@ -1,0 +1,1 @@
+{"cursor": 597648, "last_summary": "When importing Mul in a SymPy quantum module, import from sympy (top-level) not from sympy.core. The operator.py file uses 'from sympy import ... Mul'.", "recent_memory_ids": ["mem_f186adc5", "mem_51d429a2"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

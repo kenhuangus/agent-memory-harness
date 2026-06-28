@@ -1,0 +1,1 @@
+{"cursor": 475188, "last_summary": "When `split_super_sub()` encounters a symbol name ending with digits (e.g., 'x2'), it automatically treats trailing digits as a subscript. Ensure downstream printers handle this correctly.", "recent_memory_ids": ["mem_13cbb500", "mem_97d38cbb"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

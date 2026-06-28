@@ -1,0 +1,1 @@
+{"cursor": 7252, "last_summary": "When adding an __iter__ method to a class that already has a page_range property yielding page numbers, the implementation can simply iterate over page_range and yield self.page(num).", "recent_memory_ids": ["mem_4c6c6fab"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

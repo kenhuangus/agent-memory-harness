@@ -1,0 +1,1 @@
+{"cursor": 118896, "last_summary": "When a function accepts `*args` and defaults only when no args are provided, use `elif not args:` instead of `else:` to avoid overwriting valid provided args with defaults.", "recent_memory_ids": ["mem_20a62c09"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

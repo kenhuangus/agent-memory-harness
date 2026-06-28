@@ -1,0 +1,1 @@
+{"cursor": 271998, "last_summary": "When a database backend's settings_to_cmd_args_env method has no env vars to set, return None not an empty dict \u2014 otherwise subprocess.run receives no environment.", "recent_memory_ids": ["mem_d081714c", "mem_22833d7c"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

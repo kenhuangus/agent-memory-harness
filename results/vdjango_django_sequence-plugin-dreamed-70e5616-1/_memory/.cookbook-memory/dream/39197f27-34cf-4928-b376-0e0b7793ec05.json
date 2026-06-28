@@ -1,0 +1,1 @@
+{"cursor": 7017, "last_summary": "When using regex validation in Python to reject trailing newlines, use \\A and \\Z instead of ^ and $ because $ matches a trailing newline.", "recent_memory_ids": ["mem_7a386b06"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}
