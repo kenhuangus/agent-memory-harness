@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Team — AI Agent Memory Harness</title>
+<meta name="description" content="The four-person team building the AI Agent Memory Harness: Ken Huang, Keith Mazanec, Brent Gibson, and Scott Bushyhead.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+<link rel="icon" type="image/svg+xml" href="assets/img/logo.svg">
+<link rel="icon" type="image/png" sizes="256x256" href="assets/img/favicon.png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<meta property="og:title" content="Team — AI Agent Memory Harness">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://kenhuangus.github.io/agent-memory-harness/assets/img/social-preview.png">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  .team-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .bio { display: flex; gap: 18px; align-items: flex-start; }
+  .bio .avatar {
+    flex: 0 0 84px; width: 84px; height: 84px; border-radius: 50%;
+    object-fit: cover; border: 1px solid var(--border); background: var(--bg-elev2);
+  }
+  .bio .body { min-width: 0; }
+  .bio h3 { margin: 0 0 2px; }
+  .bio .role { font-size: .76rem; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--text-mute); margin-bottom: 10px; }
+  .bio p { margin: 0 0 10px; }
+  .bio .links a { font-family: 'JetBrains Mono', monospace; font-size: .82rem; margin-right: 14px; }
+  @media (max-width: 760px) { .team-grid { grid-template-columns: 1fr; } }
+</style>
+<script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+<!-- NAV -->
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html">
+      <img class="mark" src="assets/img/logo.svg" alt="Cookbook Memory" width="30" height="30">
+      <span>Memory Harness<small>Cookbook Memory · persistent memory for coding agents</small></span>
+    </a>
+    <button class="nav-toggle" aria-label="Toggle navigation">☰</button>
+    <nav class="nav-links">
+      <a href="index.html">Overview</a>
+      <a href="plan.html">Plan</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="architecture-swebench-cl.html">SWE-Bench-CL</a>
+      <a href="benchmarks.html">Benchmarks</a>
+      <a href="implementation.html">Implementation</a>
+      <a href="results.html">Results</a>
+      <a href="memory-inspector.html">Memory Inspector</a>
+      <a href="team.html">Team</a>
+      <a href="collaborate.html">Collaborate</a>
+      <a class="nav-cta" href="https://github.com/kenhuangus/agent-memory-harness" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="wrap">
+    <span class="tag"><span class="dot"></span> 4 people · 2 weeks · one owner per area</span>
+    <h1>The people behind <span class="grad">Cookbook Memory</span>.</h1>
+    <p class="lead">A small team building a model-agnostic memory harness for long-running coding agents.
+      Each owns one of the four modules — write, store, dream, and measure.</p>
+  </div>
+</section>
+
+<!-- BIOS -->
+<section class="section">
+  <div class="wrap">
+    <div class="team-grid">
+
+      <div class="card bl4 fade-up" id="ken">
+        <div class="bio">
+          <img class="avatar" src="https://github.com/kenhuangus.png?size=168" alt="Ken Huang" width="84" height="84" loading="lazy">
+          <div class="body">
+            <h3>Ken Huang</h3>
+            <div class="role a4">Eval infrastructure &amp; the site</div>
+            <p>Owns the evaluation package — dataset loaders, the run harness, trajectory logging,
+              cost and metrics — plus this static site. The honest-benchmark conscience of the project.</p>
+            <div class="links">
+              <a href="https://github.com/kenhuangus" target="_blank" rel="noopener">@kenhuangus ↗</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card bl1 fade-up" id="keith">
+        <div class="bio">
+          <img class="avatar" src="https://github.com/kmazanec.png?size=168" alt="Keith Mazanec" width="84" height="84" loading="lazy">
+          <div class="body">
+            <h3>Keith Mazanec</h3>
+            <div class="role a1">Harness architecture</div>
+            <p>Owns the harness architecture and OpenCode integration — the memory framework that wraps
+              the agent loop around the stores, router, and dreaming worker end-to-end.</p>
+            <div class="links">
+              <a href="https://github.com/kmazanec" target="_blank" rel="noopener">@kmazanec ↗</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card bl2 fade-up" id="brent">
+        <div class="bio">
+          <img class="avatar" src="https://github.com/bgibson1618.png?size=168" alt="Brent Gibson" width="84" height="84" loading="lazy">
+          <div class="body">
+            <h3>Brent Gibson</h3>
+            <div class="role a2">Storage &amp; retrieval</div>
+            <p>Owns the storage backends and the retrieval router — Markdown, SQLite-vector, and graph —
+              and the logic that sends each query to the one backend that answers it best.</p>
+            <div class="links">
+              <a href="https://github.com/bgibson1618" target="_blank" rel="noopener">@bgibson1618 ↗</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card bl3 fade-up" id="scott">
+        <div class="bio">
+          <img class="avatar" src="https://github.com/NerdAlert58.png?size=168" alt="Scott Bushyhead" width="84" height="84" loading="lazy">
+          <div class="body">
+            <h3>Scott Bushyhead</h3>
+            <div class="role a3">Async "dreaming"</div>
+            <p>Owns the dreaming component — the offline worker that mines session logs, de-dups,
+              resolves contradictions, and keeps governance clean across the whole memory store.</p>
+            <div class="links">
+              <a href="https://github.com/NerdAlert58" target="_blank" rel="noopener">@NerdAlert58 ↗</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <div class="spacer"></div>
+    <p class="center"><a class="btn btn-ghost" href="plan.html">See who's doing what, when →</a></p>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="wrap footer-grid">
+    <div>
+      <a class="brand" href="index.html"><img class="mark" src="assets/img/logo.svg" alt="Cookbook Memory" width="30" height="30"><span>Memory Harness</span></a>
+      <p style="margin-top:14px;max-width:34ch;">Persistent, self-curating memory for long-running coding agents.
+        Built to be model-agnostic and benchmark-honest.</p>
+    </div>
+    <div class="cols">
+      <div class="col">
+        <h5>Project</h5>
+        <a href="index.html">Overview</a>
+        <a href="plan.html">2-week plan</a>
+        <a href="architecture.html">Architecture</a>
+      </div>
+      <div class="col">
+        <h5>Reference</h5>
+        <a href="benchmarks.html">Benchmarks</a>
+        <a href="implementation.html">Implementation</a>
+        <a href="results.html">Results</a>
+        <a href="team.html">Team</a>
+      </div>
+    </div>
+  </div>
+  <div class="wrap" style="margin-top:30px;">
+    <span class="note">© <span data-year>2026</span> AI Agent Memory Harness project. Built for publication on GitHub Pages.</span>
+  </div>
+</footer>
+
+<script src="assets/js/main.js"></script>
+</body>
+</html>
