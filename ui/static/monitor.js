@@ -500,8 +500,16 @@
 
   // Stable-ish key so an expanded row survives a refresh. ts is often unstamped
   // (0.0), so fold in query + n + scores to disambiguate same-query recalls.
+  // HASH the composite to a compact, attribute-safe token: the raw query can be the
+  // full multi-line agent prompt (newlines/quotes), and a multi-line value gets
+  // whitespace-normalized in the data-key HTML-attribute round-trip — so the click
+  // handler's getAttribute(...) key would no longer match recallKey(r) at render and
+  // the row would never expand. A hash sidesteps that (and shortens the attribute).
   function recallKey(r) {
-    return [r.query || "", r.ts || 0, r.n || 0, r.top_score, r.min_score].join("|");
+    const raw = [r.query || "", r.ts || 0, r.n || 0, r.top_score, r.min_score].join("|");
+    let h = 5381;
+    for (let i = 0; i < raw.length; i++) h = ((h << 5) + h + raw.charCodeAt(i)) | 0;
+    return "r" + (h >>> 0).toString(36);
   }
 
   function renderSpark(stats) {
