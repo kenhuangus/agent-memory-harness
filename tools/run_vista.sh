@@ -67,6 +67,23 @@ export PYTHONPATH="$REPO/eval"
 export VISTA_DATASET=full
 export VISTA_SPLIT="$SPLIT"
 
+# --- subscription auth (no API billing) ------------------------------------
+# run_bench already strips ANTHROPIC_API_KEY from each claude invocation; unset
+# here too so nothing downstream picks up an API key.
+unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN 2>/dev/null || true
+
+# --- daydream extraction variant (memory quality) --------------------------
+# V6 = transferable lessons + problem-solving process types (Strategy/Mistake);
+# the variant validated on the 97-split run. Override with DREAM_EXTRACTION_VARIANT=V5
+# etc. Only the plugin-real daydream write path consumes it.
+export DREAM_EXTRACTION_VARIANT="${DREAM_EXTRACTION_VARIANT:-V6}"
+
+# --- accuracy embedder (Voyage) when available -----------------------------
+# Best-effort: source local bench secrets so the accuracy profile (Voyage) is
+# auto-selected. Harmless if absent — the store falls back to the offline fusion
+# profile.
+[ -f "$HOME/.bench-secrets.env" ] && . "$HOME/.bench-secrets.env" || true
+
 # --- output dir -------------------------------------------------------------
 OUT="$REPO/runs/vista/${SPLIT}/${MODE}"
 mkdir -p "$OUT"
@@ -115,7 +132,7 @@ fi
 KEYLEN="${OPENROUTER_API_KEY:+${#OPENROUTER_API_KEY}}"
 KEYLEN="${KEYLEN:-0}"
 {
-  echo "START=$(date -u +%FT%TZ) mode=$MODE split=$SPLIT limit=$LIMIT workers=$WORKERS keylen=$KEYLEN"
+  echo "START=$(date -u +%FT%TZ) mode=$MODE split=$SPLIT limit=$LIMIT workers=$WORKERS variant=${DREAM_EXTRACTION_VARIANT:-?} keylen=$KEYLEN"
   echo "REPO=$REPO"
   echo "OUT=$OUT"
   echo "CMD=${CMD[*]}"

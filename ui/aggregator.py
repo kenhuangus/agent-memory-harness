@@ -827,7 +827,10 @@ def _last_activity_ts(base: Path) -> float | None:
 def _format_label(run_id: str) -> str:
     """Compact human label: ``django · 8681435 · plugin-blank`` etc."""
     # vdjango_django_sequence-plugin-blank-8681435-1 -> django · 8681435 · plugin-blank
-    name = run_id.lstrip("v")
+    # Strip a SINGLE leading "v" version-prefix (run dirs are named "v<bench>_…");
+    # lstrip("v") removed ALL leading v's, mangling benchmarks that start with v
+    # (e.g. "vvista_…" -> "ista", "vista_…" -> "ista").
+    name = run_id[1:] if run_id.startswith("v") else run_id
     parts = name.split("-")
     if "_" in parts[0]:
         seq = parts[0].split("_")[0]

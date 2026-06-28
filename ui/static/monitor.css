@@ -211,6 +211,24 @@ body {
 .status-led[data-state="idle"]  { background: var(--text-3); }
 .status-led[data-state="warn"]  { background: var(--terra); box-shadow: 0 0 6px var(--terra-dim); }
 .status-led[data-state="error"] { background: var(--crimson); box-shadow: 0 0 6px var(--crimson-dim); }
+.status-led[data-state="loading"] {
+  background: var(--amber);
+  box-shadow: 0 0 8px var(--amber), 0 0 1px var(--amber);
+  animation: led-pulse 0.7s ease-in-out infinite;
+}
+
+/* Blocking cue while the selected run's snapshot is fetched: dim + ignore
+   clicks so a slow store read can't be mistaken for stale data. */
+#view-monitor.is-loading { position: relative; }
+#view-monitor.is-loading > * { opacity: 0.45; pointer-events: none; transition: opacity 0.12s; }
+#view-monitor.is-loading::after {
+  content: "loading…";
+  position: absolute; inset: 0; z-index: 5;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'IBM Plex Sans Condensed', sans-serif;
+  font-size: 13px; letter-spacing: 0.08em; color: var(--amber);
+  opacity: 1; pointer-events: none;
+}
 
 @keyframes led-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
