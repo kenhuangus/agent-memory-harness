@@ -1,0 +1,1 @@
+{"cursor": 6554, "last_summary": "When a LaTeX printer for Subs or similar uses _print(expr) inside \\left. ... \\right|, the expression loses parentheses, causing ambiguous LaTeX when preceded by a multiplication factor.", "recent_memory_ids": ["mem_cd8fc270", "mem_b528d18d"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

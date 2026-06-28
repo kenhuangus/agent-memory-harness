@@ -1,0 +1,1 @@
+{"cursor": 439603, "last_summary": "When Sphinx autodoc's filter_members evaluates private_members, test for 'is ALL' rather than truthiness to distinguish 'all private members' from a specific list of names.", "recent_memory_ids": ["mem_b524e2d8"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

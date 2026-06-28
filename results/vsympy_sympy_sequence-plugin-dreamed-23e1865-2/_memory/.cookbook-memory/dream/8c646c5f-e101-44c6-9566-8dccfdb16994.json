@@ -1,0 +1,1 @@
+{"cursor": 675152, "last_summary": "When populating sub/sup dicts with DSUB/DSUP/GSUB etc., the U() helper returns None on missing unicodedata chars \u2014 keys may hold None, not just missing.", "recent_memory_ids": ["mem_13790ca7", "mem_4fa44975"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

@@ -1,0 +1,1 @@
+{"cursor": 370845, "last_summary": "When calling `cancel()` in SymPy's determinant code, always assign its return value (`ret = cancel(ret)`) because `cancel()` returns a new simplified expression instead of modifying in place.", "recent_memory_ids": ["mem_722721f7"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

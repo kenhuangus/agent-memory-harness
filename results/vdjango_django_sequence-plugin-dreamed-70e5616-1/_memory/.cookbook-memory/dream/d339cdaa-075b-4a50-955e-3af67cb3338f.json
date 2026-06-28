@@ -1,0 +1,1 @@
+{"cursor": 148683, "last_summary": "In Django, `django/db/models/enums.py` defines ChoicesMeta metaclass where adding a @property applies to all Choices/IntegerChoices/TextChoices subclasses.", "recent_memory_ids": ["mem_a44f6412", "mem_f674e064", "mem_a9691ae6", "mem_a5b8136c"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

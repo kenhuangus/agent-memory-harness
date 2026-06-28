@@ -1,0 +1,1 @@
+{"cursor": 337210, "last_summary": "When fixing a bug found via issue report, add the failing case as a regression test in the same commit \u2014 this ensures the fix is verified and prevents future reintroduction.", "recent_memory_ids": ["mem_d972a0fb", "mem_0bfa40c5"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

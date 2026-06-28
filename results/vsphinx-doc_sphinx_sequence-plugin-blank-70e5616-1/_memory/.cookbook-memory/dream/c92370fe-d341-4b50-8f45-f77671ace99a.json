@@ -1,0 +1,1 @@
+{"cursor": 370570, "last_summary": "When the issue report pinpoints the exact commit and line causing the bug, use grep to find the problematic pattern (e.g., '__globals__' and 'cls_path') directly rather than searching broadly.", "recent_memory_ids": ["mem_7078cc72", "mem_d8a24d89"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

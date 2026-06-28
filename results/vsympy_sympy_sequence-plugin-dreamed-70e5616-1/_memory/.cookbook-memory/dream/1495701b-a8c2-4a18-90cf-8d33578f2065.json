@@ -1,0 +1,1 @@
+{"cursor": 10066, "last_summary": "When deleting elements from multiple parallel lists while iterating by index, avoid in-place deletion (del) because indices shift; use a boolean removal mask and filter all lists after the loop.", "recent_memory_ids": ["mem_af34b81c"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

@@ -1,0 +1,1 @@
+{"cursor": 6702, "last_summary": "When symbols() with cls= and a tuple/list input recurses per element, the recursive call omits cls, defaulting to Symbol. Fix: forward cls=cls in the recursive branch.", "recent_memory_ids": ["mem_5e86eda8"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

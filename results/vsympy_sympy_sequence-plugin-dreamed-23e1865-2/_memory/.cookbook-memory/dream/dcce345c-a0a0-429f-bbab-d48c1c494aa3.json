@@ -1,0 +1,1 @@
+{"cursor": 473869, "last_summary": "In SymPy's `Product.doit()`, when `_eval_product` returns `None` or `S.NaN`, the product remains unevaluated (returns `Product(...)`) \u2014 this is the safe fallback for unhandled cases.", "recent_memory_ids": ["mem_65232190"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

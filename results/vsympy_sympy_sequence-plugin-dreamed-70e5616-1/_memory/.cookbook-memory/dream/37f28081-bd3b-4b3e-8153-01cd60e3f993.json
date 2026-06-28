@@ -1,0 +1,1 @@
+{"cursor": 381154, "last_summary": "When evaluating products of additive expressions symbolically, \u220f(a + b) \u2260 \u220f(a) + \u220f(b); never split an Add term via `as_coeff_Add()` and sum the individual products \u2014 return `None` instead.", "recent_memory_ids": ["mem_1c0d4d6b"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

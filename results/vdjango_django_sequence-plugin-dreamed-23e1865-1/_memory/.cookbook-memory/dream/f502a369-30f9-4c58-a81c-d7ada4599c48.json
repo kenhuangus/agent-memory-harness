@@ -1,0 +1,1 @@
+{"cursor": 14237, "last_summary": "In Django templates, callable objects (classes, functions) are invoked with no arguments during variable resolution unless `do_not_call_in_templates = True` is set on the object.", "recent_memory_ids": ["mem_04c5ddcf"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

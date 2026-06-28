@@ -1,0 +1,1 @@
+{"cursor": 156631, "last_summary": "When a SymPy code printer produces invalid syntax for a standard function like Max/Min, the root cause is typically a missing entry in the printer's `known_functions` dictionary.", "recent_memory_ids": ["mem_7e8d1285"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

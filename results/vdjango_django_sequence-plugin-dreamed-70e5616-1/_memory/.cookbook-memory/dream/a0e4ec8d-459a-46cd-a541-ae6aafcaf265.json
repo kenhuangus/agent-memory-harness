@@ -1,0 +1,1 @@
+{"cursor": 6343, "last_summary": "When adding __reversed__ to an ordered container backed by a dict (like Django's OrderedSet), delegate to reversed(self.dict) to mirror __iter__'s design and preserve insertion order.", "recent_memory_ids": ["mem_0f57946d"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

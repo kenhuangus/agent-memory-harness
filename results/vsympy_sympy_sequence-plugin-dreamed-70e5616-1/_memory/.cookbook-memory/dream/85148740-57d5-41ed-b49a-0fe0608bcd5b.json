@@ -1,0 +1,1 @@
+{"cursor": 416169, "last_summary": "When `functools.reduce` computes product of an empty iterable (e.g., shape tuple for rank-0 array), pass initializer `1` instead of guarding with `if shape else 0`.", "recent_memory_ids": ["mem_b9fe5ad0"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

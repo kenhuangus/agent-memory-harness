@@ -1,0 +1,1 @@
+{"cursor": 9800, "last_summary": "When a database cursor.fetchone() may return None due to concurrent row deletion, guard the subsequent subscript access with an if-check before using the result.", "recent_memory_ids": ["mem_3b130185"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

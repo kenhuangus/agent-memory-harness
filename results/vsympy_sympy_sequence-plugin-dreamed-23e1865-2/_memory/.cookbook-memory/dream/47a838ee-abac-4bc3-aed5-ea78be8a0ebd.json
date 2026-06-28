@@ -1,0 +1,1 @@
+{"cursor": 339787, "last_summary": "When a docstring caveat requires callers to copy outputs to get correct results, consider fixing the function to yield independent copies rather than documenting the confusing behavior.", "recent_memory_ids": ["mem_752f579c", "mem_5b62287d"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

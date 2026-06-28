@@ -1,0 +1,1 @@
+{"cursor": 163957, "last_summary": "When a SymPy traceback shows 'Invalid comparison of complex' at an ordering operator on an expression, add an is_real guard before the comparison to skip the operation for complex values.", "recent_memory_ids": ["mem_f9e3e506", "mem_c6a6fbd7"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

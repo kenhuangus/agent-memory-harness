@@ -1,0 +1,1 @@
+{"cursor": 540860, "last_summary": "In SymPy's polys module, dmp_strip should recursively strip inner polynomials at all levels, not just remove leading zero outer elements, to ensure zero polynomials are properly normalized.", "recent_memory_ids": ["mem_45cb9104", "mem_45c64039"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

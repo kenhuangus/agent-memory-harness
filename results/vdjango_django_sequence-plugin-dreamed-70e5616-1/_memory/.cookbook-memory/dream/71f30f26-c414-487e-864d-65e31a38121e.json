@@ -1,0 +1,1 @@
+{"cursor": 15739, "last_summary": "When ForeignKey validation fails for records hidden by the default manager (e.g., archived), use _base_manager instead of _default_manager in validate() to allow valid records.", "recent_memory_ids": ["mem_8ff2ca43"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

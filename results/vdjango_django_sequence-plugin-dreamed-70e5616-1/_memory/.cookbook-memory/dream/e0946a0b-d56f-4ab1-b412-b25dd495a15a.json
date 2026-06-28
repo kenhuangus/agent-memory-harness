@@ -1,0 +1,1 @@
+{"cursor": 313992, "last_summary": "In Django's forms/widgets.py, widget get_context() methods must not mutate the attrs dict passed as a parameter; if mutation is needed, copy the dict first.", "recent_memory_ids": ["mem_967dfd9b", "mem_f669e414"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

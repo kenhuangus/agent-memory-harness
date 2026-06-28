@@ -1,0 +1,1 @@
+{"cursor": 25510, "last_summary": "Monkey-patching `_eval_expand_*` methods on built-in SymPy classes (like `Pow`) at module load time is a valid pattern for extending expand functionality without modifying core class definitions.", "recent_memory_ids": ["mem_8dad5485", "mem_06e48e38"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

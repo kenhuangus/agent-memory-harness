@@ -1,0 +1,1 @@
+{"cursor": 15736, "last_summary": "When a product mixes numbers and symbols (e.g., 1.5*3**x), use the default dot separator for numeric factors even when a custom mul_symbol is given, to avoid unreadable output like '1.5\\,3^{x}'.", "recent_memory_ids": ["mem_f0f5a3a3", "mem_338ace4e"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

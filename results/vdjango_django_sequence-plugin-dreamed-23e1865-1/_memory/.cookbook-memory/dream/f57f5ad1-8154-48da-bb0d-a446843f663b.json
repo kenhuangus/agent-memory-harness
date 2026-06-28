@@ -1,0 +1,1 @@
+{"cursor": 10771, "last_summary": "When a widget's get_context() modifies its attrs dict, it can leak state to subsequent widgets in a multi-widget; always create a new dict instead of mutating the input.", "recent_memory_ids": ["mem_584ddd5a"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

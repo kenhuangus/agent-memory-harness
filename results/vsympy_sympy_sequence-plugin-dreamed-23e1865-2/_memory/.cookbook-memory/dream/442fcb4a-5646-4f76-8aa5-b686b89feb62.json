@@ -1,0 +1,1 @@
+{"cursor": 636130, "last_summary": "When row_join validates row count, a matrix with self.cols == 0 is a null matrix \u2014 skip the row mismatch error because it can be reshaped to match any partner. Same for col_join when self.rows == 0.", "recent_memory_ids": ["mem_142bdaa3"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

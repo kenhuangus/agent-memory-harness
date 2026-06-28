@@ -1,0 +1,1 @@
+{"cursor": 441286, "last_summary": "When _split_gcd receives an empty argument list (no surds found), it must handle this gracefully by returning (S.One, [], []) instead of indexing a[0] on an empty tuple.", "recent_memory_ids": ["mem_af4355e3"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

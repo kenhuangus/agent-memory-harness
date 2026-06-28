@@ -1,0 +1,1 @@
+{"cursor": 250693, "last_summary": "In SymPy, `implemented_function` attaches `_imp_` as a staticmethod on `UndefinedFunction`. The `_imp_` contract expects pre-evaluated numeric inputs, not raw symbolic expressions.", "recent_memory_ids": ["mem_cc4d685f", "mem_adc1ed08", "mem_675d1fce"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

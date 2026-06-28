@@ -1,0 +1,1 @@
+{"cursor": 166006, "last_summary": "When a local variable is assigned only inside an if-block and referenced unconditionally later, initialize it before the block or move the reference inside the block to prevent UnboundLocalError.", "recent_memory_ids": ["mem_638edd62"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

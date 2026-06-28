@@ -1,0 +1,1 @@
+{"cursor": 235464, "last_summary": "When a simplification transformation compares an exponent using < or > operators, guard with `if not rv.exp.is_real: return rv` first because complex numbers do not support ordering in SymPy.", "recent_memory_ids": ["mem_503dc67d"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

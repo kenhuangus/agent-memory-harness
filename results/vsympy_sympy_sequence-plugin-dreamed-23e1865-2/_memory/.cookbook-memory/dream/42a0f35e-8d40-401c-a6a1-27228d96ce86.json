@@ -1,0 +1,1 @@
+{"cursor": 9867, "last_summary": "When writing _print_set or _print_dict for a SymPy printer, sort keys/items with default_sort_key to get stable eval-roundtripable output.", "recent_memory_ids": ["mem_acf58b30", "mem_bb5714e0"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

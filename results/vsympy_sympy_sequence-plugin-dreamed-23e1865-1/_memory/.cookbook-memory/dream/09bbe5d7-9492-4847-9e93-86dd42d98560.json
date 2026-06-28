@@ -1,0 +1,1 @@
+{"cursor": 492401, "last_summary": "In SymPy's Point class methods (distance, midpoint, etc.), always convert a positional argument with Point(p) before accessing .args to handle tuple/list inputs and ensure uniform type.", "recent_memory_ids": ["mem_5cdc8c60", "mem_57179287"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

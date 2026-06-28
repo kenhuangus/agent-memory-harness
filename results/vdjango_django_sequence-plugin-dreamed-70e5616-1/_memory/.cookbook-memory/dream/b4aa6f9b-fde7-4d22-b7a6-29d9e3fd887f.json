@@ -1,0 +1,1 @@
+{"cursor": 15696, "last_summary": "When a Django compiler method iterates over Meta.ordering and encounters expression objects (OrderBy), guard them before passing to string-only functions like get_order_dir.", "recent_memory_ids": ["mem_96d8433b"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

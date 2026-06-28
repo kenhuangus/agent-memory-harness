@@ -1,0 +1,1 @@
+{"cursor": 192579, "last_summary": "When a client library deprecates certain kwargs in favor of new names, update the backend's connection-params method to use the new names if the minimum-required library version supports them.", "recent_memory_ids": ["mem_f9302c97", "mem_61e3e6e7"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

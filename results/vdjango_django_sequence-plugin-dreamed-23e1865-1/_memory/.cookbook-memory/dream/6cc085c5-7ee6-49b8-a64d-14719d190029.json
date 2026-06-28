@@ -1,0 +1,1 @@
+{"cursor": 13536, "last_summary": "Django's `Aggregate` base class uses a SQL template with `%(distinct)s` placeholder; DISTINCT support is controlled by the `allow_distinct` class attribute on each subclass.", "recent_memory_ids": ["mem_99e51e5b", "mem_9a328ed1"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}
