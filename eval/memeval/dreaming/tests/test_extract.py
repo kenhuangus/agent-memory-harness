@@ -1446,7 +1446,10 @@ def test_no_partial_parse_means_all_rejection_rows_emitted(
 # §E — Events: allow-set + new event shape
 # --------------------------------------------------------------------------- #
 def test_extract_event_allow_set_ast() -> None:
-    """§E1 — AST walk gives exactly the 9 expected event names.
+    """§E1 — AST walk gives exactly the 10 expected event names.
+
+    Now 10 (was 9) — ``daydream.extract_retry`` joined (suggestion1.md idea 5):
+    fires once before the single corrective re-prompt on a parse/shape failure.
 
     Now 9 (was 8) — ``daydream.unknown_okf_type`` joined per ADR-dreaming-027:
     fires when the LLM emits a ``type`` value outside ``OKF_CONTENT_TYPES``,
@@ -1480,6 +1483,9 @@ def test_extract_event_allow_set_ast() -> None:
         "daydream.prompt_resolved",
         "daydream.llm_call",
         "daydream.unknown_okf_type",
+        # idea 5: fired once before the single corrective re-prompt on a parse/shape
+        # failure, so operators can measure how often extraction needs the retry.
+        "daydream.extract_retry",
     }
     assert names == expected, (
         f"event allow-set drift: missing={expected - names}, "
@@ -2520,6 +2526,8 @@ def test_extract_module_top_imports_unchanged() -> None:
         "hashlib",
         "json",
         "logging",
+        # idea 5 (validate-retry): $DREAM_EXTRACT_RETRY toggle read via os.environ.
+        "os",
         "uuid",
         "typing.Any",
         "typing.Callable",
