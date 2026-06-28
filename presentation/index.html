@@ -26,6 +26,15 @@
   .slide.is-active .pts li:nth-child(3){animation-delay:.36s}
   .slide.is-active .pts li:nth-child(4){animation-delay:.48s}
   .slide.is-active .pts li:nth-child(5){animation-delay:.60s}
+  /* team slide — avatar cards reuse the diagram card animation */
+  .tm-card { text-align: center; }
+  .tm-av { width: clamp(72px, 11vh, 104px); height: clamp(72px, 11vh, 104px);
+    border-radius: 50%; object-fit: cover; display: block; margin: 0 auto .7rem;
+    border: 3px solid var(--c); background: #e9ecef; }
+  .tm-card h4 { margin: 0 0 .15rem; }
+  .tm-role { color: var(--accent); font-weight: 700; font-size: clamp(.78rem,1.7vh,.9rem); }
+  .tm-h { font-family: 'Space Grotesk', sans-serif; font-size: .8rem; opacity: .65;
+    margin-top: .45rem; display: block; }
 </style>
 </head>
 <body>
@@ -49,7 +58,44 @@
     </div>
   </section>
 
-  <!-- 2 · the recipe -->
+  <!-- 2 · team -->
+  <section class="slide slide--alt" data-title="Team">
+    <div class="slide__in">
+      <span class="kicker">Who built it</span>
+      <h2 class="h2">Four people, <span class="h2sub">one owner per module</span></h2>
+      <p class="lead">A small team built this in two weeks — write, store, dream, and measure, each with a clear owner.</p>
+      <div class="dg">
+        <div class="dg-row dg-stagger">
+          <div class="dg-card tm-card" style="--c:var(--orange)">
+            <img class="tm-av" src="https://github.com/kenhuangus.png?size=168" alt="Ken Huang" loading="lazy" />
+            <h4>Ken Huang</h4>
+            <div class="tm-role">Eval infrastructure &amp; the site</div>
+            <span class="tm-h">@kenhuangus</span>
+          </div>
+          <div class="dg-card tm-card" style="--c:var(--blue)">
+            <img class="tm-av" src="https://github.com/kmazanec.png?size=168" alt="Keith Mazanec" loading="lazy" />
+            <h4>Keith Mazanec</h4>
+            <div class="tm-role">Harness architecture</div>
+            <span class="tm-h">@kmazanec</span>
+          </div>
+          <div class="dg-card tm-card" style="--c:var(--teal)">
+            <img class="tm-av" src="https://github.com/bgibson1618.png?size=168" alt="Brent Gibson" loading="lazy" />
+            <h4>Brent Gibson</h4>
+            <div class="tm-role">Storage &amp; retrieval</div>
+            <span class="tm-h">@bgibson1618</span>
+          </div>
+          <div class="dg-card tm-card" style="--c:var(--violet)">
+            <img class="tm-av" src="https://github.com/NerdAlert58.png?size=168" alt="Scott Bushyhead" loading="lazy" />
+            <h4>Scott Bushyhead</h4>
+            <div class="tm-role">Async &ldquo;dreaming&rdquo;</div>
+            <span class="tm-h">@NerdAlert58</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 · the recipe -->
   <section class="slide" data-title="The recipe">
     <div class="slide__in">
       <span class="kicker">The original idea</span>
