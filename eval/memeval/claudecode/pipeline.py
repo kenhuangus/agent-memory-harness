@@ -694,10 +694,11 @@ def _dream_meta() -> dict:
     (ADR-dreaming-004).
 
     ``extraction_prompt`` is the *resolved* identity of the daydream extraction prompt
-    this run would use — the variant key (``V0``..``V5``), the sha256 of its text, and its
+    this run would use — the variant key (``V0``..``V6``), the sha256 of its text, and its
     char count — read via ``resolve_extraction_prompt`` so it reflects the real
-    ``DREAM_EXTRACTION_VARIANT`` resolution (default ``V0``, case-normalized), not a raw
-    env echo. Recorded on EVERY run (not just plugin-dreamed) to document the substrate's
+    ``DREAM_EXTRACTION_VARIANT`` resolution (default = the last-registered variant
+    in ``_EXTRACTION_VARIANTS``, currently ``V6``; case-normalized), not a raw env echo.
+    Recorded on EVERY run (not just plugin-dreamed) to document the substrate's
     lineage; the sha256 pins the exact text even if a variant's body later drifts. The
     per-memory ground truth remains the ``daydream.prompt_resolved`` diary events.
     Fail-open: provenance must never abort a run."""
@@ -708,7 +709,7 @@ def _dream_meta() -> dict:
     try:
         from ..dreaming.prompts import resolve_extraction_prompt
 
-        ident = resolve_extraction_prompt()  # reads DREAM_EXTRACTION_VARIANT, default V0
+        ident = resolve_extraction_prompt()  # reads DREAM_EXTRACTION_VARIANT, default = latest registered (V6)
         meta["extraction_prompt"] = {
             "variant": ident.variant,
             "sha256": ident.sha256,

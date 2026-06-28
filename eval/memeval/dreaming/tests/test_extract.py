@@ -29,7 +29,12 @@ from memeval.dreaming._extract import (
     extract_memories,
 )
 from memeval.dreaming.llm import Completion
-from memeval.dreaming.prompts import EXTRACTION_SYSTEM_PROMPT, _ENVELOPE_TEMPLATE
+from memeval.dreaming.prompts import (
+    EXTRACTION_SYSTEM_PROMPT,
+    _DEFAULT_VARIANT,
+    _ENVELOPE_TEMPLATE,
+    _EXTRACTION_VARIANTS,
+)
 from memeval.dreaming.redaction import RedactedText, redact
 from memeval.schema import MemoryItem
 
@@ -415,9 +420,9 @@ def test_extract_passes_redactedtext_to_client_prompt() -> None:
 def test_extract_passes_system_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
     """The system prompt is delivered as RedactedText on the system kwarg.
 
-    Explicitly clears ``DREAM_EXTRACTION_VARIANT`` so the assertion
-    against the V0 default body is stable even if the dotenv loader (or
-    a sibling test) leaks a non-default variant into ``os.environ``.
+    Explicitly clears ``DREAM_EXTRACTION_VARIANT`` so the assertion against
+    the resolved-default body is stable even if the dotenv loader (or a
+    sibling test) leaks a non-default variant into ``os.environ``.
     """
     monkeypatch.delenv("DREAM_EXTRACTION_VARIANT", raising=False)
     client = _StubClient(_ok_completion({"memories": []}))
@@ -429,7 +434,7 @@ def test_extract_passes_system_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
         id_gen=_default_id_gen,
     )
     assert client.last_system is not None
-    assert str(client.last_system) == EXTRACTION_SYSTEM_PROMPT
+    assert str(client.last_system) == _EXTRACTION_VARIANTS[_DEFAULT_VARIANT]
 
 
 def test_extract_rejects_oversized_content() -> None:
@@ -2654,9 +2659,8 @@ def test_prompt_resolved_emitted_once_per_extract_call(
     """One `daydream.prompt_resolved` event per call, with the full identity tuple."""
     import hashlib as _hashlib
 
-    from memeval.dreaming.prompts import EXTRACTION_SYSTEM_PROMPT
-
     monkeypatch.delenv("DREAM_EXTRACTION_VARIANT", raising=False)
+    default_body = _EXTRACTION_VARIANTS[_DEFAULT_VARIANT]
     client = _StubClient(_ok_completion({"memories": [{"content": "x"}]}))
     extract_memories(
         redact("anything"), client=client, session_id="sess-x", now=42.0,
@@ -2666,11 +2670,11 @@ def test_prompt_resolved_emitted_once_per_extract_call(
     assert len(resolved) == 1, f"expected exactly one prompt_resolved event, got {len(resolved)}"
     _, fields = resolved[0]
     assert fields["session_id"] == "sess-x"
-    assert fields["variant"] == "V0"
+    assert fields["variant"] == _DEFAULT_VARIANT
     assert fields["prompt_sha256"] == (
-        _hashlib.sha256(EXTRACTION_SYSTEM_PROMPT.encode("utf-8")).hexdigest()
+        _hashlib.sha256(default_body.encode("utf-8")).hexdigest()
     )
-    assert fields["prompt_chars"] == len(EXTRACTION_SYSTEM_PROMPT)
+    assert fields["prompt_chars"] == len(default_body)
     assert fields["model"] == client.model
 
 
@@ -2679,8 +2683,9 @@ def test_llm_call_event_carries_full_prompt_content_response(
 ) -> None:
     """ADR-025: daydream.llm_call records the FULL system prompt, the FULL
     redacted user content (envelope-wrapped chunk), and the FULL raw model
-    response on every call. This is the developer-debug surface; tested
-    against V0 so we can pin specific known substrings."""
+    response on every call. This is the developer-debug surface; pins
+    against the resolved default variant so the substring check survives a
+    future default-variant promotion."""
     monkeypatch.delenv("DREAM_EXTRACTION_VARIANT", raising=False)
     payload_text = _ok_completion({"memories": [{"content": "x"}]}).text
     client = _StubClient(Completion(text=payload_text, tokens_in=42, tokens_out=7))
@@ -2692,8 +2697,9 @@ def test_llm_call_event_carries_full_prompt_content_response(
     assert len(calls) == 1, f"expected exactly one llm_call event, got {len(calls)}"
     _, fields = calls[0]
     assert fields["session_id"] == "s-full"
-    assert fields["variant"] == "V0"
-    # System prompt is the full V0 body — pin on a distinctive substring.
+    assert fields["variant"] == _DEFAULT_VARIANT
+    # System prompt is the full resolved-default body — pin on a distinctive
+    # substring shared by every Vn body (`selective memory curator`).
     assert "selective memory curator" in fields["system_prompt"]
     # User content is the envelope-wrapped redacted chunk; check both the
     # envelope framing AND the inner user text round-trip.

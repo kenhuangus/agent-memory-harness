@@ -192,9 +192,10 @@ def extract_memories(
         redacted_chunk, session_id=session_id, now=now
     )
     # Resolve the active extraction prompt variant per call (ADR-dreaming-023):
-    # default V0 = EXTRACTION_SYSTEM_PROMPT, opt-in V1/V2/V3 via
-    # DREAM_EXTRACTION_VARIANT env var. Reading per call (vs at import time)
-    # lets operators flip variants without a process restart.
+    # default = the last-registered key in `_EXTRACTION_VARIANTS` (currently V6),
+    # overridable via DREAM_EXTRACTION_VARIANT to any registered Vn (V0..V6).
+    # Reading per call (vs at import time) lets operators flip variants without
+    # a process restart.
     # REASON: developer-authored constants, no user content.
     identity = resolve_extraction_prompt()
     system = RedactedText(identity.text)
