@@ -204,7 +204,39 @@ def build_store(store_path: str) -> MemoryStore:
     # additive attributes, read defensively there (the plugin still treats the store as an opaque box).
     store.profile_name = config.profile_name
     store.recall_min_score = config.recall_min_score
-    return store
+    return _maybe_wrap_coverage(store)
+
+
+def _maybe_wrap_coverage(store: MemoryStore) -> MemoryStore:
+    """Optionally wrap the routed store in deterministic coverage re-ranking (no LLM).
+
+    Re-ranks the inner top-N by ``alpha*similarity + (1-alpha)*key-coverage`` (fraction of the
+    query's salient key tokens present in the candidate). Off by default:
+
+    * ``$MEMORY_COVERAGE_RERANK=1`` (or ``on``/``true``) — enable.
+    * ``$MEMORY_COVERAGE_ALPHA`` — similarity weight in the blend (default 0.5).
+    * ``$MEMORY_COVERAGE_FETCH`` — candidates over-fetched before re-rank (default 30).
+
+    Preserves the observability attrs; lazy import.
+    """
+    choice = (os.environ.get("MEMORY_COVERAGE_RERANK") or "").strip().lower()
+    if choice in ("", "0", "off", "false", "none"):
+        return store
+    from memeval.stores.coverage_rank import CoverageRerankStore
+
+    try:
+        alpha = float(os.environ.get("MEMORY_COVERAGE_ALPHA", "0.5"))
+    except ValueError:
+        alpha = 0.5
+    try:
+        fetch = int(os.environ.get("MEMORY_COVERAGE_FETCH", "30"))
+    except ValueError:
+        fetch = 30
+    wrapped = CoverageRerankStore(store, fetch=fetch, alpha=alpha)
+    for attr in ("profile_name", "recall_min_score"):
+        if hasattr(store, attr):
+            setattr(wrapped, attr, getattr(store, attr))
+    return wrapped
 
 
 def _build_falkor_graph() -> MemoryStore:

@@ -87,13 +87,22 @@ def _judge(client, query: str, content: str) -> int:
         return 0
 
 
-def _run_profile(profile, items, queries, k, judge_client):
+def _maybe_coverage(store, coverage: bool):
+    """Wrap the rebuilt store in deterministic coverage re-rank (mirrors $MEMORY_COVERAGE_RERANK)."""
+    if not coverage:
+        return store
+    from memeval.stores.coverage_rank import CoverageRerankStore
+    return CoverageRerankStore(store)
+
+
+def _run_profile(profile, items, queries, k, judge_client, coverage=False):
     from memeval.stores.embedders import rebuild_store
     id2content = {it.item_id: it.content for it in items}
     embed = _embedder_for(profile)
     dest = os.path.join(tempfile.mkdtemp(), "rebuilt.db")
     store = rebuild_store(items, dest, embed=embed,
                           embed_model=getattr(embed, "model", None) if embed else None)
+    store = _maybe_coverage(store, coverage)
     precisions, rrs, useful = [], [], 0
     for q in queries:
         hits = store.search(q, k=k)
@@ -129,6 +138,8 @@ def main(argv=None) -> int:
     ap.add_argument("--k", type=int, default=5)
     ap.add_argument("--limit", type=int, default=0, help="max queries (0=all)")
     ap.add_argument("--judge", action="store_true")
+    ap.add_argument("--coverage", action="store_true",
+                    help="deterministic coverage re-rank (mirrors $MEMORY_COVERAGE_RERANK)")
     ap.add_argument("--model", default="openai/gpt-4o-mini")  # pinned deterministic judge
     # gate thresholds (see docs/research/cookbook-improvement-loop.md)
     ap.add_argument("--min-useful-hit-rate", type=float, default=0.60)
@@ -143,7 +154,8 @@ def main(argv=None) -> int:
 
     results = []
     for p in args.profiles:
-        r = _run_profile(p, items, queries, args.k, jc)
+        r = _run_profile(p, items, queries, args.k, jc, coverage=args.coverage)
+        r["coverage"] = args.coverage
         results.append(r)
         print(f"\n=== profile {p} ===")
         for key, val in r.items():
