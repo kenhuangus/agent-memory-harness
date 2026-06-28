@@ -22,8 +22,10 @@ from memeval.dreaming.prompts import (
     EXTRACTION_SYSTEM_PROMPT_V3,
     EXTRACTION_SYSTEM_PROMPT_V4,
     EXTRACTION_SYSTEM_PROMPT_V5,
+    EXTRACTION_SYSTEM_PROMPT_V6,
     GOVERNANCE_SYSTEM_PROMPT,
     OKF_CONTENT_TYPES,
+    _DEFAULT_VARIANT,
     _ENVELOPE_TEMPLATE,
     _EXTRACTION_VARIANTS,
     get_extraction_prompt,
@@ -274,15 +276,27 @@ def test_extraction_variant_registry_complete() -> None:
 
 def test_extraction_variant_v0_is_backward_compat_baseline() -> None:
     """V0 in the registry MUST be the same string object as the top-level
-    EXTRACTION_SYSTEM_PROMPT constant — the registry's V0 is the backward-
-    compat default, not a separate string that could drift independently."""
+    EXTRACTION_SYSTEM_PROMPT constant — the registry's V0 is the original
+    baseline (and the env-selectable backward-compat option), not a separate
+    string that could drift independently. V0 is no longer the resolution
+    default — see `test_get_extraction_prompt_default_is_latest`."""
     assert _EXTRACTION_VARIANTS["V0"] is EXTRACTION_SYSTEM_PROMPT
 
 
-def test_get_extraction_prompt_default_is_v0(monkeypatch) -> None:
-    """No arg + no env var → V0 (the backward-compatible default)."""
+def test_get_extraction_prompt_default_is_latest(monkeypatch) -> None:
+    """No arg + no env var → the last-registered variant (currently V6)."""
     monkeypatch.delenv("DREAM_EXTRACTION_VARIANT", raising=False)
-    assert get_extraction_prompt() is EXTRACTION_SYSTEM_PROMPT
+    assert get_extraction_prompt() is _EXTRACTION_VARIANTS[_DEFAULT_VARIANT]
+    # Currently-latest concrete check: pin to V6 so an inadvertent dict
+    # reordering would surface here as well as in the registry-tail check.
+    assert get_extraction_prompt() is EXTRACTION_SYSTEM_PROMPT_V6
+
+
+def test_default_variant_is_last_registered() -> None:
+    """`_DEFAULT_VARIANT` is the last key in the insertion-ordered registry —
+    the contract that lets appending a future `Vn` auto-promote the default."""
+    assert _DEFAULT_VARIANT == next(reversed(_EXTRACTION_VARIANTS))
+    assert _DEFAULT_VARIANT == "V6"  # current latest; bump when a Vn>6 lands
 
 
 def test_get_extraction_prompt_explicit_arg_wins(monkeypatch) -> None:
@@ -324,12 +338,12 @@ def test_get_extraction_prompt_unknown_raises(monkeypatch) -> None:
         assert name in msg, f"error message must name legal variant {name}"
 
 
-def test_get_extraction_prompt_empty_env_falls_back_to_v0(monkeypatch) -> None:
-    """Empty env var value treated as unset → V0 default."""
+def test_get_extraction_prompt_empty_env_falls_back_to_default(monkeypatch) -> None:
+    """Empty env var value treated as unset → default (last-registered) variant."""
     monkeypatch.setenv("DREAM_EXTRACTION_VARIANT", "")
     # Empty string after .strip() and .upper() is "" which is not in registry;
-    # the selector falls back to "V0" via the `raw or "V0"` guard.
-    assert get_extraction_prompt() is EXTRACTION_SYSTEM_PROMPT
+    # the selector falls back to `_DEFAULT_VARIANT` via the `raw or _DEFAULT_VARIANT` guard.
+    assert get_extraction_prompt() is _EXTRACTION_VARIANTS[_DEFAULT_VARIANT]
 
 
 def test_extraction_variants_share_envelope_framing() -> None:
@@ -416,17 +430,18 @@ def test_extraction_variants_are_all_documented_size() -> None:
 
 # --- resolve_extraction_prompt — identity sibling for forensic logging ----- #
 def test_resolve_returns_identity_for_default_variant(monkeypatch) -> None:
-    """No env var, no arg → V0 + matching sha256 + matching char_count."""
+    """No env var, no arg → `_DEFAULT_VARIANT` body + matching sha256 + char_count."""
     import hashlib as _hashlib
 
     from memeval.dreaming.prompts import resolve_extraction_prompt
 
     monkeypatch.delenv("DREAM_EXTRACTION_VARIANT", raising=False)
     ident = resolve_extraction_prompt()
-    assert ident.variant == "V0"
-    assert ident.text == EXTRACTION_SYSTEM_PROMPT
-    assert ident.sha256 == _hashlib.sha256(EXTRACTION_SYSTEM_PROMPT.encode()).hexdigest()
-    assert ident.char_count == len(EXTRACTION_SYSTEM_PROMPT)
+    default_body = _EXTRACTION_VARIANTS[_DEFAULT_VARIANT]
+    assert ident.variant == _DEFAULT_VARIANT
+    assert ident.text == default_body
+    assert ident.sha256 == _hashlib.sha256(default_body.encode()).hexdigest()
+    assert ident.char_count == len(default_body)
 
 
 def test_resolve_explicit_arg_wins_over_env(monkeypatch) -> None:

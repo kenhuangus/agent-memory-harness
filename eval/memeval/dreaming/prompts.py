@@ -6,8 +6,8 @@ redacted user content is wrapped before being sent to the LLM as a user
 message).
 
 Variants of the extraction prompt are available (ADR-dreaming-023):
-  - V0 (default, backward-compatible) = `EXTRACTION_SYSTEM_PROMPT` — MODERATE
-    selectivity, chat-shaped INCLUDE/REJECT examples
+  - V0 = `EXTRACTION_SYSTEM_PROMPT` — MODERATE selectivity, chat-shaped
+    INCLUDE/REJECT examples (the original baseline)
   - V1 = `EXTRACTION_SYSTEM_PROMPT_V1` — STRICT (annoyance-prevention only)
   - V2 = `EXTRACTION_SYSTEM_PROMPT_V2` — A-MEM keywords + context fields
   - V3 = `EXTRACTION_SYSTEM_PROMPT_V3` — SWE-tuned in-domain code examples
@@ -15,9 +15,12 @@ Variants of the extraction prompt are available (ADR-dreaming-023):
   - V5 = `EXTRACTION_SYSTEM_PROMPT_V5` — transferable-lesson curation (HIGH
     selectivity, generalize-don't-transcribe, self-gating content; emits
     OKF content-type per ADR-dreaming-027)
+  - V6 (default) = `EXTRACTION_SYSTEM_PROMPT_V6` — V5 plus a problem-solving
+    process track (Strategy / Mistake types per ADR-dreaming-028 §5)
 
 Runtime selection via `get_extraction_prompt(variant)`; default reads
-`DREAM_EXTRACTION_VARIANT` env var, falling back to V0 when unset.
+`DREAM_EXTRACTION_VARIANT` env var, falling back to the last-registered
+variant in `_EXTRACTION_VARIANTS` (currently V6) when unset.
 
 All variants are sha256-pinned by `tests/test_prompts.py`. Any edit to
 the literal text is a deliberate, reviewable diff: bump the pinned hash
@@ -954,7 +957,8 @@ in both `memories` and `rejected` -- pick one.
 # Selector — runtime resolution of the active extraction prompt
 #
 # Precedence: explicit `variant` arg → `DREAM_EXTRACTION_VARIANT` env var →
-# "V0" (default = `EXTRACTION_SYSTEM_PROMPT`, backward-compatible).
+# `_DEFAULT_VARIANT` (= the last-registered key in `_EXTRACTION_VARIANTS`;
+# currently V6, the newest variant).
 #
 # Called per-extraction by `_extract.extract_memories`, so an env-var change
 # takes effect on the next daydream call without a process restart (useful
@@ -971,13 +975,20 @@ _EXTRACTION_VARIANTS: dict[str, str] = {
     "V6": EXTRACTION_SYSTEM_PROMPT_V6,
 }
 
+# The default variant is the LAST-registered entry in `_EXTRACTION_VARIANTS`
+# (insertion-ordered = newest at the bottom by convention). Appending a future
+# `"V7": EXTRACTION_SYSTEM_PROMPT_V7` auto-promotes the default; no second edit
+# site to keep in sync.
+_DEFAULT_VARIANT: str = next(reversed(_EXTRACTION_VARIANTS))
+
 
 def get_extraction_prompt(variant: str | None = None) -> str:
     """Return the EXTRACTION_SYSTEM_PROMPT text for the named variant.
 
     Variant precedence: explicit `variant` arg → `DREAM_EXTRACTION_VARIANT`
-    env var → ``"V0"`` (default). The argument and env var are normalized to
-    upper-case after stripping whitespace.
+    env var → ``_DEFAULT_VARIANT`` (the last-registered key in
+    ``_EXTRACTION_VARIANTS``; currently V6). The argument and env var are
+    normalized to upper-case after stripping whitespace.
 
     Raises :class:`ValueError` on an unknown variant, naming the legal
     options. Variant names are case-insensitive (``"v1"`` and ``"V1"`` both
@@ -1013,8 +1024,8 @@ def resolve_extraction_prompt(variant: str | None = None) -> ExtractionPromptIde
     re-computing the hash. Variant resolution follows the same precedence as
     :func:`get_extraction_prompt`.
     """
-    raw = variant if variant is not None else os.environ.get("DREAM_EXTRACTION_VARIANT", "V0")
-    v = (raw or "V0").strip().upper()
+    raw = variant if variant is not None else os.environ.get("DREAM_EXTRACTION_VARIANT", _DEFAULT_VARIANT)
+    v = (raw or _DEFAULT_VARIANT).strip().upper()
     if v not in _EXTRACTION_VARIANTS:
         raise ValueError(
             f"Unknown DREAM_EXTRACTION_VARIANT={v!r}; expected one of: "
