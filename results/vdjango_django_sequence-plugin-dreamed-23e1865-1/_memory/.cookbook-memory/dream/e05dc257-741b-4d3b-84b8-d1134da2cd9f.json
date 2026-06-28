@@ -1,0 +1,1 @@
+{"cursor": 7436, "last_summary": "When relying on collection ordering in Django, dict preserves insertion order (Python 3.7+); Django requires Python 3.8+, so reversed(dict) safely yields reverse insertion order.", "recent_memory_ids": ["mem_f5eac2f2", "mem_7b2b1af9"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

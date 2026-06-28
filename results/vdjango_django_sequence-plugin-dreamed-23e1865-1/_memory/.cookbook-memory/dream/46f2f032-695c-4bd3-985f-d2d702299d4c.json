@@ -1,0 +1,1 @@
+{"cursor": 11155, "last_summary": "When using `cursor.fetchone()` and subscripting the result in a cache culling or similar cleanup operation, guard against `None` \u2014 concurrent deletions can cause it to return no row.", "recent_memory_ids": ["mem_c3ba213b"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

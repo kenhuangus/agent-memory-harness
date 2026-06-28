@@ -26,6 +26,15 @@
   .slide.is-active .pts li:nth-child(3){animation-delay:.36s}
   .slide.is-active .pts li:nth-child(4){animation-delay:.48s}
   .slide.is-active .pts li:nth-child(5){animation-delay:.60s}
+  /* team slide — avatar cards reuse the diagram card animation */
+  .tm-card { text-align: center; }
+  .tm-av { width: clamp(72px, 11vh, 104px); height: clamp(72px, 11vh, 104px);
+    border-radius: 50%; object-fit: cover; display: block; margin: 0 auto .7rem;
+    border: 3px solid var(--c); background: #e9ecef; }
+  .tm-card h4 { margin: 0 0 .15rem; }
+  .tm-role { color: var(--accent); font-weight: 700; font-size: clamp(.78rem,1.7vh,.9rem); }
+  .tm-h { font-family: 'Space Grotesk', sans-serif; font-size: .8rem; opacity: .65;
+    margin-top: .45rem; display: block; }
 </style>
 </head>
 <body>
@@ -49,7 +58,44 @@
     </div>
   </section>
 
-  <!-- 2 · the recipe -->
+  <!-- 2 · team -->
+  <section class="slide slide--alt" data-title="Team">
+    <div class="slide__in">
+      <span class="kicker">Who built it</span>
+      <h2 class="h2">Four people, <span class="h2sub">one owner per module</span></h2>
+      <p class="lead">A small team built this in two weeks — write, store, dream, and measure, each with a clear owner.</p>
+      <div class="dg">
+        <div class="dg-row dg-stagger">
+          <div class="dg-card tm-card" style="--c:var(--orange)">
+            <img class="tm-av" src="https://github.com/kenhuangus.png?size=168" alt="Ken Huang" loading="lazy" />
+            <h4>Ken Huang</h4>
+            <div class="tm-role">Eval infrastructure &amp; the site</div>
+            <span class="tm-h">@kenhuangus</span>
+          </div>
+          <div class="dg-card tm-card" style="--c:var(--blue)">
+            <img class="tm-av" src="https://github.com/kmazanec.png?size=168" alt="Keith Mazanec" loading="lazy" />
+            <h4>Keith Mazanec</h4>
+            <div class="tm-role">Harness architecture</div>
+            <span class="tm-h">@kmazanec</span>
+          </div>
+          <div class="dg-card tm-card" style="--c:var(--teal)">
+            <img class="tm-av" src="https://github.com/bgibson1618.png?size=168" alt="Brent Gibson" loading="lazy" />
+            <h4>Brent Gibson</h4>
+            <div class="tm-role">Storage &amp; retrieval</div>
+            <span class="tm-h">@bgibson1618</span>
+          </div>
+          <div class="dg-card tm-card" style="--c:var(--violet)">
+            <img class="tm-av" src="https://github.com/NerdAlert58.png?size=168" alt="Scott Bushyhead" loading="lazy" />
+            <h4>Scott Bushyhead</h4>
+            <div class="tm-role">Async &ldquo;dreaming&rdquo;</div>
+            <span class="tm-h">@NerdAlert58</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 · the recipe -->
   <section class="slide" data-title="The recipe">
     <div class="slide__in">
       <span class="kicker">The original idea</span>
@@ -72,20 +118,25 @@
     <div class="slide__in">
       <span class="kicker">How it works</span>
       <h2 class="h2">Four modules, three backends, one loop</h2>
-      <p class="lead">The agent writes as it works. A router sends each query to the one backend that answers best. An offline worker keeps the store clean.</p>
+      <p class="lead">One owner each: <em>write</em> as the agent works, <em>store &amp; retrieve</em> per query, <em>dream</em> the store clean, <em>measure</em> it all.</p>
       <div class="dg">
+        <div class="dg-cap">The four modules</div>
         <div class="dg-row dg-stagger">
-          <div class="dg-card" style="--c:var(--accent)"><h4>Coding Agent</h4><p>writes &amp; queries memory</p></div>
+          <div class="dg-card" style="--c:var(--accent)"><h4>① Write</h4><p>Coding agent writes &amp; queries memory as it works</p></div>
           <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--blue)"><h4>Router</h4><p>classifies each query, picks one backend</p></div>
+          <div class="dg-card" style="--c:var(--blue)"><h4>② Store &amp; retrieve</h4><p>Router classifies each query and picks the one backend that answers best</p></div>
           <span class="dg-arrow">➜</span>
-          <div class="dg-col">
-            <div class="dg-card dg-sm" style="--c:var(--orange)"><h4>Markdown</h4></div>
-            <div class="dg-card dg-sm" style="--c:var(--teal)"><h4>SQLite-vector</h4></div>
-            <div class="dg-card dg-sm" style="--c:var(--grape)"><h4>Graph</h4></div>
-          </div>
+          <div class="dg-card" style="--c:var(--violet)"><h4>③ Dream</h4><p>Offline worker dedups, resolves contradictions, sets governance</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--green)"><h4>④ Measure</h4><p>Eval harness — datasets, metrics, cost, trajectories</p></div>
         </div>
-        <div class="dg-note">Persistence writes · Retrieval ranks by recency × relevancy · 🌙 Dreaming curates the store async</div>
+        <div class="dg-row dg-stagger" style="margin-top:1.4vh;justify-content:center;align-items:center">
+          <span class="dg-cap" style="margin:0 .4rem 0 0">three backends ⤵</span>
+          <div class="dg-card dg-sm" style="--c:var(--orange)"><h4>Markdown</h4></div>
+          <div class="dg-card dg-sm" style="--c:var(--teal)"><h4>SQLite-vector</h4></div>
+          <div class="dg-card dg-sm" style="--c:var(--grape)"><h4>Graph</h4></div>
+        </div>
+        <div class="dg-note">🔁 One loop: Write → Store → 🌙 Dream curates → Measure proves · retrieval ranks by recency × relevancy</div>
       </div>
     </div>
   </section>
@@ -205,30 +256,14 @@
     </div>
   </section>
 
-  <!-- 9 · results VISTA -->
-  <section class="slide slide--dark" data-title="Results · VISTA">
-    <div class="slide__in">
-      <span class="kicker kicker--light">Results · VISTA</span>
-      <h2 class="h2 h2--light">Aligned &amp; safe on the OWASP Agentic AI Top 10</h2>
-      <p class="lead lead--light">Across the 97-journey split, memory stayed faithful to long-term intent: it resisted every poisoning attempt, induced no targeted attack, and kept recursive self-improvement within guardrails.</p>
-      <div class="dg">
-        <div class="dg-row dg-stagger">
-          <div class="dg-score" style="--c:var(--green)"><b>1.0</b><h4>Poisoning resistance</h4><p>rejected every planted memory</p></div>
-          <div class="dg-score" style="--c:var(--green)"><b>0.0</b><h4>Targeted attack success</h4><p>no induced harmful action</p></div>
-          <div class="dg-score" style="--c:var(--green)"><b>1.0</b><h4>Self-improvement safety</h4><p>intent &amp; RSI within guardrails</p></div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 10 · objective analysis -->
+  <!-- 9 · objective analysis -->
   <section class="slide slide--dark" data-title="Objective analysis">
     <div class="slide__in">
       <span class="kicker kicker--light">The honest read</span>
       <h2 class="h2 h2--light">What's proven, what isn't</h2>
       <ul class="pts pts--light">
         <li><span class="mk">✓</span><div><b>Accumulated memory lifts solve rate</b> when model &amp; harness are fixed (SymPy +3/50; Django +1 per stage).</div></li>
-        <li><span class="mk">✓</span><div><b>Alignment &amp; safety hold</b> — VISTA poisoning 1.0 · targeted-ASR 0.0 · RSI 1.0 across the OWASP Agentic AI Top 10.</div></li>
+        <li><span class="mk">✓</span><div><b>Alignment &amp; safety held up</b> in our VISTA runs against the OWASP Agentic AI Top 10 — strong poisoning resistance, no successful targeted attack observed, and self-improvement kept within guardrails.</div></li>
         <li><span class="mk">~</span><div><b>Dreaming isn't yet an outcome lift.</b> It runs reliably and adds governance tags, but solve-rate after dreaming is unstable (Django 13→12; SymPy 48→45).</div></li>
         <li><span class="mk">→</span><div><b>The bottleneck moved.</b> Memory is reached on nearly every task — retrieval quality &amp; ranking, not availability, is now the limit.</div></li>
         <li><span class="mk">!</span><div><b>Segment before comparing.</b> Cursor and Claude rows differ enough that mixing them misleads; isolate the run repo so benchmark agents can't touch the live tree.</div></li>

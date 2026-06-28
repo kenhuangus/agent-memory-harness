@@ -1,0 +1,1 @@
+{"cursor": 257595, "last_summary": "When a bug report describes shared state between instances after creation via copy.deepcopy, first check whether __deepcopy__ uses copy.copy without explicitly copying mutable container attributes.", "recent_memory_ids": ["mem_84e01485", "mem_dd68e556"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

@@ -1,0 +1,1 @@
+{"cursor": 32459, "last_summary": "When adding a new attribute to Django's ModelState, initialize it to False to maintain backwards compatibility and avoid breaking pickle/serialization.", "recent_memory_ids": ["mem_a96ba23a", "mem_bc8544af"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

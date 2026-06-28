@@ -1,0 +1,1 @@
+{"cursor": 6840, "last_summary": "When a Model.save() is called inside a transaction.atomic(using=X), you must also pass using=X to save(), otherwise it hits the default database.", "recent_memory_ids": ["mem_06b59081"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

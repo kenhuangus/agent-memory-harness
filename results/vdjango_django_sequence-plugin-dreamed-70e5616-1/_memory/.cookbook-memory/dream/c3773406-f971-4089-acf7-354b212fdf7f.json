@@ -1,0 +1,1 @@
+{"cursor": 6769, "last_summary": "When using `transaction.atomic(using=db)` in Django, `Model.save()` calls inside the block must explicitly pass `using=db` \u2013 the `using` argument to `atomic` does not propagate to model operations.", "recent_memory_ids": ["mem_2ca5e051"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

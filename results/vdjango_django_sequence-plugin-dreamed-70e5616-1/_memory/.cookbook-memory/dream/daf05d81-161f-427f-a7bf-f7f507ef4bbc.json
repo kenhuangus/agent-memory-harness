@@ -1,0 +1,1 @@
+{"cursor": 12599, "last_summary": "When generating SQL for Django aggregates, template context keyword values (e.g., distinct) must include a trailing space to avoid concatenation with following clauses like CASE.", "recent_memory_ids": ["mem_f227429a"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

@@ -1,0 +1,1 @@
+{"cursor": 8592, "last_summary": "When `Collector.delete()` has a fast-delete path for a single model instance with no dependencies, the PK must be cleared on the instance before returning, just like the normal path does.", "recent_memory_ids": ["mem_2ebc0b32"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

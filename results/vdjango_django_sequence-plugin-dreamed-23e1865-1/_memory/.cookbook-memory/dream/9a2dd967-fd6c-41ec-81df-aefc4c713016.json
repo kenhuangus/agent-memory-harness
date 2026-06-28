@@ -1,0 +1,1 @@
+{"cursor": 12505, "last_summary": "When implementing template filters or operators that process lazy proxy objects (e.g., gettext_lazy), add __add__ and __radd__ to the proxy class to avoid TypeError from str + proxy concatenation.", "recent_memory_ids": ["mem_10ce92b6"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

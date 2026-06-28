@@ -87,6 +87,30 @@ def _judge(client, query: str, content: str) -> int:
         return 0
 
 
+def _maybe_rerank(store, rerank: str):
+    """Wrap the rebuilt store in a reranker to mirror production ``$MEMORY_RERANK``."""
+    rerank = (rerank or "none").strip().lower()
+    if rerank in ("", "none", "off"):
+        return store
+    from memeval.stores.rerankers import MockReranker, RerankedStore, VoyageReranker
+    reranker = VoyageReranker() if rerank == "voyage" else MockReranker()
+    return RerankedStore(store, reranker, rerank_top_n=50)
+
+
+def _maybe_expand(store, expand: str, model: str):
+    """Wrap the rebuilt store in query expansion to mirror production ``$MEMORY_QUERY_EXPAND``."""
+    expand = (expand or "none").strip().lower()
+    if expand in ("", "none", "off"):
+        return store
+    from memeval.stores.query_expand import ExpandedQueryStore, LLMQueryExpander, MockQueryExpander
+    if expand == "mock":
+        expander = MockQueryExpander()
+    else:
+        from dreaming.llm import make_client
+        expander = LLMQueryExpander(make_client(model=model))
+    return ExpandedQueryStore(store, expander)
+
+
 def _maybe_coverage(store, coverage: bool):
     """Wrap the rebuilt store in deterministic coverage re-rank (mirrors $MEMORY_COVERAGE_RERANK)."""
     if not coverage:
@@ -95,14 +119,17 @@ def _maybe_coverage(store, coverage: bool):
     return CoverageRerankStore(store)
 
 
-def _run_profile(profile, items, queries, k, judge_client, coverage=False):
+def _run_profile(profile, items, queries, k, judge_client, rerank="none",
+                 expand="none", expand_model="openrouter/auto", coverage=False):
     from memeval.stores.embedders import rebuild_store
     id2content = {it.item_id: it.content for it in items}
     embed = _embedder_for(profile)
     dest = os.path.join(tempfile.mkdtemp(), "rebuilt.db")
     store = rebuild_store(items, dest, embed=embed,
                           embed_model=getattr(embed, "model", None) if embed else None)
+    store = _maybe_rerank(store, rerank)
     store = _maybe_coverage(store, coverage)
+    store = _maybe_expand(store, expand, expand_model)
     precisions, rrs, useful = [], [], 0
     for q in queries:
         hits = store.search(q, k=k)
@@ -138,6 +165,11 @@ def main(argv=None) -> int:
     ap.add_argument("--k", type=int, default=5)
     ap.add_argument("--limit", type=int, default=0, help="max queries (0=all)")
     ap.add_argument("--judge", action="store_true")
+    ap.add_argument("--rerank", default="none", choices=["none", "voyage", "mock"],
+                    help="two-stage retrieve->rerank over the top ~50 (mirrors $MEMORY_RERANK)")
+    ap.add_argument("--expand", default="none", choices=["none", "llm", "mock"],
+                    help="multi-query expansion (mirrors $MEMORY_QUERY_EXPAND)")
+    ap.add_argument("--expand-model", default="openrouter/auto", help="expansion model when --expand llm")
     ap.add_argument("--coverage", action="store_true",
                     help="deterministic coverage re-rank (mirrors $MEMORY_COVERAGE_RERANK)")
     ap.add_argument("--model", default="openai/gpt-4o-mini")  # pinned deterministic judge
@@ -154,7 +186,11 @@ def main(argv=None) -> int:
 
     results = []
     for p in args.profiles:
-        r = _run_profile(p, items, queries, args.k, jc, coverage=args.coverage)
+        r = _run_profile(p, items, queries, args.k, jc, rerank=args.rerank,
+                         expand=args.expand, expand_model=args.expand_model,
+                         coverage=args.coverage)
+        r["rerank"] = args.rerank
+        r["expand"] = args.expand
         r["coverage"] = args.coverage
         results.append(r)
         print(f"\n=== profile {p} ===")

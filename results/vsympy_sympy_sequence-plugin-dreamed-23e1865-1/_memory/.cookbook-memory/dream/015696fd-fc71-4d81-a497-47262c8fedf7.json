@@ -1,0 +1,1 @@
+{"cursor": 26768, "last_summary": "Whenever comparing objects internally, always use operators (`==`, `!=`) instead of direct dunder calls (`__eq__`, `__ne__`) because operators correctly handle `NotImplemented` delegation.", "recent_memory_ids": ["mem_afc70f3e"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

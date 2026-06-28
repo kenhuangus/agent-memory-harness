@@ -1,0 +1,1 @@
+{"cursor": 9541, "last_summary": "When using fcntl.flock (similar fcntl functions) in Python, note they return None on success and raise OSError on failure; do not check return against 0 \u2014 use try/except to get correct boolean result.", "recent_memory_ids": ["mem_a3933c83"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import uuid
 from typing import Any, Callable
 
@@ -42,7 +43,45 @@ __all__ = [
     "extract_memories",
     "_ParseError",
     "_loads_lenient",
+    "_parse_validate",
 ]
+
+#: Corrective instruction appended to the system prompt on the ONE validate-retry
+#: (suggestion1.md idea 5). `_loads_lenient` already recovers fenced / prose-wrapped
+#: JSON; this covers the residual failure mode — genuinely invalid or truncated JSON
+#: (e.g. a max_tokens cutoff mid-object) — where a paid extraction would otherwise be
+#: dropped to `None`. Bounded to a single retry; only fires on a parse/shape failure.
+_RETRY_SUFFIX: str = (
+    "\n\nYOUR PREVIOUS RESPONSE COULD NOT BE PARSED. Return ONLY a single JSON "
+    'object with exactly two keys, "memories" and "rejected", each an array. No '
+    "prose, no markdown fences. It must parse with json.loads on the first byte."
+)
+
+
+def _retry_enabled() -> bool:
+    """Whether the one-shot validate-retry is active ($DREAM_EXTRACT_RETRY, default on)."""
+    return (os.environ.get("DREAM_EXTRACT_RETRY", "1").strip().lower()
+            not in ("0", "off", "false", "none"))
+
+
+def _parse_validate(text: str) -> tuple[dict | None, str | None]:
+    """Parse `text` and validate the top-level extraction shape.
+
+    Returns ``(data, None)`` when `text` parses to a dict with a list-valued
+    ``memories`` key, else ``(None, reason)`` naming the failure. Pure — no emits,
+    no LLM — so the caller can decide whether to retry before recording an outcome.
+    """
+    try:
+        data = _loads_lenient(text)
+    except json.JSONDecodeError as exc:
+        return None, str(exc)
+    if not isinstance(data, dict):
+        return None, f"top-level not dict: {type(data).__name__}"
+    if "memories" not in data:
+        return None, "missing 'memories' key"
+    if not isinstance(data["memories"], list):
+        return None, f"'memories' not list: {type(data['memories']).__name__}"
+    return data, None
 
 #: Memory `content` strings longer than this are rejected at parse time per
 #: plan §3 "non-empty string ≤ 200 chars". Cap matches the implicit ceiling
@@ -239,28 +278,22 @@ def extract_memories(
         emit("chunk_skipped_unavailable_llm", session_id=session_id)
         return None
 
-    try:
-        data = _loads_lenient(completion.text)
-    except json.JSONDecodeError as exc:
-        emit("chunk_skipped_parse_failed", reason=str(exc))
-        return None
-
-    if not isinstance(data, dict):
-        emit(
-            "chunk_skipped_parse_failed",
-            reason=f"top-level not dict: {type(data).__name__}",
-        )
-        return None
-    if "memories" not in data:
-        emit("chunk_skipped_parse_failed", reason="missing 'memories' key")
+    data, reason = _parse_validate(completion.text)
+    if data is None and _retry_enabled():
+        # ONE corrective retry (idea 5): re-prompt for valid JSON before dropping a
+        # paid extraction. `_loads_lenient` already handled fences/prose; this rescues
+        # genuinely invalid / truncated output. Reuses the same envelope + max_tokens.
+        emit("daydream.extract_retry", session_id=session_id, reason=reason)
+        retry_system = RedactedText(identity.text + _RETRY_SUFFIX)
+        completion = client.complete(wrapped, system=retry_system, max_tokens=max_tokens)
+        if not completion.text:
+            emit("chunk_skipped_unavailable_llm", session_id=session_id)
+            return None
+        data, reason = _parse_validate(completion.text)
+    if data is None:
+        emit("chunk_skipped_parse_failed", reason=reason)
         return None
     raw_memories = data["memories"]
-    if not isinstance(raw_memories, list):
-        emit(
-            "chunk_skipped_parse_failed",
-            reason=f"'memories' not list: {type(raw_memories).__name__}",
-        )
-        return None
 
     items: list[MemoryItem] = []
     n_dropped = 0

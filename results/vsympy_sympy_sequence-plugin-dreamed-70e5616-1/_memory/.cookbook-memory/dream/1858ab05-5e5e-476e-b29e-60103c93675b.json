@@ -1,0 +1,1 @@
+{"cursor": 15713, "last_summary": "When modifying symbolic_factor_list with a 'method' parameter, use a dict or set on exponents to merge factors of equal multiplicity before returning.", "recent_memory_ids": ["mem_1295bd08", "mem_59cb4682"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

@@ -1,0 +1,1 @@
+{"cursor": 18529, "last_summary": "When a utility function like _split_gcd unpacks a sequence argument, guard against empty input (e.g., return (S.One, [], [])) to avoid IndexError on `a[0]`.", "recent_memory_ids": ["mem_ee1e86f6"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

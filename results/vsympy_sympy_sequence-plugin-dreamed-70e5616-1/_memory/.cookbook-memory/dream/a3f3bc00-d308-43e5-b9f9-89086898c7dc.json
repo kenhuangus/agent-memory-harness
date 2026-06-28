@@ -1,0 +1,1 @@
+{"cursor": 8227, "last_summary": "When a SymPy function accepts keyword-only arguments (like cls) and recursively iterates over input items, explicitly forward those arguments in recursive calls or the default may be used instead.", "recent_memory_ids": ["mem_4056ebb4"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

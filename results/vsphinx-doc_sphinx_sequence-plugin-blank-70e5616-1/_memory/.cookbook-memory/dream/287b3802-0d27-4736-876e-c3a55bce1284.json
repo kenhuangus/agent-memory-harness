@@ -1,0 +1,1 @@
+{"cursor": 645204, "last_summary": "When creating a test for a Sphinx event or extension, create a minimal test root with conf.py that loads the extension, and verify the HTML output contains expected transformations.", "recent_memory_ids": ["mem_65c4e449", "mem_a256b5e1"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

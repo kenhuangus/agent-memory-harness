@@ -1,0 +1,903 @@
+{
+  "benchmark": "swe_bench_cl",
+  "pipeline": {
+    "version": "vsympy_sympy_sequence-plugin-dreamed-70e5616-1",
+    "version_exact": false,
+    "untagged": true,
+    "git_sha": "70e5616",
+    "harness": "claude",
+    "benchmark": "swe_bench_cl",
+    "sequence": "sympy_sympy_sequence",
+    "stage": "plugin-dreamed",
+    "limit": null,
+    "n_tasks": 50,
+    "model": "claude-haiku-4-5",
+    "code_mode": "agentic",
+    "grader": "swebench",
+    "plugin_workers": 1,
+    "budget_usd": 10.0,
+    "dream": {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash",
+      "extraction_prompt": {
+        "variant": "V6",
+        "sha256": "3ce43ecc04d16f81db3d43d2ae46d6cc913e8aa7789f923ef9c5ccaf0708c1ac",
+        "char_count": 7745
+      }
+    },
+    "memory_store": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsympy_sympy_sequence-plugin-dreamed-70e5616-1/_memory",
+    "source_memory": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsympy_sympy_sequence-plugin-dreamed-23e1865-1/_memory",
+    "source_memory_health": {
+      "store_dir": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsympy_sympy_sequence-plugin-dreamed-23e1865-1/_memory/.cookbook-memory",
+      "events": 1708,
+      "daydream_events": 589,
+      "recall_events": 50,
+      "recall_with_hits": 50,
+      "recall_zero_hits": 0,
+      "recall_errors": 0,
+      "daydream_completed": 41,
+      "daydream_memory_written": 24,
+      "memory_items": 93,
+      "graph_nodes": 93,
+      "markdown_items": 93,
+      "durable_items": 93
+    },
+    "n_stages": 2,
+    "n_eval_stages": 1,
+    "stages": [
+      "dream",
+      "plugin-dreamed"
+    ],
+    "timestamp": "20260627T231535Z",
+    "started_at": 1782602136.232646,
+    "ended_at": 1782615712.2658172,
+    "source_memory_copied_to": "/Users/keith/dev/gauntlet/cookbook/agent-memory-harness/results/vsympy_sympy_sequence-plugin-dreamed-70e5616-1/_memory",
+    "stages_run": [
+      "plugin-dreamed"
+    ],
+    "preflight": {
+      "warnings": [],
+      "plugin_memory_probe": {
+        "ok": true,
+        "code": "ok",
+        "remembered": true,
+        "hits": 1
+      }
+    }
+  },
+  "dream": {
+    "schema": "dream.summary",
+    "version": 1,
+    "mode": "detection_and_mutation_and_pruning_and_contradiction_and_governance",
+    "jobs_run": [
+      "dedup_detection",
+      "dedup_merge",
+      "ttl_pruning",
+      "contradiction_resolution",
+      "governance"
+    ],
+    "skipped_jobs": [],
+    "counts": {
+      "total_items": 93,
+      "duplicate_clusters": 0,
+      "items_in_duplicates": 0,
+      "items_retired": 0,
+      "items_pruned": 0,
+      "retention_seconds_effective": 2592000,
+      "items_contradicted": 0,
+      "contradiction_llm_calls": 20,
+      "contradiction_input_tokens": 22973,
+      "contradiction_output_tokens": 5636,
+      "contradiction_cost_usd_estimate": 0.0030820500000000002,
+      "contradiction_pairs_examined_estimate": 153,
+      "items_blacklisted": 0,
+      "items_must_known": 72,
+      "items_must_done": 0,
+      "governance_llm_calls": 9,
+      "governance_input_tokens": 11181,
+      "governance_output_tokens": 7325,
+      "governance_cost_usd_estimate": 0.00232479,
+      "governance_items_examined_estimate": 75,
+      "items_synthesized": 0,
+      "induction_llm_calls": 0,
+      "induction_input_tokens": 0,
+      "induction_output_tokens": 0,
+      "induction_cost_usd_estimate": 0.0,
+      "induction_clusters_examined": 0
+    },
+    "clusters": [],
+    "pruned": {
+      "item_ids": [],
+      "retention_seconds_effective": 2592000
+    },
+    "contradicted": {
+      "pairs": [],
+      "model": "deepseek/deepseek-v4-flash"
+    },
+    "governance": {
+      "must_know": [
+        {
+          "item_id": "mem_06e48e38",
+          "rationale": "Accepted SymPy extension pattern for expand functionality."
+        },
+        {
+          "item_id": "mem_09aeffc9",
+          "rationale": "Semantic convention: Max.identity = -oo and Min.identity = oo per extended real numbers, affects correctness."
+        },
+        {
+          "item_id": "mem_0e3d2c08",
+          "rationale": "Prerequisite check to prevent IndexError in sqrtdenest."
+        },
+        {
+          "item_id": "mem_1295bd08",
+          "rationale": "Required merging of factors in sqf to match Poly.sqf_list()."
+        },
+        {
+          "item_id": "mem_135e161b",
+          "rationale": "Simplification constraint for Mod of Mul: reduce only integer factors to avoid float regression."
+        },
+        {
+          "item_id": "mem_13790ca7",
+          "rationale": "Important guard for pretty_list sub/superscript Unicode handling."
+        },
+        {
+          "item_id": "mem_1a504d07",
+          "rationale": "States that dense bug fixes must be replicated to sparse; a recurring constraint for maintainers."
+        },
+        {
+          "item_id": "mem_1c0d4d6b",
+          "rationale": "Imperative rule: never split Add in product evaluation; must return None instead to avoid bugs."
+        },
+        {
+          "item_id": "mem_1fc4852f",
+          "rationale": "Key SymPy comparison design rule needed for future code involving NumberSymbol."
+        },
+        {
+          "item_id": "mem_20a62c09",
+          "rationale": "Defensive Python pattern to avoid overwriting valid args."
+        },
+        {
+          "item_id": "mem_20f306cb",
+          "rationale": "Reinforces same cancel() assignment requirement for Bareiss recursion."
+        },
+        {
+          "item_id": "mem_28489802",
+          "rationale": "Safe iteration pattern; needed to avoid subtle deletion bugs."
+        },
+        {
+          "item_id": "mem_2d0e26dd",
+          "rationale": "Assumptions access pattern: use Symbol.assumptions0 (explicit non-None) not _assumptions directly."
+        },
+        {
+          "item_id": "mem_31af121f",
+          "rationale": "Important SymPy evaluation nuance for Add._eval_is_zero."
+        },
+        {
+          "item_id": "mem_31e59ac9",
+          "rationale": "Debugging advice for symbol assumption loss in SymPy."
+        },
+        {
+          "item_id": "mem_338ace4e",
+          "rationale": "Printer readability rule for mixed numeric/symbolic products."
+        },
+        {
+          "item_id": "mem_38e151d1",
+          "rationale": "Required post-processing step after scalar multiplication; prevents crashes."
+        },
+        {
+          "item_id": "mem_3dd997d1",
+          "rationale": "Essential pattern for symbolic matrix entry handling; avoids silent errors."
+        },
+        {
+          "item_id": "mem_3de964bd",
+          "rationale": "Recurring import constraint in SymPy core; ignoring it breaks circular deps."
+        },
+        {
+          "item_id": "mem_3f7269b0",
+          "rationale": "Return type convention for unsolved equations; agent should never raise NotImplementedError in solveset."
+        },
+        {
+          "item_id": "mem_404f3623",
+          "rationale": "Key debugging insight about keyword forwarding in recursive calls; prevents silent bugs in SymPy diophantine code."
+        },
+        {
+          "item_id": "mem_44d09b86",
+          "rationale": "Python protocol for comparison methods; needed for correct delegation."
+        },
+        {
+          "item_id": "mem_47ba860c",
+          "rationale": "Safe iteration pattern to avoid index shift bugs."
+        },
+        {
+          "item_id": "mem_47d8463d",
+          "rationale": "Critical gotcha: checking integer type in SymPy requires special approach."
+        },
+        {
+          "item_id": "mem_4dc3362f",
+          "rationale": "Core permutation composition rule; alters expected behavior of constructor."
+        },
+        {
+          "item_id": "mem_503dc67d",
+          "rationale": "Essential guard for exponent comparison; prevents errors with complex numbers."
+        },
+        {
+          "item_id": "mem_51a78ec5",
+          "rationale": "Clear guidance for two-dictionary maintenance; avoids redundant work."
+        },
+        {
+          "item_id": "mem_51f29561",
+          "rationale": "Process rule for verifying fixes from issue comments; prevents reverting incomplete changes."
+        },
+        {
+          "item_id": "mem_53b9ff67",
+          "rationale": "Validation logic rule: duplicate-element check must be gated on input form (array vs cycle) in permutations."
+        },
+        {
+          "item_id": "mem_5428712b",
+          "rationale": "SymPy set substitution invariant; prevents incorrect short-circuit logic."
+        },
+        {
+          "item_id": "mem_57179287",
+          "rationale": "Key design pattern for Point class type coercion; important for consistent behavior."
+        },
+        {
+          "item_id": "mem_59a94cd2",
+          "rationale": "Technical constraint for implementing _eval_evalf with _imp_: recursively evalf arguments to avoid composition failures."
+        },
+        {
+          "item_id": "mem_5cdc8c60",
+          "rationale": "Important Python gotcha about zip behavior; prevents silent data loss in geometry operations."
+        },
+        {
+          "item_id": "mem_5e86eda8",
+          "rationale": "Error pattern in symbols() recursion; fix needed for cls forwarding."
+        },
+        {
+          "item_id": "mem_640dddd6",
+          "rationale": "Correct degree condition for itermonomials filtering."
+        },
+        {
+          "item_id": "mem_6c58cfb4",
+          "rationale": "Design rule for set complement with symbolic elements and unknowns."
+        },
+        {
+          "item_id": "mem_6e03aab6",
+          "rationale": "Important internal detail for TensorProduct.flatten behavior."
+        },
+        {
+          "item_id": "mem_722721f7",
+          "rationale": "Key assignment practice for cancel() in SymPy determinant code."
+        },
+        {
+          "item_id": "mem_77f4c28e",
+          "rationale": "Project workflow rule: always consult linked GitHub PR as authoritative upstream fix for SymPy issues."
+        },
+        {
+          "item_id": "mem_82990881",
+          "rationale": "Correct imaginary check method when evaluate(False) is active."
+        },
+        {
+          "item_id": "mem_83e03f00",
+          "rationale": "Correct algorithm for total degree computation; prevents incorrect monomial filtering."
+        },
+        {
+          "item_id": "mem_8b5a00f3",
+          "rationale": "Explicit 'must' requirement for codegen InputArgument dimensions; critical for correct matrix symbol handling."
+        },
+        {
+          "item_id": "mem_8f987bdd",
+          "rationale": "Critical anti-aliasing pattern for mutable yields in generators."
+        },
+        {
+          "item_id": "mem_92f13a3a",
+          "rationale": "Workflow best practice for SymPy printer methods; promotes code reuse and consistency."
+        },
+        {
+          "item_id": "mem_983bfeb5",
+          "rationale": "Recurring constraint for SymPy development: do not modify reverse mapping directly, only update source dictionary."
+        },
+        {
+          "item_id": "mem_9bebd821",
+          "rationale": "Core logic for Complement.reduce in SymPy sets; prevents subtle bugs."
+        },
+        {
+          "item_id": "mem_a7f7562e",
+          "rationale": "Correct argument for factorization function; otherwise factors are dropped."
+        },
+        {
+          "item_id": "mem_a8349102",
+          "rationale": "Defines how _print_Indexed should be implemented; essential for SymPy code printers."
+        },
+        {
+          "item_id": "mem_ad4ca272",
+          "rationale": "Python keyword-only parameter forwarding nuance, useful across projects."
+        },
+        {
+          "item_id": "mem_b528d18d",
+          "rationale": "LaTeX printing pitfall: _print(expr) inside \\left. \\right| loses parentheses, causing ambiguous output."
+        },
+        {
+          "item_id": "mem_bb5714e0",
+          "rationale": "Sorting convention for printable output; ensures stable roundtrippable results."
+        },
+        {
+          "item_id": "mem_bf70f379",
+          "rationale": "Inheritance principle: adding __rmul__ on Point suffices for subclasses, no override needed."
+        },
+        {
+          "item_id": "mem_c106f276",
+          "rationale": "Prevents recursion bug when passing cls to symbols() with iterable names."
+        },
+        {
+          "item_id": "mem_c270723f",
+          "rationale": "Explicit 'must' to handle Pow bases when traversing non-commutative Mul; important for simplification correctness."
+        },
+        {
+          "item_id": "mem_c6686e45",
+          "rationale": "Important testing practice when fixing formulas; prevents failing tests after corrections."
+        },
+        {
+          "item_id": "mem_c792acf0",
+          "rationale": "Bug pattern that causes IndexError; agent must keep this in mind when dealing with DMP leading zeros."
+        },
+        {
+          "item_id": "mem_cd8fc270",
+          "rationale": "Coding convention for LaTeX printing patterns; affects multiple printer subclasses."
+        },
+        {
+          "item_id": "mem_d2ea658f",
+          "rationale": "Key algorithmic insight for symbolic matrices; user expects agent to remember this to avoid re-asking."
+        },
+        {
+          "item_id": "mem_d6d63fea",
+          "rationale": "Cautionary note for quaternion math; prevents silent correctness failures."
+        },
+        {
+          "item_id": "mem_dc5ebe25",
+          "rationale": "Consistency requirement for degree filtering in commutative and non-commutative branches."
+        },
+        {
+          "item_id": "mem_dd83486d",
+          "rationale": "Critical edge case in symbolic zero detection; agent must not forget this correction."
+        },
+        {
+          "item_id": "mem_de254028",
+          "rationale": "Explicit instruction to set _op_priority>10.0 for operator dispatch; crucial for custom classes."
+        },
+        {
+          "item_id": "mem_e89b4eba",
+          "rationale": "Cross-printer consistency check; prevents asymmetric parenthesization fixes."
+        },
+        {
+          "item_id": "mem_eb265ef8",
+          "rationale": "Coding rule for printer consistency; important for reliable code generation."
+        },
+        {
+          "item_id": "mem_ec5df675",
+          "rationale": "Enforces correct testing workflow for SymPy; avoids import issues."
+        },
+        {
+          "item_id": "mem_ee1e86f6",
+          "rationale": "Defensive coding rule for utility functions like _split_gcd: guard against empty input to prevent IndexError."
+        },
+        {
+          "item_id": "mem_f0f5a3a3",
+          "rationale": "Key design decision for printer validation logic; agent should not re-derive this rule."
+        },
+        {
+          "item_id": "mem_f9ca0602",
+          "rationale": "Critical LaTeX printing rule for parenthesizing Subs, Derivative, Integral."
+        },
+        {
+          "item_id": "mem_faf1ce4d",
+          "rationale": "Essential LaTeX printing rule for Subs to avoid ambiguous grouping."
+        },
+        {
+          "item_id": "mem_fc80c631",
+          "rationale": "Design rule for permutation handling; prevents incorrect rejection of overlapping cycles."
+        },
+        {
+          "item_id": "mem_fcbda8ec",
+          "rationale": "Debugging heuristic for symmetric code paths; ensures complete bug fixes."
+        },
+        {
+          "item_id": "mem_fe9dcf6a",
+          "rationale": "Specifies the correct exception (NotImplementedError) for evalf else clauses; a convention the user expects the agent to remember."
+        }
+      ],
+      "must_do": [],
+      "blacklisted": [],
+      "model": "deepseek/deepseek-v4-flash"
+    },
+    "synthesized": {
+      "cards": [],
+      "model": "deepseek/deepseek-v4-flash"
+    }
+  },
+  "stages": [
+    {
+      "stage": "plugin-dreamed",
+      "stage_index": 5,
+      "metrics": {
+        "accuracy": 0.74,
+        "relevancy": 0.0,
+        "recency": 0.0,
+        "efficiency": 0.6182501780179764
+      },
+      "n_tasks": 50,
+      "cost_usd": 4.150613,
+      "graded_n": 50,
+      "resolved": 37,
+      "ungraded": 0,
+      "grade_reasons": {
+        "graded": 50
+      },
+      "tasks": [
+        {
+          "task_id": "sympy__sympy-12096",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-12481",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-13372",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-13480",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-14711",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-15017",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-15345",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-15809",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-15875",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-16450",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-16766",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sympy__sympy-16886",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-17139",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-17655",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-18189",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-18763",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-19495",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-19637",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-19954",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-20916",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sympy__sympy-21847",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-22714",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-23534",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-24539",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-24562",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-11618",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-12419",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-13031",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sympy__sympy-13091",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sympy__sympy-13551",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-13615",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sympy__sympy-13647",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-13757",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sympy__sympy-13798",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sympy__sympy-13877",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-13974",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sympy__sympy-14531",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-14976",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-15349",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-15599",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sympy__sympy-15976",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sympy__sympy-16792",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-17318",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-18211",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-18698",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-19040",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sympy__sympy-19346",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-19783",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        },
+        {
+          "task_id": "sympy__sympy-20154",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": true
+        },
+        {
+          "task_id": "sympy__sympy-20428",
+          "stage": "plugin-dreamed",
+          "patch_status": "applied",
+          "solve_error": null,
+          "grade_status": "graded",
+          "grade_reason": "graded",
+          "resolved": false
+        }
+      ],
+      "memory_reached": 50,
+      "memory_hit": 50,
+      "recall_attempted": 50,
+      "recall_with_hits": 50,
+      "memory_health": {
+        "recall_events": 70,
+        "recall_with_hits": 70,
+        "recall_zero_hits": 0,
+        "daydream_completed": 37,
+        "daydream_memory_written": 94,
+        "durable_items_after": 179
+      },
+      "warnings": []
+    }
+  ],
+  "deltas": {}
+}

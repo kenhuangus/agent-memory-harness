@@ -1,0 +1,1 @@
+{"cursor": 7002, "last_summary": "When running Django core tests from a source checkout, use `runtests.py` in the `tests/` directory (e.g., `cd tests && python runtests.py <module>`), not `manage.py` or `python -m django test`.", "recent_memory_ids": ["mem_8b277a47"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

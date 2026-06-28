@@ -1,0 +1,1 @@
+{"cursor": 17637, "last_summary": "In Django, URL validation test cases are stored in `tests/validators/valid_urls.txt` and `tests/validators/invalid_urls.txt` with validation logic in `django/core/validators.py`.", "recent_memory_ids": ["mem_50af6d4a", "mem_95e8eb12"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

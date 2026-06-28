@@ -1,0 +1,1 @@
+{"cursor": 721567, "last_summary": "When a recursive unparse function converts all text nodes to cross-references, propagate a context flag (e.g., `in_literal`) through the recursion to mark which branches should skip that conversion.", "recent_memory_ids": ["mem_86bfd44a"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

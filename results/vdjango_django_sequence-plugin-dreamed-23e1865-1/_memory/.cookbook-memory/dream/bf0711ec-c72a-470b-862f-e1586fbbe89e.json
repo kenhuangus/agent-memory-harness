@@ -1,0 +1,1 @@
+{"cursor": 14571, "last_summary": "When validating ForeignKey values in Django, use `_base_manager` instead of `_default_manager` to avoid rejecting objects excluded by a custom default manager's filters.", "recent_memory_ids": ["mem_0ea85c14"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

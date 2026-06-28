@@ -1,0 +1,1 @@
+{"cursor": 14181, "last_summary": "When testing Django views that perform ORM queries inside get_context_data, inherit the test class from TestCase rather than SimpleTestCase to get database access.", "recent_memory_ids": ["mem_27a5531f"], "first_bytes_hash": "b7ca382195ca220c24537958234042ce544247069d96703f12a846822c4e0bfa"}

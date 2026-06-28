@@ -1,0 +1,1 @@
+{"cursor": 560294, "last_summary": "When URL paths inside an SVG embedded via <object> appear broken, check if the paths are incorrectly relative to the containing HTML document instead of the SVG file's own directory.", "recent_memory_ids": ["mem_c71a4919"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

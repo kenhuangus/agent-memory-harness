@@ -1,0 +1,1 @@
+{"cursor": 367941, "last_summary": "When checking for duplicate elements in Permutation.__new__, distinguish cycle notation (list-of-lists) from array notation (flat list): only array form should reject duplicates.", "recent_memory_ids": ["mem_ea958b03"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

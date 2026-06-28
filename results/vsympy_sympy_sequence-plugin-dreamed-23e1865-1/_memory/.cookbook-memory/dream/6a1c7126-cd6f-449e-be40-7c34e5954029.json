@@ -1,0 +1,1 @@
+{"cursor": 386075, "last_summary": "When a simplification helper in fu.py (_TR56) compares an exponent with 0 or a bound, guard with an is_real check first because SymPy operations <, > on non-real (complex) values raise TypeError.", "recent_memory_ids": ["mem_cd46da17"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
