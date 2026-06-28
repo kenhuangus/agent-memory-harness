@@ -118,20 +118,25 @@
     <div class="slide__in">
       <span class="kicker">How it works</span>
       <h2 class="h2">Four modules, three backends, one loop</h2>
-      <p class="lead">The agent writes as it works. A router sends each query to the one backend that answers best. An offline worker keeps the store clean.</p>
+      <p class="lead">One owner each: <em>write</em> as the agent works, <em>store &amp; retrieve</em> per query, <em>dream</em> the store clean, <em>measure</em> it all.</p>
       <div class="dg">
+        <div class="dg-cap">The four modules</div>
         <div class="dg-row dg-stagger">
-          <div class="dg-card" style="--c:var(--accent)"><h4>Coding Agent</h4><p>writes &amp; queries memory</p></div>
+          <div class="dg-card" style="--c:var(--accent)"><h4>① Write</h4><p>Coding agent writes &amp; queries memory as it works</p></div>
           <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--blue)"><h4>Router</h4><p>classifies each query, picks one backend</p></div>
+          <div class="dg-card" style="--c:var(--blue)"><h4>② Store &amp; retrieve</h4><p>Router classifies each query and picks the one backend that answers best</p></div>
           <span class="dg-arrow">➜</span>
-          <div class="dg-col">
-            <div class="dg-card dg-sm" style="--c:var(--orange)"><h4>Markdown</h4></div>
-            <div class="dg-card dg-sm" style="--c:var(--teal)"><h4>SQLite-vector</h4></div>
-            <div class="dg-card dg-sm" style="--c:var(--grape)"><h4>Graph</h4></div>
-          </div>
+          <div class="dg-card" style="--c:var(--violet)"><h4>③ Dream</h4><p>Offline worker dedups, resolves contradictions, sets governance</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--green)"><h4>④ Measure</h4><p>Eval harness — datasets, metrics, cost, trajectories</p></div>
         </div>
-        <div class="dg-note">Persistence writes · Retrieval ranks by recency × relevancy · 🌙 Dreaming curates the store async</div>
+        <div class="dg-row dg-stagger" style="margin-top:1.4vh;justify-content:center;align-items:center">
+          <span class="dg-cap" style="margin:0 .4rem 0 0">three backends ⤵</span>
+          <div class="dg-card dg-sm" style="--c:var(--orange)"><h4>Markdown</h4></div>
+          <div class="dg-card dg-sm" style="--c:var(--teal)"><h4>SQLite-vector</h4></div>
+          <div class="dg-card dg-sm" style="--c:var(--grape)"><h4>Graph</h4></div>
+        </div>
+        <div class="dg-note">🔁 One loop: Write → Store → 🌙 Dream curates → Measure proves · retrieval ranks by recency × relevancy</div>
       </div>
     </div>
   </section>
