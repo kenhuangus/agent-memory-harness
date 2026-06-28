@@ -87,13 +87,28 @@ def _judge(client, query: str, content: str) -> int:
         return 0
 
 
-def _run_profile(profile, items, queries, k, judge_client):
+def _maybe_expand(store, expand: str, model: str):
+    """Wrap the rebuilt store in query expansion to mirror production ``$MEMORY_QUERY_EXPAND``."""
+    expand = (expand or "none").strip().lower()
+    if expand in ("", "none", "off"):
+        return store
+    from memeval.stores.query_expand import ExpandedQueryStore, LLMQueryExpander, MockQueryExpander
+    if expand == "mock":
+        expander = MockQueryExpander()
+    else:
+        from dreaming.llm import make_client
+        expander = LLMQueryExpander(make_client(model=model))
+    return ExpandedQueryStore(store, expander)
+
+
+def _run_profile(profile, items, queries, k, judge_client, expand="none", expand_model="openrouter/auto"):
     from memeval.stores.embedders import rebuild_store
     id2content = {it.item_id: it.content for it in items}
     embed = _embedder_for(profile)
     dest = os.path.join(tempfile.mkdtemp(), "rebuilt.db")
     store = rebuild_store(items, dest, embed=embed,
                           embed_model=getattr(embed, "model", None) if embed else None)
+    store = _maybe_expand(store, expand, expand_model)
     precisions, rrs, useful = [], [], 0
     for q in queries:
         hits = store.search(q, k=k)
@@ -129,6 +144,9 @@ def main(argv=None) -> int:
     ap.add_argument("--k", type=int, default=5)
     ap.add_argument("--limit", type=int, default=0, help="max queries (0=all)")
     ap.add_argument("--judge", action="store_true")
+    ap.add_argument("--expand", default="none", choices=["none", "llm", "mock"],
+                    help="multi-query expansion (mirrors $MEMORY_QUERY_EXPAND)")
+    ap.add_argument("--expand-model", default="openrouter/auto", help="expansion model when --expand llm")
     ap.add_argument("--model", default="openai/gpt-4o-mini")  # pinned deterministic judge
     # gate thresholds (see docs/research/cookbook-improvement-loop.md)
     ap.add_argument("--min-useful-hit-rate", type=float, default=0.60)
@@ -143,7 +161,8 @@ def main(argv=None) -> int:
 
     results = []
     for p in args.profiles:
-        r = _run_profile(p, items, queries, args.k, jc)
+        r = _run_profile(p, items, queries, args.k, jc, expand=args.expand, expand_model=args.expand_model)
+        r["expand"] = args.expand
         results.append(r)
         print(f"\n=== profile {p} ===")
         for key, val in r.items():
