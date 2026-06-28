@@ -522,3 +522,26 @@ def test_inject_empty_prompt_no_injection(monkeypatch, tmp_path) -> None:
     _patch_recall(monkeypatch, [_FakeHit("nope")])
     _make_settings_via_env(monkeypatch, tmp_path)
     assert hooks_handler.handle("UserPromptSubmit", {"session_id": "s", "prompt": "   "}) == {}
+
+
+def test_clean_query_strips_prefix_and_caps(monkeypatch) -> None:
+    """The injection query is the short, prefix-free issue head — not the full
+    multi-KB prompt (boilerplate prefix + issue + code)."""
+    monkeypatch.delenv("MEMORY_INJECT_RECALL_QUERY_MAX", raising=False)
+    natural = (
+        "Persistent memory is available through recall if prior fixes would help. "
+        "Edit the source files in this checkout directly to fix the issue, then run "
+        "the tests to confirm. Do NOT output a diff or paste a patch — just make the "
+        "edits.\n\n"
+        "unicode dtype copy regression IndexVariable\n\n" + ("x" * 2000)
+    )
+    out = hooks_handler._clean_query(natural)
+    assert not out.lower().startswith("persistent memory")        # prefix stripped
+    assert out.startswith("unicode dtype copy regression IndexVariable")
+    assert len(out) <= 320                                        # capped
+    # no-prefix input passes through (still capped); fail-safe never empties non-empty
+    assert hooks_handler._clean_query("fix the groupby attrs bug") == "fix the groupby attrs bug"
+    assert hooks_handler._clean_query("") == ""
+    # env override of the cap
+    monkeypatch.setenv("MEMORY_INJECT_RECALL_QUERY_MAX", "60")
+    assert len(hooks_handler._clean_query(natural)) <= 60

@@ -189,6 +189,38 @@ def _inject_k() -> int:
         return 5
 
 
+#: A leading prompt block is boilerplate (recall/edit instructions) rather than the
+#: issue itself when it opens with one of these — used to derive a SHORT, prefix-free
+#: recall query. $MEMORY_INJECT_RECALL_QUERY_MAX caps the query length (default 320).
+_PREFIX_HINTS = (
+    "persistent memory", "first call the recall", "stop —", "stop -",
+    "mandatory first", "you may use the recall", "you are a software engineer",
+)
+
+
+def _query_max() -> int:
+    try:
+        return max(40, int(os.environ.get("MEMORY_INJECT_RECALL_QUERY_MAX", "320")))
+    except (TypeError, ValueError):
+        return 320
+
+
+def _clean_query(prompt: str) -> str:
+    """Derive a short, prefix-free recall query from the raw agent prompt. The prompt
+    is the full multi-KB task (a boilerplate recall/edit prefix block + the issue text
+    + code); embedding it verbatim dilutes retrieval and is noisy in telemetry. Drop a
+    leading prefix block (one paragraph, ending at a blank line, that looks like our
+    prefix) and cap to the query-relevant issue head. Fail-safe: never returns empty
+    when the input was non-empty."""
+    t = (prompt or "").strip()
+    head, sep, rest = t.partition("\n\n")
+    if sep and any(h in head.lower() for h in _PREFIX_HINTS):
+        stripped = rest.strip()
+        if stripped:
+            t = stripped
+    return t[: _query_max()].strip()
+
+
 def _recall_injection(
     payload: dict[str, Any], settings: Settings, events: EventStream
 ) -> Optional[dict[str, Any]]:
@@ -208,7 +240,7 @@ def _recall_injection(
             session_id=settings.session_id,
             events=events,
         )
-        hits = client.recall(prompt, k=_inject_k())
+        hits = client.recall(_clean_query(prompt), k=_inject_k())
     except Exception:  # noqa: BLE001 — fail-open: never break the turn
         return None
     lines = [
