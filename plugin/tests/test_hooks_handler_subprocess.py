@@ -549,6 +549,6 @@ def test_clean_query_extracts_title_strips_prefix_and_template(monkeypatch) -> N
     # plain one-liner passes through; fail-safe never empties a non-empty prompt
     assert hooks_handler._clean_query("fix the groupby attrs bug") == "fix the groupby attrs bug"
     assert hooks_handler._clean_query("") == ""
-    # env override of the cap
-    monkeypatch.setenv("MEMORY_INJECT_RECALL_QUERY_MAX", "20")
-    assert len(hooks_handler._clean_query(real)) <= 20
+    # env override of the cap (title is 51 chars; _query_max floors at 40)
+    monkeypatch.setenv("MEMORY_INJECT_RECALL_QUERY_MAX", "44")
+    assert len(hooks_handler._clean_query(real)) == 44
