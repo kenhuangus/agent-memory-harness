@@ -10,26 +10,22 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Kalam:wght@400;700&display=swap" rel="stylesheet" />
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
 <link rel="stylesheet" href="assets/style.css" />
+<link rel="stylesheet" href="assets/diagrams.css" />
 <style>
-  /* animated figures: fade+rise the figure, draw the strokes, then fade labels.
-     Re-runs every time a slide becomes active (no edits to the fixed deck files). */
-  .draw svg { opacity: 0; transform: translateY(16px); transition: opacity .5s ease, transform .5s ease; }
-  .is-active .draw svg { opacity: 1; transform: none; }
-  .draw svg path, .draw svg line { stroke-dasharray: 1600; stroke-dashoffset: 1600; }
-  .is-active .draw svg path, .is-active .draw svg line { animation: deckDraw 1.1s ease forwards; }
-  .draw svg text { opacity: 0; }
-  .is-active .draw svg text { animation: deckFade .55s ease .55s forwards; }
-  @keyframes deckDraw { to { stroke-dashoffset: 0; } }
-  @keyframes deckFade { to { opacity: 1; } }
-  @media (prefers-reduced-motion: reduce) {
-    .draw svg, .draw svg path, .draw svg line, .draw svg text { opacity: 1 !important; transform: none !important; stroke-dashoffset: 0 !important; animation: none !important; }
-  }
   .pts { list-style: none; padding: 0; margin: 1.2vh 0 0; display: grid; gap: 1vh; max-width: 940px; }
   .pts li { display: flex; gap: .7rem; align-items: flex-start; font-size: clamp(.95rem, 2.2vh, 1.15rem); }
   .pts li b { font-family: 'Space Grotesk', sans-serif; }
   .pts .mk { color: var(--accent); font-weight: 700; flex: none; }
   .pts--light li { color: #cdd2db; }
   .pts--light li b { color: #fff; }
+  /* points reveal with the same active-slide animation as diagrams */
+  .pts li { opacity: 0; }
+  .slide.is-active .pts li { animation: dgRise .5s cubic-bezier(.2,.7,.3,1) both; }
+  .slide.is-active .pts li:nth-child(1){animation-delay:.12s}
+  .slide.is-active .pts li:nth-child(2){animation-delay:.24s}
+  .slide.is-active .pts li:nth-child(3){animation-delay:.36s}
+  .slide.is-active .pts li:nth-child(4){animation-delay:.48s}
+  .slide.is-active .pts li:nth-child(5){animation-delay:.60s}
 </style>
 </head>
 <body>
@@ -59,7 +55,15 @@
       <span class="kicker">The original idea</span>
       <h2 class="h2">A cookbook for memory: <span class="h2sub">what, when, where, how</span></h2>
       <p class="lead">Memory is leverage — but only if you keep the right things, at the right time, in the right place. That decision <em>is</em> the product.</p>
-      <div class="draw draw--hero" data-fig="recipe"></div>
+      <div class="dg">
+        <div class="dg-cap">A recipe for memory</div>
+        <div class="dg-row dg-stagger">
+          <div class="dg-card" style="--c:var(--blue)"><h4>WHAT</h4><p>Durable, transferable lessons — Invariant · Convention · Fix. Not task-specific facts.</p></div>
+          <div class="dg-card" style="--c:var(--green)"><h4>WHEN</h4><p>While working (recall), at session end (Daydream), at night (Dream).</p></div>
+          <div class="dg-card" style="--c:var(--violet)"><h4>WHERE</h4><p>The right backend: Markdown · SQLite-vector · Graph. Router picks per query.</p></div>
+          <div class="dg-card" style="--c:var(--orange)"><h4>HOW</h4><p>An LLM keeps what matters, embeds it, dedups, resolves contradictions, sets governance.</p></div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -69,7 +73,20 @@
       <span class="kicker">How it works</span>
       <h2 class="h2">Four modules, three backends, one loop</h2>
       <p class="lead">The agent writes as it works. A router sends each query to the one backend that answers best. An offline worker keeps the store clean.</p>
-      <div class="draw draw--hero" data-fig="arch"></div>
+      <div class="dg">
+        <div class="dg-row dg-stagger">
+          <div class="dg-card" style="--c:var(--accent)"><h4>Coding Agent</h4><p>writes &amp; queries memory</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--blue)"><h4>Router</h4><p>classifies each query, picks one backend</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-col">
+            <div class="dg-card dg-sm" style="--c:var(--orange)"><h4>Markdown</h4></div>
+            <div class="dg-card dg-sm" style="--c:var(--teal)"><h4>SQLite-vector</h4></div>
+            <div class="dg-card dg-sm" style="--c:var(--grape)"><h4>Graph</h4></div>
+          </div>
+        </div>
+        <div class="dg-note">Persistence writes · Retrieval ranks by recency × relevancy · 🌙 Dreaming curates the store async</div>
+      </div>
     </div>
   </section>
 
@@ -79,57 +96,128 @@
       <span class="kicker">When &amp; how it's remembered</span>
       <h2 class="h2">Daydream extracts. Dream consolidates.</h2>
       <p class="lead">A <code>Stop</code> hook fires the Daydream pass at session end; the deeper night Dream dedups, resolves contradictions, and sets governance across the whole store.</p>
-      <div class="draw draw--hero" data-fig="dream"></div>
+      <div class="dg">
+        <div class="dg-row dg-stagger">
+          <div class="dg-card" style="--c:var(--slate,#495057)"><h4>Session work</h4><p>agent solves tasks</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--green)"><h4>Stop hook</h4><p>session ends</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--blue)"><h4>Daydream</h4><p>mine logs → extract</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--violet)"><h4>Dream (night)</h4><p>dedup · contradiction · governance</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--accent)"><h4>Clean store</h4><p>ranked, must-know tagged</p></div>
+        </div>
+      </div>
     </div>
   </section>
 
   <!-- 5 · benchmarks -->
   <section class="slide slide--dark" data-title="Two benchmarks">
     <div class="slide__in">
-      <span class="kicker kicker--light">How we test improvement over time</span>
+      <span class="kicker kicker--light">How we test it</span>
       <h2 class="h2 h2--light">Two benchmarks: one public, one our own</h2>
-      <p class="lead lead--light">SWE-Bench-CL is a public continual-learning suite. VISTA is our own purpose-built memory-safety benchmark. Each is scored on its native metrics.</p>
-      <div class="draw draw--hero" data-fig="benchmarks"></div>
+      <p class="lead lead--light">One measures whether memory makes the agent solve more; the other, whether it stays aligned and safe over the long run.</p>
+      <div class="dg">
+        <div class="dg-row dg-stagger">
+          <div class="dg-card" style="--c:var(--blue)"><h4>SWE-Bench-CL · public</h4><p>Continual learning over a sequence of real GitHub fixes. Measures knowledge transfer across tasks and resistance to catastrophic forgetting — scored on its own native suite metrics.</p></div>
+          <div class="dg-card" style="--c:var(--violet)"><h4>VISTA · our own</h4><p>Our purpose-built benchmark for <strong>long-term intent alignment &amp; agent safety</strong>, evaluated against the <strong>OWASP Agentic AI Top&nbsp;10</strong> risks — memory poisoning, tool misuse, privilege compromise, intent-breaking &amp; goal manipulation.</p></div>
+        </div>
+      </div>
     </div>
   </section>
 
   <!-- 6 · the loop -->
-  <section class="slide" data-title="Improvement loop">
+  <section class="slide slide--alt" data-title="Improvement loop">
     <div class="slide__in">
       <span class="kicker">The 4-tier gated loop</span>
       <h2 class="h2">Cheap gates first, expensive proof last</h2>
-      <p class="lead">A full solve-rate run is hours and money. So every change is screened by two fast offline gates before it earns a Tier-3 measurement. Fail a gate → rejected, no spend.</p>
-      <div class="draw draw--hero" data-fig="loop"></div>
+      <p class="lead">A full solve-rate run is hours and money. Every change is screened by two fast offline gates before it earns a Tier-3 measurement. Fail a gate → rejected, no spend.</p>
+      <div class="dg">
+        <div class="dg-row dg-stagger">
+          <div class="dg-card" style="--c:var(--slate,#495057)"><h4>Propose</h4><p>a real code diff</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--blue)"><h4>Tier 1</h4><p>retrieval-precision gate</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--teal)"><h4>Tier 2</h4><p>consolidation-quality gate</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--green)"><h4>Tier 3</h4><p>solve-rate ≥30% lift</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--accent)"><h4>Land</h4><p>ADR + PR</p></div>
+        </div>
+        <div class="dg-note">↩ Fail Tier 1 or Tier 2 → reject the change, never spend Tier 3.</div>
+      </div>
     </div>
   </section>
 
   <!-- 7 · memory inspector -->
-  <section class="slide slide--alt" data-title="Memory Inspector">
+  <section class="slide" data-title="Memory Inspector">
     <div class="slide__in">
       <span class="kicker">See the memory live</span>
       <h2 class="h2">The Memory Inspector</h2>
       <p class="lead">Pick any run — VISTA, SymPy, Django — and watch its store: every memory, its governance tag, and the counts. Switching runs blocks and snapshots in under a second.</p>
-      <div class="draw draw--hero" data-fig="inspector"></div>
+      <div class="dg">
+        <div class="dg-mock">
+          <div class="dg-mock__bar">
+            <i style="background:var(--red)"></i><i style="background:var(--orange)"></i><i style="background:var(--green)"></i>
+            <span class="dg-mock__title">Memory Inspector — live store</span>
+          </div>
+          <div class="dg-mock__body">
+            <div class="dg-mock__top">
+              <span class="dg-pill" style="--c:var(--accent)">▼ vista · plugin-real-coding</span>
+              <span class="dg-pill" style="--c:var(--blue);margin-left:auto">2 memories</span>
+            </div>
+            <div class="dg-memrow"><span class="dg-tag" style="--c:var(--green)">INVARIANT</span><p>recall key must be hashed for multi-line queries</p></div>
+            <div class="dg-memrow"><span class="dg-tag" style="--c:var(--violet)">FIX</span><p>discover_runs: cache last-activity to keep /api fast</p></div>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
   <!-- 8 · results SWE-Bench-CL -->
-  <section class="slide" data-title="Results · SWE-Bench-CL">
+  <section class="slide slide--alt" data-title="Results · SWE-Bench-CL">
     <div class="slide__in">
       <span class="kicker">Results</span>
       <h2 class="h2">Memory helps — when the harness is held constant</h2>
-      <p class="lead">Cursor SymPy plugin reached <strong>48/50</strong> vs a 45/50 base/builtin baseline (+3, no losses). Django climbed +1 per stage from base to first dreamed.</p>
-      <div class="draw draw--hero" data-fig="results"></div>
+      <p class="lead">Cursor SymPy plugin reached <strong>48/50</strong> vs a 45/50 base/builtin baseline (+3, no losses). Django climbed +1 per stage from base to first dreamed. <span class="muted">(resolved out of 50, same commit)</span></p>
+      <div class="dg">
+        <div class="dg-chart">
+          <div class="dg-group">
+            <div class="dg-bars">
+              <div class="dg-bar" style="--h:90%;--c:var(--slate,#495057)"><span>45</span><small>base</small></div>
+              <div class="dg-bar" style="--h:90%;--c:var(--blue)"><span>45</span><small>builtin</small></div>
+              <div class="dg-bar" style="--h:96%;--c:var(--green)"><span>48</span><small>plugin</small></div>
+            </div>
+            <div class="dg-label">SymPy</div>
+          </div>
+          <div class="dg-group">
+            <div class="dg-bars">
+              <div class="dg-bar" style="--h:20%;--c:var(--slate,#495057)"><span>10</span><small>base</small></div>
+              <div class="dg-bar" style="--h:22%;--c:var(--blue)"><span>11</span><small>builtin</small></div>
+              <div class="dg-bar" style="--h:24%;--c:var(--teal)"><span>12</span><small>accum</small></div>
+              <div class="dg-bar" style="--h:26%;--c:var(--green)"><span>13</span><small>dreamed</small></div>
+            </div>
+            <div class="dg-label">Django</div>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
   <!-- 9 · results VISTA -->
   <section class="slide slide--dark" data-title="Results · VISTA">
     <div class="slide__in">
-      <span class="kicker kicker--light">Results</span>
-      <h2 class="h2 h2--light">Perfect memory-safety on VISTA</h2>
-      <p class="lead lead--light">Across the 97-journey split, the store resisted every poisoning attempt, induced no targeted attack, and kept recursive self-improvement within guardrails.</p>
-      <div class="draw draw--hero" data-fig="vista"></div>
+      <span class="kicker kicker--light">Results · VISTA</span>
+      <h2 class="h2 h2--light">Aligned &amp; safe on the OWASP Agentic AI Top 10</h2>
+      <p class="lead lead--light">Across the 97-journey split, memory stayed faithful to long-term intent: it resisted every poisoning attempt, induced no targeted attack, and kept recursive self-improvement within guardrails.</p>
+      <div class="dg">
+        <div class="dg-row dg-stagger">
+          <div class="dg-score" style="--c:var(--green)"><b>1.0</b><h4>Poisoning resistance</h4><p>rejected every planted memory</p></div>
+          <div class="dg-score" style="--c:var(--green)"><b>0.0</b><h4>Targeted attack success</h4><p>no induced harmful action</p></div>
+          <div class="dg-score" style="--c:var(--green)"><b>1.0</b><h4>Self-improvement safety</h4><p>intent &amp; RSI within guardrails</p></div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -140,7 +228,7 @@
       <h2 class="h2 h2--light">What's proven, what isn't</h2>
       <ul class="pts pts--light">
         <li><span class="mk">✓</span><div><b>Accumulated memory lifts solve rate</b> when model &amp; harness are fixed (SymPy +3/50; Django +1 per stage).</div></li>
-        <li><span class="mk">✓</span><div><b>Memory safety is solid</b> — VISTA poisoning 1.0 · targeted-ASR 0.0 · RSI 1.0.</div></li>
+        <li><span class="mk">✓</span><div><b>Alignment &amp; safety hold</b> — VISTA poisoning 1.0 · targeted-ASR 0.0 · RSI 1.0 across the OWASP Agentic AI Top 10.</div></li>
         <li><span class="mk">~</span><div><b>Dreaming isn't yet an outcome lift.</b> It runs reliably and adds governance tags, but solve-rate after dreaming is unstable (Django 13→12; SymPy 48→45).</div></li>
         <li><span class="mk">→</span><div><b>The bottleneck moved.</b> Memory is reached on nearly every task — retrieval quality &amp; ranking, not availability, is now the limit.</div></li>
         <li><span class="mk">!</span><div><b>Segment before comparing.</b> Cursor and Claude rows differ enough that mixing them misleads; isolate the run repo so benchmark agents can't touch the live tree.</div></li>
@@ -175,8 +263,6 @@
 </nav>
 <div class="progress" id="progress"></div>
 
-<script src="assets/rough.min.js"></script>
-<script src="assets/diagrams.js"></script>
 <script src="assets/deck.js"></script>
 </body>
 </html>

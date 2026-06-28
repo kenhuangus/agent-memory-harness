@@ -1,0 +1,129 @@
+/* =========================================================================
+   HTML diagrams + animations for the slide deck.
+   Plain HTML/CSS — no SVG, no JS. A diagram lives inside a slide and animates
+   when that slide gains .is-active, so it replays every time you present.
+
+   Building blocks (compose freely):
+     .dg            diagram wrapper (column, centred)
+     .dg-row        horizontal track of cards (wraps on small screens)
+     .dg-col        vertical stack of cards
+     .dg-card       a labelled card; set colour with style="--c:var(--blue)"
+     .dg-card.dg-sm compact card (title only)
+     .dg-arrow      connector glyph between cards  (use ➜)
+     .dg-cap        small hand-drawn caption above a diagram
+     .dg-note       muted footnote under a diagram
+     .dg-score      big-number stat card           (style="--c:var(--green)")
+     .dg-chart > .dg-group > .dg-bars > .dg-bar     bar chart
+                    .dg-bar style="--h:88%;--c:var(--green)"  + <span>label</span><small>x</small>
+     .dg-mock       browser-window mockup frame (.dg-mock__bar / __title / __body)
+     .dg-memrow     a row inside a mockup (.dg-tag + <p>)
+   Add .dg-stagger to any row/col to reveal its children one-by-one.
+   Respects prefers-reduced-motion.
+   ========================================================================= */
+
+.dg{display:flex;flex-direction:column;align-items:center;gap:1.6vh;width:100%;margin-top:1vh;min-height:0}
+.dg-cap{font-family:var(--hand);color:var(--accent);font-size:clamp(.9rem,2vh,1.1rem)}
+.dg-note{font-family:var(--hand);color:var(--muted);font-size:clamp(.82rem,1.8vh,1rem);text-align:center;max-width:64ch}
+.slide--dark .dg-note{color:#aab1bf}
+
+.dg-row{display:flex;align-items:stretch;justify-content:center;gap:clamp(8px,1.1vw,16px);flex-wrap:wrap;width:100%}
+.dg-col{display:flex;flex-direction:column;gap:10px;justify-content:center}
+
+.dg-card{--c:var(--blue);flex:1 1 0;min-width:140px;border:2px solid var(--c);border-radius:16px;
+  padding:1.4vh 1.1vw;box-shadow:var(--shadow);background:color-mix(in srgb,var(--c) 9%,#fff)}
+.slide--dark .dg-card{background:color-mix(in srgb,var(--c) 24%,var(--ink-2));color:#eceef2}
+.dg-card h4{font-family:'Space Grotesk',sans-serif;color:var(--c);margin:0 0 .35rem;
+  font-size:clamp(1rem,2.4vh,1.3rem);letter-spacing:-.01em}
+.slide--dark .dg-card h4{color:color-mix(in srgb,var(--c) 55%,#fff)}
+.dg-card p{margin:0;font-size:clamp(.8rem,1.75vh,1rem);line-height:1.45;color:var(--muted)}
+.slide--dark .dg-card p{color:#aab1bf}
+.dg-card.dg-sm{flex:0 0 auto;padding:1vh 1.1vw;text-align:center}
+.dg-card.dg-sm h4{margin:0}
+
+.dg-arrow{align-self:center;flex:0 0 auto;color:var(--accent);
+  font-size:clamp(1.2rem,2.6vh,1.7rem);font-weight:700;line-height:1}
+
+/* big-number stat */
+.dg-score{--c:var(--green);flex:1 1 0;min-width:170px;border:2.5px solid var(--c);border-radius:18px;
+  padding:2vh 1vw;text-align:center;box-shadow:var(--shadow);background:color-mix(in srgb,var(--c) 9%,#fff)}
+.slide--dark .dg-score{background:color-mix(in srgb,var(--c) 22%,var(--ink-2))}
+.dg-score b{display:block;font-family:'Space Grotesk',sans-serif;font-weight:700;color:var(--c);
+  font-size:clamp(2.6rem,8vh,4.4rem);line-height:1}
+.dg-score h4{margin:.6vh 0 .2vh;font-family:'Space Grotesk',sans-serif;font-size:clamp(.95rem,2.1vh,1.15rem)}
+.slide--dark .dg-score h4{color:#fff}
+.dg-score p{margin:0;font-size:clamp(.78rem,1.7vh,.95rem);color:var(--muted)}
+.slide--dark .dg-score p{color:#aab1bf}
+
+/* bar chart */
+.dg-chart{display:flex;gap:clamp(20px,4vw,64px);align-items:flex-end;justify-content:center;width:100%}
+.dg-group{display:flex;flex-direction:column;align-items:center}
+.dg-bars{display:flex;align-items:flex-end;gap:clamp(8px,1vw,16px);height:32vh}
+.dg-bar{position:relative;width:clamp(34px,4vw,58px);border-radius:9px 9px 0 0;
+  background:var(--c,var(--blue));height:0;align-self:flex-end}
+.dg-bar span{position:absolute;top:-2.7vh;left:-20%;right:-20%;text-align:center;font-family:'Space Grotesk';
+  font-weight:700;font-size:clamp(.85rem,1.9vh,1.1rem);color:var(--c)}
+.dg-bar small{position:absolute;bottom:-3vh;left:-30%;right:-30%;text-align:center;
+  font-size:clamp(.7rem,1.5vh,.85rem);color:var(--muted)}
+.slide--dark .dg-bar small{color:#aab1bf}
+.dg-label{font-family:'Space Grotesk';font-weight:700;margin-top:3.4vh;color:var(--text)}
+.slide--dark .dg-label{color:#eceef2}
+
+/* browser-window mockup */
+.dg-mock{width:min(840px,100%);border:2px solid var(--muted);border-radius:14px;overflow:hidden;
+  box-shadow:var(--shadow);background:#fff}
+.slide--dark .dg-mock{background:var(--ink-2)}
+.dg-mock__bar{display:flex;align-items:center;gap:7px;padding:.9vh 1rem;
+  background:color-mix(in srgb,var(--muted) 14%,#fff);border-bottom:1px solid color-mix(in srgb,var(--muted) 30%,#fff)}
+.slide--dark .dg-mock__bar{background:#0e1422;border-color:#1d2330}
+.dg-mock__bar i{width:11px;height:11px;border-radius:50%;display:inline-block}
+.dg-mock__title{font-family:var(--hand);margin:0 auto;color:var(--muted);font-size:.98rem}
+.dg-mock__body{padding:1.6vh 1.2rem;display:flex;flex-direction:column;gap:1.1vh}
+.dg-mock__top{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.dg-pill{--c:var(--accent);border:1.5px solid var(--c);color:var(--c);border-radius:8px;
+  padding:.5vh .8rem;font-weight:600;font-size:clamp(.78rem,1.7vh,.95rem);
+  background:color-mix(in srgb,var(--c) 10%,transparent)}
+.dg-memrow{display:flex;gap:12px;align-items:flex-start;border-radius:10px;padding:1vh 1rem;
+  border:1px solid color-mix(in srgb,var(--muted) 25%,#fff);background:color-mix(in srgb,var(--muted) 5%,#fff)}
+.slide--dark .dg-memrow{background:#131b2d;border-color:#1d2330;color:#eceef2}
+.dg-tag{--c:var(--green);flex:0 0 auto;border:1.4px solid var(--c);color:var(--c);border-radius:7px;
+  padding:.2vh .6rem;font-family:'Space Grotesk';font-weight:700;font-size:.72rem;
+  background:color-mix(in srgb,var(--c) 16%,transparent)}
+.dg-memrow p{margin:0;font-size:clamp(.8rem,1.7vh,.96rem)}
+
+/* ---------- animations: hidden until the slide is active ---------- */
+@keyframes dgRise{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+@keyframes dgPop{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}
+@keyframes dgGrow{from{height:0}to{height:var(--h,60%)}}
+
+/* non-staggered blocks reveal as a unit */
+.dg .dg-row:not(.dg-stagger), .dg .dg-chart, .dg .dg-mock, .dg .dg-cap, .dg .dg-note{opacity:0}
+.slide.is-active .dg .dg-row:not(.dg-stagger),
+.slide.is-active .dg .dg-chart,
+.slide.is-active .dg .dg-mock,
+.slide.is-active .dg .dg-cap,
+.slide.is-active .dg .dg-note{animation:dgRise .55s cubic-bezier(.2,.7,.3,1) both;animation-delay:.08s}
+
+/* staggered children */
+.dg-stagger>*{opacity:0}
+.slide.is-active .dg-stagger>*{animation:dgRise .5s cubic-bezier(.2,.7,.3,1) both}
+.slide.is-active .dg-stagger>:nth-child(1){animation-delay:.12s}
+.slide.is-active .dg-stagger>:nth-child(2){animation-delay:.24s}
+.slide.is-active .dg-stagger>:nth-child(3){animation-delay:.36s}
+.slide.is-active .dg-stagger>:nth-child(4){animation-delay:.48s}
+.slide.is-active .dg-stagger>:nth-child(5){animation-delay:.60s}
+.slide.is-active .dg-stagger>:nth-child(6){animation-delay:.72s}
+.slide.is-active .dg-stagger>:nth-child(7){animation-delay:.84s}
+.slide.is-active .dg-stagger>:nth-child(8){animation-delay:.96s}
+/* scores pop instead of rise */
+.slide.is-active .dg-row.dg-stagger .dg-score{animation-name:dgPop}
+
+/* bars grow up */
+.slide.is-active .dg-bar{animation:dgGrow .9s cubic-bezier(.2,.7,.3,1) forwards}
+.slide.is-active .dg-bars .dg-bar:nth-child(2){animation-delay:.12s}
+.slide.is-active .dg-bars .dg-bar:nth-child(3){animation-delay:.24s}
+.slide.is-active .dg-bars .dg-bar:nth-child(4){animation-delay:.36s}
+
+@media(prefers-reduced-motion:reduce){
+  .dg *{animation:none!important;opacity:1!important;transform:none!important}
+  .dg-bar{height:var(--h,60%)!important}
+}
