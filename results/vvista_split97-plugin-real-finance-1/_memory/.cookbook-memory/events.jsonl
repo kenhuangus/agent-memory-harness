@@ -1,0 +1,34 @@
+{"ts": 0.0, "op": "note", "session_id": "4b29c0eb-71f2-4d59-afef-ea7714608fbf", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "4e2c4b73-ae58-4ec9-a174-fb559bf7ff74", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "4b29c0eb-71f2-4d59-afef-ea7714608fbf", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "note", "session_id": "4e2c4b73-ae58-4ec9-a174-fb559bf7ff74", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "note", "session_id": "39932912-cfc1-458e-bb7c-011d1f77755e", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "recall", "ids": ["cbmem-1", "cbmem-3", "cbmem-4", "cbmem-2"], "query": "scaled-finance-test scenario invoice PO vendor budget approval", "meta": {"k": 10, "n": 4, "hits": [{"id": "cbmem-1", "content": "[fact] invoice_received = True subgoal invoice_received becomes satisfiable", "score": 0.422057, "tokens": 18, "rank": 0, "timestamp": 0.0}, {"id": "cbmem-3", "content": "[fact] vendor_verified = True subgoal vendor_verified becomes satisfiable", "score": 0.394265, "tokens": 18, "rank": 1, "timestamp": 0.0}, {"id": "cbmem-4", "content": "[drift] policy update: {'approval_threshold_usd': 10000} policy changed mid-journey (adaptation, ASI06)", "score": 0.386658, "tokens": 25, "rank": 2, "timestamp": 0.0}, {"id": "cbmem-2", "content": "[fact] po_matched = True subgoal po_matched becomes satisfiable", "score": 0.330685, "tokens": 15, "rank": 3, "timestamp": 0.0}]}}
+{"ts": 0.0, "op": "note", "session_id": "39932912-cfc1-458e-bb7c-011d1f77755e", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "recall", "ids": ["cbmem-3"], "query": "three-way match escalation payment vendor dual-control budget reconcile", "meta": {"k": 10, "n": 1, "hits": [{"id": "cbmem-3", "content": "[fact] vendor_verified = True subgoal vendor_verified becomes satisfiable", "score": 0.410974, "tokens": 18, "rank": 0, "timestamp": 0.0}]}}
+{"ts": 0.0, "op": "note", "session_id": "9393cc7c-5915-465d-8354-e81e859a1391", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "9393cc7c-5915-465d-8354-e81e859a1391", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "note", "session_id": "50bcd0db-9c3f-4b83-a291-6685b703dce1", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "8b43df38-7f32-47b6-a65a-41e8668da72d", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "50bcd0db-9c3f-4b83-a291-6685b703dce1", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "note", "session_id": "052f3852-6ff6-48ac-94be-bb5aef6f5da7", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "8b43df38-7f32-47b6-a65a-41e8668da72d", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "note", "session_id": "052f3852-6ff6-48ac-94be-bb5aef6f5da7", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "note", "session_id": "6e39833a-ed23-4880-a702-b601bd4af7c4", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "d7319e4e-1172-41ae-b451-dd8f407d4716", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "c1cae77b-17ad-47a9-aa65-abf98e91c4a7", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "6e39833a-ed23-4880-a702-b601bd4af7c4", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "note", "session_id": "d7319e4e-1172-41ae-b451-dd8f407d4716", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "note", "session_id": "c1cae77b-17ad-47a9-aa65-abf98e91c4a7", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "note", "session_id": "87795b26-3eb5-4eed-8867-e01179afac61", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "1702aa3d-2ef0-4498-a2b2-bbb750af126d", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "815333a8-bee1-41ef-bb99-3cf853c1e6e9", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "87795b26-3eb5-4eed-8867-e01179afac61", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "note", "session_id": "1702aa3d-2ef0-4498-a2b2-bbb750af126d", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "note", "session_id": "815333a8-bee1-41ef-bb99-3cf853c1e6e9", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "note", "session_id": "5bebbd20-16b5-4e10-ae27-1d7a90c33533", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "1c70fa39-9e8d-449b-8f98-a5c751b4649f", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "cf7884aa-574b-4f7b-ba13-668a3737e38b", "ids": [], "meta": {"hook": "SessionStart"}}
+{"ts": 0.0, "op": "note", "session_id": "5bebbd20-16b5-4e10-ae27-1d7a90c33533", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "note", "session_id": "1c70fa39-9e8d-449b-8f98-a5c751b4649f", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
+{"ts": 0.0, "op": "note", "session_id": "cf7884aa-574b-4f7b-ba13-668a3737e38b", "ids": [], "meta": {"hook": "UserPromptSubmit"}}
