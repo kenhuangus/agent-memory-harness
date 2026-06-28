@@ -522,3 +522,33 @@ def test_inject_empty_prompt_no_injection(monkeypatch, tmp_path) -> None:
     _patch_recall(monkeypatch, [_FakeHit("nope")])
     _make_settings_via_env(monkeypatch, tmp_path)
     assert hooks_handler.handle("UserPromptSubmit", {"session_id": "s", "prompt": "   "}) == {}
+
+
+def test_clean_query_extracts_title_strips_prefix_and_template(monkeypatch) -> None:
+    """The injection query is the issue TITLE — the agent-prompt prefix stripped AND
+    the GitHub-issue-template noise (HTML comments, ``####`` headers, code) removed."""
+    monkeypatch.delenv("MEMORY_INJECT_RECALL_QUERY_MAX", raising=False)
+    real = (
+        "Persistent memory is available through recall if prior fixes would help. "
+        "Edit the source files in this checkout directly to fix the issue, then run "
+        "the tests to confirm. Do NOT output a diff or paste a patch — just make the "
+        "edits.\n\n"
+        "[bug] when passing boolean weights to weighted mean\n"
+        "<!-- A short summary of the issue, if appropriate -->\r\n\r\n"
+        "#### MCVE Code Sample\r\n"
+        "<!-- post a Minimal, Complete and Verifiable Example: http://example -->\r\n"
+        "```python\nimport xarray as xr\n```"
+    )
+    out = hooks_handler._clean_query(real)
+    assert out == "[bug] when passing boolean weights to weighted mean"  # just the title
+    assert "<!--" not in out and "####" not in out and "import xarray" not in out
+    # no-prefix issue: title still extracted
+    assert hooks_handler._clean_query(
+        "to_unstacked_dataset broken for single-dim variables\n<!-- x -->\n#### MCVE"
+    ) == "to_unstacked_dataset broken for single-dim variables"
+    # plain one-liner passes through; fail-safe never empties a non-empty prompt
+    assert hooks_handler._clean_query("fix the groupby attrs bug") == "fix the groupby attrs bug"
+    assert hooks_handler._clean_query("") == ""
+    # env override of the cap (title is 51 chars; _query_max floors at 40)
+    monkeypatch.setenv("MEMORY_INJECT_RECALL_QUERY_MAX", "44")
+    assert len(hooks_handler._clean_query(real)) == 44
