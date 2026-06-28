@@ -1,0 +1,1 @@
+{"cursor": 140055, "last_summary": "When adding a new feature to Django's public API, modify three files: the source module in django/, the test in tests/, and the reference docs in docs/ref/ using the `.. versionadded::` directive.", "recent_memory_ids": ["mem_f64c1c21"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

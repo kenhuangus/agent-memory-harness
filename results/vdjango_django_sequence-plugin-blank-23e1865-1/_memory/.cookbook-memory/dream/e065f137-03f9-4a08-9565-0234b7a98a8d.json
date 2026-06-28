@@ -1,0 +1,1 @@
+{"cursor": 178492, "last_summary": "When changing a Django default, the check-framework warnings (W022) that fire when the value is None may now fire less often \u2014 but they must remain valid for users who explicitly set None.", "recent_memory_ids": ["mem_f3cb6fd8", "mem_9fb5e1bb"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}

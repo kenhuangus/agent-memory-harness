@@ -1,0 +1,1 @@
+{"cursor": 91663, "last_summary": "When passing attrs dicts into widget methods across a loop, pass a copy per invocation (e.g., `{**final_attrs, 'id': ...}`) to avoid cross-iteration pollution from methods that mutate the dict.", "recent_memory_ids": ["mem_5127e4ec"], "first_bytes_hash": "1d66a17f9722784ad1c214a4847fd628e4ac44cdf983ca232d8d19697a754567"}
