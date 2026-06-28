@@ -163,6 +163,52 @@
     </div>
   </section>
 
+  <!-- 4a · daydream deep-dive -->
+  <section class="slide slide--alt" data-title="Daydream">
+    <div class="slide__in">
+      <span class="kicker">What it captures</span>
+      <h2 class="h2">Daydream &mdash; selective extraction at session end</h2>
+      <p class="lead">A <code>Stop</code> hook runs the Daydream pass on this session's transcript. It chunks, redacts, wraps each chunk in a nonce envelope, and asks a small subconscious model the only question that matters: <em>would a future, different task save time by knowing this?</em></p>
+      <div class="dg">
+        <div class="dg-row dg-stagger">
+          <div class="dg-card" style="--c:var(--slate,#495057)"><h4>Stop hook</h4><p>session ends, transcript ready</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--blue)"><h4>Chunk &amp; redact</h4><p>secrets stripped (ADR-005)</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--teal)"><h4>Nonce envelope</h4><p>&lt;transcript nonce="&hellip;"&gt; &mdash; anti-injection</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--violet)"><h4>LLM curates</h4><p>V6 prompt: lessons that transfer</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--accent)"><h4>10 OKF types</h4><p>Fix &middot; Bug &middot; Convention &middot; Invariant &middot; Workaround &middot; Strategy &middot; Mistake &middot; Decision &middot; Preference &middot; Identity</p></div>
+        </div>
+        <div class="dg-note">HIGH selectivity by design. Every kept memory is self-gating: <code>When &lt;trigger&gt;, &lt;do X / avoid Y&gt;.</code> &mdash; so recall only fires it on relevant future tasks.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4b · dream deep-dive -->
+  <section class="slide" data-title="Dream">
+    <div class="slide__in">
+      <span class="kicker">What it consolidates</span>
+      <h2 class="h2">Dream &mdash; nightly consolidation over the whole store</h2>
+      <p class="lead">Once a night, the Dream worker walks the entire store: prune what's stale, merge what's redundant, surface what disagrees, and tag what's load-bearing. Sequential jobs over <strong>pairwise-disjoint</strong> working sets &mdash; no item is touched by two passes.</p>
+      <div class="dg">
+        <div class="dg-row dg-stagger">
+          <div class="dg-card" style="--c:var(--slate,#495057)"><h4>TTL prune</h4><p>expire past each type's retention horizon</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--blue)"><h4>Dedup</h4><p>lexical + LLM paraphrase judge</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--teal)"><h4>Contradiction</h4><p>LLM picks pairs; <em>both</em> originals kept as data</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--violet)"><h4>Induction</h4><p>Cluster of <code>Fix</code> cards synthesized into one <code>Invariant</code> or <code>Convention</code></p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--accent)"><h4>Governance</h4><p>must_know &middot; must_do &middot; blacklist &middot; none</p></div>
+        </div>
+        <div class="dg-note">Contradictions are preserved as a third <em>observation</em> card (memory-as-data), never silently merged. All prompts sha256-pinned; disjointness proven at every pass boundary.</div>
+      </div>
+    </div>
+  </section>
+
   <!-- 5 · benchmarks -->
   <section class="slide slide--dark" data-title="Two benchmarks">
     <div class="slide__in">
