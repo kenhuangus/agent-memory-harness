@@ -1,0 +1,9 @@
+{
+  "name": "cookbook-memory-video",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cookbook Memory explainer video — deterministic canvas scenes, recordable to MP4.",
+  "dependencies": {
+    "playwright-core": "^1.60.0"
+  }
+}

@@ -1,0 +1,91 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cookbook Memory — The Robot Who Couldn't Remember (full film)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Same fonts as the deck so the animation matches the slides. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; background: #0a0a0c; overflow: hidden; }
+  #wrap { position: fixed; inset: 0; display: grid; place-items: center; }
+  canvas { width: 100vw; height: 100vh; object-fit: contain; display: block; }
+  /* minimal scrub UI — hidden when embedded with ?embed=1 */
+  #ui { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+        display: flex; gap: 12px; align-items: center; font: 500 13px Inter, system-ui;
+        color: #cdd2db; background: rgba(0,0,0,.45); padding: 8px 14px; border-radius: 999px;
+        backdrop-filter: blur(6px); }
+  #ui.hidden { display: none; }
+  #ui button { background: #1971c2; color: #fff; border: 0; border-radius: 7px;
+        padding: 6px 12px; font: 600 13px Inter; cursor: pointer; }
+  #scrub { width: 420px; }
+  #tlabel { font-variant-numeric: tabular-nums; min-width: 72px; }
+</style>
+<div id="wrap"><canvas id="cv" width="1920" height="1080"></canvas></div>
+
+<div id="ui">
+  <button id="play">⏸ Pause</button>
+  <input id="scrub" type="range" min="0" max="78" step="0.01" value="0">
+  <span id="tlabel">0.0 / 78.0</span>
+  <button id="loop">↻ Loop: on</button>
+</div>
+
+<script src="scenes/lib.js"></script>
+<script src="scenes/act1.js"></script>
+<script src="scenes/act2.js"></script>
+<script src="scenes/act3.js"></script>
+<script src="scenes/film.js"></script>
+<script>
+  const params = new URLSearchParams(location.search);
+  const sceneId = params.get('scene') || 'film';
+  const embed = params.get('embed') === '1';
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  const scene = window.SCENES[sceneId];
+  const ui = document.getElementById('ui');
+  const playBtn = document.getElementById('play');
+  const loopBtn = document.getElementById('loop');
+  const scrub = document.getElementById('scrub');
+  const tlabel = document.getElementById('tlabel');
+
+  if (embed) ui.classList.add('hidden');
+  scrub.max = scene.duration;
+
+  let playing = true, looping = true, startT = 0, pauseAt = 0;
+
+  function render(t) {
+    ctx.save();
+    scene.draw(ctx, Math.max(0, Math.min(t, scene.duration)));
+    ctx.restore();
+    scrub.value = t;
+    tlabel.textContent = `${t.toFixed(1)} / ${scene.duration.toFixed(1)}`;
+  }
+
+  function frame(now) {
+    if (playing) {
+      let t = (now / 1000) - startT;
+      if (t >= scene.duration) {
+        if (looping) { startT = now / 1000; t = 0; }
+        else { t = scene.duration; playing = false; playBtn.textContent = '▶ Play'; }
+      }
+      pauseAt = t;
+      render(t);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // controls
+  playBtn.onclick = () => {
+    playing = !playing;
+    playBtn.textContent = playing ? '⏸ Pause' : '▶ Play';
+    if (playing) startT = performance.now() / 1000 - pauseAt;
+  };
+  loopBtn.onclick = () => { looping = !looping; loopBtn.textContent = `↻ Loop: ${looping ? 'on' : 'off'}`; };
+  scrub.oninput = () => { playing = false; playBtn.textContent = '▶ Play'; pauseAt = +scrub.value; render(pauseAt); };
+
+  // expose seek for the headless recorder (record-scene.js)
+  window.seek = t => { render(t); return t >= scene.duration; };
+  window.ready = (async () => { await document.fonts.ready; render(0); return { id: sceneId, duration: scene.duration }; })();
+
+  window.ready.then(() => { startT = performance.now() / 1000; requestAnimationFrame(frame); });
+</script>
