@@ -38,10 +38,14 @@
   /* scoreboard slide — two bar-chart panels side by side */
   .sb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(28px,5vw,72px);
     align-items: start; margin-top: 1vh; }
-  .sb-panel { display: flex; flex-direction: column; align-items: center; }
+  .sb-panel { display: flex; flex-direction: column; align-items: center;
+    background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.12);
+    border-radius: 16px; padding: clamp(18px,3vh,30px) clamp(16px,2.5vw,32px) clamp(14px,2.4vh,24px); }
   .sb-h { font-family: 'Space Grotesk', sans-serif; font-weight: 600; color: #eceef2;
     font-size: clamp(.92rem, 2vh, 1.12rem); margin-bottom: 2vh; text-align: center; }
-  .sb-panel .dg-bars { height: 22vh; }
+  .sb-panel .dg-bars { height: 22vh; gap: 6px; }
+  .sb-panel .dg-bar { width: clamp(20px,2.4vw,34px); }
+  .sb-panel .dg-bar small { left:-45%; right:-45%; }
   .sb-legend { display: flex; gap: 1.3rem; justify-content: center; margin-top: 1.2vh;
     font-size: clamp(.72rem,1.5vh,.82rem); color: #aab1bf; }
   .sb-legend i { display: inline-block; width: 11px; height: 11px; border-radius: 3px;
@@ -328,25 +332,29 @@
       <div class="sb-grid">
 
         <div class="sb-panel">
-          <div class="sb-h">SWE-bench — solve rate ↑<br><small style="font-weight:400;color:#aab1bf">best memory run vs no-memory baseline</small></div>
+          <div class="sb-h">SWE-Bench-CL — solve rate ↑<br><small style="font-weight:400;color:#aab1bf">no memory vs naive memory vs cookbook · apples-to-apples (same agent &amp; commit)</small></div>
           <div class="dg-chart">
             <div class="dg-group">
               <div class="dg-bars">
-                <div class="dg-bar" style="--h:72%;--c:var(--slate,#6b7280)"><span>72%</span><small>base</small></div>
-                <div class="dg-bar" style="--h:78%;--c:var(--blue)"><span>78%</span><small>memory</small></div>
+                <div class="dg-bar" style="--h:20%;--c:var(--slate,#6b7280)"><span>20%</span></div>
+                <div class="dg-bar" style="--h:22%;--c:var(--orange)"><span>22%</span></div>
+                <div class="dg-bar" style="--h:26%;--c:var(--blue)"><span>26%</span></div>
               </div>
               <div class="dg-label">Django</div>
             </div>
             <div class="dg-group">
               <div class="dg-bars">
-                <div class="dg-bar" style="--h:88%;--c:var(--blue)"><span>88%</span><small>memory</small></div>
+                <div class="dg-bar" style="--h:90%;--c:var(--slate,#6b7280)"><span>90%</span></div>
+                <div class="dg-bar" style="--h:90%;--c:var(--orange)"><span>90%</span></div>
+                <div class="dg-bar" style="--h:90%;--c:var(--blue)"><span>90%</span></div>
               </div>
-              <div class="dg-label">Sympy <small style="display:block;font-weight:400;color:#aab1bf">no base run</small></div>
+              <div class="dg-label">Sympy <small style="display:block;font-weight:400;color:#aab1bf">near ceiling — all saturate</small></div>
             </div>
           </div>
           <div class="sb-legend">
             <span><i style="background:var(--slate,#6b7280)"></i>no memory</span>
-            <span><i style="background:var(--blue)"></i>with memory</span>
+            <span><i style="background:var(--orange)"></i>naive memory</span>
+            <span><i style="background:var(--blue)"></i>cookbook</span>
           </div>
         </div>
 
