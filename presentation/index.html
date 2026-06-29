@@ -51,6 +51,15 @@
   .sb-legend i { display: inline-block; width: 11px; height: 11px; border-radius: 3px;
     margin-right: .35rem; vertical-align: -1px; }
   @media (max-width: 760px){ .sb-grid { grid-template-columns: 1fr; gap: 3vh; } }
+  /* improvement-loop slide — loop-back arrow from Tier 4 to Tier 1 */
+  .loop-wrap { position: relative; padding-bottom: 8.5vh; }
+  .loop-back { position: absolute; left: 0; right: 0; bottom: 1.2vh; width: 100%;
+    height: 8vh; overflow: visible; opacity: 0; }
+  .slide.is-active .loop-back { animation: dgRise .6s cubic-bezier(.2,.7,.3,1) .55s both; }
+  .loop-label { position: absolute; left: 0; right: 0; bottom: 2.4vh; text-align: center;
+    font-family: 'Space Grotesk', sans-serif; font-weight: 700; color: var(--accent);
+    font-size: clamp(.85rem, 1.9vh, 1.06rem); white-space: nowrap; opacity: 0; }
+  .slide.is-active .loop-label { animation: dgRise .6s cubic-bezier(.2,.7,.3,1) .7s both; }
   .router-flow { gap: .9vh; }
   .router-flow .dg-cap { margin-top: .1vh; }
   .router-flow .dg-row { flex-wrap: nowrap; }
@@ -405,14 +414,26 @@
       <h2 class="h2">The 4-tier gated improvement loop</h2>
       <p class="lead">The benchmarks aren't just a final score — they gate every change. A full run is hours and money, so each change earns its way up through cheaper tiers first; fail a tier → rejected, no spend on the next.</p>
       <div class="dg">
-        <div class="dg-row dg-stagger">
-          <div class="dg-card" style="--c:var(--blue)"><h4>Tier 1</h4><p>Golden dataset</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--teal)"><h4>Tier 2</h4><p>Categorized &amp; labelled data</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--green)"><h4>Tier 3</h4><p>Smoke test on a small dataset</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--accent)"><h4>Tier 4</h4><p>Full 9-hour run</p></div>
+        <div class="loop-wrap">
+          <div class="dg-row dg-stagger">
+            <div class="dg-card" style="--c:var(--blue)"><h4>Tier 1</h4><p>Golden dataset</p></div>
+            <span class="dg-arrow">➜</span>
+            <div class="dg-card" style="--c:var(--teal)"><h4>Tier 2</h4><p>Categorized &amp; labelled data</p></div>
+            <span class="dg-arrow">➜</span>
+            <div class="dg-card" style="--c:var(--green)"><h4>Tier 3</h4><p>Smoke test on a small dataset</p></div>
+            <span class="dg-arrow">➜</span>
+            <div class="dg-card" style="--c:var(--accent)"><h4>Tier 4</h4><p>Full 9-hour run</p></div>
+          </div>
+          <svg class="loop-back" viewBox="0 0 1000 90" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+              <marker id="loopHead" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto">
+                <path d="M0,0 L7,3 L0,6 Z" fill="var(--accent)"></path>
+              </marker>
+            </defs>
+            <path d="M958,6 C 958,72 42,72 42,16" fill="none" stroke="var(--accent)"
+              stroke-width="2.4" stroke-dasharray="7 6" marker-end="url(#loopHead)"></path>
+          </svg>
+          <span class="loop-label">↻ Memory Loop Engineering</span>
         </div>
         <div class="dg-note">↩ Fail any tier → reject the change before paying for the next, costlier one.</div>
       </div>
