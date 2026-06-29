@@ -36,8 +36,8 @@
   .tm-h { font-family: 'Space Grotesk', sans-serif; font-size: .8rem; opacity: .65;
     margin-top: .45rem; display: block; }
   /* scoreboard slide — two bar-chart panels side by side */
-  .sb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(28px,5vw,72px);
-    align-items: start; margin-top: 1vh; }
+  .sb-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: clamp(28px,5vw,72px);
+    align-items: stretch; margin-top: 1vh; }
   .sb-panel { display: flex; flex-direction: column; align-items: center;
     background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.12);
     border-radius: 16px; padding: clamp(18px,3vh,30px) clamp(16px,2.5vw,32px) clamp(14px,2.4vh,24px); }
@@ -332,7 +332,7 @@
       <div class="sb-grid">
 
         <div class="sb-panel">
-          <div class="sb-h">SWE-Bench-CL — solve rate ↑<br><small style="font-weight:400;color:#aab1bf">naive memory vs cookbook · same agent &amp; commit</small></div>
+          <div class="sb-h">SWE-Bench-CL — solve rate ↑<br><small style="font-weight:400;color:#aab1bf">naive memory vs cookbook · same agent &amp; commit · Sympy near ceiling</small></div>
           <div class="dg-chart">
             <div class="dg-group">
               <div class="dg-bars">
@@ -346,7 +346,7 @@
                 <div class="dg-bar" style="--h:90%;--c:var(--orange)"><span>90%</span></div>
                 <div class="dg-bar" style="--h:90%;--c:var(--blue)"><span>90%</span></div>
               </div>
-              <div class="dg-label">Sympy <small style="display:block;font-weight:400;color:#aab1bf">near ceiling — both saturate</small></div>
+              <div class="dg-label">Sympy</div>
             </div>
           </div>
           <div class="sb-legend">
