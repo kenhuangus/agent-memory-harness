@@ -189,10 +189,10 @@
       </div>
       <div class="film-ctrl" id="filmCtrl">
         <button class="film-btn film-btn--accent" id="filmPlay" type="button">▶ Play</button>
-        <input class="film-scrub" id="filmScrub" type="range" min="0" max="78" step="0.01" value="0"
+        <input class="film-scrub" id="filmScrub" type="range" min="0" max="81" step="0.01" value="0"
                aria-label="Scrub the animation" />
-        <span class="film-time" id="filmTime">0:00 / 1:18</span>
-        <button class="film-btn" id="filmLoop" type="button" aria-pressed="true">↻ Loop</button>
+        <span class="film-time" id="filmTime">0:00 / 1:21</span>
+        <button class="film-btn" id="filmLoop" type="button" aria-pressed="false">↻ Loop</button>
       </div>
     </div>
   </section>
@@ -458,7 +458,7 @@
     const scrub   = document.getElementById('filmScrub');
     const timeEl  = document.getElementById('filmTime');
 
-    let duration = 78, scrubbing = false, playing = false, looping = true;
+    let duration = 81, scrubbing = false, playing = false, looping = false;
     const send = (action, extra) => frame.contentWindow &&
       frame.contentWindow.postMessage(Object.assign({ type: 'film:cmd', action }, extra), '*');
 

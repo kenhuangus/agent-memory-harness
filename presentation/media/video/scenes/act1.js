@@ -76,7 +76,7 @@
   const toScreen = (wx, scroll) => BOT_SCREEN_X + (wx - scroll);
 
   window.SCENES.act1 = {
-    duration: 20.0,
+    duration: 23.0,                                     // +3s tail so the closing card can hang
     bg: '#bfe3ff',
     draw(ctx, t) {
       // ----- day/night -----
@@ -246,11 +246,13 @@
       if (t < 11.6) dayLabel(ctx, 'DAY 1', night);
       if (t > 16.2) dayLabel(ctx, 'DAY 2', night);
 
-      // ===== title card =====
+      // ===== title card — "Every day starts from zero." holds long enough to read =====
       if (t > 18.3) {
         ctx.save(); ctx.globalAlpha = seg(t, 18.3, 18.8) * 0.55;
         ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); ctx.restore();
-        titleCard(ctx, 'Every day starts from zero.', t, 18.5, 1.5, { size: 78, color: '#fff' });
+        // appears at 18.5 and dwells ~4s (through the end of the act) before the
+        // film's push-into-the-head seam takes over.
+        titleCard(ctx, 'Every day starts from zero.', t, 18.5, 4.2, { size: 78, color: '#fff' });
       }
 
       vignette(ctx);

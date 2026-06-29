@@ -3,25 +3,33 @@
 // -> Act 3 (the solution). 78s total. Embedded once in the deck as a single iframe.
 //
 // This is a pure compositor: it delegates to each act's own draw(ctx, localT) with a
-// rebased time, and dips through black at each seam (the storyboard's "push into the
-// head" / "pull back out" camera moves, read as a clean deterministic crossfade).
-// No act code is duplicated — film.js just sequences them, so the acts stay editable
-// in isolation and the seams live in one place.
+// rebased time, and joins the acts with the storyboard's CAMERA MOVES:
+//   • Act 1 -> Act 2  : PUSH IN — zoom into the robot's head, emerge inside it.
+//   • Act 2 -> Act 3  : PULL OUT — start close inside the head, recede back to the world.
+// The zoom is a pure canvas transform here (scale about a focal point) plus a short
+// black veil at the exact boundary to hide the content swap. No act code is duplicated —
+// film.js just sequences + frames them, so the acts stay editable in isolation.
 'use strict';
 (() => {
   const L = window.LIB;
-  const { W, H } = L;
+  const { W, H, clamp01 } = L;
 
-  // Each act, in order, with its source scene id. Durations are read from the
-  // registered scenes so this never drifts from the acts themselves.
   const ORDER = ['act1', 'act2', 'act3'];
-  const SEAM = 0.9;            // crossfade-through-black duration at each act boundary
+  const SEAM = 1.2;            // length of each camera move (per side of a boundary)
+  const ZOOM = 3.4;            // how far we push into the head at the peak of a seam
+
+  // Focal point of each act's "head", in canvas px — what the camera pushes toward / out of.
+  //   Act 1 / Act 3: the walking robot's head (fixed screen-x, just above the body).
+  //   Act 2: the x-ray skull fills the frame, so the focus is the canvas center.
+  const GY = H * 0.74;
+  const ROBOT_HEAD = { x: W * 0.40, y: GY - 224 };
+  const HEAD_CENTER = { x: W / 2, y: H * 0.46 };
+  const FOCUS = { act1: ROBOT_HEAD, act2: HEAD_CENTER, act3: ROBOT_HEAD };
+
+  const seg = L.seg;
+  const easeInOut = L.easeInOut;
 
   function acts() { return ORDER.map(id => window.SCENES[id]); }
-
-  // Build the timeline: each act occupies [start, start+duration); the next act starts
-  // SEAM/2 early-overlap is avoided — we keep acts sequential and just darken across the
-  // last/first SEAM seconds of adjacent acts so nothing pops.
   function layout() {
     const A = acts();
     let tcur = 0; const spans = [];
@@ -32,43 +40,54 @@
     return { spans, total: tcur };
   }
 
-  const seg = L.seg;
+  // scale the canvas by `s` about focal point (fx,fy) — i.e. zoom keeping (fx,fy) fixed.
+  function zoomAbout(ctx, fx, fy, s) {
+    ctx.translate(fx, fy);
+    ctx.scale(s, s);
+    ctx.translate(-fx, -fy);
+  }
 
   window.SCENES.film = {
-    // duration is computed from the acts at register time
     get duration() { return layout().total; },
     bg: '#0a0a0c',
     draw(ctx, t) {
       const { spans, total } = layout();
       const tt = Math.max(0, Math.min(t, total - 0.0001));
-      // find the active act
       let cur = spans[spans.length - 1];
       for (const s of spans) { if (tt >= s.start && tt < s.start + s.dur) { cur = s; break; } }
       const localT = tt - cur.start;
+      const idx = spans.indexOf(cur);
+      const isFirst = idx === 0, isLast = idx === spans.length - 1;
 
-      // draw the active act in its own local time
-      cur.scene.draw(ctx, localT);
-
-      // ---- seam dip-to-black ----
-      // darken across the final SEAM seconds of an act and the first SEAM seconds of the
-      // next, peaking at the boundary. This hides the staging jump (walk world -> head
-      // diagram -> walk world) without any per-act change.
-      let dark = 0;
-      // fade OUT at the end of this act (unless it's the very last act)
-      const isLast = cur === spans[spans.length - 1];
+      // ---- camera scale for this frame ----
+      // OUTGOING half (end of an act): push toward this act's focus, 1 -> ZOOM.
+      // INCOMING half (start of an act): emerge from the focus, ZOOM -> 1.
+      // Together, across a boundary, the camera dives into the head and back out.
+      let scale = 1, focus = FOCUS[cur.id];
       if (!isLast) {
-        const endK = seg(localT, cur.dur - SEAM, cur.dur);   // 0 -> 1 approaching the end
-        dark = Math.max(dark, endK);
+        const k = easeInOut(seg(localT, cur.dur - SEAM, cur.dur));     // 0 -> 1
+        if (k > 0) scale = 1 + (ZOOM - 1) * k;
       }
-      // fade IN at the start of this act (unless it's the very first act)
-      const isFirst = cur === spans[0];
       if (!isFirst) {
-        const startK = 1 - seg(localT, 0, SEAM);             // 1 -> 0 leaving the start
-        dark = Math.max(dark, startK);
+        const k = easeInOut(seg(localT, 0, SEAM));                     // 0 -> 1
+        if (k < 1) scale = 1 + (ZOOM - 1) * (1 - k);
       }
+
+      ctx.save();
+      if (scale !== 1) zoomAbout(ctx, focus.x, focus.y, scale);
+      cur.scene.draw(ctx, localT);
+      ctx.restore();
+
+      // ---- black veil at the exact boundary ----
+      // A brief dip right at the swap hides the content cut while the camera is deepest
+      // in the head. Peaks at the boundary, narrower than the zoom so the motion shows.
+      const VEIL = SEAM * 0.55;
+      let dark = 0;
+      if (!isLast) dark = Math.max(dark, seg(localT, cur.dur - VEIL, cur.dur));
+      if (!isFirst) dark = Math.max(dark, 1 - seg(localT, 0, VEIL));
       if (dark > 0.001) {
         ctx.save();
-        ctx.globalAlpha = Math.min(1, dark);
+        ctx.globalAlpha = clamp01(dark);
         ctx.fillStyle = '#0a0a0c';
         ctx.fillRect(0, 0, W, H);
         ctx.restore();
