@@ -42,9 +42,11 @@ media/video/
 open act1.html                       # Act 1; act2.html for Act 2
 # (player.html?scene=act1|act2 works too — it loads every scene)
 
-# embedded in the deck: the "The film" slide iframes film.html?embed=1 (UI hidden) —
-# one unified, looping animation of all three acts. The per-act players are for review.
-open ../../index.html#2
+# embedded in the deck: the "Architecture" slide iframes film.html?embed=1&paused=1
+# (its own UI hidden, starts paused on frame 0). The deck hosts a branded control bar
+# below the video — ▶ Play / scrub / ↻ Loop — and drives playback via postMessage
+# ({type:'film:cmd'} in, {type:'film:tick'} echoed back). Per-act players are for review.
+open ../../index.html#4
 
 # render the MP4 (24fps default for size; pass --fps=30 for the final master):
 cd tools && npm install
