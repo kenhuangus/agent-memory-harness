@@ -76,9 +76,13 @@
   const toScreen = (wx, scroll) => BOT_SCREEN_X + (wx - scroll);
 
   window.SCENES.act1 = {
-    duration: 30.0,    // tail: closing card hangs, then a human inserts the Cookbook Memory plugin
+    // Played 25% faster than authored: the beat timeline below is written for a 30s cut,
+    // and we remap incoming time by 30/24 so the whole act runs in 24s without rewriting
+    // every hardcoded timestamp.
+    duration: 24.0,
     bg: '#bfe3ff',
     draw(ctx, t) {
+      t *= 30.0 / 24.0;                                // 25% faster (authored at 30s)
       // ----- day/night -----
       // Night holds off until the robot has walked the last human off-screen (~11.3s).
       let night = 0;
@@ -159,10 +163,13 @@
         s.asleep = 1 - easeInOut(seg(t, 15, 16.3));
         s.eye = easeOut(seg(t, 15.6, 16.4));
         s.accessories = []; s.tint = 0; s.name = null; s.nameA = 0;
-        // confused until the plugin seats (~27.4), then proud/awake once it powers up
+        // confused until the plugin seats (~26.9), then proud/awake once it powers up
         if (t > 16.6 && t < 25.4) { s.emote = 'confused'; s.look = -0.2; }
         else if (t >= 25.4 && t < 27.4) { s.emote = 'none'; s.look = 0.3; }   // looks up at the chip
         else if (t >= 27.4) { s.emote = 'happy'; s.look = 0; }
+        // once the chip reaches the forehead slot (~26.9), the rig draws it embedded —
+        // fading in so it hands off cleanly from the traveling chip in drawPluginInsert.
+        s.plugin = clamp01(seg(t, 26.85, 27.15));
       }
 
       // ===== draw people =====
@@ -303,26 +310,23 @@
     const inserting = t >= 25.4 && t < 27.4;
     human(ctx, hx, gy, { color: C.grape, scale: 1, wave: inserting ? 1 : 0, t, face: -1 });
 
-    // the plugin's journey: it rides in the human's raised hand, then travels to the head slot.
-    // human near-hand (raised) is roughly above their head's left side when waving.
+    // the plugin's journey: it rides in the human's raised hand, then travels to the
+    // FOREHEAD slot (above the eyes). Once it seats (~26.9) the robot rig takes over
+    // drawing it embedded (s.plugin), so we only draw the traveling chip here.
     const handX = hStopX - 70, handY = gy - 250;
-    const slotX = headX, slotY = headY - 6;          // into the top of the robot's head
-    if (t >= 25.0 && t < 27.4) {
+    const slotX = headX, slotY = headY - 40;         // forehead, above the eyes
+    if (t >= 25.0 && t < 27.0) {
       const hold = seg(t, 25.0, 25.7);               // chip appears in hand
-      const travel = easeInOut(seg(t, 25.8, 26.9));  // hand -> head slot
+      const travel = easeInOut(seg(t, 25.8, 26.9));  // hand -> forehead slot
       const x = lerp(handX, slotX, travel);
       const y = lerp(handY, slotY, travel);
-      const r = lerp(34, 26, travel);
+      const r = lerp(34, 16, travel);
       // seat flash near the end
       if (travel > 0.85) {
-        const f = seg(t, 26.7, 26.95) * (1 - seg(t, 27.0, 27.4));
+        const f = seg(t, 26.7, 26.95);
         glowDotRaw(ctx, slotX, slotY, 40 * f, C.accent, 50);
       }
       plug(x, y, r, Math.min(1, hold), 26);
-    } else if (t >= 27.4) {
-      // installed: a small ◆ sits embedded in the forehead, gently pulsing
-      const pulse = 0.7 + 0.3 * Math.sin(t * 4);
-      plug(slotX, slotY, 22, 1, 16 * pulse);
     }
 
     // eyes + antenna POWER-UP once the plugin seats (27.4 -> end)

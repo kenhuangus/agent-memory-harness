@@ -265,10 +265,35 @@ function robot(ctx, s) {
   const eyeOpen = (s.eye ?? 1) * (1 - asleep);
   drawEyes(ctx, cx + tilt, headY + 2, eyeOpen, s.emote || 'none', t);
 
+  // Cookbook Memory plugin — the orange ◆ chip embedded in the FOREHEAD, above the
+  // eyes (between the visor top and the head top). Set s.plugin (0..1 alpha, or true)
+  // once Rosie has it installed; it then rides with the head in every scene + the zoom.
+  const plug = clamp01(s.plugin === true ? 1 : (s.plugin || 0));
+  if (plug > 0.01) pluginChip(ctx, cx + tilt, headY - 40, 16, plug, asleep < 0.5 ? (0.6 + 0.4 * Math.sin(t * 4)) : 0);
+
   ctx.restore();
 
   // name tag floats just under the feet
   if (s.name && (s.nameA ?? 1) > 0.01) nameTag(ctx, cx, feetY + 40, s.name, s.nameA ?? 1);
+}
+
+// The Cookbook Memory plugin glyph — an orange ◆ diamond with the brand inner cut.
+// Drawn at (x,y), radius r, alpha a; `pulse` (0..1) gently breathes the glow.
+function pluginChip(ctx, x, y, r, a = 1, pulse = 0) {
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.shadowColor = C.accent; ctx.shadowBlur = 10 + 8 * pulse;
+  ctx.fillStyle = C.accent;
+  ctx.beginPath();
+  ctx.moveTo(x, y - r); ctx.lineTo(x + r * 0.82, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r * 0.82, y); ctx.closePath();
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#0b1424';
+  const ir = r * 0.4;
+  ctx.beginPath();
+  ctx.moveTo(x, y - ir); ctx.lineTo(x + ir * 0.82, y); ctx.lineTo(x, y + ir); ctx.lineTo(x - ir * 0.82, y); ctx.closePath();
+  ctx.fill();
+  ctx.restore();
 }
 
 // a rounded name plate with the robot's earned name
@@ -813,7 +838,7 @@ function band(ctx, x, y, w, h, label, fill, ink, alpha) {
 
 window.LIB = {
   W, H, C, FONT, FONTR, clamp01, seg, easeOut, easeIn, easeInOut, easeOutBack, lerp,
-  rng, mix, backdrop, robot, human, speechBubble, hills, signpost, nameTag,
+  rng, mix, backdrop, robot, human, speechBubble, hills, signpost, nameTag, pluginChip,
   memDot, drawGlyph, glowDotRaw, roundRect, roundRectStroke,
   dayLabel, titleCard, emoteSymbol, zzz, drawSparkle, vignette, glowCircle,
   diagramNode, diagramArrow, flowDot, xrayHead, band, storeSlabCY,

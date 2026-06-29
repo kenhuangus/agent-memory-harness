@@ -108,9 +108,13 @@
   }
 
   window.SCENES.act3 = {
-    duration: 18.0,
+    // Played 25% faster than authored: the beat timeline below is written for an 18s cut,
+    // and we remap incoming time by 18/14.4 so the act runs in 14.4s without rewriting
+    // every hardcoded timestamp.
+    duration: 14.4,
     bg: '#bfe3ff',
     draw(ctx, t) {
+      t *= 18.0 / 14.4;                               // 25% faster (authored at 18s)
       // ----- day/night: same arc as Act 1, but Day-2 wake keeps everything -----
       let night = 0;
       if (t < 7.5) night = 0;
@@ -148,6 +152,7 @@
         walk: (st.walking && t < WALK_END + 0.05) ? 1 : 0,
         face: 1, eye: 1, look: 0, emote: 'none',
         asleep: 0, accessories: [], tint: 0, name: null, nameA: 0,
+        plugin: 1,            // Rosie carries the Cookbook Memory plugin on her forehead now
       };
 
       // personality + held dots accrue from people met (NEVER drains in Act 3)
@@ -344,37 +349,114 @@
         titleCard(ctx, 'Now it remembers.', t, 14.0, 2.0, { size: 80, color: '#fff', y: H * 0.30 });
       }
 
-      // ===== end card / loop seam =====
+      // ===== end card / loop seam — what the plugin actually IS =====
+      // The orange ◆ Cookbook Memory diamond, with its three real components plugged in:
+      // Skills, MCP, and Hooks. (Authored on the 16.0–18.0 window of the 18s cut.)
       if (t >= 16.0) {
-        const a = seg(t, 16.0, 16.6);
+        const a = seg(t, 16.0, 16.5);
         ctx.save();
         ctx.globalAlpha = a;
         ctx.fillStyle = '#0b1424'; ctx.fillRect(0, 0, W, H);
-        // diamond logo
-        const cx = W / 2, cyl = H * 0.42;
-        ctx.translate(cx, cyl);
+        ctx.restore();
+
+        const cx = W / 2, dy = H * 0.30;               // diamond center
+        const rowY = H * 0.56;                          // component row
+
+        // ---- the three components plug into the diamond (lines draw first, behind) ----
+        const COMPS = [
+          { key: 'skills', label: 'Skills', x: cx - 360, born: 16.7 },
+          { key: 'mcp',    label: 'MCP',    x: cx,       born: 16.85 },
+          { key: 'hooks',  label: 'Hooks',  x: cx + 360, born: 17.0 },
+        ];
+        for (const c of COMPS) {
+          const k = easeInOut(seg(t, c.born, c.born + 0.5));
+          if (k <= 0) continue;
+          // connector from the diamond down to the card top, drawing in as it "plugs in"
+          ctx.save();
+          ctx.globalAlpha = 0.55 * k;
+          ctx.strokeStyle = C.accent; ctx.lineWidth = 3; ctx.setLineDash([6, 7]); ctx.lineCap = 'round';
+          const topY = rowY - 64, fromX = cx, fromY = dy + 60;
+          const ex = lerp(fromX, c.x, k), ey = lerp(fromY, topY, k);
+          ctx.beginPath(); ctx.moveTo(fromX, fromY); ctx.lineTo(ex, ey); ctx.stroke();
+          ctx.restore();
+        }
+
+        // ---- diamond logo (pops first) ----
+        ctx.save();
+        ctx.translate(cx, dy);
         const dp = easeOutBack(seg(t, 16.2, 16.8));
-        ctx.save(); ctx.scale(dp, dp);
+        ctx.scale(dp, dp);
         ctx.fillStyle = C.accent; ctx.shadowColor = C.accent; ctx.shadowBlur = 30;
         ctx.beginPath();
         ctx.moveTo(0, -54); ctx.lineTo(46, 0); ctx.lineTo(0, 54); ctx.lineTo(-46, 0); ctx.closePath(); ctx.fill();
         ctx.shadowBlur = 0; ctx.fillStyle = '#0b1424';
         ctx.beginPath(); ctx.moveTo(0, -22); ctx.lineTo(19, 0); ctx.lineTo(0, 22); ctx.lineTo(-19, 0); ctx.closePath(); ctx.fill();
         ctx.restore();
-        ctx.restore();
-        // wordmark + tagline
-        const a2 = seg(t, 16.5, 17.0);
+
+        // ---- component cards (icon + label), each pops in on its own beat ----
+        for (const c of COMPS) {
+          const k = easeOutBack(seg(t, c.born + 0.15, c.born + 0.65));
+          if (k <= 0.01) continue;
+          componentCard(ctx, c.x, rowY, c.key, c.label, Math.min(1, seg(t, c.born + 0.15, c.born + 0.45)), k);
+        }
+
+        // ---- wordmark + tagline ----
+        const a2 = seg(t, 17.2, 17.6);
         ctx.save(); ctx.globalAlpha = a2;
-        ctx.fillStyle = '#fff'; ctx.font = FONT(56); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('Cookbook Memory', W / 2, H * 0.42 + 120);
-        ctx.fillStyle = 'rgba(205,215,226,0.92)'; ctx.font = FONTR(30);
-        ctx.fillText('Persistent, self-curating memory for coding agents.', W / 2, H * 0.42 + 172);
+        ctx.fillStyle = '#fff'; ctx.font = FONT(54); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('Cookbook Memory', cx, H * 0.80);
+        ctx.fillStyle = 'rgba(205,215,226,0.92)'; ctx.font = FONTR(28);
+        ctx.fillText('Skills · MCP · Hooks — persistent, self-curating memory for coding agents.', cx, H * 0.80 + 48);
         ctx.restore();
       }
 
       if (t < 16.0) vignette(ctx);
     },
   };
+
+  // ---- end-card component card: a rounded chip with an icon + label, representing
+  // one real piece of the plugin (Skills / MCP / Hooks) plugged into the diamond. ----
+  function componentCard(ctx, cx, cy, key, label, alpha, pop) {
+    if (alpha <= 0.01) return;
+    const w = 260, h = 128;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, alpha);
+    ctx.translate(cx, cy); ctx.scale(pop, pop); ctx.translate(-cx, -cy);
+    // card body
+    roundRect(ctx, cx - w / 2, cy - h / 2, w, h, 18, 'rgba(20,36,62,0.95)');
+    ctx.strokeStyle = 'rgba(255,106,43,0.55)'; ctx.lineWidth = 2.5;
+    roundRectStroke(ctx, cx - w / 2, cy - h / 2, w, h, 18);
+    // icon
+    componentIcon(ctx, cx, cy - 18, 26, key);
+    // label
+    ctx.fillStyle = '#fff'; ctx.font = FONT(28); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, cx, cy + 38);
+    ctx.restore();
+  }
+
+  // icons for the three components, drawn in the brand accent.
+  function componentIcon(ctx, x, y, r, key) {
+    ctx.save();
+    if (key === 'skills') {
+      // a lightbulb — a learned capability
+      drawGlyph(ctx, x, y, r, 'bulb', C.accent);
+    } else if (key === 'mcp') {
+      // a gear — the MCP server / protocol mechanism
+      drawGlyph(ctx, x, y, r, 'gear', C.accent);
+    } else {
+      // a hook — a literal hook shape (lifecycle hooks)
+      ctx.strokeStyle = C.accent; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x, y - r);                                  // top of the shank
+      ctx.lineTo(x, y + r * 0.15);                           // down the shank
+      ctx.arc(x - r * 0.5, y + r * 0.15, r * 0.5, 0, Math.PI, false);  // the curl
+      ctx.stroke();
+      // a little eyelet at the top
+      ctx.beginPath(); ctx.arc(x, y - r, r * 0.22, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore(); return;
+    }
+    ctx.restore();
+  }
 
   // ---- act3-local helpers ---------------------------------------------------
   // a guarded glow circle (lib.glowCircle exists but keep a local fallback for safety)

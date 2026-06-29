@@ -18,6 +18,12 @@
   const SEAM = 1.2;            // length of each camera move (per side of a boundary)
   const ZOOM = 3.4;            // how far we push into the head at the peak of a seam
 
+  // Camera move at each boundary between acts (ORDER[i] -> ORDER[i+1]):
+  //   'in'  = PUSH IN  : outgoing act zooms 1->ZOOM into its head, incoming emerges ZOOM->1.
+  //   'out' = PULL OUT : outgoing act holds wide (no zoom), incoming act OPENS at ZOOM on
+  //                      its head and recedes ZOOM->1 — one continuous pull back to the world.
+  const BOUNDARY = ['in', 'out'];   // act1->act2 dives in; act2->act3 pulls back out
+
   // Focal point of each act's "head", in canvas px — what the camera pushes toward / out of.
   //   Act 1 / Act 3: the walking robot's head (fixed screen-x, just above the body).
   //   Act 2: the x-ray skull fills the frame, so the focus is the canvas center.
@@ -60,11 +66,13 @@
       const isFirst = idx === 0, isLast = idx === spans.length - 1;
 
       // ---- camera scale for this frame ----
-      // OUTGOING half (end of an act): push toward this act's focus, 1 -> ZOOM.
-      // INCOMING half (start of an act): emerge from the focus, ZOOM -> 1.
-      // Together, across a boundary, the camera dives into the head and back out.
+      // Each boundary is 'in' (push into the head) or 'out' (pull back to the world).
+      //   OUTGOING half of act idx  uses BOUNDARY[idx]   (the move INTO the next act).
+      //   INCOMING half of act idx  uses BOUNDARY[idx-1] (the move OUT of the prev act).
+      // 'in' : outgoing 1->ZOOM,  incoming ZOOM->1  (dive in, then emerge in the next act).
+      // 'out': outgoing stays 1,  incoming ZOOM->1  (next act OPENS close, recedes to world).
       let scale = 1, focus = FOCUS[cur.id];
-      if (!isLast) {
+      if (!isLast && BOUNDARY[idx] === 'in') {
         const k = easeInOut(seg(localT, cur.dur - SEAM, cur.dur));     // 0 -> 1
         if (k > 0) scale = 1 + (ZOOM - 1) * k;
       }
