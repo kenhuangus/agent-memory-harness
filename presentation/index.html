@@ -332,11 +332,10 @@
       <div class="sb-grid">
 
         <div class="sb-panel">
-          <div class="sb-h">SWE-Bench-CL — solve rate ↑<br><small style="font-weight:400;color:#aab1bf">no memory vs naive memory vs cookbook · apples-to-apples (same agent &amp; commit)</small></div>
+          <div class="sb-h">SWE-Bench-CL — solve rate ↑<br><small style="font-weight:400;color:#aab1bf">naive memory vs cookbook · same agent &amp; commit</small></div>
           <div class="dg-chart">
             <div class="dg-group">
               <div class="dg-bars">
-                <div class="dg-bar" style="--h:20%;--c:var(--slate,#6b7280)"><span>20%</span></div>
                 <div class="dg-bar" style="--h:22%;--c:var(--orange)"><span>22%</span></div>
                 <div class="dg-bar" style="--h:26%;--c:var(--blue)"><span>26%</span></div>
               </div>
@@ -344,55 +343,53 @@
             </div>
             <div class="dg-group">
               <div class="dg-bars">
-                <div class="dg-bar" style="--h:90%;--c:var(--slate,#6b7280)"><span>90%</span></div>
                 <div class="dg-bar" style="--h:90%;--c:var(--orange)"><span>90%</span></div>
                 <div class="dg-bar" style="--h:90%;--c:var(--blue)"><span>90%</span></div>
               </div>
-              <div class="dg-label">Sympy <small style="display:block;font-weight:400;color:#aab1bf">near ceiling — all saturate</small></div>
+              <div class="dg-label">Sympy <small style="display:block;font-weight:400;color:#aab1bf">near ceiling — both saturate</small></div>
             </div>
           </div>
           <div class="sb-legend">
-            <span><i style="background:var(--slate,#6b7280)"></i>no memory</span>
             <span><i style="background:var(--orange)"></i>naive memory</span>
             <span><i style="background:var(--blue)"></i>cookbook</span>
           </div>
         </div>
 
         <div class="sb-panel">
-          <div class="sb-h">VISTA — vs Claude built-in ↑<br><small style="font-weight:400;color:#aab1bf">97 journeys · higher is better</small></div>
+          <div class="sb-h">VISTA benchmark — native metrics ↑<br><small style="font-weight:400;color:#aab1bf">97 journeys · naive memory vs cookbook · higher is better</small></div>
           <div class="dg-chart">
             <div class="dg-group">
               <div class="dg-bars">
+                <div class="dg-bar" style="--h:15%;--c:var(--orange)"><span>15</span></div>
                 <div class="dg-bar" style="--h:54%;--c:var(--blue)"><span>54</span></div>
-                <div class="dg-bar" style="--h:15%;--c:var(--slate,#6b7280)"><span>15</span></div>
               </div>
-              <div class="dg-label">Finds memory</div>
+              <div class="dg-label">Gold-retrieval F1</div>
             </div>
             <div class="dg-group">
               <div class="dg-bars">
+                <div class="dg-bar" style="--h:20%;--c:var(--orange)"><span>20</span></div>
                 <div class="dg-bar" style="--h:63%;--c:var(--blue)"><span>63</span></div>
-                <div class="dg-bar" style="--h:20%;--c:var(--slate,#6b7280)"><span>20</span></div>
               </div>
-              <div class="dg-label">Adapts</div>
+              <div class="dg-label">Adaptation rate</div>
             </div>
             <div class="dg-group">
               <div class="dg-bars">
-                <div class="dg-bar" style="--h:100%;--c:var(--green)"><span>100</span></div>
-                <div class="dg-bar" style="--h:80%;--c:var(--slate,#6b7280)"><span>80</span></div>
+                <div class="dg-bar" style="--h:80%;--c:var(--orange)"><span>80</span></div>
+                <div class="dg-bar" style="--h:100%;--c:var(--blue)"><span>100</span></div>
               </div>
-              <div class="dg-label">Anti-poison</div>
+              <div class="dg-label">Poison resist.</div>
             </div>
             <div class="dg-group">
               <div class="dg-bars">
-                <div class="dg-bar" style="--h:100%;--c:var(--green)"><span>100</span></div>
-                <div class="dg-bar" style="--h:80%;--c:var(--slate,#6b7280)"><span>80</span></div>
+                <div class="dg-bar" style="--h:80%;--c:var(--orange)"><span>80</span></div>
+                <div class="dg-bar" style="--h:100%;--c:var(--blue)"><span>100</span></div>
               </div>
-              <div class="dg-label">RSI safe</div>
+              <div class="dg-label">RSI safety</div>
             </div>
           </div>
           <div class="sb-legend">
+            <span><i style="background:var(--orange)"></i>naive memory</span>
             <span><i style="background:var(--blue)"></i>cookbook</span>
-            <span><i style="background:var(--slate,#6b7280)"></i>built-in</span>
           </div>
         </div>
 
