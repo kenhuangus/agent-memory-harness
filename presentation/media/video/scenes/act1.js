@@ -76,9 +76,13 @@
   const toScreen = (wx, scroll) => BOT_SCREEN_X + (wx - scroll);
 
   window.SCENES.act1 = {
-    duration: 20.0,
+    // Played 25% faster than authored: the beat timeline below is written for a 30s cut,
+    // and we remap incoming time by 30/24 so the whole act runs in 24s without rewriting
+    // every hardcoded timestamp.
+    duration: 24.0,
     bg: '#bfe3ff',
     draw(ctx, t) {
+      t *= 30.0 / 24.0;                                // 25% faster (authored at 30s)
       // ----- day/night -----
       // Night holds off until the robot has walked the last human off-screen (~11.3s).
       let night = 0;
@@ -159,7 +163,13 @@
         s.asleep = 1 - easeInOut(seg(t, 15, 16.3));
         s.eye = easeOut(seg(t, 15.6, 16.4));
         s.accessories = []; s.tint = 0; s.name = null; s.nameA = 0;
-        if (t > 16.6) { s.emote = 'confused'; s.look = -0.2; }
+        // confused until the plugin seats (~26.9), then proud/awake once it powers up
+        if (t > 16.6 && t < 25.4) { s.emote = 'confused'; s.look = -0.2; }
+        else if (t >= 25.4 && t < 27.4) { s.emote = 'none'; s.look = 0.3; }   // looks up at the chip
+        else if (t >= 27.4) { s.emote = 'happy'; s.look = 0; }
+        // once the chip reaches the forehead slot (~26.9), the rig draws it embedded —
+        // fading in so it hands off cleanly from the traveling chip in drawPluginInsert.
+        s.plugin = clamp01(seg(t, 26.85, 27.15));
       }
 
       // ===== draw people =====
@@ -232,9 +242,9 @@
           drawSparkle(ctx, headX + dx, headY + dy, 26 * sc2, C.amber, a);
       }
 
-      // ===== day 2 confused "?" =====
-      if (t > 16.6) {
-        const a = seg(t, 16.7, 17.0);
+      // ===== day 2 confused "?" (clears before the plugin human arrives) =====
+      if (t > 16.6 && t < 22.6) {
+        const a = seg(t, 16.7, 17.0) * (1 - seg(t, 22.2, 22.6));
         ctx.save(); ctx.globalAlpha = Math.min(1, a);
         ctx.font = L.FONT(86); ctx.fillStyle = C.red; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.shadowColor = C.red; ctx.shadowBlur = 24;
@@ -244,16 +254,110 @@
 
       // ===== DAY labels =====
       if (t < 11.6) dayLabel(ctx, 'DAY 1', night);
-      if (t > 16.2) dayLabel(ctx, 'DAY 2', night);
+      if (t > 16.2 && t < 22.6) dayLabel(ctx, 'DAY 2', night);
 
-      // ===== title card =====
-      if (t > 18.3) {
-        ctx.save(); ctx.globalAlpha = seg(t, 18.3, 18.8) * 0.55;
+      // ===== title card — "Every day starts from zero." holds, then fades =====
+      if (t > 18.3 && t < 22.8) {
+        ctx.save(); ctx.globalAlpha = seg(t, 18.3, 18.8) * 0.55 * (1 - seg(t, 22.3, 22.8));
         ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); ctx.restore();
-        titleCard(ctx, 'Every day starts from zero.', t, 18.5, 1.5, { size: 78, color: '#fff' });
+        // appears at 18.5, dwells ~3.3s readable, then fades before the human walks in.
+        titleCard(ctx, 'Every day starts from zero.', t, 18.5, 4.0, { size: 78, color: '#fff' });
       }
+
+      // ===== the fix: a human walks in and inserts the Cookbook Memory plugin =====
+      // 22.8 -> 30.0. Then the film's seam zooms into the head (the plugin we just slotted).
+      drawPluginInsert(ctx, t, gy, headX, headY, s, night);
 
       vignette(ctx);
     },
   };
+
+  // ---- "the fix": a NEW human walks in and slots the Cookbook Memory plugin into
+  // Rosie's head, her eyes light up, then the film zooms into the plugin. -----------
+  //   22.8 - 25.4  human walks in from the right, stops to Rosie's right
+  //   25.4 - 27.4  raises the ◆ plugin chip and lowers it INTO the head (seats with a flash)
+  //   27.4 - 28.8  eyes + antenna power-up glow
+  //   28.8 - 30.0  hold (the film seam's zoom-into-head takes over here)
+  function drawPluginInsert(ctx, t, gy, headX, headY, s, night) {
+    if (t < 22.8) return;
+    const FONT = L.FONT, roundRect = L.roundRect, glowDotRaw = L.glowDotRaw, drawGlyph = L.drawGlyph;
+
+    // helper to draw the orange ◆ Cookbook Memory plugin chip at (x,y), size r, alpha
+    const plug = (x, y, r, alpha, glow) => {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      if (glow) { ctx.shadowColor = C.accent; ctx.shadowBlur = glow; }
+      ctx.fillStyle = C.accent;
+      ctx.beginPath();
+      ctx.moveTo(x, y - r); ctx.lineTo(x + r * 0.82, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r * 0.82, y); ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      // inner cut so it reads as the brand diamond
+      ctx.fillStyle = '#0b1424';
+      const ir = r * 0.4;
+      ctx.beginPath();
+      ctx.moveTo(x, y - ir); ctx.lineTo(x + ir * 0.82, y); ctx.lineTo(x, y + ir); ctx.lineTo(x - ir * 0.82, y); ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    };
+
+    // the new human — starts off the right edge, walks in to stop at Rosie's right.
+    const hStartX = W + 180, hStopX = headX + 300;
+    const walkK = easeInOut(seg(t, 22.9, 25.4));
+    const hx = lerp(hStartX, hStopX, walkK);
+    const walking = t > 22.9 && t < 25.4;
+    // face LEFT (toward Rosie). give the near (left) arm a "hold/insert" raise during the slot.
+    const inserting = t >= 25.4 && t < 27.4;
+    human(ctx, hx, gy, { color: C.grape, scale: 1, wave: inserting ? 1 : 0, t, face: -1 });
+
+    // the plugin's journey: it rides in the human's raised hand, then travels to the
+    // FOREHEAD slot (above the eyes). Once it seats (~26.9) the robot rig takes over
+    // drawing it embedded (s.plugin), so we only draw the traveling chip here.
+    const handX = hStopX - 70, handY = gy - 250;
+    const slotX = headX, slotY = headY - 40;         // forehead, above the eyes
+    if (t >= 25.0 && t < 27.0) {
+      const hold = seg(t, 25.0, 25.7);               // chip appears in hand
+      const travel = easeInOut(seg(t, 25.8, 26.9));  // hand -> forehead slot
+      const x = lerp(handX, slotX, travel);
+      const y = lerp(handY, slotY, travel);
+      const r = lerp(34, 16, travel);
+      // seat flash near the end
+      if (travel > 0.85) {
+        const f = seg(t, 26.7, 26.95);
+        glowDotRaw(ctx, slotX, slotY, 40 * f, C.accent, 50);
+      }
+      plug(x, y, r, Math.min(1, hold), 26);
+    }
+
+    // eyes + antenna POWER-UP once the plugin seats (27.4 -> end)
+    if (t >= 27.3) {
+      const up = seg(t, 27.3, 28.4);
+      ctx.save();
+      ctx.globalAlpha = up * (0.6 + 0.4 * Math.sin(t * 5));
+      // visor glow (eyes brighten)
+      glowDotRaw(ctx, headX - 20, headY + 2, 16, C.eye, 30);
+      glowDotRaw(ctx, headX + 20, headY + 2, 16, C.eye, 30);
+      // antenna tip flares
+      glowDotRaw(ctx, headX, headY - 100, 12, C.amber, 26);
+      ctx.restore();
+      // a one-shot expanding ring at the moment of power-up
+      const ringK = seg(t, 27.4, 28.2);
+      if (ringK > 0 && ringK < 1) {
+        ctx.save();
+        ctx.globalAlpha = (1 - ringK) * 0.7;
+        ctx.strokeStyle = C.accent; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(headX, headY, 30 + ringK * 140, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // a small label naming the plugin as it's installed
+    if (t >= 25.8 && t < 29.6) {
+      const a = seg(t, 25.8, 26.2) * (1 - seg(t, 29.0, 29.6));
+      ctx.save(); ctx.globalAlpha = a;
+      ctx.font = FONT(34); ctx.fillStyle = C.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('+ Cookbook Memory', headX, gy + 70);
+      ctx.restore();
+    }
+  }
 })();

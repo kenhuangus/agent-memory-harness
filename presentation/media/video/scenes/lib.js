@@ -265,10 +265,35 @@ function robot(ctx, s) {
   const eyeOpen = (s.eye ?? 1) * (1 - asleep);
   drawEyes(ctx, cx + tilt, headY + 2, eyeOpen, s.emote || 'none', t);
 
+  // Cookbook Memory plugin — the orange ◆ chip embedded in the FOREHEAD, above the
+  // eyes (between the visor top and the head top). Set s.plugin (0..1 alpha, or true)
+  // once Rosie has it installed; it then rides with the head in every scene + the zoom.
+  const plug = clamp01(s.plugin === true ? 1 : (s.plugin || 0));
+  if (plug > 0.01) pluginChip(ctx, cx + tilt, headY - 40, 16, plug, asleep < 0.5 ? (0.6 + 0.4 * Math.sin(t * 4)) : 0);
+
   ctx.restore();
 
   // name tag floats just under the feet
   if (s.name && (s.nameA ?? 1) > 0.01) nameTag(ctx, cx, feetY + 40, s.name, s.nameA ?? 1);
+}
+
+// The Cookbook Memory plugin glyph — an orange ◆ diamond with the brand inner cut.
+// Drawn at (x,y), radius r, alpha a; `pulse` (0..1) gently breathes the glow.
+function pluginChip(ctx, x, y, r, a = 1, pulse = 0) {
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.shadowColor = C.accent; ctx.shadowBlur = 10 + 8 * pulse;
+  ctx.fillStyle = C.accent;
+  ctx.beginPath();
+  ctx.moveTo(x, y - r); ctx.lineTo(x + r * 0.82, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r * 0.82, y); ctx.closePath();
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#0b1424';
+  const ir = r * 0.4;
+  ctx.beginPath();
+  ctx.moveTo(x, y - ir); ctx.lineTo(x + ir * 0.82, y); ctx.lineTo(x, y + ir); ctx.lineTo(x - ir * 0.82, y); ctx.closePath();
+  ctx.fill();
+  ctx.restore();
 }
 
 // a rounded name plate with the robot's earned name
@@ -327,9 +352,12 @@ function human(ctx, x, feetY, { color = C.violet, scale = 1.18, wave = 0, t = 0,
   ctx.save();
   const S = scale;
   const headR = 60 * S;                        // big South-Park head
-  const bodyW = 84 * S, bodyH = 150 * S;       // narrower upright torso (limbs read clearly)
+  // legs are drawn first; the torso sits ABOVE them (only a slight overlap) so the
+  // legs read as clearly visible limbs rather than being swallowed by a long torso.
+  const legW = 26 * S, legH = 64 * S, legGap = 8 * S;
+  const bodyW = 84 * S, bodyH = 124 * S;       // narrower upright torso (limbs read clearly)
   const bodyX = x - bodyW / 2;
-  const bodyY = feetY - bodyH;                 // top of torso
+  const bodyY = feetY - legH - bodyH + 16 * S; // bottom of torso overlaps the leg tops by 16S
   const headCY = bodyY - headR + 12 * S;       // head overlaps torso top slightly
   const legCol = mix(color, '#000', 0.5);
   const armW = 22 * S, armL = 78 * S;
@@ -339,7 +367,6 @@ function human(ctx, x, feetY, { color = C.violet, scale = 1.18, wave = 0, t = 0,
   ctx.beginPath(); ctx.ellipse(x, feetY + 4, 50 * S, 11 * S, 0, 0, Math.PI * 2); ctx.fill();
 
   // distinct legs (two clear cutout limbs with a gap between them)
-  const legW = 26 * S, legH = 52 * S, legGap = 8 * S;
   roundRect(ctx, x - legGap - legW, feetY - legH, legW, legH, 9 * S, legCol);
   roundRect(ctx, x + legGap,        feetY - legH, legW, legH, 9 * S, legCol);
   // shoes
@@ -811,7 +838,7 @@ function band(ctx, x, y, w, h, label, fill, ink, alpha) {
 
 window.LIB = {
   W, H, C, FONT, FONTR, clamp01, seg, easeOut, easeIn, easeInOut, easeOutBack, lerp,
-  rng, mix, backdrop, robot, human, speechBubble, hills, signpost, nameTag,
+  rng, mix, backdrop, robot, human, speechBubble, hills, signpost, nameTag, pluginChip,
   memDot, drawGlyph, glowDotRaw, roundRect, roundRectStroke,
   dayLabel, titleCard, emoteSymbol, zzz, drawSparkle, vignette, glowCircle,
   diagramNode, diagramArrow, flowDot, xrayHead, band, storeSlabCY,

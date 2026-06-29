@@ -25,10 +25,10 @@ media/video/
   act3.html            Act 3 player (defaults ?scene=act3; same shell)
   player.html          generic player — picks scene via ?scene=; used by the tools
   scenes/lib.js        shared rig: robot, memory dots, day/night, diagram primitives, easing, palette
-  scenes/act1.js       Act 1 scene — draw(ctx, t), 20s
+  scenes/act1.js       Act 1 scene — draw(ctx, t), 24s (authored at 30s, played 25% faster)
   scenes/act2.js       Act 2 scene — draw(ctx, t), 40s
-  scenes/act3.js       Act 3 scene — draw(ctx, t), 18s
-  scenes/film.js       compositor — sequences act1+act2+act3 into one draw(ctx, t), 78s
+  scenes/act3.js       Act 3 scene — draw(ctx, t), 14.4s (authored at 18s, played 25% faster)
+  scenes/film.js       compositor — sequences act1+act2+act3 into one draw(ctx, t), 78.4s
   tools/record-scene.js  headless render -> build/<scene>.mp4
   tools/snap.js          headless PNG snapshots at given times (review)
   tools/check-embed.js   screenshot the deck slide with the embed
@@ -42,13 +42,15 @@ media/video/
 open act1.html                       # Act 1; act2.html for Act 2
 # (player.html?scene=act1|act2 works too — it loads every scene)
 
-# embedded in the deck: the "The film" slide iframes film.html?embed=1 (UI hidden) —
-# one unified, looping animation of all three acts. The per-act players are for review.
-open ../../index.html#2
+# embedded in the deck: the "Architecture" slide iframes film.html?embed=1&paused=1
+# (its own UI hidden, starts paused on frame 0). The deck hosts a branded control bar
+# below the video — ▶ Play / scrub / ↻ Loop — and drives playback via postMessage
+# ({type:'film:cmd'} in, {type:'film:tick'} echoed back). Per-act players are for review.
+open ../../index.html#4
 
 # render the MP4 (24fps default for size; pass --fps=30 for the final master):
 cd tools && npm install
-node record-scene.js film --fps=24   # -> build/film.mp4  (all three acts, 78s)
+node record-scene.js film --fps=24   # -> build/film.mp4  (all three acts, 78.4s)
 node record-scene.js act1 --fps=24   # -> build/act1.mp4
 node record-scene.js act2 --fps=24   # -> build/act2.mp4
 node record-scene.js act3 --fps=24   # -> build/act3.mp4
@@ -73,18 +75,20 @@ node snap.js act3 2.5 5.5 9.8 13 14.5 17
 - The robot is a **reusable rig** (`lib.robot`) so Act 3 can mirror Act 1
   beat-for-beat with the identical character — the storyboard's key before/after.
 
-## Act 1 beat map (20s) — side-scrolling journey
+## Act 1 beat map (authored at 30s, played in 24s) — side-scrolling journey
 
 The robot **walks** (parallax world: hills, signposts) rightward through its day,
 meeting people, learning, earning a **name** and a **personality** — then night
-wipes all of it.
+wipes all of it. (Beat times below are in the authored 30s timeline; `draw` remaps
+incoming time by 30/24 so the whole act plays 25% faster without rewriting beats.)
 
 | Time | Beat |
 |---|---|
 | 0.5–11.3 | DAY 1 — robot walks right, STOPPING at each of 3 tall South-Park-style humans. At each stop the human **waves**, their **speech bubble** appears above their head (the lesson) **before** the robot receives the memory dot + a personality item. Person #1 **names it "Rosie"** (name tag + sparkle). Lessons (useful dev conventions): "You're Rosie!" → 🔧, "Run tests first" → 💡, "Small commits" → 🔑. Personality accrues: hat, scarf, badge, warmer tint. Robot then walks the last human off-screen before dusk. |
 | 11.4–15.0 | Night — robot slumps asleep alone, Zzz; the name, accessories, body tint and every memory dot **drain away**, staggered. |
 | 15.0–16.5 | DAY 2 — a **blank grey robot**, no name, no items, back at the start of the world; wakes up. |
-| 16.6–20.0 | confused "?" → title card "Every day starts from zero." |
+| 16.6–22.6 | confused "?" → title card "Every day starts from zero." (then fades). |
+| 22.8–30.0 | **The fix** — a new human walks in and **inserts the Cookbook Memory plugin** (orange ◆ chip) into Rosie's **forehead** (above the eyes). Eyes + antenna power up; "+ Cookbook Memory". The chip then rides with the head (`s.plugin` on the rig) and the film seam zooms into it. |
 
 ### Reusable rig pieces added for the journey (in `lib.js`)
 - `robot()` now takes `walk` (walk-cycle phase → leg/arm swing + body bounce),
@@ -138,13 +142,15 @@ so it loops seamlessly, with an `alpha` gate that fades each stream in/out as th
 held state oscillates between session- and dream-activity. All deterministic, so
 Act 2 records to MP4 frame-accurately exactly like Act 1.
 
-## Act 3 beat map (18s) — "The solution"
+## Act 3 beat map (authored at 18s, played in 14.4s) — "The solution"
 
 The **same journey as Act 1, with the identical "Rosie" character** — but now memory
 **persists**. Act 3 deliberately reuses Act 1's rig (`robot`/`human`/`memDot`/world
 props) and staging (3 humans, same gifts/personality/name) so the before/after
-contrast is exact. The single most important rhyme: Act 1 Day 2 = a blank grey
-amnesiac + `?`; Act 3 Day 2 = Rosie wakes **still herself** + `✓`.
+contrast is exact. Rosie now wears the **Cookbook Memory plugin** on her forehead the
+whole act (`s.plugin = 1`). The single most important rhyme: Act 1 Day 2 = a blank grey
+amnesiac + `?`; Act 3 Day 2 = Rosie wakes **still herself** + `✓`. (Beat times below are
+in the authored 18s timeline; `draw` remaps incoming time by 18/14.4 to play 25% faster.)
 
 | Time | Beat |
 |---|---|
@@ -152,17 +158,21 @@ amnesiac + `?`; Act 3 Day 2 = Rosie wakes **still herself** + `✓`.
 | 7.4–11.4 | **NIGHT** — Rosie slumps asleep (same as Act 1's gut-punch) **but her head GLOWS and nothing drains**. The night **Dream** sweeps the drawer: tidies, dedups, and clips a **must-know ★** onto the most important memory (`Dream → organize`). Name, accessories, tint — all retained. |
 | 11.4–13.8 | **DAY 2** — Rosie wakes **still named, decorated, memories intact**, back at the start of the world. She **recalls** a dot from the drawer to her hand and nails the task — confident, no fumble. |
 | 13.8–16.0 | The payoff: a green **✓** pops above her; title card **"Now it remembers."** — the exact inverse of Act 1's `?` + "Every day starts from zero." |
-| 16.0–18.0 | **End card / loop seam** — ◆ Cookbook Memory + "Persistent, self-curating memory for coding agents." End frame rhymes with the Act 1 open for a clean talk loop. |
+| 16.0–18.0 | **End card** — the orange ◆ Cookbook Memory diamond with its **three real components plugged in: Skills · MCP · Hooks** (dashed connectors → icon cards), then the wordmark + tagline. This is what the plugin actually *is*. |
 
-## The full film (78s) — one unified animation
+## The full film (78.4s) — one unified animation
 
 `scenes/film.js` is a thin **compositor**: it plays Act 1 → Act 2 → Act 3 as a single
 continuous `draw(ctx, t)` by delegating to each act's own draw with a rebased local
-time, and dips through black for `SEAM` (0.9s) at each act boundary (the storyboard's
-"push into the head" / "pull back out" camera moves, read as a clean deterministic
-crossfade). No act code is duplicated — the acts stay editable in isolation and the
-seams live in one place. Total duration is read from the registered acts, so it never
-drifts (20 + 40 + 18 = 78s).
+time, joined by the storyboard's **camera moves** at each boundary (`BOUNDARY` array):
+- **Act 1 → Act 2** — **PUSH IN**: zoom into Rosie's head (the plugin we just slotted),
+  emerge *inside* it for the x-ray architecture diagram.
+- **Act 2 → Act 3** — **PULL OUT**: Act 3 **opens close** on Rosie's plugged-in head and
+  the camera **recedes** back to the world — one continuous pull-back, not a push-in.
+
+A short black veil at each boundary hides the content swap. No act code is duplicated —
+the acts stay editable in isolation and the seams live in one place. Total duration is
+read from the registered acts, so it never drifts (24 + 40 + 14.4 = 78.4s).
 
 This is what the deck embeds (`film.html?embed=1`) — a single looping iframe, so the
 talk shows the whole arc as one native animation rather than three separate clips. The
