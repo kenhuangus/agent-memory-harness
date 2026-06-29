@@ -62,10 +62,11 @@
     overflow: hidden; box-shadow: var(--shadow); background: #11151f; }
   .console-video-frame video { width: 100%; height: 100%; display: block; object-fit: contain; }
   @media(max-width:900px){ .router-flow .dg-row { flex-wrap: wrap; } }
-  /* live animation embed — the unified explainer film (Acts 1–3) */
+  /* live animation embed — the architecture explainer (Act 2: Inside the Head).
+     Embeds the act2 player with its native ▶ Play / scrub / ↻ Loop controls. */
   .vid-embed { width: min(92vw, 1280px); margin: 1.6vh auto 0;
     aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden;
-    box-shadow: 0 18px 60px rgba(0,0,0,.45); background: #bfe3ff; }
+    box-shadow: 0 18px 60px rgba(0,0,0,.45); background: #0b1424; }
   .vid-frame { width: 100%; height: 100%; border: 0; display: block; }
 </style>
 </head>
@@ -91,20 +92,6 @@
   </section>
 
   <!-- 1 · us -->
-  <!-- 1b · the film (live animation — all three acts as one continuous loop) -->
-  <section class="slide slide--dark" data-title="The film">
-    <div class="slide__in center">
-      <span class="kicker kicker--light">The Robot Who Couldn't Remember</span>
-      <h2 class="h2 h2--light">Forgets &middot; remembers how &middot; remembers</h2>
-      <div class="vid-embed">
-        <!-- one unified, looping canvas animation: Act 1 -> Act 2 -> Act 3.
-             embed=1 hides the scrub UI; it loops indefinitely during the talk. -->
-        <iframe class="vid-frame" src="media/video/film.html?embed=1"
-          title="The Robot Who Couldn't Remember — full film (Acts 1–3)" loading="lazy"
-          allow="autoplay" frameborder="0"></iframe>
-      </div>
-    </div>
-  </section>
 
   <!-- 2 · team -->
   <section class="slide slide--alt" data-title="Team">
@@ -161,38 +148,19 @@
     </div>
   </section>
 
-  <!-- 3 · arch1 -->
-  <section class="slide slide--alt" data-title="Architecture">
-    <div class="slide__in">
-      <span class="kicker">How it works</span>
-      <h2 class="h2">Four modules, three backends, one loop</h2>
-      <p class="lead">One owner each: <em>write</em> as the agent works, <em>store &amp; retrieve</em> per query, <em>dream</em> the store clean, <em>measure</em> it all.</p>
-      <div class="dg">
-        <div class="dg-cap">The four modules</div>
-        <div class="dg-row dg-stagger">
-          <div class="dg-card" style="--c:var(--accent)"><h4>① Write</h4><p>Coding agent writes &amp; queries memory as it works</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--blue)"><h4>② Store &amp; retrieve</h4><p>Router classifies each query and picks the one backend that answers best</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--violet)"><h4>③ Dream</h4><p>Offline worker dedups, resolves contradictions, sets governance</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--green)"><h4>④ Measure</h4><p>Eval harness — datasets, metrics, cost, trajectories</p></div>
-        </div>
-        <div class="dg-row dg-stagger" style="margin-top:1.4vh;justify-content:center;align-items:center">
-          <span class="dg-cap" style="margin:0 .4rem 0 0">three backends ⤵</span>
-          <div class="dg-card dg-sm" style="--c:var(--orange)"><h4>Markdown</h4></div>
-          <div class="dg-card dg-sm" style="--c:var(--teal)"><h4>SQLite-vector</h4></div>
-          <div class="dg-card dg-sm" style="--c:var(--grape)"><h4>Graph</h4></div>
-        </div>
-        <div class="dg-note">🔁 One loop: Write → Store → 🌙 Dream curates → Measure proves · retrieval ranks by recency × relevancy</div>
+  <!-- 3 · architecture (live animation — Act 2: Inside the Head).
+       Replaces the old Architecture I + II slides. Embeds the act2 player with its
+       native controls (▶ Play / scrub / ↻ Loop); paused=1 starts on frame 0 so
+       nothing moves until you press play. -->
+  <section class="slide slide--dark" data-title="Architecture">
+    <div class="slide__in center">
+      <span class="kicker kicker--light">How it works</span>
+      <h2 class="h2 h2--light">Inside the head: conscious works, subconscious remembers</h2>
+      <div class="vid-embed">
+        <iframe class="vid-frame" src="media/video/act2.html?paused=1"
+          title="Architecture — Inside the Head (Act 2)" loading="lazy"
+          allow="autoplay" frameborder="0"></iframe>
       </div>
-    </div>
-  </section>
-
-  <!-- 4 · arch2 — PLACEHOLDER, fill in later -->
-  <section class="slide" data-title="Architecture II">
-    <div class="slide__in">
-      <h2 class="h2">Architecture II</h2>
     </div>
   </section>
 

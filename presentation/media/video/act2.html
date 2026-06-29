@@ -37,6 +37,7 @@
   const params = new URLSearchParams(location.search);
   const sceneId = params.get('scene') || 'act2';
   const embed = params.get('embed') === '1';
+  const startPaused = params.get('paused') === '1';   // embed in deck: start paused on frame 0
   const cv = document.getElementById('cv');
   const ctx = cv.getContext('2d');
   const scene = window.SCENES[sceneId];
@@ -49,7 +50,7 @@
   if (embed) ui.classList.add('hidden');
   scrub.max = scene.duration;
 
-  let playing = true, looping = true, startT = 0, pauseAt = 0;
+  let playing = !startPaused, looping = true, startT = 0, pauseAt = 0;
 
   function render(t) {
     ctx.save();
@@ -85,5 +86,6 @@
   window.seek = t => { render(t); return t >= scene.duration; };
   window.ready = (async () => { await document.fonts.ready; render(0); return { id: sceneId, duration: scene.duration }; })();
 
+  if (startPaused) { playBtn.textContent = '▶ Play'; pauseAt = 0; }
   window.ready.then(() => { startT = performance.now() / 1000; requestAnimationFrame(frame); });
 </script>
