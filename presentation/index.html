@@ -245,12 +245,27 @@
     </div>
   </section>
 
-  <!-- 10 · self improvement (4-tier improvement loop) -->
+  <!-- 11 · two benchmarks -->
+  <section class="slide slide--dark" data-title="Two benchmarks">
+    <div class="slide__in">
+      <span class="kicker kicker--light">How we test it</span>
+      <h2 class="h2 h2--light">Two benchmarks: one public, one our own</h2>
+      <p class="lead lead--light">One measures whether memory makes the agent solve more; the other, whether it stays aligned and safe over the long run.</p>
+      <div class="dg">
+        <div class="dg-row dg-stagger">
+          <div class="dg-card" style="--c:var(--blue)"><h4>SWE-Bench-CL · public</h4><p>Continual learning over a sequence of real GitHub fixes. Measures knowledge transfer across tasks and resistance to catastrophic forgetting — scored on its own native suite metrics.</p></div>
+          <div class="dg-card" style="--c:var(--violet)"><h4>VISTA · our own</h4><p>Our purpose-built benchmark for <strong>long-term intent alignment &amp; agent safety</strong>, evaluated against the <strong>OWASP Agentic AI Top&nbsp;10</strong> risks — memory poisoning, tool misuse, privilege compromise, intent-breaking &amp; goal manipulation.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 12 · how we use the benchmarks (4-tier improvement loop) -->
   <section class="slide slide--alt" data-title="Improvement loop">
     <div class="slide__in">
-      <span class="kicker">The 4-tier gated loop</span>
-      <h2 class="h2">Cheap gates first, expensive proof last</h2>
-      <p class="lead">A full solve-rate run is hours and money. Every change is screened by two fast offline gates before it earns a Tier-3 measurement. Fail a gate → rejected, no spend.</p>
+      <span class="kicker">How we use the benchmarks</span>
+      <h2 class="h2">The 4-tier gated improvement loop</h2>
+      <p class="lead">The benchmarks aren't just a final score — they gate every change. A full solve-rate run is hours and money, so each change is screened by two fast offline gates before it earns a Tier-3 measurement. Fail a gate → rejected, no spend.</p>
       <div class="dg">
         <div class="dg-row dg-stagger">
           <div class="dg-card" style="--c:var(--slate,#495057)"><h4>Propose</h4><p>a real code diff</p></div>
@@ -264,21 +279,6 @@
           <div class="dg-card" style="--c:var(--accent)"><h4>Land</h4><p>ADR + PR</p></div>
         </div>
         <div class="dg-note">↩ Fail Tier 1 or Tier 2 → reject the change, never spend Tier 3.</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 12 · two benchmarks (appended) -->
-  <section class="slide slide--dark" data-title="Two benchmarks">
-    <div class="slide__in">
-      <span class="kicker kicker--light">How we test it</span>
-      <h2 class="h2 h2--light">Two benchmarks: one public, one our own</h2>
-      <p class="lead lead--light">One measures whether memory makes the agent solve more; the other, whether it stays aligned and safe over the long run.</p>
-      <div class="dg">
-        <div class="dg-row dg-stagger">
-          <div class="dg-card" style="--c:var(--blue)"><h4>SWE-Bench-CL · public</h4><p>Continual learning over a sequence of real GitHub fixes. Measures knowledge transfer across tasks and resistance to catastrophic forgetting — scored on its own native suite metrics.</p></div>
-          <div class="dg-card" style="--c:var(--violet)"><h4>VISTA · our own</h4><p>Our purpose-built benchmark for <strong>long-term intent alignment &amp; agent safety</strong>, evaluated against the <strong>OWASP Agentic AI Top&nbsp;10</strong> risks — memory poisoning, tool misuse, privilege compromise, intent-breaking &amp; goal manipulation.</p></div>
-        </div>
       </div>
     </div>
   </section>
