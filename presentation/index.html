@@ -188,20 +188,20 @@
     <div class="slide__in">
       <span class="kicker">What it consolidates</span>
       <h2 class="h2">Dream &mdash; nightly consolidation over the whole store</h2>
-      <p class="lead">Once a night, the Dream worker walks the entire store: prune what's stale, merge what's redundant, surface what disagrees, and tag what's load-bearing. Sequential jobs over <strong>pairwise-disjoint</strong> working sets &mdash; no item is touched by two passes.</p>
+      <p class="lead">Once a night, the Dream worker walks the entire store: prune what's stale, merge what's redundant, resolve what disagrees, tag what's load-bearing, and generalize what recurs. <strong>Pairwise-disjoint</strong> mutation sets are verified after every pass &mdash; the run aborts if any two overlap.</p>
       <div class="dg">
         <div class="dg-row dg-stagger">
           <div class="dg-card" style="--c:var(--slate,#495057)"><h4>TTL prune</h4><p>expire past each type's retention horizon</p></div>
           <span class="dg-arrow">➜</span>
           <div class="dg-card" style="--c:var(--blue)"><h4>Dedup</h4><p>lexical + LLM paraphrase judge</p></div>
           <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--teal)"><h4>Contradiction</h4><p>LLM picks pairs; <em>both</em> originals kept as data</p></div>
+          <div class="dg-card" style="--c:var(--teal)"><h4>Contradiction</h4><p>LLM picks pairs; worker deletes the loser deterministically</p></div>
           <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--violet)"><h4>Induction</h4><p>Cluster of <code>Fix</code> cards synthesized into one <code>Invariant</code> or <code>Convention</code></p></div>
+          <div class="dg-card" style="--c:var(--violet)"><h4>Governance</h4><p>must_know &middot; must_do &middot; blacklist &middot; none &mdash; blacklist is a delete</p></div>
           <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--accent)"><h4>Governance</h4><p>must_know &middot; must_do &middot; blacklist &middot; none</p></div>
+          <div class="dg-card" style="--c:var(--accent)"><h4>Induction</h4><p>Cluster of <code>Fix</code>/<code>Bug</code>/<code>Workaround</code> cards &#8594; one <code>Invariant</code> or <code>Convention</code>. CREATE-only. <em>Default off.</em></p></div>
         </div>
-        <div class="dg-note">Contradictions are preserved as a third <em>observation</em> card (memory-as-data), never silently merged. All prompts sha256-pinned; disjointness proven at every pass boundary.</div>
+        <div class="dg-note">All prompts sha256-pinned. Pairwise-disjointness of mutation sets &mdash; pruned &perp; retired &perp; contradicted-losers &perp; blacklisted &perp; all-winners &mdash; is enforced; the run aborts on overlap.</div>
       </div>
     </div>
   </section>
