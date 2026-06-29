@@ -327,9 +327,12 @@ function human(ctx, x, feetY, { color = C.violet, scale = 1.18, wave = 0, t = 0,
   ctx.save();
   const S = scale;
   const headR = 60 * S;                        // big South-Park head
-  const bodyW = 84 * S, bodyH = 150 * S;       // narrower upright torso (limbs read clearly)
+  // legs are drawn first; the torso sits ABOVE them (only a slight overlap) so the
+  // legs read as clearly visible limbs rather than being swallowed by a long torso.
+  const legW = 26 * S, legH = 64 * S, legGap = 8 * S;
+  const bodyW = 84 * S, bodyH = 124 * S;       // narrower upright torso (limbs read clearly)
   const bodyX = x - bodyW / 2;
-  const bodyY = feetY - bodyH;                 // top of torso
+  const bodyY = feetY - legH - bodyH + 16 * S; // bottom of torso overlaps the leg tops by 16S
   const headCY = bodyY - headR + 12 * S;       // head overlaps torso top slightly
   const legCol = mix(color, '#000', 0.5);
   const armW = 22 * S, armL = 78 * S;
@@ -339,7 +342,6 @@ function human(ctx, x, feetY, { color = C.violet, scale = 1.18, wave = 0, t = 0,
   ctx.beginPath(); ctx.ellipse(x, feetY + 4, 50 * S, 11 * S, 0, 0, Math.PI * 2); ctx.fill();
 
   // distinct legs (two clear cutout limbs with a gap between them)
-  const legW = 26 * S, legH = 52 * S, legGap = 8 * S;
   roundRect(ctx, x - legGap - legW, feetY - legH, legW, legH, 9 * S, legCol);
   roundRect(ctx, x + legGap,        feetY - legH, legW, legH, 9 * S, legCol);
   // shoes
