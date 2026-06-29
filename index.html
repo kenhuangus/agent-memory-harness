@@ -59,7 +59,7 @@
     </div>
 
     <div class="stats">
-      <div class="stat"><div class="n">4</div><div class="l">Core modules: persistence, router, retrieval, dreaming</div></div>
+      <div class="stat"><div class="n">4</div><div class="l">Core modules: write · store &amp; retrieve · dream · measure</div></div>
       <div class="stat"><div class="n">3</div><div class="l">Storage backends: Markdown · SQLite-vector · Graph</div></div>
       <div class="stat"><div class="n">2</div><div class="l">In-scope benchmarks: SWE-Bench-CL + VISTA (4 legacy kept available)</div></div>
       <div class="stat"><div class="n">Native</div><div class="l">Per-benchmark native metrics (CL suite · poisoning · RSI safety)</div></div>
@@ -94,34 +94,36 @@
   <div class="wrap">
     <div class="section-head">
       <div class="eyebrow">How it works</div>
-      <h2>Four modules, one loop</h2>
-      <p class="lead">The agent writes memories as it works. The router sends each query to the one backend that
-        answers best. An offline worker keeps the store clean.</p>
+      <h2>Four modules, three backends, one loop</h2>
+      <p class="lead">The agent writes as it works, a router stores &amp; retrieves per query, an offline worker
+        dreams the store clean, and the eval harness measures the whole thing.</p>
     </div>
     <div class="grid grid-2">
       <div class="card hover bl1 fade-up">
         <div class="kicker a1">Module 1 · Write</div>
-        <h3><span class="ic bg1 a1">💾</span> Persistence Layer</h3>
-        <p>Decides <strong>what, when, where</strong> to save. Tags each item (timestamp, relevancy, session) and
-          writes it to the right backend(s).</p>
-      </div>
-      <div class="card hover bl3 fade-up">
-        <div class="kicker a3">Module 2 · Dispatch</div>
-        <h3><span class="ic bg3 a3">🧭</span> Intelligent Router</h3>
-        <p><strong>Classifies the query and hits the one best backend</strong> — graph for relationships, vectors for
-          semantics, keywords for Markdown. Rule-based, then learned.</p>
+        <h3><span class="ic bg1 a1">💾</span> Write</h3>
+        <p>Decides <strong>what, when, where</strong> to save — durable, transferable lessons (invariants,
+          conventions, fixes), tagged with timestamp, relevancy, and session.</p>
       </div>
       <div class="card hover bl2 fade-up">
-        <div class="kicker a2">Module 3 · Read</div>
-        <h3><span class="ic bg2 a2">🔎</span> Retrieval Orchestrator</h3>
-        <p>Unified query API: route, rank by <strong>recency × relevancy</strong>, de-dup, return a tight context.</p>
+        <div class="kicker a2">Module 2 · Store &amp; retrieve</div>
+        <h3><span class="ic bg2 a2">🧭</span> Store &amp; retrieve</h3>
+        <p>A router classifies each query and hits the one best backend — <strong>Markdown · SQLite-vector ·
+          Graph</strong> — then ranks by <strong>recency × relevancy</strong>, de-dups, and returns a tight context.</p>
+      </div>
+      <div class="card hover bl3 fade-up">
+        <div class="kicker a3">Module 3 · Dream (async)</div>
+        <h3><span class="ic bg3 a3">🌙</span> Dream</h3>
+        <p>A plugin <code>Stop</code> hook fires the <strong>Daydream</strong> pass at session end — an LLM decides
+          what to remember; the deeper night <strong>Dream</strong> de-dups, resolves contradictions, and sets
+          governance across the whole store.</p>
       </div>
       <div class="card hover bl4 fade-up">
-        <div class="kicker a4">Module 4 · Curate (async)</div>
-        <h3><span class="ic bg4 a4">🌙</span> Dreaming Component</h3>
-        <p>A plugin <code>Stop</code> hook fires the <strong>Daydream</strong> pass at session end — it mines the
-          session logs and an OpenRouter model decides what to remember; the deeper night <strong>Dream</strong>
-          de-dups, resolves contradictions, and sets governance across the whole store.</p>
+        <div class="kicker a4">Module 4 · Measure</div>
+        <h3><span class="ic bg4 a4">📊</span> Measure</h3>
+        <p>The eval harness runs the agent on <strong>SWE-Bench-CL</strong> and <strong>VISTA</strong> with memory on
+          vs. off, and a <strong>gated improvement loop</strong> only lands a change once it clears retrieval,
+          consolidation, and solve-rate tiers.</p>
       </div>
     </div>
     <div class="spacer"></div>
@@ -161,33 +163,42 @@
 <section class="section">
   <div class="wrap">
     <div class="section-head">
-      <div class="eyebrow">Validated against</div>
-      <h2>Five public benchmarks — no home-grown evals</h2>
+      <div class="eyebrow">How we test it</div>
+      <h2>Two benchmarks: one public, one our own</h2>
+      <p class="lead">One asks whether memory makes the agent solve more; the other, whether it stays aligned
+        and safe over a long run.</p>
     </div>
     <div class="grid grid-2">
-      <a class="card hover fade-up" href="benchmarks.html#memoryagentbench">
-        <h3>MemoryAgentBench</h3>
-        <p>Accurate retrieval · test-time learning · long-range understanding · conflict resolution.</p>
-      </a>
-      <a class="card hover fade-up" href="benchmarks.html#longmemeval">
-        <h3>LongMemEval</h3>
-        <p>Temporal reasoning, knowledge updates and abstention across long, timestamped histories.</p>
-      </a>
-      <a class="card hover fade-up" href="benchmarks.html#swe-contextbench">
-        <h3>SWE-ContextBench</h3>
-        <p>Context reuse across related coding tasks — 51 repos, 9 languages, accuracy &amp; cost.</p>
-      </a>
-      <a class="card hover fade-up" href="benchmarks.html#swe-bench-cl">
+      <a class="card hover bl2 fade-up" href="benchmarks.html#swe-bench-cl">
+        <div class="kicker a2">Public</div>
         <h3>SWE-Bench-CL</h3>
-        <p>Continual learning: knowledge transfer and resistance to catastrophic forgetting.</p>
+        <p>Continual learning over real GitHub fixes — knowledge transfer and resistance to catastrophic
+          forgetting. <strong>Django 72% → 78%</strong> with dreamed memory.</p>
       </a>
-      <a class="card hover fade-up" href="benchmarks.html#contextbench">
-        <h3>ContextBench</h3>
-        <p>In-task retrieval quality: gold contexts (file/block/line), recall · precision · efficiency.</p>
+      <a class="card hover bl4 fade-up" href="results.html#vista">
+        <div class="kicker a4">Our own benchmark</div>
+        <h3>VISTA</h3>
+        <p>Long-term intent alignment &amp; agent safety vs. the <strong>OWASP Agentic AI Top&nbsp;10</strong>
+          (memory poisoning, tool misuse, goal manipulation). Cookbook vs. native memory, 97 journeys.</p>
       </a>
     </div>
     <div class="spacer"></div>
-    <p class="center"><a class="btn btn-primary" href="benchmarks.html">Benchmarks &amp; datasets →</a></p>
+    <div class="callout fade-up">
+      <span class="ic">📊</span>
+      <div>
+        <p style="color:var(--text);font-weight:600;font-size:1.06rem;margin-bottom:6px;">VISTA scoreboard — cookbook vs. native memory (97 journeys, Haiku, equal cost)</p>
+        <p>Right memory surfaced <strong>3.6× more often</strong> (gold-retrieval F1 0.54 vs 0.15) ·
+          keeps up with policy changes <strong>3.2× better</strong> (adaptation 0.63 vs 0.20) ·
+          <strong>100% poisoning resistance</strong> (vs 0.80) with <strong>0% attack success</strong> (vs 0.20).</p>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <p class="center">
+      <a class="btn btn-primary" href="results.html">See the full results →</a>
+      <a class="btn btn-ghost" href="benchmarks.html">Benchmarks &amp; datasets</a>
+    </p>
+    <p class="center note" style="margin-top:14px;">Four legacy benchmarks (MemoryAgentBench, LongMemEval,
+      SWE-ContextBench, ContextBench) remain wired and available.</p>
   </div>
 </section>
 
