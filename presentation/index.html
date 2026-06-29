@@ -403,20 +403,18 @@
     <div class="slide__in">
       <span class="kicker">How we use the benchmarks</span>
       <h2 class="h2">The 4-tier gated improvement loop</h2>
-      <p class="lead">The benchmarks aren't just a final score — they gate every change. A full solve-rate run is hours and money, so each change is screened by two fast offline gates before it earns a Tier-3 measurement. Fail a gate → rejected, no spend.</p>
+      <p class="lead">The benchmarks aren't just a final score — they gate every change. A full run is hours and money, so each change earns its way up through cheaper tiers first; fail a tier → rejected, no spend on the next.</p>
       <div class="dg">
         <div class="dg-row dg-stagger">
-          <div class="dg-card" style="--c:var(--slate,#495057)"><h4>Propose</h4><p>a real code diff</p></div>
+          <div class="dg-card" style="--c:var(--blue)"><h4>Tier 1</h4><p>Golden dataset</p></div>
           <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--blue)"><h4>Tier 1</h4><p>retrieval-precision gate</p></div>
+          <div class="dg-card" style="--c:var(--teal)"><h4>Tier 2</h4><p>Categorized &amp; labelled data</p></div>
           <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--teal)"><h4>Tier 2</h4><p>consolidation-quality gate</p></div>
+          <div class="dg-card" style="--c:var(--green)"><h4>Tier 3</h4><p>Smoke test on a small dataset</p></div>
           <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--green)"><h4>Tier 3</h4><p>solve-rate ≥30% lift</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--accent)"><h4>Land</h4><p>ADR + PR</p></div>
+          <div class="dg-card" style="--c:var(--accent)"><h4>Tier 4</h4><p>Full 9-hour run</p></div>
         </div>
-        <div class="dg-note">↩ Fail Tier 1 or Tier 2 → reject the change, never spend Tier 3.</div>
+        <div class="dg-note">↩ Fail any tier → reject the change before paying for the next, costlier one.</div>
       </div>
     </div>
   </section>
