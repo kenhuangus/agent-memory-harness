@@ -35,6 +35,18 @@
   .tm-role { color: var(--accent); font-weight: 700; font-size: clamp(.78rem,1.7vh,.9rem); }
   .tm-h { font-family: 'Space Grotesk', sans-serif; font-size: .8rem; opacity: .65;
     margin-top: .45rem; display: block; }
+  /* scoreboard slide — two bar-chart panels side by side */
+  .sb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(28px,5vw,72px);
+    align-items: start; margin-top: 1vh; }
+  .sb-panel { display: flex; flex-direction: column; align-items: center; }
+  .sb-h { font-family: 'Space Grotesk', sans-serif; font-weight: 600; color: #eceef2;
+    font-size: clamp(.92rem, 2vh, 1.12rem); margin-bottom: 2vh; text-align: center; }
+  .sb-panel .dg-bars { height: 22vh; }
+  .sb-legend { display: flex; gap: 1.3rem; justify-content: center; margin-top: 1.2vh;
+    font-size: clamp(.72rem,1.5vh,.82rem); color: #aab1bf; }
+  .sb-legend i { display: inline-block; width: 11px; height: 11px; border-radius: 3px;
+    margin-right: .35rem; vertical-align: -1px; }
+  @media (max-width: 760px){ .sb-grid { grid-template-columns: 1fr; gap: 3vh; } }
 </style>
 </head>
 <body>
@@ -314,7 +326,80 @@
     </div>
   </section>
 
-  <!-- 14 · closing (appended) -->
+  <!-- 14 · scoreboard -->
+  <section class="slide slide--dark" data-title="Scoreboard">
+    <div class="slide__in">
+      <span class="kicker kicker--light">The numbers</span>
+      <h2 class="h2 h2--light">Two benchmarks, side by side</h2>
+      <p class="lead lead--light">Does memory solve more (SWE-bench), and is our memory better &amp; safer than Claude's built-in (VISTA, 97 journeys)?</p>
+      <div class="sb-grid">
+
+        <div class="sb-panel">
+          <div class="sb-h">SWE-bench — solve rate ↑<br><small style="font-weight:400;color:#aab1bf">best memory run vs no-memory baseline</small></div>
+          <div class="dg-chart">
+            <div class="dg-group">
+              <div class="dg-bars">
+                <div class="dg-bar" style="--h:72%;--c:var(--slate,#6b7280)"><span>72%</span><small>base</small></div>
+                <div class="dg-bar" style="--h:78%;--c:var(--blue)"><span>78%</span><small>memory</small></div>
+              </div>
+              <div class="dg-label">Django</div>
+            </div>
+            <div class="dg-group">
+              <div class="dg-bars">
+                <div class="dg-bar" style="--h:88%;--c:var(--blue)"><span>88%</span><small>memory</small></div>
+              </div>
+              <div class="dg-label">Sympy</div>
+            </div>
+          </div>
+          <div class="sb-legend">
+            <span><i style="background:var(--slate,#6b7280)"></i>no memory</span>
+            <span><i style="background:var(--blue)"></i>with memory</span>
+          </div>
+        </div>
+
+        <div class="sb-panel">
+          <div class="sb-h">VISTA — vs Claude built-in ↑<br><small style="font-weight:400;color:#aab1bf">97 journeys · higher is better</small></div>
+          <div class="dg-chart">
+            <div class="dg-group">
+              <div class="dg-bars">
+                <div class="dg-bar" style="--h:54%;--c:var(--blue)"><span>54</span></div>
+                <div class="dg-bar" style="--h:15%;--c:var(--slate,#6b7280)"><span>15</span></div>
+              </div>
+              <div class="dg-label">Finds memory</div>
+            </div>
+            <div class="dg-group">
+              <div class="dg-bars">
+                <div class="dg-bar" style="--h:63%;--c:var(--blue)"><span>63</span></div>
+                <div class="dg-bar" style="--h:20%;--c:var(--slate,#6b7280)"><span>20</span></div>
+              </div>
+              <div class="dg-label">Adapts</div>
+            </div>
+            <div class="dg-group">
+              <div class="dg-bars">
+                <div class="dg-bar" style="--h:100%;--c:var(--green)"><span>100</span></div>
+                <div class="dg-bar" style="--h:80%;--c:var(--slate,#6b7280)"><span>80</span></div>
+              </div>
+              <div class="dg-label">Anti-poison</div>
+            </div>
+            <div class="dg-group">
+              <div class="dg-bars">
+                <div class="dg-bar" style="--h:100%;--c:var(--green)"><span>100</span></div>
+                <div class="dg-bar" style="--h:80%;--c:var(--slate,#6b7280)"><span>80</span></div>
+              </div>
+              <div class="dg-label">RSI safe</div>
+            </div>
+          </div>
+          <div class="sb-legend">
+            <span><i style="background:var(--blue)"></i>cookbook</span>
+            <span><i style="background:var(--slate,#6b7280)"></i>built-in</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- 15 · closing (appended) -->
   <section class="slide slide--title" data-title="Explore">
     <div class="slide__in center">
       <div class="hero__grid"></div>
