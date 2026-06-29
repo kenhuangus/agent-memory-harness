@@ -188,7 +188,7 @@
     <div class="slide__in">
       <span class="kicker">What it consolidates</span>
       <h2 class="h2">Dream &mdash; nightly consolidation over the whole store</h2>
-      <p class="lead">Once a night, the Dream worker walks the entire store: prune what's stale, merge what's redundant, resolve what disagrees, tag what's load-bearing, and generalize what recurs. <strong>Pairwise-disjoint</strong> mutation sets are verified after every pass &mdash; the run aborts if any two overlap.</p>
+      <p class="lead">Once a night, the Dream worker walks the entire store: prune what's stale, merge what's redundant, resolve what disagrees, tag what's load-bearing, and generalize what recurs. After the deduction passes complete, the run checks <strong>pairwise-disjoint</strong> mutation sets and aborts if any two overlap.</p>
       <div class="dg">
         <div class="dg-row dg-stagger">
           <div class="dg-card" style="--c:var(--slate,#495057)"><h4>TTL prune</h4><p>expire past each type's retention horizon</p></div>
