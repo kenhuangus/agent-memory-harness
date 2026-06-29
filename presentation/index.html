@@ -84,7 +84,7 @@
     <div class="slide__in center">
       <div class="hero__grid"></div>
       <span class="eyebrow">Research &amp; engineering · 4 people · 2 weeks</span>
-      <h1 class="hero__title">Cookbook Memory</h1>
+      <h1 class="hero__title">Cookbook Memory with Four Recipes for Long-Running Agents</h1>
       <p class="hero__sub">Persistent, self-curating memory that lets a <strong>small model think like a big one</strong>.</p>
       <p class="hero__by">AI Agent Memory Harness · the bet: <strong>Haiku + memory</strong> closes the gap to Opus&nbsp;4.8</p>
     </div>
@@ -320,30 +320,7 @@
     </div>
   </section>
 
-  <!-- 12 · how we use the benchmarks (4-tier improvement loop) -->
-  <section class="slide slide--alt" data-title="Improvement loop">
-    <div class="slide__in">
-      <span class="kicker">How we use the benchmarks</span>
-      <h2 class="h2">The 4-tier gated improvement loop</h2>
-      <p class="lead">The benchmarks aren't just a final score — they gate every change. A full solve-rate run is hours and money, so each change is screened by two fast offline gates before it earns a Tier-3 measurement. Fail a gate → rejected, no spend.</p>
-      <div class="dg">
-        <div class="dg-row dg-stagger">
-          <div class="dg-card" style="--c:var(--slate,#495057)"><h4>Propose</h4><p>a real code diff</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--blue)"><h4>Tier 1</h4><p>retrieval-precision gate</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--teal)"><h4>Tier 2</h4><p>consolidation-quality gate</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--green)"><h4>Tier 3</h4><p>solve-rate ≥30% lift</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--accent)"><h4>Land</h4><p>ADR + PR</p></div>
-        </div>
-        <div class="dg-note">↩ Fail Tier 1 or Tier 2 → reject the change, never spend Tier 3.</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 13 · scoreboard -->
+  <!-- 12 · scoreboard (results come before how we use them) -->
   <section class="slide slide--dark" data-title="Scoreboard">
     <div class="slide__in">
       <span class="kicker kicker--light">The numbers</span>
@@ -365,7 +342,7 @@
               <div class="dg-bars">
                 <div class="dg-bar" style="--h:88%;--c:var(--blue)"><span>88%</span><small>memory</small></div>
               </div>
-              <div class="dg-label">Sympy</div>
+              <div class="dg-label">Sympy <small style="display:block;font-weight:400;color:#aab1bf">no base run</small></div>
             </div>
           </div>
           <div class="sb-legend">
@@ -412,6 +389,29 @@
           </div>
         </div>
 
+      </div>
+    </div>
+  </section>
+
+  <!-- 13 · how we use the benchmarks (4-tier improvement loop) -->
+  <section class="slide slide--alt" data-title="Improvement loop">
+    <div class="slide__in">
+      <span class="kicker">How we use the benchmarks</span>
+      <h2 class="h2">The 4-tier gated improvement loop</h2>
+      <p class="lead">The benchmarks aren't just a final score — they gate every change. A full solve-rate run is hours and money, so each change is screened by two fast offline gates before it earns a Tier-3 measurement. Fail a gate → rejected, no spend.</p>
+      <div class="dg">
+        <div class="dg-row dg-stagger">
+          <div class="dg-card" style="--c:var(--slate,#495057)"><h4>Propose</h4><p>a real code diff</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--blue)"><h4>Tier 1</h4><p>retrieval-precision gate</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--teal)"><h4>Tier 2</h4><p>consolidation-quality gate</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--green)"><h4>Tier 3</h4><p>solve-rate ≥30% lift</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--accent)"><h4>Land</h4><p>ADR + PR</p></div>
+        </div>
+        <div class="dg-note">↩ Fail Tier 1 or Tier 2 → reject the change, never spend Tier 3.</div>
       </div>
     </div>
   </section>
