@@ -149,6 +149,10 @@ a{color:inherit}
   .ftable{font-size:.72rem}
   .bar__title{display:none}
   .draw--hero svg{max-height:54vh}
+  /* mobile: a slide taller than the screen scrolls vertically instead of clipping */
+  .slide{align-items:flex-start;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+  .slide__in,.slide__in.center{max-height:none;justify-content:flex-start;min-height:100%;
+    padding-top:2.4vh;padding-bottom:3.2vh}
 }
 @media(max-width:560px){
   .ctrl__count{display:none}

@@ -51,14 +51,15 @@
     else if (e.key === "End") go(total - 1);
   });
 
-  // touch swipe
-  let x0 = null;
-  document.addEventListener("touchstart", e => { x0 = e.touches[0].clientX; }, { passive: true });
+  // touch swipe — horizontal navigates; vertical is left to scroll the slide
+  let x0 = null, y0 = null;
+  document.addEventListener("touchstart", e => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
   document.addEventListener("touchend", e => {
     if (x0 === null) return;
     const dx = e.changedTouches[0].clientX - x0;
-    if (Math.abs(dx) > 50) (dx < 0 ? next : prev)();
-    x0 = null;
+    const dy = e.changedTouches[0].clientY - y0;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) (dx < 0 ? next : prev)();
+    x0 = y0 = null;
   }, { passive: true });
 
   // wheel = navigate (debounced) so a trackpad/mouse advances slides
