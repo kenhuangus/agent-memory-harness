@@ -70,10 +70,18 @@
   .router-flow .router-actor { flex: .78 1 0; background: color-mix(in srgb,var(--c) 14%,#fff); }
   .router-flow .router-lane { gap: clamp(7px,.85vw,12px); }
   .router-flow .router-bridge .dg-card { flex: 0 1 340px; }
-  .console-video-frame { width: min(920px,100%); margin: 1.2vh auto 0; aspect-ratio: 16 / 9;
+  .console-video-frame { width: min(94vw, calc((100vh - 116px - 14rem) * 16 / 9), 1600px); margin: 0 auto; aspect-ratio: 16 / 9;
     border: 2px solid color-mix(in srgb,var(--muted) 28%,#fff); border-radius: 12px;
     overflow: hidden; box-shadow: var(--shadow); background: #11151f; }
   .console-video-frame video { width: 100%; height: 100%; display: block; object-fit: contain; }
+  /* Memory Console slide: full-height column pins the title at the top in its normal
+     content-column position; the frame is absolutely centered in the whole slide (it
+     anchors to .slide, not .slide__in, so it can exceed the 1080px column and stay
+     dead-center). */
+  .slide[data-title="Memory Console"] .slide__in { height: 100%;
+    justify-content: flex-start; padding-top: 1.5rem; }
+  .slide[data-title="Memory Console"] .console-video-frame { position: absolute;
+    top: 50%; left: 50%; transform: translate(-50%, -50%); }
   @media(max-width:900px){ .router-flow .dg-row { flex-wrap: wrap; } }
   /* architecture slide — the full 3-act film, large + centered, with a deck-branded
      control bar BELOW the video. No kicker/heading (the bar already says "Architecture"). */
@@ -309,9 +317,7 @@
   <!-- 9 · memory console -->
   <section class="slide" data-title="Memory Console">
     <div class="slide__in">
-      <span class="kicker">Memory observability</span>
       <h2 class="h2">The Memory Console</h2>
-      <p class="lead">Pick any memory-generating run. The Overview tab provides a snapshot of the memory store including token-spend and API costs. The Recalls tab lets you drill down on every recall event and see which memories the router returned. The Inspector view shows the full markdown file for every memory in OKF format.</p>
       <div class="console-video-frame">
         <video src="assets/MemConsole.mp4" autoplay muted loop playsinline preload="metadata" aria-label="Screen recording of the Memory Console UI"></video>
       </div>
