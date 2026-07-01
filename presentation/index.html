@@ -52,13 +52,15 @@
     margin-right: .35rem; vertical-align: -1px; }
   @media (max-width: 760px){ .sb-grid { grid-template-columns: 1fr; gap: 3vh; } }
   /* improvement-loop slide — loop-back arrow from Tier 4 to Tier 1 */
-  .loop-wrap { position: relative; padding-bottom: 8.5vh; }
+  .loop-wrap { position: relative; padding-bottom: 8.5rem; }
   .loop-back { position: absolute; left: 0; right: 0; bottom: 1.2vh; width: 100%;
-    height: 8vh; overflow: visible; opacity: 0; }
+    aspect-ratio: 1000 / 110; overflow: visible; opacity: 0; }
   .slide.is-active .loop-back { animation: dgRise .6s cubic-bezier(.2,.7,.3,1) .55s both; }
-  .loop-label { position: absolute; left: 0; right: 0; bottom: 2.4vh; text-align: center;
+  .loop-label { position: absolute; left: 0; right: 0; bottom: 1.9vh; width: max-content; max-width: 90%;
+    margin-inline: auto; text-align: center; z-index: 2;
     font-family: 'Space Grotesk', sans-serif; font-weight: 700; color: var(--accent);
-    font-size: clamp(.85rem, 1.9vh, 1.06rem); white-space: nowrap; opacity: 0; }
+    font-size: clamp(.85rem, 1.9vh, 1.06rem); white-space: nowrap; opacity: 0;
+    background: var(--paper-2); padding: .15rem 1rem; border-radius: 999px; }
   .slide.is-active .loop-label { animation: dgRise .6s cubic-bezier(.2,.7,.3,1) .7s both; }
   .router-flow { gap: .9vh; }
   .router-flow .dg-cap { margin-top: .1vh; }
@@ -85,9 +87,9 @@
   /* Storage & Retrieval slide — the Router box encapsulates the 3 stores. Daydream writes
      INTO the Router (one-way); the Agent reads/writes THROUGH it (bidirectional). Cards in
      % over an SVG sharing the same box (uniform scale) so arrows always meet the edges. */
-  .flow-diagram { position: relative; margin: 2vh 0 0; align-self: center;
-    width: min(94vw, calc((100vh - 116px - 9rem) * 1000 / 440), 1480px);
-    aspect-ratio: 1000 / 440; }
+  .flow-note { margin: 1.15rem auto 0; align-self: center; max-width: 72ch; }
+  .flow-diagram { position: relative; margin: 1rem 0 0; align-self: center;
+    width: min(94vw, 960px); height: 272px; }
   .flow-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; z-index: 1; }
   .flow-svg line { stroke-width: 3; fill: none; stroke-dasharray: 9 7; animation: flowMarch .7s linear infinite; }
   @keyframes flowMarch { to { stroke-dashoffset: -16; } }
@@ -97,19 +99,19 @@
   .flow-svg #fah-bi path { fill: var(--violet); }
   .flow-card { position: absolute; transform: translate(-50%, -50%);
     width: 16%; min-width: 0; z-index: 2; }
-  .flow-card.dg-sm { padding: 1.9vh 1vw; }
-  .flow-card h4 { white-space: nowrap; font-size: clamp(1.05rem, 2.7vh, 1.5rem); }
+  .flow-card.dg-sm { padding: .8rem 1.1rem; }
+  .flow-card h4 { white-space: nowrap; font-size: 1.25rem; }
   .router-box { position: absolute; transform: translate(-50%, -50%);
     width: 40%; box-sizing: border-box; z-index: 2;
     border: 2.5px solid var(--muted); border-radius: 22px;
     background: color-mix(in srgb, var(--muted) 6%, var(--paper));
-    box-shadow: var(--shadow); padding: 2.6vh 1.8vw 2.2vh;
-    display: flex; flex-direction: column; gap: 1.7vh; }
+    box-shadow: var(--shadow); padding: 1.3rem 1.8vw 1.1rem;
+    display: flex; flex-direction: column; gap: .85rem; }
   .router-box-label { font-family: 'Space Grotesk', sans-serif; font-weight: 700;
     text-transform: uppercase; letter-spacing: .12em; text-align: center;
-    font-size: clamp(.82rem, 1.7vh, 1.05rem); color: var(--muted); margin-bottom: .2vh; }
-  .rb-card { position: relative; width: 100%; min-width: 0; box-shadow: none; padding: 1.7vh 1.1vw; }
-  .rb-card h4 { white-space: nowrap; font-size: clamp(1.05rem, 2.6vh, 1.45rem); }
+    font-size: .92rem; color: var(--muted); margin-bottom: .2vh; }
+  .rb-card { position: relative; width: 100%; min-width: 0; box-shadow: none; padding: .85rem 1.1vw; }
+  .rb-card h4 { white-space: nowrap; font-size: 1.25rem; }
   /* hover popover — restores each store's detail on demand */
   .rb-pop { position: absolute; left: 50%; bottom: calc(100% + 13px);
     transform: translateX(-50%) translateY(6px); width: max-content; max-width: 300px;
@@ -153,7 +155,7 @@
     opacity: .36; transition: opacity .35s ease, box-shadow .35s ease, transform .35s ease; }
   .flow-diagram[data-step="3"] .rb-md, .flow-diagram[data-step="4"] .rb-vec, .flow-diagram[data-step="5"] .rb-graph {
     opacity: 1; transform: scale(1.05); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 60%, transparent), var(--shadow); }
-  .q-label { position: absolute; left: 90.5%; top: 26%; transform: translate(-50%, 8px); width: max-content; max-width: 250px;
+  .q-label { position: absolute; left: 90.5%; top: auto; bottom: calc(50% + 40px); transform: translate(-50%, 8px); width: max-content; max-width: 250px;
     text-align: center; background: #fff; border: 1.5px solid var(--c); border-radius: 12px; padding: .55rem .85rem;
     box-shadow: 0 12px 34px rgba(11,14,20,.22); z-index: 30; opacity: 0; visibility: hidden;
     transition: opacity .3s ease, transform .3s ease; }
@@ -311,31 +313,8 @@
     </div>
   </section>
 
-  <!-- 5 · daydream -->
-  <section class="slide slide--alt" data-title="Daydream">
-    <div class="slide__in">
-      <span class="kicker">What it captures</span>
-      <h2 class="h2">Daydream &mdash; selective extraction at session end</h2>
-      <p class="lead">A <code>Stop</code> hook runs the Daydream pass on this session's transcript. It chunks, redacts, wraps each chunk in a nonce envelope, and asks a small subconscious model the only question that matters: <em>would a future, different task save time by knowing this?</em></p>
-      <div class="dg">
-        <div class="dg-row dg-stagger">
-          <div class="dg-card" style="--c:var(--slate,#495057)"><h4>Stop hook</h4><p>session ends, transcript ready</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--blue)"><h4>Chunk &amp; redact</h4><p>secrets stripped (ADR-005)</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--teal)"><h4>Nonce envelope</h4><p>&lt;transcript nonce="&hellip;"&gt; &mdash; anti-injection</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--violet)"><h4>LLM curates</h4><p>V6 prompt: lessons that transfer</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--accent)"><h4>10 OKF types</h4><p>Fix &middot; Bug &middot; Convention &middot; Invariant &middot; Workaround &middot; Strategy &middot; Mistake &middot; Decision &middot; Preference &middot; Identity</p></div>
-        </div>
-        <div class="dg-note">HIGH selectivity by design. Every kept memory is self-gating: <code>When &lt;trigger&gt;, &lt;do X / avoid Y&gt;.</code> &mdash; so recall only fires it on relevant future tasks.</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 6 · dream -->
-  <section class="slide" data-title="Dream">
+  <!-- 5 · dream -->
+  <section class="slide slide--alt" data-title="Dream">
     <div class="slide__in">
       <span class="kicker">What it consolidates</span>
       <h2 class="h2">Dream &mdash; nightly consolidation over the whole store</h2>
@@ -357,21 +336,44 @@
     </div>
   </section>
 
+  <!-- 6 · daydream -->
+  <section class="slide" data-title="Daydream">
+    <div class="slide__in">
+      <span class="kicker">What it captures</span>
+      <h2 class="h2">Daydream &mdash; selective extraction at session end</h2>
+      <p class="lead">A <code>Stop</code> hook runs the Daydream pass on this session's transcript. It chunks, redacts, wraps each chunk in a nonce envelope, and asks a small subconscious model the only question that matters: <em>would a future, different task save time by knowing this?</em></p>
+      <div class="dg">
+        <div class="dg-row dg-stagger">
+          <div class="dg-card" style="--c:var(--slate,#495057)"><h4>Stop hook</h4><p>session ends, transcript ready</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--blue)"><h4>Chunk &amp; redact</h4><p>secrets stripped (ADR-005)</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--teal)"><h4>Nonce envelope</h4><p>&lt;transcript nonce="&hellip;"&gt; &mdash; anti-injection</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--violet)"><h4>LLM curates</h4><p>V6 prompt: lessons that transfer</p></div>
+          <span class="dg-arrow">➜</span>
+          <div class="dg-card" style="--c:var(--accent)"><h4>10 OKF types</h4><p>Fix &middot; Bug &middot; Convention &middot; Invariant &middot; Workaround &middot; Strategy &middot; Mistake &middot; Decision &middot; Preference &middot; Identity</p></div>
+        </div>
+        <div class="dg-note">HIGH selectivity by design. Every kept memory is self-gating: <code>When &lt;trigger&gt;, &lt;do X / avoid Y&gt;.</code> &mdash; so recall only fires it on relevant future tasks.</div>
+      </div>
+    </div>
+  </section>
+
   <!-- 7 · storage & retrieval (merged: router paths + the three stores) -->
   <section class="slide slide--alt" data-title="Storage &amp; Retrieval">
     <div class="slide__in">
       <span class="kicker">How memory works</span>
-      <h2 class="h2">Storage &amp; retrieval <span class="h2sub">One router &#8594; three stores</span></h2>
+      <h2 class="h2">Storage &amp; retrieval <span class="h2sub">These are the droids you're looking for</span></h2>
       <div class="flow-diagram" data-step="0">
-        <svg class="flow-svg" viewBox="0 0 1000 440" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+        <svg class="flow-svg" viewBox="0 0 1000 272" preserveAspectRatio="none" aria-hidden="true">
           <defs>
             <marker id="fah-w" markerUnits="strokeWidth" markerWidth="6" markerHeight="6" refX="0" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z"/></marker>
             <marker id="fah-bi" markerUnits="strokeWidth" markerWidth="6" markerHeight="6" refX="0" refY="3" orient="auto-start-reverse"><path d="M0,0 L6,3 L0,6 Z"/></marker>
           </defs>
-          <line class="arr-w" x1="187" y1="220" x2="268" y2="220" marker-end="url(#fah-w)"/>
-          <line class="arr-r" x1="732" y1="220" x2="793" y2="220" marker-start="url(#fah-bi)" marker-end="url(#fah-bi)"/>
+          <line class="arr-w" x1="187" y1="136" x2="268" y2="136" marker-end="url(#fah-w)"/>
+          <line class="arr-r" x1="732" y1="136" x2="793" y2="136" marker-start="url(#fah-bi)" marker-end="url(#fah-bi)"/>
         </svg>
-        <div class="dg-card dg-sm flow-card flow-day" style="--c:var(--blue);left:9.5%;top:50%"><h4>Daydream</h4><p class="day-memory">When pytest fails with <code>ModuleNotFoundError</code> after moving a file, re-export the symbol in the package&rsquo;s <code>__init__.py</code>.</p></div>
+        <div class="dg-card dg-sm flow-card flow-day" style="--c:var(--blue);left:9.5%;top:50%"><h4>Daydream</h4><p class="day-memory">When picking a gift for Mom, skip anything strongly scented &mdash; perfumes give her headaches.</p></div>
         <div class="router-box" style="left:50%;top:50%">
           <span class="router-box-label">Router</span>
           <div class="dg-card dg-sm rb-card rb-md" style="--c:var(--orange)"><h4>OKF Markdown</h4><span class="rb-pop">Human-readable canonical source of truth &mdash; best for exact facts, decisions, conventions, and auditability.</span></div>
@@ -382,11 +384,12 @@
         <div class="mem-chip mem-chip-md" aria-hidden="true">memory</div>
         <div class="mem-chip mem-chip-vec" aria-hidden="true">memory</div>
         <div class="mem-chip mem-chip-graph" aria-hidden="true">memory</div>
-        <div class="q-label q-keyword" style="--c:var(--orange)"><span class="q-text">&ldquo;__init__.py&rdquo;</span><span class="q-tag">exact keyword</span></div>
-        <div class="q-label q-similarity" style="--c:var(--teal)"><span class="q-text">&ldquo;imports broke after I moved modules&rdquo;</span><span class="q-tag">similarity</span></div>
-        <div class="q-label q-relational" style="--c:var(--grape)"><span class="q-text">&ldquo;what&rsquo;s related to the import fix?&rdquo;</span><span class="q-tag">relational</span></div>
+        <div class="q-label q-keyword" style="--c:var(--orange)"><span class="q-text">&ldquo;Mom&rdquo;</span><span class="q-tag">exact keyword</span></div>
+        <div class="q-label q-similarity" style="--c:var(--teal)"><span class="q-text">&ldquo;what present would she actually like?&rdquo;</span><span class="q-tag">similarity</span></div>
+        <div class="q-label q-relational" style="--c:var(--grape)"><span class="q-text">&ldquo;what do I know about Mom?&rdquo;</span><span class="q-tag">relational</span></div>
         <div class="recall-chip" aria-hidden="true">memory</div>
       </div>
+      <div class="dg-note flow-note">OKF = Google&rsquo;s new <strong>Open Knowledge Format</strong>: every memory is a plain, human-readable Markdown file. These memories can be imported from or exported to any other system using the OKF specification.</div>
     </div>
   </section>
 
@@ -506,13 +509,13 @@
             <span class="dg-arrow">➜</span>
             <div class="dg-card" style="--c:var(--accent)"><h4>Tier 4</h4><p>Full 9-hour run</p></div>
           </div>
-          <svg class="loop-back" viewBox="0 0 1000 90" preserveAspectRatio="none" aria-hidden="true">
+          <svg class="loop-back" viewBox="0 0 1000 110" aria-hidden="true">
             <defs>
               <marker id="loopHead" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto">
                 <path d="M0,0 L7,3 L0,6 Z" fill="var(--accent)"></path>
               </marker>
             </defs>
-            <path d="M958,6 C 958,72 42,72 42,16" fill="none" stroke="var(--accent)"
+            <path d="M956,10 C 890,128 110,128 44,20" fill="none" stroke="var(--accent)"
               stroke-width="2.4" stroke-dasharray="7 6" marker-end="url(#loopHead)"></path>
           </svg>
           <span class="loop-label">↻ Memory Loop Engineering</span>
