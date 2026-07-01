@@ -395,7 +395,7 @@
     <div class="slide__in">
       <h2 class="h2">The Memory Console</h2>
       <div class="console-video-frame">
-        <video src="assets/MemConsole.mp4" autoplay muted loop playsinline preload="metadata" aria-label="Screen recording of the Memory Console UI"></video>
+        <video src="assets/MemConsole.mp4" muted loop playsinline preload="auto" aria-label="Screen recording of the Memory Console UI"></video>
       </div>
     </div>
   </section>
@@ -657,6 +657,26 @@
     }, true);
     placeChips();
     render();
+  })();
+
+  /* Memory Console slide: play the screen recording from the top when the slide
+     becomes active, and pause it otherwise — so it isn't looping in the
+     background the whole deck. (Same active-gating the Architecture film uses.) */
+  (function () {
+    const slide = document.querySelector('.slide[data-title="Memory Console"]');
+    const video = slide && slide.querySelector('video');
+    if (!video) return;
+    video.pause();
+    const sync = () => {
+      if (slide.classList.contains('is-active')) {
+        try { video.currentTime = 0; } catch (_) {}
+        const p = video.play(); if (p) p.catch(() => {});
+      } else {
+        video.pause();
+      }
+    };
+    new MutationObserver(sync).observe(slide, { attributes: true, attributeFilter: ['class'] });
+    sync();
   })();
 </script>
 </body>
