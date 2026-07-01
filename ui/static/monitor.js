@@ -224,8 +224,17 @@
   function ensureChart(id, ctorFn) {
     if (state.charts[id]) return state.charts[id];
     const canvas = document.getElementById(id);
-    state.charts[id] = ctorFn(canvas.getContext("2d"));
-    return state.charts[id];
+    const chart = ctorFn(canvas.getContext("2d"));
+    state.charts[id] = chart;
+    // A chart created before its grid cell has settled (fonts / chart-grid
+    // auto-fit / first paint, or while its panel or view was briefly
+    // display:none) can come up mis-sized — most visibly the doughnut, which
+    // then needs a manual reload. The window-resize and sub-tab nudges only fire
+    // on user action, never after the initial render, so self-correct here by
+    // re-measuring on the next frames.
+    requestAnimationFrame(() => { try { chart.resize(); } catch (_) { /* destroyed */ } });
+    setTimeout(() => { try { chart.resize(); } catch (_) { /* destroyed */ } }, 200);
+    return chart;
   }
 
   function renderCharts(snap) {
@@ -254,6 +263,9 @@
         options: {
           maintainAspectRatio: false,
           responsive: true,
+          animation: false,  // Chart.js 4.4.7 throws "this._fn is not a function" in the
+                             // transition system on update() for the scaled line/bar charts
+                             // (silently blanks them); a polling dashboard needs no animation.
           interaction: { intersect: false, mode: "index" },
           scales: {
             x: {
@@ -299,6 +311,9 @@
         options: {
           maintainAspectRatio: false,
           responsive: true,
+          animation: false,  // Chart.js 4.4.7 throws "this._fn is not a function" in the
+                             // transition system on update() for the scaled line/bar charts
+                             // (silently blanks them); a polling dashboard needs no animation.
           indexAxis: "y",
           scales: {
             x: {
@@ -357,6 +372,9 @@
         options: {
           maintainAspectRatio: false,
           responsive: true,
+          animation: false,  // Chart.js 4.4.7 throws "this._fn is not a function" in the
+                             // transition system on update() for the scaled line/bar charts
+                             // (silently blanks them); a polling dashboard needs no animation.
           indexAxis: "y",
           scales: {
             x: {
@@ -415,6 +433,9 @@
         options: {
           maintainAspectRatio: false,
           responsive: true,
+          animation: false,  // Chart.js 4.4.7 throws "this._fn is not a function" in the
+                             // transition system on update() for the scaled line/bar charts
+                             // (silently blanks them); a polling dashboard needs no animation.
           cutout: "62%",
           plugins: {
             legend: {
