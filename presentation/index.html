@@ -70,10 +70,112 @@
   .router-flow .router-actor { flex: .78 1 0; background: color-mix(in srgb,var(--c) 14%,#fff); }
   .router-flow .router-lane { gap: clamp(7px,.85vw,12px); }
   .router-flow .router-bridge .dg-card { flex: 0 1 340px; }
-  .console-video-frame { width: min(920px,100%); margin: 1.2vh auto 0; aspect-ratio: 16 / 9;
+  .console-video-frame { width: min(94vw, calc((100vh - 116px - 14rem) * 16 / 9), 1600px); margin: 0 auto; aspect-ratio: 16 / 9;
     border: 2px solid color-mix(in srgb,var(--muted) 28%,#fff); border-radius: 12px;
     overflow: hidden; box-shadow: var(--shadow); background: #11151f; }
   .console-video-frame video { width: 100%; height: 100%; display: block; object-fit: contain; }
+  /* Memory Console slide: full-height column pins the title at the top in its normal
+     content-column position; the frame is absolutely centered in the whole slide (it
+     anchors to .slide, not .slide__in, so it can exceed the 1080px column and stay
+     dead-center). */
+  .slide[data-title="Memory Console"] .slide__in { height: 100%;
+    justify-content: flex-start; padding-top: 1.5rem; }
+  .slide[data-title="Memory Console"] .console-video-frame { position: absolute;
+    top: 50%; left: 50%; transform: translate(-50%, -50%); }
+  /* Storage & Retrieval slide — the Router box encapsulates the 3 stores. Daydream writes
+     INTO the Router (one-way); the Agent reads/writes THROUGH it (bidirectional). Cards in
+     % over an SVG sharing the same box (uniform scale) so arrows always meet the edges. */
+  .flow-diagram { position: relative; margin: 2vh 0 0; align-self: center;
+    width: min(94vw, calc((100vh - 116px - 9rem) * 1000 / 440), 1480px);
+    aspect-ratio: 1000 / 440; }
+  .flow-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; z-index: 1; }
+  .flow-svg line { stroke-width: 3; fill: none; stroke-dasharray: 9 7; animation: flowMarch .7s linear infinite; }
+  @keyframes flowMarch { to { stroke-dashoffset: -16; } }
+  .flow-svg .arr-w { stroke: var(--blue); }
+  .flow-svg .arr-r { stroke: var(--violet); }
+  .flow-svg #fah-w path { fill: var(--blue); }
+  .flow-svg #fah-bi path { fill: var(--violet); }
+  .flow-card { position: absolute; transform: translate(-50%, -50%);
+    width: 16%; min-width: 0; z-index: 2; }
+  .flow-card.dg-sm { padding: 1.9vh 1vw; }
+  .flow-card h4 { white-space: nowrap; font-size: clamp(1.05rem, 2.7vh, 1.5rem); }
+  .router-box { position: absolute; transform: translate(-50%, -50%);
+    width: 40%; box-sizing: border-box; z-index: 2;
+    border: 2.5px solid var(--muted); border-radius: 22px;
+    background: color-mix(in srgb, var(--muted) 6%, var(--paper));
+    box-shadow: var(--shadow); padding: 2.6vh 1.8vw 2.2vh;
+    display: flex; flex-direction: column; gap: 1.7vh; }
+  .router-box-label { font-family: 'Space Grotesk', sans-serif; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .12em; text-align: center;
+    font-size: clamp(.82rem, 1.7vh, 1.05rem); color: var(--muted); margin-bottom: .2vh; }
+  .rb-card { position: relative; width: 100%; min-width: 0; box-shadow: none; padding: 1.7vh 1.1vw; }
+  .rb-card h4 { white-space: nowrap; font-size: clamp(1.05rem, 2.6vh, 1.45rem); }
+  /* hover popover — restores each store's detail on demand */
+  .rb-pop { position: absolute; left: 50%; bottom: calc(100% + 13px);
+    transform: translateX(-50%) translateY(6px); width: max-content; max-width: 300px;
+    background: #fff; border: 1.5px solid var(--c); border-radius: 12px; padding: .75rem 1rem;
+    box-shadow: 0 14px 40px rgba(11,14,20,.24); font-family: 'Inter', sans-serif;
+    font-size: clamp(.82rem, 1.7vh, 1rem); line-height: 1.45; color: var(--text);
+    text-align: left; white-space: normal; opacity: 0; visibility: hidden; pointer-events: none;
+    transition: opacity .16s ease, transform .16s ease; z-index: 60; }
+  .rb-pop::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+    border: 7px solid transparent; border-top-color: var(--c); }
+  .rb-card:hover .rb-pop { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
+  /* ---- Act 1: memory formation → storage (click-to-advance; data-step on .flow-diagram) ---- */
+  .flow-day { transition: width .45s cubic-bezier(.2,.7,.3,1), transform .45s cubic-bezier(.2,.7,.3,1), box-shadow .35s ease; }
+  .flow-day .day-memory { margin: 0; max-height: 0; opacity: 0; overflow: hidden; text-align: left;
+    font-family: 'Inter', sans-serif; font-size: clamp(.82rem, 1.7vh, 1.02rem); line-height: 1.42; color: var(--text);
+    transition: max-height .45s ease, opacity .35s ease .04s, margin-top .35s ease; }
+  .flow-day .day-memory code { font-family: ui-monospace, SFMono-Regular, monospace; font-size: .9em;
+    background: color-mix(in srgb, var(--blue) 13%, #fff); padding: .05em .3em; border-radius: 5px; }
+  .flow-diagram[data-step="1"] .flow-day { width: 23%; transform: translate(-36%, -50%);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 35%, transparent), var(--shadow); z-index: 5; }
+  .flow-diagram[data-step="1"] .flow-day .day-memory { max-height: 26vh; opacity: 1; margin-top: .5rem; }
+  .mem-chip { position: absolute; left: 11%; top: 50%; transform: translate(-50%,-50%) scale(.6); opacity: 0;
+    background: var(--blue); color: #fff; font-family: 'Space Grotesk', sans-serif; font-weight: 600;
+    font-size: clamp(.62rem, 1.3vh, .8rem); padding: .32em .8em; border-radius: 999px; white-space: nowrap;
+    box-shadow: 0 6px 18px color-mix(in srgb, var(--blue) 50%, transparent); z-index: 4; pointer-events: none; }
+  /* one memory written three ways: chips travel together, then fan out, one per store */
+  .flow-diagram[data-step="2"] .mem-chip { animation: chipSplit 1.15s cubic-bezier(.4,0,.4,1) forwards; }
+  @keyframes chipSplit {
+    0%   { left: 11%; top: 50%; opacity: 0; transform: translate(-50%,-50%) scale(.6); }
+    13%  { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+    40%  { left: 36%; top: 50%; opacity: 1; transform: translate(-50%,-50%) scale(1); }
+    82%  { left: 50%; top: var(--ty,50%); opacity: 1; transform: translate(-50%,-50%) scale(.92); }
+    100% { left: 50%; top: var(--ty,50%); opacity: 0; transform: translate(-50%,-50%) scale(.6); } }
+  .flow-diagram[data-step="2"] .rb-card { animation: storeFlash .9s ease both; }
+  .flow-diagram[data-step="2"] .router-box .rb-card:nth-child(2) { animation-delay: .82s; }
+  .flow-diagram[data-step="2"] .router-box .rb-card:nth-child(3) { animation-delay: .9s; }
+  .flow-diagram[data-step="2"] .router-box .rb-card:nth-child(4) { animation-delay: .98s; }
+  @keyframes storeFlash { 0%,100% { box-shadow: none; } 45% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 55%, transparent); } }
+  /* ---- Act 2: three-way recall — keyword→md, similarity→vec, relational→graph ---- */
+  .flow-diagram[data-step="3"] .rb-card, .flow-diagram[data-step="4"] .rb-card, .flow-diagram[data-step="5"] .rb-card {
+    opacity: .36; transition: opacity .35s ease, box-shadow .35s ease, transform .35s ease; }
+  .flow-diagram[data-step="3"] .rb-md, .flow-diagram[data-step="4"] .rb-vec, .flow-diagram[data-step="5"] .rb-graph {
+    opacity: 1; transform: scale(1.05); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 60%, transparent), var(--shadow); }
+  .q-label { position: absolute; left: 90.5%; top: 26%; transform: translate(-50%, 8px); width: max-content; max-width: 250px;
+    text-align: center; background: #fff; border: 1.5px solid var(--c); border-radius: 12px; padding: .55rem .85rem;
+    box-shadow: 0 12px 34px rgba(11,14,20,.22); z-index: 30; opacity: 0; visibility: hidden;
+    transition: opacity .3s ease, transform .3s ease; }
+  .q-label .q-text { display: block; font-family: 'Inter', sans-serif; font-style: italic;
+    font-size: clamp(.78rem, 1.6vh, .96rem); line-height: 1.35; color: var(--text); }
+  .q-label .q-tag { display: inline-block; margin-top: .35rem; font-family: 'Space Grotesk', sans-serif; font-weight: 700;
+    font-size: clamp(.6rem, 1.3vh, .76rem); letter-spacing: .05em; text-transform: uppercase; color: var(--c); }
+  .q-label::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+    border: 7px solid transparent; border-top-color: var(--c); }
+  .flow-diagram[data-step="3"] .q-keyword, .flow-diagram[data-step="4"] .q-similarity, .flow-diagram[data-step="5"] .q-relational {
+    opacity: 1; visibility: visible; transform: translate(-50%, 0); }
+  .recall-chip { position: absolute; left: 50%; top: 50%; opacity: 0; transform: translate(-50%,-50%) scale(.5);
+    background: var(--violet); color: #fff; font-family: 'Space Grotesk', sans-serif; font-weight: 600;
+    font-size: clamp(.62rem, 1.3vh, .8rem); padding: .3em .8em; border-radius: 999px; white-space: nowrap;
+    box-shadow: 0 6px 18px color-mix(in srgb, var(--violet) 50%, transparent); z-index: 6; pointer-events: none; }
+  .flow-diagram[data-step="3"] .recall-chip, .flow-diagram[data-step="4"] .recall-chip, .flow-diagram[data-step="5"] .recall-chip {
+    animation: recallReturn 1s cubic-bezier(.4,0,.4,1) forwards; }
+  @keyframes recallReturn {
+    0%   { left: 50%; top: var(--ry,50%); opacity: 0; transform: translate(-50%,-50%) scale(.5); }
+    18%  { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+    80%  { opacity: 1; }
+    100% { left: 88%; top: 50%; opacity: 0; transform: translate(-50%,-50%) scale(.6); } }
   @media(max-width:900px){ .router-flow .dg-row { flex-wrap: wrap; } }
   /* architecture slide — the full 3-act film, large + centered, with a deck-branded
      control bar BELOW the video. No kicker/heading (the bar already says "Architecture"). */
@@ -255,53 +357,35 @@
     </div>
   </section>
 
-  <!-- 7 · memory stores -->
-  <section class="slide slide--alt" data-title="Memory Stores">
+  <!-- 7 · storage & retrieval (merged: router paths + the three stores) -->
+  <section class="slide slide--alt" data-title="Storage &amp; Retrieval">
     <div class="slide__in">
-      <span class="kicker">Storage &amp; retrieval</span>
-      <h2 class="h2">Three memory stores <span class="h2sub">Three paths to every concept</span></h2>
-      <p class="lead">Markdown files in OKF format are the durable source of truth. SQLite-vector and graph add complementary retrieval paths. Every memory is reachable regardless of the shape of the query.</p>
-      <div class="dg">
-        <div class="dg-cap">Where each backend is strongest</div>
-        <div class="dg-row dg-stagger">
-          <div class="dg-card" style="--c:var(--orange)"><h4>OKF Markdown</h4><p>Human-readable canonical memory. Best for exact facts, decisions, conventions, and auditability.</p></div>
-          <div class="dg-card" style="--c:var(--teal)"><h4>SQLite-vector</h4><p>Semantic similarity over lesson content. Best for paraphrases, rationale, and &ldquo;this reminds me of...&rdquo; recall.</p></div>
-          <div class="dg-card" style="--c:var(--grape)"><h4>Graph</h4><p>Typed links between memories. Best for dependencies, impact, contradictions, and related concepts.</p></div>
+      <span class="kicker">How memory works</span>
+      <h2 class="h2">Storage &amp; retrieval <span class="h2sub">One router &#8594; three stores</span></h2>
+      <div class="flow-diagram" data-step="0">
+        <svg class="flow-svg" viewBox="0 0 1000 440" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+          <defs>
+            <marker id="fah-w" markerUnits="strokeWidth" markerWidth="6" markerHeight="6" refX="0" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z"/></marker>
+            <marker id="fah-bi" markerUnits="strokeWidth" markerWidth="6" markerHeight="6" refX="0" refY="3" orient="auto-start-reverse"><path d="M0,0 L6,3 L0,6 Z"/></marker>
+          </defs>
+          <line class="arr-w" x1="187" y1="220" x2="268" y2="220" marker-end="url(#fah-w)"/>
+          <line class="arr-r" x1="732" y1="220" x2="793" y2="220" marker-start="url(#fah-bi)" marker-end="url(#fah-bi)"/>
+        </svg>
+        <div class="dg-card dg-sm flow-card flow-day" style="--c:var(--blue);left:9.5%;top:50%"><h4>Daydream</h4><p class="day-memory">When pytest fails with <code>ModuleNotFoundError</code> after moving a file, re-export the symbol in the package&rsquo;s <code>__init__.py</code>.</p></div>
+        <div class="router-box" style="left:50%;top:50%">
+          <span class="router-box-label">Router</span>
+          <div class="dg-card dg-sm rb-card rb-md" style="--c:var(--orange)"><h4>OKF Markdown</h4><span class="rb-pop">Human-readable canonical source of truth &mdash; best for exact facts, decisions, conventions, and auditability.</span></div>
+          <div class="dg-card dg-sm rb-card rb-vec" style="--c:var(--teal)"><h4>SQLite-vector</h4><span class="rb-pop">Semantic similarity over lesson content &mdash; best for paraphrases, rationale, and &ldquo;this reminds me of&hellip;&rdquo; recall.</span></div>
+          <div class="dg-card dg-sm rb-card rb-graph" style="--c:var(--grape)"><h4>Graph</h4><span class="rb-pop">Typed links between memories &mdash; best for dependencies, impact, contradictions, and related concepts.</span></div>
         </div>
-        <div class="dg-note">Coverage comes from writing one durable lesson into complementary stores that answer different query shapes.</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 8 · router -->
-  <section class="slide" data-title="Router">
-    <div class="slide__in">
-      <span class="kicker">Router</span>
-      <h2 class="h2">How and where <span class="h2sub">Storage and retrieval</span></h2>
-      <p class="lead">The router exposes two paths. In session, the Daydream invokes writes and the Recall tool is the only read caller; between sessions, the Dreamer can do both.</p>
-      <div class="dg router-flow">
-        <div class="dg-cap">In session · write path</div>
-        <div class="dg-row dg-stagger router-lane">
-          <div class="dg-card router-actor" style="--c:var(--orange)"><h4>Daydream</h4><p>turn-end invoker of the write path</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--blue)"><h4>Router.write()</h4><p>dedup when enabled, then choose the storage policy</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--green)"><h4>base_all</h4><p>write to Markdown, vector, and graph indexes</p></div>
-        </div>
-        <div class="dg-cap">In session · read path</div>
-        <div class="dg-row dg-stagger router-lane">
-          <div class="dg-card router-actor" style="--c:var(--teal)"><h4>Recall tool</h4><p>only in-session caller of reads</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--violet)"><h4>Router.read()</h4><p>choose speed, fusion, or accuracy profile for the query</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--accent)"><h4>Ranked hits</h4><p>top memories returned with score, rank, tokens, and provenance</p></div>
-        </div>
-        <div class="dg-cap">Between sessions</div>
-        <div class="dg-row dg-stagger router-bridge">
-          <div class="dg-card router-actor" style="--c:var(--violet)"><h4>Dream</h4><p>offline consolidation worker</p></div>
-          <span class="dg-arrow">➜</span>
-          <div class="dg-card" style="--c:var(--blue)"><h4>Router.read() + Router.write()</h4><p>scan existing memory, consolidate it, then write cleaned lessons back</p></div>
-        </div>
+        <div class="dg-card dg-sm flow-card" style="--c:var(--violet);left:90.5%;top:50%"><h4>Agent</h4></div>
+        <div class="mem-chip mem-chip-md" aria-hidden="true">memory</div>
+        <div class="mem-chip mem-chip-vec" aria-hidden="true">memory</div>
+        <div class="mem-chip mem-chip-graph" aria-hidden="true">memory</div>
+        <div class="q-label q-keyword" style="--c:var(--orange)"><span class="q-text">&ldquo;__init__.py&rdquo;</span><span class="q-tag">exact keyword</span></div>
+        <div class="q-label q-similarity" style="--c:var(--teal)"><span class="q-text">&ldquo;imports broke after I moved modules&rdquo;</span><span class="q-tag">similarity</span></div>
+        <div class="q-label q-relational" style="--c:var(--grape)"><span class="q-text">&ldquo;what&rsquo;s related to the import fix?&rdquo;</span><span class="q-tag">relational</span></div>
+        <div class="recall-chip" aria-hidden="true">memory</div>
       </div>
     </div>
   </section>
@@ -309,11 +393,9 @@
   <!-- 9 · memory console -->
   <section class="slide" data-title="Memory Console">
     <div class="slide__in">
-      <span class="kicker">Memory observability</span>
       <h2 class="h2">The Memory Console</h2>
-      <p class="lead">Pick any memory-generating run. The Overview tab provides a snapshot of the memory store including token-spend and API costs. The Recalls tab lets you drill down on every recall event and see which memories the router returned. The Inspector view shows the full markdown file for every memory in OKF format.</p>
       <div class="console-video-frame">
-        <video src="assets/MemConsole.mp4" autoplay muted loop playsinline preload="metadata" aria-label="Screen recording of the Memory Console UI"></video>
+        <video src="assets/MemConsole.mp4" muted loop playsinline preload="auto" aria-label="Screen recording of the Memory Console UI"></video>
       </div>
     </div>
   </section>
@@ -516,6 +598,85 @@
     }).observe(slide, { attributes: true, attributeFilter: ['class'] });
 
     paint(0);
+  })();
+
+  /* Storage & Retrieval slide: click-to-advance walk-through of the memory loop.
+     Intercepts deck advance/back in CAPTURE phase (runs before deck.js's bubble
+     listeners) and steps an animation via .flow-diagram[data-step] instead of
+     changing slides — until the beats are exhausted, then the deck moves on.
+     Re-entering the slide replays from the top. */
+  (function () {
+    const slide = document.querySelector('.slide[data-title^="Storage"]');
+    if (!slide) return;
+    const dia = slide.querySelector('.flow-diagram');
+    const chips = [...dia.querySelectorAll('.mem-chip')];
+    const stores = [...dia.querySelectorAll('.router-box .rb-card')];
+    const recallChip = dia.querySelector('.recall-chip');
+    // pin each chip's fan-out target (--ty) to its store's vertical centre (layout-robust)
+    function placeChips() {
+      const d = dia.getBoundingClientRect();
+      if (!d.height) return;
+      stores.forEach((s, i) => {
+        if (!chips[i]) return;
+        const r = s.getBoundingClientRect();
+        chips[i].style.setProperty('--ty', (((r.top + r.bottom) / 2 - d.top) / d.height * 100).toFixed(2) + '%');
+      });
+    }
+    const BEATS = 5;                       // 1 form · 2 store×3 · 3-5 recall (keyword/similarity/relational)
+    let step = 0;
+    const render = () => {
+      dia.dataset.step = String(step);
+      if (step >= 3 && step <= 5) {        // recall: aim the return chip at the matched store, then replay it
+        const store = stores[step - 3], d = dia.getBoundingClientRect(), r = store.getBoundingClientRect();
+        if (d.height) recallChip.style.setProperty('--ry', (((r.top + r.bottom) / 2 - d.top) / d.height * 100).toFixed(2) + '%');
+        recallChip.style.animation = 'none'; void recallChip.offsetWidth; recallChip.style.animation = '';
+      }
+    };
+    const active = () => slide.classList.contains('is-active');
+    new MutationObserver(() => {
+      if (active()) placeChips();
+      else if (step !== 0) { step = 0; render(); }
+    }).observe(slide, { attributes: true, attributeFilter: ['class'] });
+    window.addEventListener('resize', placeChips);
+    function tryStep(dir) {
+      if (!active()) return false;
+      if (dir > 0 && step < BEATS) { step++; render(); return true; }
+      if (dir < 0 && step > 0)     { step--; render(); return true; }
+      return false;
+    }
+    const ADV = new Set(['ArrowRight', 'PageDown', ' ']);
+    const BACK = new Set(['ArrowLeft', 'PageUp']);
+    window.addEventListener('keydown', e => {
+      const dir = ADV.has(e.key) ? 1 : BACK.has(e.key) ? -1 : 0;
+      if (dir && tryStep(dir)) { e.preventDefault(); e.stopImmediatePropagation(); }
+    }, true);
+    window.addEventListener('click', e => {
+      const t = e.target.closest && e.target.closest('#nextBtn, #prevBtn');
+      if (!t) return;
+      if (tryStep(t.id === 'nextBtn' ? 1 : -1)) { e.preventDefault(); e.stopImmediatePropagation(); }
+    }, true);
+    placeChips();
+    render();
+  })();
+
+  /* Memory Console slide: play the screen recording from the top when the slide
+     becomes active, and pause it otherwise — so it isn't looping in the
+     background the whole deck. (Same active-gating the Architecture film uses.) */
+  (function () {
+    const slide = document.querySelector('.slide[data-title="Memory Console"]');
+    const video = slide && slide.querySelector('video');
+    if (!video) return;
+    video.pause();
+    const sync = () => {
+      if (slide.classList.contains('is-active')) {
+        try { video.currentTime = 0; } catch (_) {}
+        const p = video.play(); if (p) p.catch(() => {});
+      } else {
+        video.pause();
+      }
+    };
+    new MutationObserver(sync).observe(slide, { attributes: true, attributeFilter: ['class'] });
+    sync();
   })();
 </script>
 </body>
