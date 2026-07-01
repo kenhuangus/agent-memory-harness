@@ -7,7 +7,7 @@ the plugin actually ships to users (ADR-harness-009, AC3 in the walking skeleton
 The repo keeps each ingredient exactly once and never duplicates content in git:
 
 * the adapter manifests live under ``adapters/claude_code/`` (``.claude-plugin/``,
-  ``.mcp.json``, ``hooks/``) — committed source;
+  ``.mcp.json``, ``hooks/``, ``bin/``) — committed source;
 * the ``recall`` skill lives once at ``cookbook_memory/skills/recall/`` — the
   canonical Agent-Skills folder, shared across all harnesses.
 
@@ -24,6 +24,7 @@ Run it via ``memory-cli build-bundle --out <dir>`` or call :func:`build_bundle`.
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import shutil
 from pathlib import Path
@@ -34,7 +35,10 @@ from ...core.install import canonical_skills_dir
 ADAPTER_DIR = Path(__file__).resolve().parent
 
 #: The committed ingredients copied verbatim into the bundle (relative to ADAPTER_DIR).
-_MANIFEST_PARTS = (".claude-plugin", ".mcp.json", "hooks")
+_MANIFEST_PARTS = (".claude-plugin", ".mcp.json", "hooks", "bin")
+
+#: The bundle's runtime launcher (ADR-harness-016) — must ship executable.
+_LAUNCHER = Path("bin") / "cookbook-memory"
 
 
 class BundleError(RuntimeError):
@@ -82,6 +86,12 @@ def build_bundle(
         materialized += 1
     if materialized == 0:
         raise BundleError(f"no skills found to materialize under {skills_src}")
+
+    # Wheel installs may drop the executable bit on package data; restore it so the
+    # launcher survives `claude plugin install`'s copy into the plugin cache.
+    launcher = out / _LAUNCHER
+    if launcher.is_file():
+        launcher.chmod(0o755)
 
     if runtime_bin_dir is not None:
         _pin_runtime_commands(out, Path(runtime_bin_dir))
@@ -138,10 +148,13 @@ def validate_bundle(bundle_dir: str | Path) -> None:
         "plugin manifest": b / ".claude-plugin" / "plugin.json",
         "MCP config": b / ".mcp.json",
         "hooks": b / "hooks" / "hooks.json",
+        "runtime launcher": b / _LAUNCHER,
     }
     for label, path in checks.items():
         if not path.is_file():
             raise BundleError(f"bundle missing {label}: {path}")
+    if not os.access(b / _LAUNCHER, os.X_OK):
+        raise BundleError(f"bundle launcher is not executable: {b / _LAUNCHER}")
     skills = b / "skills"
     if not skills.is_dir() or not any(
         (d / "SKILL.md").is_file() for d in skills.iterdir() if d.is_dir()
