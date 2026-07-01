@@ -35,6 +35,24 @@
   .tm-role { color: var(--accent); font-weight: 700; font-size: clamp(.78rem,1.7vh,.9rem); }
   .tm-h { font-family: 'Space Grotesk', sans-serif; font-size: .8rem; opacity: .65;
     margin-top: .45rem; display: block; }
+  /* closing slide — quote + team band + QR to the repo (dark title slide) */
+  .closing-band { display: flex; align-items: center; justify-content: center;
+    gap: clamp(22px, 4vw, 60px); margin-top: 2.4vh; flex-wrap: wrap; }
+  .closing-team { display: flex; gap: clamp(10px, 1.3vw, 20px); flex-wrap: wrap; justify-content: center; }
+  .closing-team .tm-card { width: clamp(104px, 12vw, 150px); padding: 1.1vh .7vw;
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.13); border-radius: 16px; }
+  .closing-team .tm-av { width: clamp(46px, 7vh, 66px); height: clamp(46px, 7vh, 66px); margin-bottom: .5rem; }
+  .closing-team h4 { color: #f2f4f7; font-size: clamp(.8rem, 1.7vh, 1rem); }
+  .closing-team .tm-role { font-size: clamp(.6rem, 1.3vh, .76rem); }
+  .closing-team .tm-h { color: #9aa2b1; opacity: 1; font-size: .72rem; margin-top: .3rem; }
+  .qr-wrap { display: flex; flex-direction: column; align-items: center; }
+  .qr-card { background: #fff; padding: 11px; border-radius: 14px; box-shadow: 0 14px 40px rgba(0,0,0,.45); }
+  .qr-card img { width: clamp(116px, 17vh, 156px); height: auto; display: block; }
+  .qr-cap { margin-top: .65rem; text-align: center; color: #cdd2db;
+    font-family: 'Space Grotesk', sans-serif; font-size: clamp(.72rem, 1.5vh, .88rem); }
+  .qr-cap a { color: var(--accent); text-decoration: none; }
+  .hero__title .grad { background: linear-gradient(90deg, var(--accent), #ffb37a);
+    -webkit-background-clip: text; background-clip: text; color: transparent; }
   /* scoreboard slide — two bar-chart panels side by side */
   .sb-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: clamp(28px,5vw,72px);
     align-items: stretch; margin-top: 1vh; }
@@ -529,14 +547,43 @@
   <section class="slide slide--title" data-title="Explore">
     <div class="slide__in center">
       <div class="hero__grid"></div>
-      <span class="eyebrow">Explore the project</span>
-      <h1 class="hero__title" style="font-size:clamp(2.6rem,11vh,6rem)">Dig in</h1>
-      <p class="hero__sub">Architecture, benchmarks &amp; the live console are on the site.</p>
-      <p class="hero__by">
-        <a class="hero__site" href="../index.html">Project site</a>
-        &nbsp;·&nbsp;
-        <a class="hero__site" href="https://github.com/kenhuangus/agent-memory-harness" target="_blank" rel="noopener">GitHub ↗</a>
-      </p>
+      <span class="eyebrow">Where we're headed</span>
+      <h1 class="hero__title" style="font-size:clamp(1.7rem,5.2vh,3.4rem);max-width:20ch;line-height:1.12">
+        Frontier research &amp; engineering on <span class="grad">persistent memory</span> for long-running agents.</h1>
+      <div class="closing-band">
+        <div class="closing-team dg-stagger">
+          <div class="dg-card tm-card" style="--c:var(--orange)">
+            <img class="tm-av" src="assets/team/ken-huang.webp" alt="Ken Huang" loading="lazy" />
+            <h4>Ken Huang</h4>
+            <div class="tm-role">Eval infrastructure &amp; the site</div>
+            <span class="tm-h">@kenhuangus</span>
+          </div>
+          <div class="dg-card tm-card" style="--c:var(--blue)">
+            <img class="tm-av" src="https://github.com/kmazanec.png?size=168" alt="Keith Mazanec" loading="lazy" />
+            <h4>Keith Mazanec</h4>
+            <div class="tm-role">Harness architecture</div>
+            <span class="tm-h">@kmazanec</span>
+          </div>
+          <div class="dg-card tm-card" style="--c:var(--teal)">
+            <img class="tm-av" src="https://github.com/bgibson1618.png?size=168" alt="Brent Gibson" loading="lazy" />
+            <h4>Brent Gibson</h4>
+            <div class="tm-role">Storage &amp; retrieval</div>
+            <span class="tm-h">@bgibson1618</span>
+          </div>
+          <div class="dg-card tm-card" style="--c:var(--violet)">
+            <img class="tm-av" src="https://github.com/NerdAlert58.png?size=168" alt="Scott Bushyhead" loading="lazy" />
+            <h4>Scott Bushyhead</h4>
+            <div class="tm-role">Async &ldquo;dreaming&rdquo;</div>
+            <span class="tm-h">@NerdAlert58</span>
+          </div>
+        </div>
+        <div class="qr-wrap">
+          <a class="qr-card" href="https://github.com/kenhuangus/agent-memory-harness" target="_blank" rel="noopener">
+            <img src="assets/team/repo-qr.svg" alt="QR code linking to the GitHub repository" />
+          </a>
+          <div class="qr-cap">Scan for the repo<br><a href="https://github.com/kenhuangus/agent-memory-harness" target="_blank" rel="noopener">kenhuangus/agent-memory-harness ↗</a></div>
+        </div>
+      </div>
     </div>
   </section>
 
