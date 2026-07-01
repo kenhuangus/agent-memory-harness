@@ -97,6 +97,8 @@ the move).
 | [ADR-harness-013](ADR-harness-013-cursor-cli-second-harness.md) | Add the Cursor CLI as a second eval harness backend — sibling adapter `eval/memeval/cursorcli/`, shared `AgentAdapter` core, `--harness {claude,cursor}` selection (default claude) | Proposed | no |
 | [ADR-harness-014](ADR-harness-014-cursor-home-isolation-api-key-auth.md) | Cursor sandbox isolation via `HOME` (not `CURSOR_DATA_DIR`) + keychain-free `CURSOR_API_KEY` auth → independent per-stage parallel runs | Proposed | no |
 | [ADR-harness-015](ADR-harness-015-cursor-mcp-wiring-approval-gate.md) | Cursor MCP wiring: same `mcp.json` server + pre-cleared approval/trust gates + stream-json parsing (tool match on `providerIdentifier`/`toolName`) | Proposed | no |
+| [ADR-harness-016](ADR-harness-016-bundle-runtime-launcher.md) | Bundle runtime launcher (`${CLAUDE_PLUGIN_ROOT}/bin/cookbook-memory`): finds or bootstraps the Python runtime, so the standard `claude plugin install` is the whole install; root manifest switches to a relative-path source | Accepted | no |
+| [ADR-harness-017](ADR-harness-017-store-scaffolds-gitignore.md) | The store scaffolds its own `.gitignore` — commit `markdown/**/*.md` only; databases, locks, events, and dream state are per-machine and never committed | Accepted | no |
 
 > **Provenance.** These eleven ADRs were extracted from the consolidated ADR-P1…P11
 > series in

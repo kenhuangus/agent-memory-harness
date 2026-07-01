@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "cookbook-memory": {
-      "command": "python3",
-      "args": ["-m", "cookbook_memory", "mcp"],
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/cookbook-memory",
+      "args": ["mcp"],
       "env": {
         "MEMORY_STORE": "${CLAUDE_PROJECT_DIR}/.cookbook-memory"
       }

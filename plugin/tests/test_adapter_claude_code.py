@@ -56,12 +56,12 @@ def test_plugin_json_is_valid():
 def test_mcp_json_points_at_memory_server():
     data = json.loads((BUNDLE / ".mcp.json").read_text())
     server = data["mcpServers"]["cookbook-memory"]
-    # Invoked by module (`python3 -m cookbook_memory mcp`), not by the `memory-cli`
-    # console script: module-run resolves the package via the interpreter's sys.path,
-    # so it works wherever cookbook_memory is importable — no requirement that the
-    # console script be on $PATH. (Production-install fix.)
-    assert server["command"] == "python3"
-    assert server["args"] == ["-m", "cookbook_memory", "mcp"]
+    # Invoked through the bundle's runtime launcher (ADR-harness-016):
+    # ${CLAUDE_PLUGIN_ROOT} expands to the installed plugin dir, and the launcher
+    # resolves the Python runtime (console scripts on $PATH, or the managed venv
+    # it bootstraps on first use) — so a bare `claude plugin install` is enough.
+    assert server["command"] == "${CLAUDE_PLUGIN_ROOT}/bin/cookbook-memory"
+    assert server["args"] == ["mcp"]
     assert "MEMORY_STORE" in server["env"]
 
 
@@ -70,17 +70,15 @@ def test_hooks_json_wires_lifecycle_events():
     hooks = data["hooks"]
     for evt in ("SessionStart", "UserPromptSubmit", "Stop", "PreCompact", "PostCompact"):
         assert evt in hooks, f"missing hook: {evt}"
+        hook = hooks[evt][0]["hooks"][0]
+        # Every hook goes through the bundle launcher (ADR-harness-016), which
+        # resolves the runtime and always exits 0 in hook mode (fail-open,
+        # ADR-harness-006). Quoted: the plugin cache path may contain spaces.
+        assert hook["command"] == (
+            f'"${{CLAUDE_PLUGIN_ROOT}}/bin/cookbook-memory" hook {evt}'
+        )
     stop = hooks["Stop"][0]["hooks"][0]
     assert stop.get("async") is True
-    # Each hook tries the `memory-hook` console script first (its shebang pins the
-    # interpreter the package was installed into — correct even when Claude Code's
-    # `python3` is a different interpreter, e.g. a venv-isolated install), and falls
-    # back to `python3 -m …` (covers the case where the package is importable but the
-    # console-script bin dir isn't on $PATH). Robust to both failure modes.
-    assert stop["command"] == (
-        "memory-hook Stop || "
-        "python3 -m cookbook_memory.adapters.claude_code.hooks_handler Stop"
-    )
 
 
 def test_committed_adapter_has_no_skills_dir():
@@ -104,6 +102,11 @@ def test_build_bundle_produces_installable_plugin(tmp_path):
     assert (out / "hooks" / "hooks.json").is_file()
     # the skill is now PRESENT in the built bundle (materialized, not committed)
     assert (out / "skills" / "recall" / "SKILL.md").is_file()
+    # the runtime launcher ships in the bundle, executable (ADR-harness-016)
+    launcher = out / "bin" / "cookbook-memory"
+    assert launcher.is_file()
+    import os
+    assert os.access(launcher, os.X_OK)
 
 
 def test_build_bundle_skill_matches_canonical_source(tmp_path):
@@ -162,7 +165,7 @@ def test_validate_bundle_rejects_missing_skill(tmp_path):
 # --- committed release bundle: drift guard (ADR-harness-010) ----------------- #
 
 #: The release bundle that ships from git (committed, per ADR-harness-010), pointed at
-#: by the repo-root `.claude-plugin/marketplace.json` via a git-subdir source.
+#: by the repo-root `.claude-plugin/marketplace.json` via a relative-path source.
 COMMITTED_BUNDLE = (
     Path(__file__).resolve().parents[1] / "marketplace" / "cookbook-memory"
 )
@@ -207,8 +210,11 @@ def test_committed_release_bundle_matches_fresh_build(tmp_path):
 
 def test_root_marketplace_manifest_points_at_committed_bundle():
     # The repo-root marketplace manifest is what `claude plugin marketplace add <repo>`
-    # reads; assert it declares the plugin and its git-subdir path matches where the
-    # committed bundle actually lives (ADR-harness-010).
+    # reads; assert it declares the plugin and that its RELATIVE source path matches
+    # where the committed bundle actually lives (ADR-harness-010 + ADR-harness-016).
+    # A relative source (not git-subdir) resolves inside the marketplace clone itself,
+    # which makes the one-command `claude plugin install
+    # cookbook-memory@kenhuangus/agent-memory-harness` form resolvable too.
     repo_root = Path(__file__).resolve().parents[2]
     manifest = repo_root / ".claude-plugin" / "marketplace.json"
     assert manifest.is_file(), f"missing root marketplace manifest: {manifest}"
@@ -216,9 +222,11 @@ def test_root_marketplace_manifest_points_at_committed_bundle():
     plugins = {p["name"]: p for p in data["plugins"]}
     assert "cookbook-memory" in plugins
     src = plugins["cookbook-memory"]["source"]
-    assert src["source"] == "git-subdir"
-    declared = repo_root / src["path"]
+    assert isinstance(src, str) and src.startswith("./"), (
+        f"expected a relative-path source, got: {src!r}"
+    )
+    declared = repo_root / src
     assert declared.resolve() == COMMITTED_BUNDLE.resolve(), (
-        f"manifest path {src['path']} does not point at the committed bundle "
+        f"manifest path {src} does not point at the committed bundle "
         f"{COMMITTED_BUNDLE}"
     )

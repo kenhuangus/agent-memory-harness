@@ -61,9 +61,10 @@ exclude = ["tests*"]
 [tool.setuptools.package-data]
 # Generic skills (harness-agnostic), shipped in the wheel.
 "cookbook_memory" = ["skills/*/SKILL.md"]
-# Harness-specific Claude Code bundle manifests.
+# Harness-specific Claude Code bundle manifests + the runtime launcher.
 "cookbook_memory.adapters.claude_code" = [
     ".claude-plugin/*.json",
     ".mcp.json",
     "hooks/*.json",
+    "bin/cookbook-memory",
 ]

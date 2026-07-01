@@ -25,8 +25,9 @@ cookbook_memory/
   cli.py                    # the `memory-cli` (mcp/install/build-bundle/query/remember/stats/log/reset)
   adapters/claude_code/     # the Claude Code bundle (harness-specific manifests + release build)
     .claude-plugin/         #   plugin.json + marketplace.json
-    .mcp.json               #   registers the recall MCP tool
-    hooks/hooks.json        #   lifecycle hooks (fail-open)
+    .mcp.json               #   registers the recall MCP tool (via the launcher)
+    hooks/hooks.json        #   lifecycle hooks (fail-open, via the launcher)
+    bin/cookbook-memory     #   runtime launcher: find or bootstrap the Python runtime
     mcp_server.py           #   FastMCP recall server → core
     hooks_handler.py        #   single hook entry point → core
     build.py                #   release: materialize skill + manifests → installable bundle
@@ -53,45 +54,51 @@ creation happens asynchronously in the Daydreamer (the dreaming workstream), whi
 watches the session feed. The `memory-cli remember` command exists for manual/debug
 writes by a human.
 
-## Install (from git — no repo clone)
+## Install (Claude Code — standard plugin install)
 
-Two steps: install the Python package (so the host has the `cookbook_memory` module
-and the memory engine), then add the plugin to Claude Code from this repo's git URL.
+```bash
+claude plugin marketplace add kenhuangus/agent-memory-harness
+claude plugin install cookbook-memory@cookbook-memory
+```
 
-**1. Install the package on the host.** A `pip install --user` from git pulls the
-plugin *and* its frozen-contract dependency (`agent-memory-eval[daydream]`, declared
-as a `git+URL`) with no clone and no package index:
+No clone, no pip. The committed release bundle
+([`marketplace/cookbook-memory/`](marketplace/cookbook-memory), ADR-harness-010)
+routes the MCP server and every hook through its **runtime launcher**
+(`bin/cookbook-memory`, ADR-harness-016), which resolves the Python side in order:
+
+1. `memory-cli` / `memory-hook` already on `$PATH` (or `$COOKBOOK_MEMORY_BIN_DIR`);
+2. a managed venv at `~/.cookbook-memory/runtime`, **bootstrapped on first use** from
+   this repo's git URL (`uv` when available, else `python3 -m venv` + pip; Python
+   ≥ 3.11, macOS/Linux). Hooks never block on the bootstrap — it runs in the
+   background, fail-open; `rm -rf ~/.cookbook-memory/runtime` resets it.
+
+Verify with `claude plugin details cookbook-memory` → `Skills (1)`, `Hooks (5)`,
+`MCP servers (1)`.
+
+**Prefer a pinned host runtime?** Pre-install the package — the launcher will find it
+and never bootstrap. A `pip install --user` from git pulls the plugin *and* its
+frozen-contract dependency (`agent-memory-eval[daydream]`, declared as a `git+URL`)
+with no clone and no package index:
 
 ```bash
 pip install --user \
   "cookbook-memory[mcp] @ git+https://github.com/kenhuangus/agent-memory-harness.git#subdirectory=plugin"
 ```
 
-**2. Install the Claude Code plugin bundle.** The package installer builds a local
-Claude bundle pinned to the Python environment that owns `memory-cli` / `memory-hook`,
-then adds and installs that bundle into the real Claude Code config:
-
-```bash
-memory-cli install-claude-plugin
-```
-
-Verify with `claude plugin details cookbook-memory` → `Skills (1)`, `Hooks (5)`,
-`MCP servers (1)`. The installed bundle invokes the console scripts from the same
-Python environment used by `memory-cli`, so the MCP server, hooks, and hook-fired
-Daydream subprocess all share one interpreter and dependency set.
-
-The repo also ships a static git marketplace bundle for release validation and manual
-fallbacks, but the `memory-cli install-claude-plugin` path is the recommended
-production install because it avoids guessing which `python3` Claude Code will see.
-
 For local development from this checkout, the repo-level shortcut installs the editable
 Python packages into the repo `.venv`, builds an ignored local Claude bundle under
-`build/` with commands pinned to that `.venv`, and installs the plugin into the real
-Claude Code config, explicitly bypassing the eval sandbox:
+`build/` with commands pinned to that `.venv` (`memory-cli install-claude-plugin`
+under the hood), and installs the plugin into the real Claude Code config, explicitly
+bypassing the eval sandbox:
 
 ```bash
 make install-claude-plugin
 ```
+
+**What lands in the user's repo:** the store at `.cookbook-memory/` scaffolds its own
+`.gitignore` on first write (ADR-harness-017) so only the markdown memories
+(`markdown/**/*.md`) are committable — databases, locks, the events stream, and dream
+state stay per-machine.
 
 **Codex / OpenCode — place the skill into the harness's discovery path:**
 
@@ -131,7 +138,7 @@ memory-cli log -n 20
 memory-cli reset
 ```
 
-**As a Claude Code plugin:** once installed (see [Install](#install-into-your-harness)),
+**As a Claude Code plugin:** once installed (see [Install](#install-claude-code--standard-plugin-install)),
 the `recall` skill and MCP tool are available in any session, backed by the store at
 `${CLAUDE_PROJECT_DIR}/.cookbook-memory`.
 

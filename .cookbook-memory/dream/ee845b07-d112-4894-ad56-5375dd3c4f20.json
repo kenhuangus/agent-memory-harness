@@ -1,1 +1,0 @@
-{"cursor": 197835, "last_summary": "The README's documented 'make setup' equivalent lists extras 'eval[claudecode,daydream,hf,dev]' but omits 'swebench', diverging from the actual Makefile target.", "recent_memory_ids": ["mem_8e44ff0a", "mem_4e21131f", "mem_58eeb6f5", "mem_a8ff6316"], "first_bytes_hash": "67a4ce5740fc07aa73bc4289e856a16c582641efd6569793569a71c3d529088c"}

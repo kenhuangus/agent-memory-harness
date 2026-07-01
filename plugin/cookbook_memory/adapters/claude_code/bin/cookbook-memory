@@ -1,0 +1,122 @@
+#!/bin/sh
+# Cookbook Memory bundle launcher (ADR-harness-016).
+#
+# Claude Code invokes the plugin's MCP server and lifecycle hooks through this
+# script (as ${CLAUDE_PLUGIN_ROOT}/bin/cookbook-memory), so a plain
+# `claude plugin install` is the whole install: the script finds an existing
+# runtime (the `memory-cli` / `memory-hook` console scripts on $PATH, e.g. from a
+# `pip install --user` of the package) or bootstraps a private venv under
+# ~/.cookbook-memory/runtime on first use — `uv` when available, else
+# `python3 -m venv` + pip — installing the package straight from this repo's git
+# URL. POSIX sh; macOS/Linux only.
+#
+# Usage:
+#   cookbook-memory mcp               run the MCP stdio server (blocks)
+#   cookbook-memory hook <EventName>  handle one lifecycle hook (always exits 0)
+#
+# Overrides:
+#   COOKBOOK_MEMORY_BIN_DIR  use console scripts from this directory (dev venv)
+#   COOKBOOK_MEMORY_RUNTIME  managed-runtime dir (default ~/.cookbook-memory/runtime)
+#   COOKBOOK_MEMORY_SPEC     pip requirement spec to bootstrap-install
+#
+# To reset a broken bootstrap: rm -rf ~/.cookbook-memory/runtime
+
+set -u
+
+MODE="${1:-}"
+[ $# -gt 0 ] && shift
+
+RUNTIME_DIR="${COOKBOOK_MEMORY_RUNTIME:-$HOME/.cookbook-memory/runtime}"
+VENV="$RUNTIME_DIR/venv"
+LOG="$RUNTIME_DIR/bootstrap.log"
+LOCK="$RUNTIME_DIR/.bootstrap.lock"
+SPEC="${COOKBOOK_MEMORY_SPEC:-cookbook-memory[mcp] @ git+https://github.com/kenhuangus/agent-memory-harness.git#subdirectory=plugin}"
+
+note() { printf 'cookbook-memory: %s\n' "$*" >&2; }
+
+case "$MODE" in
+    mcp)  TOOL="memory-cli"; set -- mcp "$@" ;;
+    hook) TOOL="memory-hook" ;;
+    *)    note "usage: cookbook-memory mcp | cookbook-memory hook <EventName>"; exit 2 ;;
+esac
+
+# Fail-open per ADR-harness-006: a hook must never break the session.
+die() {
+    if [ "$MODE" = "hook" ]; then exit 0; fi
+    note "$*"
+    exit 1
+}
+
+# Print the path of console script $1 from the first runtime that has it:
+# the explicit override dir, then $PATH, then the managed venv.
+resolve_bin() {
+    if [ -n "${COOKBOOK_MEMORY_BIN_DIR:-}" ] && [ -x "${COOKBOOK_MEMORY_BIN_DIR}/$1" ]; then
+        printf '%s\n' "${COOKBOOK_MEMORY_BIN_DIR}/$1"
+        return 0
+    fi
+    if command -v "$1" 2>/dev/null; then
+        return 0
+    fi
+    if [ -x "$VENV/bin/$1" ]; then
+        printf '%s\n' "$VENV/bin/$1"
+        return 0
+    fi
+    return 1
+}
+
+# Create the managed venv and install $SPEC into it. Single-flight via a lock
+# dir; all output goes to $LOG. Returns nonzero if another bootstrap is running
+# or the install fails.
+bootstrap() {
+    mkdir -p "$RUNTIME_DIR" 2>/dev/null || return 1
+    mkdir "$LOCK" 2>/dev/null || return 1
+    (
+        echo "== bootstrap $(date 2>/dev/null || true): $SPEC =="
+        if command -v uv >/dev/null 2>&1; then
+            uv venv --allow-existing "$VENV" && uv pip install --python "$VENV/bin/python" "$SPEC"
+        elif command -v python3 >/dev/null 2>&1; then
+            python3 -m venv "$VENV" && "$VENV/bin/python" -m pip install --quiet "$SPEC"
+        else
+            echo "neither uv nor python3 found on PATH; cannot bootstrap"
+            false
+        fi
+    ) >>"$LOG" 2>&1
+    status=$?
+    rmdir "$LOCK" 2>/dev/null
+    return $status
+}
+
+# Wait up to $1 seconds for a bootstrap owned by another process to finish.
+wait_for_runtime() {
+    waited=0
+    while [ "$waited" -lt "$1" ]; do
+        [ -x "$VENV/bin/$TOOL" ] && return 0
+        [ -d "$LOCK" ] || return 1
+        sleep 2
+        waited=$((waited + 2))
+    done
+    return 1
+}
+
+if ! BIN="$(resolve_bin "$TOOL")"; then
+    if [ "$MODE" = "hook" ]; then
+        # Never block a session on a network install: kick the bootstrap off in
+        # the background and succeed now. The runtime is ready for a later hook
+        # or the next session.
+        if [ ! -d "$LOCK" ]; then
+            ( bootstrap ) >/dev/null 2>&1 &
+        fi
+        exit 0
+    fi
+    note "first run: installing the memory runtime into $VENV (log: $LOG)"
+    if ! bootstrap; then
+        wait_for_runtime 300 || die "runtime bootstrap failed — see $LOG"
+    fi
+    BIN="$(resolve_bin "$TOOL")" || die "runtime bootstrap failed — see $LOG"
+fi
+
+if [ "$MODE" = "hook" ]; then
+    "$BIN" "$@"
+    exit 0
+fi
+exec "$BIN" "$@"

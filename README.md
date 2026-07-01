@@ -6,11 +6,44 @@
 
 **Repository:** <https://github.com/kenhuangus/agent-memory-harness> · **Live site:** <https://kenhuangus.github.io/agent-memory-harness/>
 
-A project site (GitHub Pages) for a **persistent memory harness for long-running coding agents**.
+A **persistent memory harness for long-running coding agents** — an installable plugin plus the
+benchmarks that measure it.
 
 The harness gives an agent self-curating memory so a smaller model (Haiku) can close the gap to a frontier
-model (Opus 4.8) **without** memory, measured on public memory benchmarks. This repo holds the static website
-that documents the plan, architecture, benchmarks, implementation contracts, and a results scoreboard.
+model (Opus 4.8) **without** memory, measured on public memory benchmarks. This repo holds the plugin, the
+evaluation harness, and the project site documenting the plan, architecture, benchmarks, and results.
+
+## Install the plugin (Claude Code)
+
+```bash
+claude plugin marketplace add kenhuangus/agent-memory-harness
+claude plugin install cookbook-memory@cookbook-memory
+```
+
+That's the whole install — no clone, no pip. The plugin ships a `recall` skill, a `recall` MCP tool, and
+fail-open lifecycle hooks that extract memories in the background (the Daydreamer). On first use the
+plugin's launcher bootstraps its own Python runtime into `~/.cookbook-memory/runtime` (using
+[`uv`](https://docs.astral.sh/uv/) if you have it, else `python3 -m venv` + pip — Python ≥ 3.11,
+macOS/Linux). Verify with:
+
+```bash
+claude plugin details cookbook-memory   # Skills (1) · Hooks (5) · MCP servers (1)
+```
+
+Good to know:
+
+- **Memory creation needs a model.** Background extraction calls OpenRouter — set `OPENROUTER_API_KEY`
+  in your environment. Without it, everything still works fail-open; you just get recall over whatever
+  is already in the store.
+- **What lands in your repo.** Memory lives in `.cookbook-memory/` at the project root. The store writes
+  its own `.gitignore` so that **only the markdown memories (`markdown/**/*.md`) are committable** — the
+  databases, locks, events stream, and dream state are per-machine artifacts that don't merge in git.
+  Commit the markdown files to share memory with your team; the derived indexes rebuild locally as new
+  memories are written.
+- **Prefer a pinned runtime?** `pip install --user "cookbook-memory[mcp] @
+  git+https://github.com/kenhuangus/agent-memory-harness.git#subdirectory=plugin"` before installing the
+  plugin — the launcher then uses your installed `memory-cli` instead of bootstrapping. Developers working
+  from a checkout: see [`plugin/README.md`](plugin/README.md).
 
 ## What's here
 
