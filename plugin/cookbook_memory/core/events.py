@@ -19,6 +19,8 @@ import json
 from pathlib import Path
 from typing import Any, Optional
 
+from .config import ensure_store_gitignore
+
 #: Recognized operation names for an event's ``op`` field.
 OPS = ("recall", "remember", "dream", "error")
 
@@ -77,6 +79,9 @@ class EventStream:
             return
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
+            # The events stream is the first writer into a fresh store, so it also
+            # scaffolds the store's .gitignore (ADR-harness-017); no-op once present.
+            ensure_store_gitignore(self.path.parent)
             with self.path.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(rec) + "\n")
         except Exception:
